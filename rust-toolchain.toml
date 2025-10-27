@@ -1,0 +1,13 @@
+[toolchain]
+# ⚠️ CRITICAL: Rust 1.75 is the LAST version that supports Windows 7
+# DO NOT change this to 1.76 or higher!
+# 
+# Why 1.75?
+# - Rust 1.75: ✅ Supports Windows 7/8/8.1
+# - Rust 1.76+: ❌ Requires Windows 10+
+#
+# If you need to drop Windows 7 support in the future:
+# 1. Update this file to channel = "1.76" or higher
+# 2. Update all documentation about Windows 7 support
+# 3. Notify all users
+channel = "1.75.0"

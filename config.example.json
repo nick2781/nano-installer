@@ -1,0 +1,16 @@
+{
+  "app_name": "MyApp",
+  "app_version": "1.0.0",
+  "publisher": "My Company",
+  "default_install_path": "C:\\Program Files\\MyApp",
+  "default_locale": "en-US",
+  "supported_locales": ["en-US", "zh-CN", "zh-TW", "ja", "vi"],
+  "require_admin": false,
+  "payload_filename": "app.7z",
+  "payload_sha256": null,
+  "create_desktop_shortcut": true,
+  "create_start_menu_shortcut": true,
+  "add_to_path": false,
+  "show_license": true,
+  "license_file": "LICENSE.txt"
+}
