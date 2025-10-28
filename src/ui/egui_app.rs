@@ -462,8 +462,18 @@ impl eframe::App for InstallerApp {
                     ui.painter().rect_filled(rect, 0.0, egui::Color32::from_rgb(24, 27, 34));
                 }
                 
-                // 自定义标题栏（可拖动）+ 关闭按钮
-                self.render_custom_titlebar(ui, frame);
+                // 根据页面类型决定是否显示标题栏
+                // Installing和Finish页面不显示标题栏
+                match self.wizard.current_page() {
+                    WizardPage::Installing | WizardPage::Finish => {
+                        // 不显示标题栏，只显示关闭按钮
+                        self.render_simple_close_button(ui);
+                    }
+                    _ => {
+                        // 显示完整标题栏（可拖动 + 关闭按钮 + 语言选择）
+                        self.render_custom_titlebar(ui, frame);
+                    }
+                }
                 
                 // 主内容区域
                 self.render_current_page(ui);
@@ -472,6 +482,35 @@ impl eframe::App for InstallerApp {
 }
 
 impl InstallerApp {
+    /// 渲染简单的关闭按钮（用于Installing和Finish页面）
+    fn render_simple_close_button(&self, ui: &mut egui::Ui) {
+        // 关闭按钮（右上角，绝对定位）
+        let close_btn_x = 574.0 - 16.0 - 32.0; // 右边距16px
+        let close_btn_size = 32.0;
+        
+        if let Some(texture) = &self.btn_close_texture {
+            let close_btn_rect = egui::Rect::from_min_size(
+                egui::pos2(close_btn_x, 16.0),
+                egui::vec2(close_btn_size, close_btn_size),
+            );
+            
+            let close_response = ui.allocate_rect(close_btn_rect, egui::Sense::click());
+            
+            if ui.is_rect_visible(close_btn_rect) {
+                ui.painter().image(
+                    texture.id(),
+                    close_btn_rect,
+                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                    egui::Color32::WHITE,
+                );
+            }
+            
+            if close_response.clicked() {
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+        }
+    }
+    
     /// 渲染自定义标题栏（可拖动 + 关闭按钮 + 语言选择）
     fn render_custom_titlebar(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let title_bar_height = 64.0;

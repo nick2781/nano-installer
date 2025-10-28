@@ -179,11 +179,49 @@ async fn run_simple_install(install_path: &str) -> nano_installer::common::Resul
     Ok(())
 }
 
+/// 从ICO文件数据加载图标
+fn load_icon_from_ico(ico_data: &[u8]) -> egui::IconData {
+    // 使用image crate解码ICO（需要启用ico feature）
+    match image::load_from_memory_with_format(ico_data, image::ImageFormat::Ico) {
+        Ok(img) => {
+            let rgba = img.to_rgba8();
+            let (width, height) = rgba.dimensions();
+            eprintln!("成功加载图标: {}x{}", width, height);
+            egui::IconData {
+                rgba: rgba.into_raw(),
+                width: width as u32,
+                height: height as u32,
+            }
+        }
+        Err(e) => {
+            // 如果加载失败，创建一个简单的32x32图标作为后备
+            eprintln!("警告：无法加载图标: {}", e);
+            // 创建一个半透明的灰色图标
+            let mut rgba = vec![0u8; 32 * 32 * 4];
+            for i in 0..(32 * 32) {
+                rgba[i * 4] = 100;     // R
+                rgba[i * 4 + 1] = 100; // G
+                rgba[i * 4 + 2] = 100; // B
+                rgba[i * 4 + 3] = 255; // A
+            }
+            egui::IconData {
+                rgba,
+                width: 32,
+                height: 32,
+            }
+        }
+    }
+}
+
 /// 运行GUI安装（使用egui）
 async fn run_gui_install(config: InstallerConfig) -> nano_installer::common::Result<()> {
     use nano_installer::ui::InstallerApp;
     
     // 配置窗口选项 - 使用NSIS的尺寸 574x358
+    // 加载窗口图标（使用ICO格式，Windows标准图标格式）
+    let icon_data = include_bytes!("../../assets/logo.ico");
+    let icon = load_icon_from_ico(icon_data);
+    
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([574.0, 358.0])
@@ -192,7 +230,8 @@ async fn run_gui_install(config: InstallerConfig) -> nano_installer::common::Res
             .with_resizable(false)
             .with_decorations(false)  // 无边框
             .with_transparent(false)   // 不透明，使用背景图
-            .with_title(format!("{} 安装程序", config.app_name.clone())),
+            .with_title(format!("{} 安装程序", config.app_name.clone()))
+            .with_icon(icon),
         ..Default::default()
     };
     

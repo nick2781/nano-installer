@@ -28,7 +28,7 @@ path = "src/bin/langpack_builder.rs"
 eframe = { version = "0.28", default-features = true, features = ["default_fonts", "glow"] }
 egui = "0.28"
 egui_extras = { version = "0.28", features = ["image"] }
-image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "ico"] }
 
 # Async runtime
 tokio = { version = "1.35", features = ["full"] }
