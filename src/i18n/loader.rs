@@ -21,22 +21,48 @@ impl LanguageLoader {
 
     /// 从嵌入的资源加载语言包
     pub fn load_locale(&mut self, locale: &str) -> Result<()> {
+        tracing::info!("Loading locale: {}", locale);
+        
         if self.bundle.has_locale(locale) {
+            tracing::info!("Locale {} already loaded", locale);
             return Ok(());
         }
 
         // 尝试从嵌入的资源加载
+        tracing::info!("Loading pack data for locale: {}", locale);
         let pack_data = self.load_embedded_pack(locale)?;
+        tracing::info!("Pack data loaded, size: {} bytes", pack_data.len());
+        
         let pack = LanguagePack::from_bytes(&pack_data)?;
+        tracing::info!("Language pack parsed successfully for locale: {}", locale);
 
         self.bundle.add_pack(pack);
+        tracing::info!("Locale {} loaded successfully", locale);
         Ok(())
     }
 
     /// 加载嵌入的语言包数据
     fn load_embedded_pack(&self, locale: &str) -> Result<Vec<u8>> {
-        // 这里会在编译时嵌入语言包
-        // 暂时返回错误，实际实现会使用 include_bytes! 宏
+        // 首先尝试从文件系统加载
+        // 尝试多个可能的路径
+        let possible_paths = vec![
+            format!("dist/locales/{}.pak", locale), // 相对于当前工作目录
+            format!("./dist/locales/{}.pak", locale), // 明确相对路径
+            format!("../dist/locales/{}.pak", locale), // 上一级目录
+        ];
+        
+        for pak_path in possible_paths {
+            tracing::info!("Checking for language pack at: {}", pak_path);
+            
+            if std::path::Path::new(&pak_path).exists() {
+                tracing::info!("Found language pack file: {}", pak_path);
+                return Ok(std::fs::read(&pak_path)?);
+            }
+        }
+        
+        tracing::warn!("Language pack file not found in any of the checked paths for locale: {}", locale);
+        
+        // 然后尝试从嵌入的资源加载
         match locale {
             "en-US" => {
                 #[cfg(feature = "embedded-locales")]

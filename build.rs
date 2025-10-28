@@ -22,8 +22,24 @@ fn main() {
     // Windows 特定的构建步骤
     #[cfg(target_os = "windows")]
     {
-        // 嵌入应用程序图标和清单
-        embed_resource::compile("resources/app.rc", embed_resource::NONE);
+        // 根据编译目标设置不同的图标
+        // 检查 CARGO_BIN_NAME 环境变量来判断正在编译哪个binary
+        if let Ok(bin_name) = env::var("CARGO_BIN_NAME") {
+            match bin_name.as_str() {
+                "installer" => {
+                    embed_resource::compile("resources/installer.rc", embed_resource::NONE);
+                    println!("cargo:warning=Compiling installer with logo.ico");
+                }
+                "uninst" => {
+                    embed_resource::compile("resources/uninstaller.rc", embed_resource::NONE);
+                    println!("cargo:warning=Compiling uninstaller with uninst.ico");
+                }
+                _ => {}
+            }
+        } else {
+            // 默认使用installer资源
+            embed_resource::compile("resources/installer.rc", embed_resource::NONE);
+        }
     }
     
     println!("Build script completed");
@@ -75,15 +91,64 @@ fn build_single_language_pack(
     // 读取 JSON
     let json_content = fs::read_to_string(json_path)?;
     
-    // 这里使用一个简化的构建过程
-    // 实际应该使用 nano_installer::i18n::LanguagePack，但构建脚本中访问主 crate 比较复杂
-    // 所以我们直接复制 JSON 文件，运行时再构建 .pak
+    // 解析 JSON 并构建 .pak 文件
+    let translations: std::collections::HashMap<String, String> = 
+        serde_json::from_str(&json_content)?;
     
-    let output_path = output_dir.join(format!("{}.json", locale));
-    fs::write(&output_path, json_content)?;
+    // 构建 .pak 文件
+    let pak_data = build_pak_file(locale, &translations)?;
+    
+    let output_path = output_dir.join(format!("{}.pak", locale));
+    fs::write(&output_path, pak_data)?;
     
     println!("  -> {:?}", output_path);
     
     Ok(())
+}
+
+/// 构建 .pak 文件格式
+fn build_pak_file(
+    locale: &str,
+    translations: &std::collections::HashMap<String, String>,
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    use std::io::Write;
+    
+    let mut buffer = Vec::new();
+    
+    // 魔数 "LNGP"
+    buffer.write_all(b"LNGP")?;
+    
+    // 版本号 (u16)
+    buffer.write_all(&1u16.to_le_bytes())?;
+    
+    // 语言代码长度和内容
+    let locale_bytes = locale.as_bytes();
+    buffer.write_all(&(locale_bytes.len() as u16).to_le_bytes())?;
+    buffer.write_all(locale_bytes)?;
+    
+    // 预留 CRC32 位置
+    let crc_pos = buffer.len();
+    buffer.write_all(&[0u8; 4])?;
+    
+    // 键值对数量
+    buffer.write_all(&(translations.len() as u32).to_le_bytes())?;
+    
+    // 写入每个键值对
+    for (key, value) in translations {
+        let key_bytes = key.as_bytes();
+        let value_bytes = value.as_bytes();
+        
+        buffer.write_all(&(key_bytes.len() as u16).to_le_bytes())?;
+        buffer.write_all(key_bytes)?;
+        
+        buffer.write_all(&(value_bytes.len() as u32).to_le_bytes())?;
+        buffer.write_all(value_bytes)?;
+    }
+    
+    // 计算并写入 CRC32
+    let crc = crc32fast::hash(&buffer[crc_pos + 4..]);
+    buffer[crc_pos..crc_pos + 4].copy_from_slice(&crc.to_le_bytes());
+    
+    Ok(buffer)
 }
 

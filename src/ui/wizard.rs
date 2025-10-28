@@ -3,7 +3,10 @@
 /// 向导页面枚举（基于 NSIS 设计）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WizardPage {
-    Config,      // 配置页（主页，包含协议同意和可展开的选项）
+    Welcome,     // 欢迎页
+    Language,    // 语言选择页
+    License,     // 许可协议页
+    InstallPath, // 安装路径页
     Installing,  // 安装进度页
     Finish,      // 完成页
 }
@@ -17,7 +20,7 @@ impl Wizard {
     /// 创建新的向导
     pub fn new() -> Self {
         Self {
-            current_page: WizardPage::Config,
+            current_page: WizardPage::Welcome,
         }
     }
     
@@ -34,22 +37,30 @@ impl Wizard {
     /// 下一步
     pub fn next(&mut self) {
         self.current_page = match self.current_page {
-            WizardPage::Config => WizardPage::Installing,
+            WizardPage::Welcome => WizardPage::InstallPath,
+            WizardPage::Language => WizardPage::InstallPath,
+            WizardPage::License => WizardPage::InstallPath,
+            WizardPage::InstallPath => WizardPage::Installing,
             WizardPage::Installing => WizardPage::Finish,
             WizardPage::Finish => WizardPage::Finish,
         };
     }
     
-    /// 上一步（基于 NSIS 设计，不支持返回）
+    /// 上一步
     pub fn previous(&mut self) {
-        // NSIS 设计中，安装过程不支持返回
-        // 可以在配置页时关闭窗口取消安装
+        self.current_page = match self.current_page {
+            WizardPage::Welcome => WizardPage::Welcome,
+            WizardPage::Language => WizardPage::Welcome,
+            WizardPage::License => WizardPage::Welcome,
+            WizardPage::InstallPath => WizardPage::License,
+            WizardPage::Installing => WizardPage::InstallPath,
+            WizardPage::Finish => WizardPage::Finish,
+        };
     }
     
     /// 能否返回上一步
     pub fn can_go_back(&self) -> bool {
-        // NSIS 设计中不支持返回
-        false
+        self.current_page != WizardPage::Welcome && self.current_page != WizardPage::Finish
     }
     
     /// 能否进入下一步

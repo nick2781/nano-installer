@@ -38,12 +38,13 @@ fn create_shortcut(
     target_path: &str,
     arguments: &str,
 ) -> Result<()> {
-    use windows::core::{BSTR, PCWSTR};
+    use windows::core::{BSTR, PCWSTR, ComInterface};
     use windows::Win32::System::Com::{
         CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER,
         COINIT_APARTMENTTHREADED,
     };
-    use windows::Win32::UI::Shell::{IPersistFile, IShellLinkW, ShellLink};
+    use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
+    use windows::Win32::System::Com::IPersistFile;
 
     unsafe {
         // 初始化 COM
@@ -73,8 +74,8 @@ fn create_shortcut(
         // 保存快捷方式
         let persist_file: IPersistFile = shell_link.cast()?;
         let shortcut_path_str = shortcut_path.to_string_lossy().to_string();
-        let shortcut_path_bstr = BSTR::from(shortcut_path_str.as_str());
-        persist_file.Save(&shortcut_path_bstr, true)?;
+        let shortcut_path_wide: Vec<u16> = shortcut_path_str.encode_utf16().chain(Some(0)).collect();
+        persist_file.Save(PCWSTR(shortcut_path_wide.as_ptr()), true)?;
 
         // 清理 COM
         CoUninitialize();

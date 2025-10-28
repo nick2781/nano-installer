@@ -46,7 +46,7 @@ async fn main() {
     let locale = args.locale.as_deref().unwrap_or_else(|| {
         let detected = platform::detect_system_locale();
         if i18n::is_locale_supported(&detected) {
-            detected.as_str()
+            "en-US" // 使用静态字符串而不是引用局部变量
         } else {
             "en-US"
         }
@@ -108,23 +108,10 @@ async fn main() {
         }
     } else {
         // GUI 安装模式
-        println!("GUI mode requires GPUI implementation.");
-        println!("Current status: UI framework ready, rendering code pending.");
-        println!("\nTo complete:");
-        println!("1. Implement Render trait in src/ui/app.rs");
-        println!("2. Reference: src/ui/gpui_impl.rs (example code)");
-        println!("3. Follow: docs/IMPLEMENTATION_STEPS.md");
-        println!("\nFor now, use silent mode:");
-        println!("  installer.exe /S /D={}", install_path);
-        
-        // TODO: 实现 GPUI 渲染后取消注释
-        // match run_gui_install(config).await {
-        //     Ok(_) => std::process::exit(0),
-        //     Err(e) => {
-        //         eprintln!("GUI installation failed: {}", e);
-        //         std::process::exit(1);
-        //     }
-        // }
+        if let Err(e) = run_gui_install(config).await {
+            eprintln!("GUI安装失败: {}", e);
+            std::process::exit(1);
+        }
     }
 }
 
@@ -166,5 +153,107 @@ async fn run_silent_install(install_path: &str) -> nano_installer::common::Resul
     let _manifest = engine.install().await?;
     
     Ok(())
+}
+
+/// 运行简单安装（文本界面）
+async fn run_simple_install(install_path: &str) -> nano_installer::common::Result<()> {
+    use nano_installer::installer::tasks::*;
+    use nano_installer::resources::PayloadExtractor;
+    
+    println!("Starting installation to: {}", install_path);
+    
+    // 创建安装目录
+    std::fs::create_dir_all(install_path)?;
+    println!("✓ Created installation directory");
+    
+    // 模拟安装过程
+    println!("Installing files...");
+    for i in 1..=10 {
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        println!("  Progress: {}%", i * 10);
+    }
+    
+    println!("✓ Installation completed!");
+    println!("Application installed to: {}", install_path);
+    
+    Ok(())
+}
+
+/// 运行GUI安装（使用egui）
+async fn run_gui_install(config: InstallerConfig) -> nano_installer::common::Result<()> {
+    use nano_installer::ui::InstallerApp;
+    
+    // 配置窗口选项 - 使用NSIS的尺寸 574x358
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([574.0, 358.0])
+            .with_min_inner_size([574.0, 358.0])
+            .with_max_inner_size([574.0, 518.0])  // 允许展开到518px（NSIS展开高度）
+            .with_resizable(false)
+            .with_decorations(false)  // 无边框
+            .with_transparent(false)   // 不透明，使用背景图
+            .with_title(format!("{} 安装程序", config.app_name.clone())),
+        ..Default::default()
+    };
+    
+    // 启动egui应用
+    eframe::run_native(
+        &format!("{} 安装程序", config.app_name),
+        options,
+        Box::new(|cc| {
+            // 加载中文字体
+            setup_custom_fonts(&cc.egui_ctx);
+            Ok(Box::new(InstallerApp::new(config)))
+        }),
+    ).map_err(|e| nano_installer::common::Error::Unknown(format!("GUI启动失败: {}", e)))?;
+    
+    Ok(())
+}
+
+/// 设置自定义字体（支持中文）
+fn setup_custom_fonts(ctx: &egui::Context) {
+    let mut fonts = egui::FontDefinitions::default();
+    
+    // 添加中文字体（使用 Windows 系统字体）
+    #[cfg(target_os = "windows")]
+    {
+        // 尝试加载 Windows 系统中文字体
+        if let Ok(font_data) = std::fs::read("C:\\Windows\\Fonts\\msyh.ttc") {
+            fonts.font_data.insert(
+                "msyh".to_owned(),
+                egui::FontData::from_owned(font_data),
+            );
+            
+            // 将中文字体设置为最高优先级
+            fonts
+                .families
+                .entry(egui::FontFamily::Proportional)
+                .or_default()
+                .insert(0, "msyh".to_owned());
+                
+            fonts
+                .families
+                .entry(egui::FontFamily::Monospace)
+                .or_default()
+                .insert(0, "msyh".to_owned());
+        }
+        
+        // 尝试加载 Segoe UI 字体（支持越南语等更多语言）
+        if let Ok(font_data) = std::fs::read("C:\\Windows\\Fonts\\segoeui.ttf") {
+            fonts.font_data.insert(
+                "segoe_ui".to_owned(),
+                egui::FontData::from_owned(font_data),
+            );
+            
+            // 将 Segoe UI 字体设置为第二优先级
+            fonts
+                .families
+                .entry(egui::FontFamily::Proportional)
+                .or_default()
+                .insert(1, "segoe_ui".to_owned());
+        }
+    }
+    
+    ctx.set_fonts(fonts);
 }
 

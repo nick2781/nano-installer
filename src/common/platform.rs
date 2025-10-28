@@ -85,7 +85,8 @@ pub fn is_elevated() -> Result<bool> {
 pub fn request_elevation(args: &[String]) -> Result<()> {
     use windows::core::{w, PCWSTR};
     use windows::Win32::Foundation::HWND;
-    use windows::Win32::UI::Shell::{ShellExecuteW, SW_SHOWNORMAL};
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
     let exe_path = std::env::current_exe()?;
     let exe_path_str = exe_path.to_string_lossy().to_string();

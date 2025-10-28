@@ -33,13 +33,49 @@ pub struct InstallerConfig {
     pub payload_sha256: Option<String>,
 }
 
+impl InstallerConfig {
+    /// 从文件加载配置
+    pub fn load_from_file(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        let content = std::fs::read_to_string(path)?;
+        let mut config: Self = serde_json::from_str(&content)?;
+        
+        // 展开环境变量
+        config.default_install_path = Self::expand_env_vars(&config.default_install_path);
+        
+        Ok(config)
+    }
+    
+    /// 展开环境变量
+    fn expand_env_vars(path: &str) -> String {
+        let mut result = path.to_string();
+        
+        // 展开 %USERNAME%
+        if let Ok(username) = std::env::var("USERNAME") {
+            result = result.replace("%USERNAME%", &username);
+        }
+        
+        // 展开 %USERPROFILE%
+        if let Ok(userprofile) = std::env::var("USERPROFILE") {
+            result = result.replace("%USERPROFILE%", &userprofile);
+        }
+        
+        result
+    }
+}
+
 impl Default for InstallerConfig {
     fn default() -> Self {
-        Self {
+        // 尝试从config.json加载配置
+        if let Ok(config) = Self::load_from_file("config.json") {
+            return config;
+        }
+        
+        // 如果加载失败，使用默认值
+        let mut config = Self {
             app_name: "MyApp".to_string(),
             app_version: "1.0.0".to_string(),
             publisher: "My Company".to_string(),
-            default_install_path: r"C:\Program Files\MyApp".to_string(),
+            default_install_path: r"C:\Users\%USERNAME%\AppData\Local\MyApp".to_string(),
             default_locale: "en-US".to_string(),
             supported_locales: vec![
                 "en-US".to_string(),
@@ -51,7 +87,12 @@ impl Default for InstallerConfig {
             require_admin: false,
             payload_filename: "app.7z".to_string(),
             payload_sha256: None,
-        }
+        };
+        
+        // 展开环境变量
+        config.default_install_path = Self::expand_env_vars(&config.default_install_path);
+        
+        config
     }
 }
 

@@ -31,7 +31,8 @@ impl AssetLoader {
     /// 获取系统 DPI 缩放因子
     #[cfg(windows)]
     fn get_system_scale_factor() -> f32 {
-        use windows::Win32::UI::HiDpi::{GetDpiForSystem, USER_DEFAULT_SCREEN_DPI};
+        use windows::Win32::UI::HiDpi::GetDpiForSystem;
+        use windows::Win32::UI::WindowsAndMessaging::USER_DEFAULT_SCREEN_DPI;
 
         unsafe {
             let dpi = GetDpiForSystem();

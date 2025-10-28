@@ -10,4 +10,4 @@
 # 1. Update this file to channel = "1.76" or higher
 # 2. Update all documentation about Windows 7 support
 # 3. Notify all users
-channel = "1.75.0"
+channel = "stable"

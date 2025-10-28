@@ -8,15 +8,15 @@ rust-version = "1.75"
 authors = ["Your Name <your.email@example.com>"]
 description = "Modern installer and uninstaller with multi-language support"
 
-[workspace]
-members = [".", "crates/*"]
+# [workspace]
+# members = [".", "crates/*"]
 
 [[bin]]
 name = "installer"
 path = "src/bin/installer.rs"
 
 [[bin]]
-name = "uninstaller"
+name = "uninst"
 path = "src/bin/uninstaller.rs"
 
 [[bin]]
@@ -24,9 +24,11 @@ name = "langpack-builder"
 path = "src/bin/langpack_builder.rs"
 
 [dependencies]
-# GPUI framework and components
-gpui = { git = "https://github.com/zed-industries/zed", rev = "main" }
-gpui-component = { git = "https://github.com/longbridge/gpui-component", branch = "main" }
+# egui framework - better Win7+ support
+eframe = { version = "0.28", default-features = true, features = ["default_fonts", "glow"] }
+egui = "0.28"
+egui_extras = { version = "0.28", features = ["image"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 
 # Async runtime
 tokio = { version = "1.35", features = ["full"] }
@@ -45,6 +47,7 @@ windows = { version = "0.52", features = [
     "Win32_Foundation",
     "Win32_System_Registry",
     "Win32_System_Com",
+    "Win32_System_Ole",
     "Win32_UI_Shell",
     "Win32_UI_Shell_Common",
     "Win32_UI_WindowsAndMessaging",
@@ -53,6 +56,7 @@ windows = { version = "0.52", features = [
     "Win32_System_Threading",
     "Win32_System_SystemServices",
     "Win32_Globalization",
+    "Win32_UI_HiDpi",
 ] }
 winreg = "0.52"
 
@@ -78,6 +82,7 @@ sha2 = "0.10"
 [build-dependencies]
 embed-resource = "2.4"
 serde_json = "1.0"
+crc32fast = "1.3"
 
 [dev-dependencies]
 tempfile = "3.8"
@@ -93,6 +98,8 @@ panic = "abort"
 opt-level = 0
 
 [features]
-default = []
+default = ["embedded-locales"]
 # 未来的 macOS 支持
 macos-support = []
+# 嵌入语言包
+embedded-locales = []
