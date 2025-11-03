@@ -25,6 +25,18 @@ pub enum Error {
     #[error("Uninstallation failed: {0}")]
     UninstallationFailed(String),
 
+    #[error("Mutex error: {0}")]
+    MutexError(String),
+
+    #[error("Process detection failed: {0}")]
+    ProcessDetectionFailed(String),
+
+    #[error("Process termination failed: {0}")]
+    ProcessTerminationFailed(String),
+
+    #[error("Path validation failed: {0}")]
+    PathValidationFailed(String),
+
     #[error("Registry error: {0}")]
     Registry(String),
 
@@ -54,6 +66,12 @@ pub enum Error {
 
     #[error("Unknown error: {0}")]
     Unknown(String),
+
+    #[error("Generic error: {0}")]
+    Generic(#[from] Box<dyn std::error::Error + Send + Sync>),
+
+    #[error("Box error: {0}")]
+    BoxError(#[from] Box<dyn std::error::Error>),
 }
 
 // Windows specific errors

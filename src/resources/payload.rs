@@ -8,6 +8,35 @@ use std::path::Path;
 pub struct PayloadExtractor;
 
 impl PayloadExtractor {
+    /// 获取 7za.exe 的路径
+    fn get_7za_path() -> Result<std::path::PathBuf> {
+        // 首先尝试从当前 exe 所在目录的 tools 子目录
+        if let Ok(exe_path) = std::env::current_exe() {
+            if let Some(exe_dir) = exe_path.parent() {
+                let tools_7za = exe_dir.join("tools").join("7za.exe");
+                if tools_7za.exists() {
+                    return Ok(tools_7za);
+                }
+            }
+        }
+        
+        // 尝试从项目根目录的 tools 子目录（开发环境）
+        if let Ok(cargo_manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+            let project_7za = std::path::PathBuf::from(cargo_manifest_dir).join("tools").join("7za.exe");
+            if project_7za.exists() {
+                return Ok(project_7za);
+            }
+        }
+        
+        // 如果都不存在，尝试查找当前目录
+        let current_7za = std::path::PathBuf::from("tools").join("7za.exe");
+        if current_7za.exists() {
+            return Ok(current_7za);
+        }
+        
+        Err(Error::Archive("7za.exe not found in tools directory".to_string()))
+    }
+
     /// 从当前 exe 中提取嵌入的 payload
     pub fn extract_embedded_payload() -> Result<Vec<u8>> {
         // 读取当前 exe 文件
@@ -67,9 +96,21 @@ impl PayloadExtractor {
             file.write_all(data)?;
         }
 
-        // 使用 sevenz-rust 解压
-        sevenz_rust::decompress_file(&temp_7z, dest_dir)
-            .map_err(|e| Error::Archive(format!("7z extraction failed: {:?}", e)))?;
+        // 使用系统7z命令解压
+        let output = std::process::Command::new("7z")
+            .arg("x")
+            .arg(&temp_7z)
+            .arg(format!("-o{}", dest_dir.display()))
+            .arg("-y") // 自动确认
+            .output()
+            .map_err(|e| Error::Archive(format!("Failed to run 7z command: {}", e)))?;
+
+        if !output.status.success() {
+            return Err(Error::Archive(format!(
+                "7z extraction failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            )));
+        }
 
         // 删除临时文件
         let _ = std::fs::remove_file(&temp_7z);

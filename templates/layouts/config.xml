@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Layout name="config" version="1.0">
+  <Page id="config">
+    <VBox padding="20" spacing="10">
+      <Label text="@config.title" font_size="20" />
+      <Spacer height="20" />
+      
+      <VBox spacing="5">
+        <Label text="@config.install_path" />
+        <HBox spacing="10">
+          <TextInput id="install_path" text="{default_path}" width="300" />
+          <Button id="browse" text="@common.browse" width="80" height="28" />
+        </HBox>
+      </VBox>
+      
+      <Spacer height="20" />
+      
+      <Checkbox id="desktop_shortcut" text="@config.desktop_shortcut" checked="true" />
+      <Checkbox id="start_menu" text="@config.start_menu" checked="true" />
+      <Checkbox id="autostart" text="@config.autostart" checked="false" />
+      
+      <Spacer height="30" />
+      <HBox spacing="10">
+        <Button id="back" text="@common.back" width="100" height="32" />
+        <Spacer />
+        <Button id="install" text="@common.install" width="100" height="32" style="primary" />
+      </HBox>
+    </VBox>
+  </Page>
+</Layout>
+

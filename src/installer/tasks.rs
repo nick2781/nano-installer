@@ -12,7 +12,7 @@ pub trait InstallTask: Send + Sync {
     fn execute(&self, state: &InstallState) -> Result<()>;
 
     /// 回滚任务（如果安装失败）
-    fn rollback(&self, state: &InstallState) -> Result<()> {
+    fn rollback(&self, _state: &InstallState) -> Result<()> {
         // 默认不执行回滚
         Ok(())
     }

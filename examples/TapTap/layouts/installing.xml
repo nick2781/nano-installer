@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Layout name="Installing" version="1.0.0">
+  <Page>
+    <VBox>
+      <Label text="正在安装 TapTap" font_size="20" />
+      <Spacer height="20" />
+      <ProgressBar id="progress" value="0" width="400" height="20" />
+      <Spacer height="10" />
+      <Label id="status" text="正在准备安装..." />
+      <Spacer height="30" />
+      <Button id="cancel" text="取消" width="100" />
+    </VBox>
+  </Page>
+</Layout>

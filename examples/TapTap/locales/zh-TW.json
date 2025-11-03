@@ -1,0 +1,23 @@
+{
+  "welcome.title": "歡迎使用 TapTap",
+  "welcome.subtitle": "安裝 TapTap 來發現和下載遊戲",
+  "welcome.agreement": "點擊「安裝」即表示您同意我們的服務條款和隱私政策",
+  "welcome.custom_install": "自定義安裝",
+  "welcome.install": "安裝",
+  "welcome.cancel": "取消",
+  "config.title": "安裝選項",
+  "config.path": "安裝路徑：",
+  "config.change_path": "更改位置",
+  "config.desktop_shortcut": "創建桌面快捷方式",
+  "config.start_menu": "添加到開始菜單",
+  "config.auto_start": "開機自動啟動",
+  "config.install": "安裝",
+  "config.cancel": "取消",
+  "processing.title": "正在安裝 TapTap",
+  "processing.progress": "安裝中...",
+  "processing.cancel": "取消",
+  "finish.title": "安裝完成",
+  "finish.message": "TapTap 已成功安裝",
+  "finish.launch": "立即啟動 TapTap",
+  "finish.finish": "完成"
+}

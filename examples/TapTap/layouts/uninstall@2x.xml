@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Layout name="uninstall" version="1.0">
+    <Page>
+        <Image icon="logo@2x.png" x="100" y="100" width="256" height="256" />
+        
+        <Text x="100" y="400" width="1000" height="60" size="48" color="#333333" align="left">
+            <I18n key="uninstall.title" />
+        </Text>
+        
+        <Text x="100" y="500" width="1000" height="120" size="28" color="#666666" align="left" wrap="true">
+            <I18n key="uninstall.description" />
+        </Text>
+        
+        <Checkbox id="keep_data" x="100" y="660" width="1000" height="48" checked="false">
+            <I18n key="uninstall.keep_user_data" />
+        </Checkbox>
+        
+        <Button id="uninstall" x="700" y="1000" width="240" height="80" style="primary">
+            <I18n key="uninstall.button" />
+        </Button>
+        
+        <Button id="cancel" x="960" y="1000" width="240" height="80" style="normal">
+            <I18n key="button.cancel" />
+        </Button>
+    </Page>
+</Layout>
+

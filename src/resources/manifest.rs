@@ -1,101 +1,141 @@
-// 安装清单
-
-use crate::common::Result;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 
-/// 安装清单（记录安装了什么，用于卸载）
+/// 安装清单
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstallManifest {
-    /// 应用名称
-    pub app_name: String,
-
-    /// 应用版本
-    pub app_version: String,
-
-    /// 安装路径
-    pub install_path: PathBuf,
-
-    /// 安装时间
-    pub install_time: String,
-
-    /// 已安装的文件列表
-    pub installed_files: Vec<PathBuf>,
-
-    /// 创建的快捷方式
-    pub shortcuts: Vec<Shortcut>,
-
-    /// 写入的注册表项
-    pub registry_keys: Vec<RegistryKey>,
-
-    /// 语言
-    pub locale: String,
+    pub version: String,
+    pub product_name: String,
+    pub publisher: String,
+    pub install_path: String,
+    pub files: Vec<FileEntry>,
+    pub shortcuts: Vec<ShortcutEntry>,
+    pub registry_entries: Vec<RegistryEntry>,
 }
 
 impl InstallManifest {
-    /// 创建新的安装清单
     pub fn new(
-        app_name: String,
-        app_version: String,
-        install_path: PathBuf,
-        locale: String,
+        version: String,
+        product_name: String,
+        publisher: String,
+        install_path: String,
     ) -> Self {
         Self {
-            app_name,
-            app_version,
+            version,
+            product_name,
+            publisher,
             install_path,
-            install_time: chrono::Local::now().to_rfc3339(),
-            installed_files: Vec::new(),
+            files: Vec::new(),
             shortcuts: Vec::new(),
-            registry_keys: Vec::new(),
-            locale,
+            registry_entries: Vec::new(),
         }
     }
 
-    /// 保存清单到文件
-    pub fn save(&self, path: &std::path::Path) -> Result<()> {
-        let json = serde_json::to_string_pretty(self)?;
-        std::fs::write(path, json)?;
+    pub fn save(&self, path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+        let content = serde_json::to_string_pretty(self)?;
+        std::fs::write(path, content)?;
         Ok(())
     }
+}
 
-    /// 从文件加载清单
-    pub fn load(path: &std::path::Path) -> Result<Self> {
-        let json = std::fs::read_to_string(path)?;
-        let manifest = serde_json::from_str(&json)?;
+/// 文件条目
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileEntry {
+    pub source: String,
+    pub destination: String,
+    pub size: u64,
+    pub checksum: Option<String>,
+}
+
+/// 快捷方式条目
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShortcutEntry {
+    pub name: String,
+    pub target: String,
+    pub arguments: Option<String>,
+    pub icon: Option<String>,
+    pub location: ShortcutLocation,
+}
+
+/// 快捷方式位置
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ShortcutLocation {
+    Desktop,
+    StartMenu,
+    Both,
+}
+
+/// 注册表条目
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegistryEntry {
+    pub key: String,
+    pub value_name: String,
+    pub value_data: String,
+    pub value_type: RegistryValueType,
+}
+
+/// 注册表值类型
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RegistryValueType {
+    String,
+    DWord,
+    Binary,
+}
+
+/// 卸载清单
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UninstallManifest {
+    pub version: String,
+    pub product_name: String,
+    pub install_path: String,
+    pub locale: String,
+    pub files_to_remove: Vec<String>,
+    pub directories_to_remove: Vec<String>,
+    pub registry_keys_to_remove: Vec<String>,
+    pub shortcuts_to_remove: Vec<String>,
+}
+
+impl UninstallManifest {
+    pub fn load(path: &std::path::Path) -> Result<Self, Box<dyn std::error::Error>> {
+        let content = std::fs::read_to_string(path)?;
+        let manifest: UninstallManifest = serde_json::from_str(&content)?;
         Ok(manifest)
     }
 }
 
-/// 快捷方式信息
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Shortcut {
-    /// 快捷方式路径
-    pub path: PathBuf,
-
-    /// 快捷方式类型
-    pub shortcut_type: ShortcutType,
+/// 载荷提取器
+pub struct PayloadExtractor {
+    pub manifest: InstallManifest,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ShortcutType {
-    Desktop,
-    StartMenu,
-    QuickLaunch,
+impl PayloadExtractor {
+    pub fn new(manifest: InstallManifest) -> Self {
+        Self { manifest }
+    }
+
+    /// 提取7z文件到指定目录
+    pub fn extract_7z_to_dir(
+        _payload_data: &[u8],
+        _target_dir: &std::path::Path,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // 这里实现7z解压逻辑
+        // 目前是占位符
+        Ok(())
+    }
+
+    /// 提取文件到指定目录
+    pub fn extract_to(&self, _target_dir: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+        // 这里实现文件提取逻辑
+        // 目前是占位符
+        Ok(())
+    }
+
+    /// 获取文件列表
+    pub fn get_files(&self) -> &[FileEntry] {
+        &self.manifest.files
+    }
+
+    /// 获取总大小
+    pub fn get_total_size(&self) -> u64 {
+        self.manifest.files.iter().map(|f| f.size).sum()
+    }
 }
-
-/// 注册表项信息
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RegistryKey {
-    /// 注册表根
-    pub root: String,
-
-    /// 注册表路径
-    pub path: String,
-
-    /// 键名（如果为 None，表示创建了整个路径）
-    pub name: Option<String>,
-}
-
-/// 卸载清单（用于卸载器）
-pub type UninstallManifest = InstallManifest;

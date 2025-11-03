@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Layout name="Finish" version="1.0.0">
+  <Page>
+    <VBox>
+      <Label text="安装完成" font_size="20" />
+      <Spacer height="20" />
+      <Label text="TapTap 已成功安装到您的计算机。" />
+      <Spacer height="20" />
+      <Checkbox id="launch_app" text="立即启动 TapTap" checked="true" />
+      <Spacer height="30" />
+      <HBox>
+        <Button id="finish" text="完成" width="100" />
+      </HBox>
+    </VBox>
+  </Page>
+</Layout>

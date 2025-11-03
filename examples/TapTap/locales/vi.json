@@ -1,0 +1,23 @@
+{
+  "welcome.title": "Chào mừng đến với TapTap",
+  "welcome.subtitle": "Cài đặt TapTap để khám phá và tải xuống trò chơi",
+  "welcome.agreement": "Bằng cách nhấp \"Cài đặt\", bạn đồng ý với Điều khoản Dịch vụ và Chính sách Bảo mật của chúng tôi",
+  "welcome.custom_install": "Cài đặt tùy chỉnh",
+  "welcome.install": "Cài đặt",
+  "welcome.cancel": "Hủy",
+  "config.title": "Tùy chọn cài đặt",
+  "config.path": "Đường dẫn cài đặt:",
+  "config.change_path": "Thay đổi vị trí",
+  "config.desktop_shortcut": "Tạo lối tắt trên màn hình",
+  "config.start_menu": "Thêm vào Start Menu",
+  "config.auto_start": "Tự động khởi động với Windows",
+  "config.install": "Cài đặt",
+  "config.cancel": "Hủy",
+  "processing.title": "Đang cài đặt TapTap",
+  "processing.progress": "Đang cài đặt...",
+  "processing.cancel": "Hủy",
+  "finish.title": "Cài đặt hoàn tất",
+  "finish.message": "TapTap đã được cài đặt thành công",
+  "finish.launch": "Khởi động TapTap",
+  "finish.finish": "Hoàn tất"
+}

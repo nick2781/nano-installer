@@ -6,5 +6,5 @@ pub mod tasks;
 #[cfg(windows)]
 pub mod windows;
 
-pub use engine::UninstallEngine;
+pub use engine::{UninstallEngine, UninstallTask};
 

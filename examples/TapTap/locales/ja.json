@@ -1,0 +1,23 @@
+{
+  "welcome.title": "TapTapへようこそ",
+  "welcome.subtitle": "TapTapをインストールしてゲームを発見・ダウンロード",
+  "welcome.agreement": "「インストール」をクリックすることで、利用規約とプライバシーポリシーに同意したものとみなされます",
+  "welcome.custom_install": "カスタムインストール",
+  "welcome.install": "インストール",
+  "welcome.cancel": "キャンセル",
+  "config.title": "インストールオプション",
+  "config.path": "インストールパス：",
+  "config.change_path": "場所を変更",
+  "config.desktop_shortcut": "デスクトップショートカットを作成",
+  "config.start_menu": "スタートメニューに追加",
+  "config.auto_start": "Windows起動時に自動開始",
+  "config.install": "インストール",
+  "config.cancel": "キャンセル",
+  "processing.title": "TapTapをインストール中",
+  "processing.progress": "インストール中...",
+  "processing.cancel": "キャンセル",
+  "finish.title": "インストール完了",
+  "finish.message": "TapTapが正常にインストールされました",
+  "finish.launch": "TapTapを起動",
+  "finish.finish": "完了"
+}

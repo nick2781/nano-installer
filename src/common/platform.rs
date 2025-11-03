@@ -83,7 +83,8 @@ pub fn is_elevated() -> Result<bool> {
 /// 请求管理员权限重启
 #[cfg(windows)]
 pub fn request_elevation(args: &[String]) -> Result<()> {
-    use windows::core::{w, PCWSTR};
+    use windows::core::PWSTR;
+    use windows::core::w;
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::Shell::ShellExecuteW;
     use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
@@ -102,10 +103,10 @@ pub fn request_elevation(args: &[String]) -> Result<()> {
 
         ShellExecuteW(
             HWND::default(),
-            PCWSTR(verb.as_ptr()),
-            PCWSTR(file.as_ptr()),
-            PCWSTR(params.as_ptr()),
-            PCWSTR::null(),
+            PWSTR(verb.as_ptr() as *mut u16),
+            PWSTR(file.as_ptr() as *mut u16),
+            PWSTR(params.as_ptr() as *mut u16),
+            PWSTR::null(),
             SW_SHOWNORMAL,
         );
     }

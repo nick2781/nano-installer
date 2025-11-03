@@ -38,7 +38,8 @@ fn create_shortcut(
     target_path: &str,
     arguments: &str,
 ) -> Result<()> {
-    use windows::core::{BSTR, PCWSTR, ComInterface};
+    use windows::core::PWSTR;
+    use windows::core::Interface;
     use windows::Win32::System::Com::{
         CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER,
         COINIT_APARTMENTTHREADED,
@@ -48,26 +49,29 @@ fn create_shortcut(
 
     unsafe {
         // 初始化 COM
-        CoInitializeEx(None, COINIT_APARTMENTTHREADED)?;
+        let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        if hr.is_err() {
+            return Err(Error::Io(std::io::Error::new(std::io::ErrorKind::Other, "Failed to initialize COM")));
+        }
 
         // 创建 ShellLink 对象
         let shell_link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER)?;
 
         // 设置目标路径
         let target_path_wide: Vec<u16> = target_path.encode_utf16().chain(Some(0)).collect();
-        shell_link.SetPath(PCWSTR(target_path_wide.as_ptr()))?;
+        shell_link.SetPath(PWSTR(target_path_wide.as_ptr() as *mut u16))?;
 
         // 设置参数（如果有）
         if !arguments.is_empty() {
             let args_wide: Vec<u16> = arguments.encode_utf16().chain(Some(0)).collect();
-            shell_link.SetArguments(PCWSTR(args_wide.as_ptr()))?;
+            shell_link.SetArguments(PWSTR(args_wide.as_ptr() as *mut u16))?;
         }
 
         // 设置工作目录
         if let Some(work_dir) = std::path::Path::new(target_path).parent() {
             if let Some(work_dir_str) = work_dir.to_str() {
                 let work_dir_wide: Vec<u16> = work_dir_str.encode_utf16().chain(Some(0)).collect();
-                shell_link.SetWorkingDirectory(PCWSTR(work_dir_wide.as_ptr()))?;
+                shell_link.SetWorkingDirectory(PWSTR(work_dir_wide.as_ptr() as *mut u16))?;
             }
         }
 
@@ -75,7 +79,7 @@ fn create_shortcut(
         let persist_file: IPersistFile = shell_link.cast()?;
         let shortcut_path_str = shortcut_path.to_string_lossy().to_string();
         let shortcut_path_wide: Vec<u16> = shortcut_path_str.encode_utf16().chain(Some(0)).collect();
-        persist_file.Save(PCWSTR(shortcut_path_wide.as_ptr()), true)?;
+        persist_file.Save(PWSTR(shortcut_path_wide.as_ptr() as *mut u16), true)?;
 
         // 清理 COM
         CoUninitialize();

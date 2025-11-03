@@ -1,56 +1,30 @@
-// 构建脚本
+// 构建脚本 - 资源内嵌和代码生成
 
-use std::env;
 use std::fs;
 use std::path::Path;
+use std::io::Write;
 
 fn main() {
-    // 编译时环境信息
     println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-changed=locales/");
+    println!("cargo:rerun-if-changed=assets/nano-installer.ico");
     
-    let out_dir = env::var("OUT_DIR").unwrap();
-    let out_path = Path::new(&out_dir);
-    
-    // 创建语言包输出目录
-    let locales_out = out_path.join("locales");
-    fs::create_dir_all(&locales_out).expect("Failed to create locales output directory");
-    
-    // 构建语言包
-    build_language_packs(&locales_out);
-    
-    // Windows 特定的构建步骤
+    // 为 nano-installer.exe 设置图标
     #[cfg(target_os = "windows")]
     {
-        // 根据编译目标设置不同的图标
-        // 检查 CARGO_BIN_NAME 环境变量来判断正在编译哪个binary
-        if let Ok(bin_name) = env::var("CARGO_BIN_NAME") {
-            match bin_name.as_str() {
-                "installer" => {
-                    embed_resource::compile("resources/installer.rc", embed_resource::NONE);
-                    println!("cargo:warning=Compiling installer with logo.ico");
-                }
-                "uninst" => {
-                    embed_resource::compile("resources/uninstaller.rc", embed_resource::NONE);
-                    println!("cargo:warning=Compiling uninstaller with uninst.ico");
-                }
-                _ => {}
-            }
-        } else {
-            // 默认使用installer资源
-            embed_resource::compile("resources/installer.rc", embed_resource::NONE);
-        }
+        set_nano_installer_icon();
     }
-    
-    println!("Build script completed");
 }
 
-/// 构建所有语言包
+// 以下函数不再使用，保留仅用于参考
+// nano-installer 不嵌入语言包，由用户项目提供
+
+#[allow(dead_code)]
 fn build_language_packs(output_dir: &Path) {
     let locales_dir = Path::new("locales");
     
+    // 项目根目录不再需要 locales 目录，使用动态加载
     if !locales_dir.exists() {
-        println!("cargo:warning=Locales directory not found, skipping language pack build");
+        // println!("cargo:warning=Locales directory not found, skipping language pack build");
         return;
     }
     
@@ -80,14 +54,12 @@ fn build_language_packs(output_dir: &Path) {
     }
 }
 
-/// 构建单个语言包
+#[allow(dead_code)]
 fn build_single_language_pack(
     json_path: &Path,
     output_dir: &Path,
     locale: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use std::io::Write;
-    
     // 读取 JSON
     let json_content = fs::read_to_string(json_path)?;
     
@@ -106,13 +78,11 @@ fn build_single_language_pack(
     Ok(())
 }
 
-/// 构建 .pak 文件格式
+#[allow(dead_code)]
 fn build_pak_file(
     locale: &str,
     translations: &std::collections::HashMap<String, String>,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    use std::io::Write;
-    
     let mut buffer = Vec::new();
     
     // 魔数 "LNGP"
@@ -152,3 +122,189 @@ fn build_pak_file(
     Ok(buffer)
 }
 
+#[allow(dead_code)]
+fn build_embedded_resources(output_dir: &Path) {
+    let assets_dir = Path::new("assets");
+    let layouts_dir = Path::new("layouts");
+    
+    let mut resources = Vec::new();
+    
+    // 扫描资源文件
+    if assets_dir.exists() {
+        scan_directory(&assets_dir, "assets", &mut resources);
+    }
+    
+    if layouts_dir.exists() {
+        scan_directory(&layouts_dir, "layouts", &mut resources);
+    }
+    
+    // 生成资源清单
+    let manifest_path = output_dir.join("resources.json");
+    let manifest_json = serde_json::to_string_pretty(&resources).unwrap();
+    fs::write(&manifest_path, manifest_json).unwrap();
+    
+    println!("Generated resource manifest: {:?}", manifest_path);
+}
+
+#[allow(dead_code)]
+fn scan_directory(base_path: &Path, prefix: &str, resources: &mut Vec<ResourceInfo>) {
+    if let Ok(entries) = fs::read_dir(base_path) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let relative_path = path.strip_prefix(base_path).unwrap();
+            let resource_name = format!("{}/{}", prefix, relative_path.to_string_lossy());
+            
+            if path.is_file() {
+                if let Ok(metadata) = fs::metadata(&path) {
+                    let resource_type = determine_resource_type(&path);
+                    let mime_type = determine_mime_type(&path);
+                    
+                    resources.push(ResourceInfo {
+                        name: resource_name,
+                        resource_type,
+                        mime_type,
+                        size: metadata.len() as usize,
+                        path: path.to_string_lossy().to_string(),
+                    });
+                }
+            } else if path.is_dir() {
+                scan_directory(&path, &resource_name, resources);
+            }
+        }
+    }
+}
+
+#[allow(dead_code)]
+fn determine_resource_type(path: &Path) -> String {
+    if let Some(extension) = path.extension().and_then(|s| s.to_str()) {
+        match extension.to_lowercase().as_str() {
+            "png" | "jpg" | "jpeg" | "bmp" | "gif" | "ico" => "image".to_string(),
+            "json" | "xml" | "txt" => "text".to_string(),
+            "7z" | "zip" | "tar" | "gz" => "archive".to_string(),
+            "ttf" | "otf" | "woff" | "woff2" => "font".to_string(),
+            _ => "binary".to_string(),
+        }
+    } else {
+        "binary".to_string()
+    }
+}
+
+#[allow(dead_code)]
+fn determine_mime_type(path: &Path) -> String {
+    if let Some(extension) = path.extension().and_then(|s| s.to_str()) {
+        match extension.to_lowercase().as_str() {
+            "png" => "image/png".to_string(),
+            "jpg" | "jpeg" => "image/jpeg".to_string(),
+            "bmp" => "image/bmp".to_string(),
+            "gif" => "image/gif".to_string(),
+            "ico" => "image/x-icon".to_string(),
+            "json" => "application/json".to_string(),
+            "xml" => "application/xml".to_string(),
+            "txt" => "text/plain".to_string(),
+            "7z" => "application/x-7z-compressed".to_string(),
+            "zip" => "application/zip".to_string(),
+            "ttf" => "font/ttf".to_string(),
+            "otf" => "font/otf".to_string(),
+            _ => "application/octet-stream".to_string(),
+        }
+    } else {
+        "application/octet-stream".to_string()
+    }
+}
+
+#[allow(dead_code)]
+fn generate_resource_code(output_dir: &Path) {
+    let code_path = output_dir.join("embedded_resources.rs");
+    let mut code = String::new();
+    
+    code.push_str("// 自动生成的资源代码\n");
+    code.push_str("// 请勿手动修改此文件\n\n");
+    code.push_str("use crate::resources::{EmbeddedResources, ResourceInfo, ResourceType};\n\n");
+    
+    // 读取资源清单
+    let manifest_path = output_dir.join("resources.json");
+    if let Ok(manifest_content) = fs::read_to_string(&manifest_path) {
+        if let Ok(resources) = serde_json::from_str::<Vec<ResourceInfo>>(&manifest_content) {
+            code.push_str("/// 获取内嵌资源\n");
+            code.push_str("pub fn get_embedded_resources() -> EmbeddedResources {\n");
+            code.push_str("    let mut resources = EmbeddedResources::new();\n\n");
+            
+            for resource in resources {
+                code.push_str(&format!("    // {}\n", resource.name));
+                code.push_str(&format!("    resources.add_resource(\"{}\".to_string(), ResourceInfo {{\n", resource.name));
+                code.push_str(&format!("        name: \"{}\".to_string(),\n", resource.name));
+                code.push_str(&format!("        resource_type: ResourceType::{:?},\n", resource.resource_type));
+                code.push_str(&format!("        mime_type: Some(\"{}\".to_string()),\n", resource.mime_type));
+                code.push_str(&format!("        size: {},\n", resource.size));
+                code.push_str("        data: include_bytes!(\"../");
+                code.push_str(&resource.path);
+                code.push_str("\").to_vec(),\n");
+                code.push_str("    });\n\n");
+            }
+            
+            code.push_str("    resources\n");
+            code.push_str("}\n");
+        }
+    }
+    
+    fs::write(&code_path, code).unwrap();
+    println!("Generated resource code: {:?}", code_path);
+}
+
+/// 为 nano-installer.exe 设置图标
+#[cfg(target_os = "windows")]
+fn set_nano_installer_icon() {
+    // 检查图标文件
+    let icon_path = "assets/nano-installer.ico";
+    let icon_file = Path::new(icon_path);
+    
+    println!("cargo:warning=================================================");
+    println!("cargo:warning=Setting up Windows resources for nano-installer");
+    println!("cargo:warning=================================================");
+    println!("cargo:warning=Icon path: {}", icon_path);
+    println!("cargo:warning=Icon exists: {}", icon_file.exists());
+    
+    if !icon_file.exists() {
+        println!("cargo:warning=ERROR: Icon file not found!");
+        println!("cargo:warning=Please ensure assets/nano-installer.ico exists");
+        return;
+    }
+    
+    // 显示图标文件信息
+    if let Ok(metadata) = std::fs::metadata(icon_file) {
+        println!("cargo:warning=Icon size: {} bytes", metadata.len());
+    }
+    
+    // 使用 winres 嵌入图标
+    println!("cargo:warning=Compiling Windows resources...");
+    
+    match winres::WindowsResource::new()
+        .set_icon(icon_path)
+        .compile()
+    {
+        Ok(_) => {
+            println!("cargo:warning=✓ SUCCESS: Icon embedded successfully!");
+        }
+        Err(e) => {
+            println!("cargo:warning=✗ ERROR: Failed to compile resources");
+            println!("cargo:warning=Error details: {}", e);
+            println!("cargo:warning=");
+            println!("cargo:warning=Possible causes:");
+            println!("cargo:warning=1. Windows SDK not installed");
+            println!("cargo:warning=2. rc.exe not found in PATH");
+            println!("cargo:warning=3. Icon file format invalid");
+        }
+    }
+    
+    println!("cargo:warning=================================================");
+}
+
+/// 资源信息结构
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ResourceInfo {
+    name: String,
+    resource_type: String,
+    mime_type: String,
+    size: usize,
+    path: String,
+}

@@ -1,0 +1,25 @@
+{
+  "locale": "zh-CN",
+  "name": "简体中文",
+  "strings": {
+    "welcome.title": "欢迎",
+    "welcome.description": "此向导将引导您完成安装过程。",
+    "config.title": "安装选项",
+    "config.install_path": "安装路径：",
+    "config.desktop_shortcut": "创建桌面快捷方式",
+    "config.start_menu": "添加到开始菜单",
+    "config.autostart": "开机自启",
+    "installing.title": "正在安装",
+    "installing.status": "正在准备安装...",
+    "finish.title": "安装完成",
+    "finish.description": "应用程序已成功安装。",
+    "finish.launch_app": "立即启动应用程序",
+    "common.next": "下一步",
+    "common.back": "上一步",
+    "common.cancel": "取消",
+    "common.install": "安装",
+    "common.finish": "完成",
+    "common.browse": "浏览..."
+  }
+}
+

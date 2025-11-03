@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Layout name="welcome" version="1.0">
+  <Page id="welcome">
+    <VBox padding="20" spacing="10">
+      <Image icon="logo.png" width="200" height="60" />
+      <Spacer height="20" />
+      <Label text="@welcome.title" font_size="24" />
+      <Label text="@welcome.description" />
+      <Spacer height="30" />
+      <HBox spacing="10">
+        <Spacer />
+        <Button id="cancel" text="@common.cancel" width="100" height="32" />
+        <Button id="next" text="@common.next" width="100" height="32" style="primary" />
+      </HBox>
+    </VBox>
+  </Page>
+</Layout>
+

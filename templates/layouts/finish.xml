@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Layout name="finish" version="1.0">
+  <Page id="finish">
+    <VBox padding="20" spacing="10">
+      <Label text="@finish.title" font_size="20" />
+      <Spacer height="20" />
+      <Label text="@finish.description" />
+      <Spacer height="20" />
+      <Checkbox id="launch_app" text="@finish.launch_app" checked="true" />
+      <Spacer height="30" />
+      <HBox spacing="10">
+        <Spacer />
+        <Button id="finish" text="@common.finish" width="100" height="32" style="primary" />
+      </HBox>
+    </VBox>
+  </Page>
+</Layout>
+

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Layout name="Welcome" version="1.0.0">
+  <Page>
+    <VBox>
+      <Image icon="assets/logo.png" width="200" height="60" />
+      <Spacer height="20" />
+      <Label text="欢迎使用 TapTap" font_size="24" />
+      <Spacer height="10" />
+      <Label text="版本 {version}" font_size="14" />
+      <Spacer height="20" />
+      <Label text="TapTap 是领先的移动游戏社区平台，为您提供最新的游戏资讯、评测和下载服务。" />
+      <Spacer height="30" />
+      <HBox>
+        <Button id="next" text="下一步" width="100" />
+        <Spacer width="10" />
+        <Button id="cancel" text="取消" width="100" />
+      </HBox>
+    </VBox>
+  </Page>
+</Layout>

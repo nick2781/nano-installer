@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  RUST_VERSION: "1.75.0"
+
+jobs:
+  test:
+    name: Test
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust ${{ env.RUST_VERSION }}
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: ${{ env.RUST_VERSION }}
+        override: true
+        components: rustfmt, clippy
+    
+    - name: Verify Rust version
+      run: rustc --version
+      shell: cmd
+    
+    - name: Check formatting
+      run: cargo fmt -- --check
+      shell: cmd
+    
+    - name: Run clippy
+      run: cargo clippy -- -D warnings
+      shell: cmd
+    
+    - name: Build library
+      run: cargo check --lib
+      shell: cmd
+    
+    - name: Build binaries
+      run: cargo check --bins
+      shell: cmd
+    
+    - name: Run tests
+      run: cargo test
+      shell: cmd
+    
+    - name: Build release
+      run: cargo build --release
+      shell: cmd
+
+  build-installer:
+    name: Build Installer
+    runs-on: windows-latest
+    needs: test
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust ${{ env.RUST_VERSION }}
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: ${{ env.RUST_VERSION }}
+        override: true
+    
+    - name: Create example project
+      run: |
+        cargo run --bin builder -- init test-app --output examples/test-app
+      shell: cmd
+    
+    - name: Build example installer
+      run: |
+        cd examples/test-app
+        cargo run --bin builder -- build --config installer_config.toml
+      shell: cmd
+    
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: installer-artifacts
+        path: examples/test-app/dist/

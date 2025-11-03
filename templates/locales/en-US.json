@@ -1,0 +1,25 @@
+{
+  "locale": "en-US",
+  "name": "English (US)",
+  "strings": {
+    "welcome.title": "Welcome",
+    "welcome.description": "This wizard will guide you through the installation process.",
+    "config.title": "Installation Options",
+    "config.install_path": "Installation Path:",
+    "config.desktop_shortcut": "Create desktop shortcut",
+    "config.start_menu": "Add to Start Menu",
+    "config.autostart": "Start with Windows",
+    "installing.title": "Installing",
+    "installing.status": "Preparing installation...",
+    "finish.title": "Installation Complete",
+    "finish.description": "The application has been successfully installed.",
+    "finish.launch_app": "Launch application now",
+    "common.next": "Next",
+    "common.back": "Back",
+    "common.cancel": "Cancel",
+    "common.install": "Install",
+    "common.finish": "Finish",
+    "common.browse": "Browse..."
+  }
+}
+

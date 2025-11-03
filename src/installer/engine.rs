@@ -1,9 +1,8 @@
 // 安装引擎
 
-use crate::common::{Error, Result};
+use crate::common::{Error, Result, process::ProcessDetector};
 use crate::installer::{InstallState, InstallTask};
-use crate::resources::{InstallManifest, PayloadExtractor};
-use std::sync::Arc;
+use crate::resources::InstallManifest;
 
 /// 安装引擎
 pub struct InstallEngine {
@@ -28,6 +27,24 @@ impl InstallEngine {
     /// 添加任务
     pub fn add_task(&mut self, task: Box<dyn InstallTask>) {
         self.tasks.push(task);
+    }
+
+    /// 检查目标进程是否正在运行
+    pub fn check_target_processes(&self, target_processes: &[String]) -> Result<bool> {
+        let detector = ProcessDetector::new(target_processes.to_vec());
+        detector.is_target_running()
+    }
+
+    /// 终止目标进程
+    pub fn terminate_target_processes(&self, target_processes: &[String]) -> Result<()> {
+        let detector = ProcessDetector::new(target_processes.to_vec());
+        detector.terminate_target_processes()
+    }
+
+    /// 请求目标进程优雅退出
+    pub fn request_target_processes_exit(&self, target_processes: &[String]) -> Result<()> {
+        let detector = ProcessDetector::new(target_processes.to_vec());
+        detector.request_target_processes_exit()
     }
     
     /// 执行安装

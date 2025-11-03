@@ -1,148 +1,205 @@
-# 📚 Documentation Index
+# nano-installer 文档
 
-Welcome to the Nano Installer documentation!
+欢迎使用 nano-installer！这里是完整的文档索引。
 
-## 📍 Quick Navigation
+## 🚀 快速开始
 
-### For New Developers
+- **[主 README](../README.md)** - 项目介绍和快速开始
+- **[示例项目](../examples/TapTap/README.md)** - 通过 TapTap 示例学习
 
-Start here if you're new to the project:
+## 📖 用户文档
 
-1. **[Quick Start Guide](guides/START_HERE.md)** - 5-minute overview
-2. **[Final Step Guide](guides/FINAL_STEP.md)** - How to complete the last 5%
-3. **[Next Steps](guides/README_NEXT_STEPS.md)** - What to do next
+### 核心文档
 
-### For Implementation
+| 文档 | 说明 |
+|------|------|
+| **[配置参考](CONFIG_REFERENCE.md)** | 完整的配置文件说明，包含所有选项 |
+| **[XML 布局指南](XML_LAYOUT_GUIDE.md)** | 如何使用 XML 自定义安装界面 |
+| **[多语言支持](LOCALIZATION.md)** | 如何添加和管理多语言 |
+| **[XML 布局规范](XML_SCHEMA.md)** | XML 文件的完整 Schema 定义 |
+| **[JSON 配置规范](JSON_SCHEMA.md)** | JSON 配置文件的完整 Schema 定义 |
 
-Building the UI? Start here:
+### 开发者文档
 
-1. **[Implementation Steps](IMPLEMENTATION_STEPS.md)** - Detailed step-by-step guide
-2. **[GPUI Components Guide](GPUI_COMPONENTS_GUIDE.md)** - How to use components
-3. **[UI Design Spec](UI_DESIGN.md)** - Design specifications
-4. **[DPI Aware Guide](DPI_AWARE.md)** - DPI-aware resource management
+| 文档 | 说明 |
+|------|------|
+| [开发指南](DEVELOPMENT.md) | 如何参与 nano-installer 开发（修改源代码） |
 
-### For Technical Details
+## 📂 按主题浏览
 
-Technical specifications and requirements:
+### 配置和设置
 
-1. **[Rust Version Requirements](RUST_VERSION.md)** ⚠️ - **MUST READ!**
-2. **[GPUI Compatibility](GPUI_COMPATIBILITY.md)** - Windows 7 compatibility
-3. **[API Documentation](API.md)** - API reference
-4. **[Development Guide](DEVELOPMENT.md)** - Development guidelines
-5. **[Changes Log](CHANGES.md)** - Recent changes
+- [项目信息配置](CONFIG_REFERENCE.md#project---项目信息) - 设置应用名称、版本等
+- [安装设置](CONFIG_REFERENCE.md#install---安装设置) - 配置安装路径、权限等
+- [快捷方式](CONFIG_REFERENCE.md#shortcuts---快捷方式) - 桌面和开始菜单快捷方式
+- [开机自启](CONFIG_REFERENCE.md#autostart---开机自启) - 配置自动启动
+- [注册表集成](CONFIG_REFERENCE.md#registry---注册表) - Windows 注册表设置
 
-## 📊 Project Information
+### 界面定制
 
-### Status & Progress
+- [XML 布局系统](XML_LAYOUT_GUIDE.md) - 完整的 XML 布局指南
+- [布局元素](XML_LAYOUT_GUIDE.md#布局元素) - VBox, HBox, Button, Label 等
+- [元素属性](XML_LAYOUT_GUIDE.md#元素属性) - 尺寸、样式、对齐等
+- [变量替换](XML_LAYOUT_GUIDE.md#变量替换) - 在文本中使用动态变量
+- [DPI 支持](XML_LAYOUT_GUIDE.md#dpi-支持) - 高分辨率屏幕适配
 
-- **[Final Status](status/FINAL_STATUS.md)** - Current project status (95% complete)
-- **[Project Status](status/PROJECT_STATUS.md)** - Detailed status
-- **[Work Completed](status/WORK_COMPLETED.md)** - What's been done
-- **[Summary](status/SUMMARY.md)** - Project summary
-- **[Status Update](status/STATUS_UPDATE.md)** - Latest updates
+### 多语言
 
-### Reference & Statistics
+- [添加新语言](LOCALIZATION.md#添加新语言) - 创建语言文件
+- [语言文件结构](LOCALIZATION.md#语言文件结构) - JSON 格式说明
+- [在 XML 中使用](LOCALIZATION.md#在-xml-中使用) - 如何引用语言字符串
+- [语言代码规范](LOCALIZATION.md#语言代码规范) - BCP 47 标准
+- [最佳实践](LOCALIZATION.md#最佳实践) - 命名、组织、测试
 
-- **[Project Stats](reference/PROJECT_STATS.md)** - Detailed statistics
-- **[Files List](reference/FILES.md)** - All project files
-- **[Delivery Checklist](reference/DELIVERY_CHECKLIST.md)** - Delivery checklist
+### 高级功能
 
-### Quick Start Guides
+- [渠道标识](CONFIG_REFERENCE.md#channel---渠道标识) - 区分不同分发渠道
+- [卸载配置](CONFIG_REFERENCE.md#uninstall---卸载配置) - 自定义卸载行为
+- [路径校验](CONFIG_REFERENCE.md#validation---路径校验) - 安装路径验证规则
+- [调试选项](CONFIG_REFERENCE.md#advanced---高级选项) - 日志和调试
 
-- **[START HERE](guides/START_HERE.md)** ⭐ - Begin here
-- **[Quick Start](guides/QUICKSTART.md)** - 5-minute setup
-- **[Final Step](guides/FINAL_STEP.md)** - Last 5% guide
-- **[Next Steps](guides/README_NEXT_STEPS.md)** - What's next
+## 🎓 教程和示例
 
-## 📁 Documentation Structure
+### 从零开始
+
+1. **[查看示例项目](../examples/TapTap/README.md)**
+   - 完整的 TapTap 安装器示例
+   - 展示所有功能的实际应用
+
+2. **[配置你的第一个项目](CONFIG_REFERENCE.md)**
+   - 创建 `installer_config.json`
+   - 设置基本信息
+
+3. **[自定义界面](XML_LAYOUT_GUIDE.md)**
+   - 修改 XML 布局
+   - 添加自己的品牌元素
+
+4. **[添加多语言](LOCALIZATION.md)**
+   - 创建语言文件
+   - 支持国际用户
+
+### 常见任务
+
+- **修改窗口图标** → [resources 配置](CONFIG_REFERENCE.md#resources---资源路径)
+- **更改默认安装路径** → [install 配置](CONFIG_REFERENCE.md#install---安装设置)
+- **添加许可协议** → [wizard 配置](CONFIG_REFERENCE.md#wizard---安装向导)
+- **创建桌面快捷方式** → [shortcuts 配置](CONFIG_REFERENCE.md#shortcuts---快捷方式)
+- **区分不同渠道** → [channel 配置](CONFIG_REFERENCE.md#channel---渠道标识)
+- **自定义卸载行为** → [uninstall 配置](CONFIG_REFERENCE.md#uninstall---卸载配置)
+
+## 💡 提示和技巧
+
+### 调试
+
+启用调试模式查看详细日志：
+
+```json
+{
+  "advanced": {
+    "debug_mode": true,
+    "log_level": "debug"
+  }
+}
+```
+
+日志文件位置：`%TEMP%\nano-installer-XXXX\install.log`
+
+### 高 DPI 支持
+
+为所有图片提供 2x 版本：
 
 ```
-docs/
-├── README.md (this file)           # Documentation index
-│
-├── guides/                          # Getting started guides
-│   ├── START_HERE.md                # Quick navigation
-│   ├── QUICKSTART.md                # 5-minute setup
-│   ├── FINAL_STEP.md                # Last 5% implementation
-│   └── README_NEXT_STEPS.md         # Next steps
-│
-├── status/                          # Project status documents
-│   ├── FINAL_STATUS.md              # Current status (95%)
-│   ├── PROJECT_STATUS.md            # Detailed status
-│   ├── WORK_COMPLETED.md            # Completed work
-│   ├── SUMMARY.md                   # Project summary
-│   └── STATUS_UPDATE.md             # Latest updates
-│
-├── reference/                       # Reference documents
-│   ├── PROJECT_STATS.md             # Statistics
-│   ├── FILES.md                     # File list
-│   └── DELIVERY_CHECKLIST.md        # Delivery checklist
-│
-├── IMPLEMENTATION_STEPS.md          # Implementation guide
-├── GPUI_COMPONENTS_GUIDE.md         # Component usage
-├── UI_DESIGN.md                     # Design spec
-├── DPI_AWARE.md                     # DPI management
-├── RUST_VERSION.md                  # ⚠️ Rust requirements
-├── GPUI_COMPATIBILITY.md            # GPUI compatibility
-├── API.md                           # API reference
-├── DEVELOPMENT.md                   # Development guide
-├── CHANGES.md                       # Changes log
-└── TODO.md                          # TODO list
+assets/
+├── logo.png        # 100x30
+└── logo@2x.png     # 200x60
 ```
 
-## 🚀 Recommended Reading Order
+系统会自动根据 DPI 选择合适的版本。
 
-### Day 1: Understanding the Project
+### 快速测试
 
-1. [Quick Start](guides/START_HERE.md) - Get oriented (5 min)
-2. [Final Status](status/FINAL_STATUS.md) - Know what's done (10 min)
-3. [Rust Version](RUST_VERSION.md) - **Critical!** Understand version requirements (5 min)
+使用命令行参数快速测试：
 
-### Day 2: Setting Up
+```powershell
+# 静默安装到指定路径
+.\MyApp_Setup.exe --silent --install-path "D:\Test"
 
-1. [Development Guide](DEVELOPMENT.md) - Setup environment
-2. [Quick Start Guide](guides/QUICKSTART.md) - Get running
-3. [GPUI Compatibility](GPUI_COMPATIBILITY.md) - Understand compatibility
+# 指定语言
+.\MyApp_Setup.exe --config installer_config.json
+```
 
-### Day 3: Implementing
+## 🔍 快速查找
 
-1. [Implementation Steps](IMPLEMENTATION_STEPS.md) - Follow the steps
-2. [GPUI Components Guide](GPUI_COMPONENTS_GUIDE.md) - Use components
-3. [UI Design Spec](UI_DESIGN.md) - Match the design
-4. [DPI Aware Guide](DPI_AWARE.md) - Handle resources
+### 我想...
 
-## ⚠️ Critical Information
+- **更改窗口大小** → [ui.window_width/height](CONFIG_REFERENCE.md#ui---界面配置)
+- **添加新按钮** → [XML Button 元素](XML_LAYOUT_GUIDE.md#button---按钮)
+- **显示进度条** → [XML ProgressBar 元素](XML_LAYOUT_GUIDE.md#progressbar---进度条)
+- **添加复选框** → [XML Checkbox 元素](XML_LAYOUT_GUIDE.md#checkbox---复选框)
+- **翻译界面文本** → [多语言支持](LOCALIZATION.md)
+- **需要管理员权限** → [install.require_admin](CONFIG_REFERENCE.md#install---安装设置)
+- **检测已安装版本** → [wizard 配置](CONFIG_REFERENCE.md#wizard---安装向导)
+- **在完成页面启动应用** → 在 finish.xml 中添加启动按钮
 
-### MUST READ Before Starting
+### 错误排查
 
-1. **[Rust Version Requirements](RUST_VERSION.md)**
-   - ⚠️ MUST use Rust 1.75.0 (last version supporting Windows 7)
-   - ❌ DO NOT upgrade to Rust 1.76+
+| 问题 | 解决方案 |
+|------|----------|
+| 窗口显示不正常 | 检查 [ui 配置](CONFIG_REFERENCE.md#ui---界面配置) |
+| 语言切换无效 | 检查 [localization 配置](CONFIG_REFERENCE.md#localization---多语言) |
+| 布局解析失败 | 查看 [XML 布局指南](XML_LAYOUT_GUIDE.md#基本结构) |
+| 图片加载失败 | 检查 [resources 配置](CONFIG_REFERENCE.md#resources---资源路径) |
+| 安装失败 | 启用 [调试模式](CONFIG_REFERENCE.md#advanced---高级选项) |
 
-2. **[GPUI Compatibility](GPUI_COMPATIBILITY.md)**
-   - GPUI compatibility with Windows 7 is untested
-   - egui is the fallback if GPUI doesn't work
+## 📚 参考
 
-3. **[DPI Aware Guide](DPI_AWARE.md)**
-   - Understand how to handle 1x/2x resources
-   - Use AssetLoader for all images
+### 配置选项总览
 
-## 💡 Tips
+完整配置结构：
 
-- Start with **[guides/START_HERE.md](guides/START_HERE.md)** if you're new
-- Refer to **[IMPLEMENTATION_STEPS.md](IMPLEMENTATION_STEPS.md)** when coding
-- Check **[status/FINAL_STATUS.md](status/FINAL_STATUS.md)** for current progress
-- Read **[RUST_VERSION.md](RUST_VERSION.md)** before setting up
+```json
+{
+  "project": { ... },         // 项目信息
+  "install": { ... },         // 安装设置
+  "registry": { ... },        // 注册表
+  "shortcuts": { ... },       // 快捷方式
+  "autostart": { ... },       // 开机自启
+  "localization": { ... },    // 多语言
+  "links": { ... },           // 外部链接
+  "resources": { ... },       // 资源路径
+  "ui": { ... },              // 界面配置
+  "wizard": { ... },          // 安装向导
+  "channel": { ... },         // 渠道标识
+  "uninstall": { ... },       // 卸载配置
+  "validation": { ... },      // 路径校验
+  "advanced": { ... }         // 高级选项
+}
+```
 
-## 🔗 External Links
+详见 [完整配置参考](CONFIG_REFERENCE.md)
 
-- [Main README](../README.md) - English
-- [中文 README](../README_CN.md) - Chinese
-- [Changelog](../CHANGELOG.md) - Version history
+### XML 元素总览
+
+- **容器**：VBox, HBox, Page
+- **控件**：Button, Label, Image, Checkbox, TextInput, ProgressBar
+- **布局**：Spacer
+
+详见 [XML 布局指南](XML_LAYOUT_GUIDE.md)
+
+## 🤝 贡献
+
+想要贡献文档？
+
+1. Fork 项目
+2. 编辑或添加文档
+3. 提交 Pull Request
+
+文档使用 Markdown 格式编写。
+
+## 📝 许可证
+
+文档采用 MIT 许可证，与项目相同。
 
 ---
 
-**Last Updated**: 2024  
-**Project Completion**: 95%  
-**Status**: Ready for GPUI implementation
-
+**找不到需要的信息？** 提交 [Issue](https://github.com/yourusername/nano-installer/issues) 让我们知道！

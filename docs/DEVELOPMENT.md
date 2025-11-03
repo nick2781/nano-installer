@@ -1,145 +1,417 @@
-# 开发文档
+# 开发指南
 
-## 快速开始
+本文档面向想要**参与 nano-installer 开发**或**修改源代码**的开发者。
 
-### 环境要求
+如果你只是想**使用 nano-installer 制作安装程序**，请查看：
+- [主文档](../README.md) - 快速开始
+- [配置参考](CONFIG_REFERENCE.md) - 如何配置
+- [示例项目](../examples/TapTap/README.md) - 完整示例
 
-- Rust 1.75+
-- Windows 7 SP1+ (64位) 用于测试
-- 7-Zip 或其他 7z 压缩工具
+---
 
-### 构建步骤
+## 📖 目录
 
-1. **克隆仓库**
+- [开发环境设置](#开发环境设置)
+- [项目结构](#项目结构)
+- [构建和测试](#构建和测试)
+- [代码风格](#代码风格)
+- [贡献流程](#贡献流程)
+
+## 开发环境设置
+
+### 系统要求
+
+- **Rust**: 1.75 或更高版本
+- **操作系统**: Windows 10+ (开发和测试)
+- **工具**: Git, Visual Studio Build Tools (Windows)
+
+### 安装 Rust
+
 ```bash
-git clone <repository-url>
+# Windows
+winget install Rustlang.Rustup
+
+# 或访问 https://rustup.rs/
+```
+
+### 克隆项目
+
+```bash
+git clone https://github.com/yourusername/nano-installer.git
 cd nano-installer
 ```
 
-2. **构建语言包**
+### 安装依赖
+
 ```bash
-cargo run --bin langpack-builder -- locales dist/locales
+# 检查依赖
+cargo check
+
+# 第一次构建（会下载依赖）
+cargo build
 ```
 
-3. **构建安装器和卸载器**
-```bash
-cargo build --release
-```
-
-或使用构建脚本：
-```bash
-# Linux/macOS
-./scripts/build.sh
-
-# Windows
-.\scripts\build.ps1
-```
-
-### 项目结构
+## 项目结构
 
 ```
 nano-installer/
 ├── src/
-│   ├── bin/                  # 可执行文件
-│   │   ├── installer.rs      # 安装器入口
-│   │   ├── uninstaller.rs    # 卸载器入口
-│   │   └── langpack_builder.rs # 语言包构建工具
-│   ├── common/               # 通用功能
-│   ├── i18n/                 # 多语言系统
-│   ├── installer/            # 安装逻辑
-│   ├── uninstaller/          # 卸载逻辑
-│   ├── resources/            # 资源管理
-│   ├── logger/               # 日志系统
-│   ├── ui/                   # UI 模块
-│   └── lib.rs
-├── locales/                  # 语言文件（JSON）
-├── scripts/                  # 构建脚本
-├── .spec/                    # 技术规范
-└── dist/                     # 输出目录
+│   ├── bin/                    # 可执行文件
+│   │   ├── installer.rs        # 安装程序入口
+│   │   ├── uninstaller.rs      # 卸载程序入口
+│   │   ├── langpack_builder.rs # 语言包构建工具
+│   │   ├── builder.rs          # 打包工具
+│   │   └── nano-installer.rs   # CLI 工具
+│   ├── common/                 # 通用模块
+│   │   ├── cli.rs             # 命令行参数
+│   │   ├── config.rs          # 配置系统
+│   │   ├── error.rs           # 错误类型
+│   │   └── ...
+│   ├── config/                 # 配置解析
+│   │   ├── installer_config.rs # 主配置结构
+│   │   ├── wizard_config.rs    # 向导配置
+│   │   └── validation.rs       # 配置验证
+│   ├── i18n/                   # 多语言系统
+│   │   ├── bundle.rs          # 语言包
+│   │   ├── langpack.rs        # .pak 文件格式
+│   │   └── loader.rs          # 加载器
+│   ├── installer/              # 安装逻辑
+│   │   ├── engine.rs          # 安装引擎
+│   │   ├── tasks.rs           # 安装任务
+│   │   ├── extractor.rs       # 7z 解压
+│   │   ├── registry.rs        # 注册表操作
+│   │   ├── shortcuts.rs       # 快捷方式
+│   │   └── ...
+│   ├── layout/                 # XML 布局系统
+│   │   ├── xml_parser.rs      # XML 解析
+│   │   ├── element.rs         # 元素定义
+│   │   └── layout_tree.rs     # 布局树
+│   ├── ui/                     # 用户界面
+│   │   ├── egui_app_xml.rs    # 主 UI (基于 XML)
+│   │   ├── layout_renderer.rs # 布局渲染
+│   │   ├── dpi_handler.rs     # DPI 处理
+│   │   ├── wizard.rs          # 向导流程
+│   │   └── ...
+│   ├── uninstaller/            # 卸载逻辑
+│   └── resources/              # 资源管理
+├── docs/                       # 文档
+├── examples/                   # 示例项目
+│   └── TapTap/                # TapTap 示例
+├── tools/                      # 工具
+│   └── 7za.exe                # 7-Zip 命令行
+├── assets/                     # 资源文件
+├── build.rs                    # 构建脚本
+└── Cargo.toml                  # 项目配置
 ```
 
-## 开发指南
+### 核心模块说明
 
-### 添加新语言
+| 模块 | 功能 | 关键文件 |
+|------|------|----------|
+| `config/` | 配置解析和验证 | `installer_config.rs` |
+| `layout/` | XML 布局系统 | `xml_parser.rs`, `layout_tree.rs` |
+| `ui/` | egui 界面渲染 | `egui_app_xml.rs`, `layout_renderer.rs` |
+| `installer/` | 安装核心逻辑 | `engine.rs`, `tasks.rs` |
+| `i18n/` | 多语言支持 | `langpack.rs`, `loader.rs` |
 
-1. 在 `locales/` 目录创建新的 JSON 文件，如 `fr.json`
-2. 复制 `en-US.json` 的所有键，翻译对应的值
-3. 在 `src/i18n/mod.rs` 中添加语言代码到 `SUPPORTED_LOCALES`
-4. 重新构建语言包
+## 构建和测试
 
-### 添加新的安装任务
+### 开发构建
 
-1. 在 `src/installer/tasks.rs` 中实现 `InstallTask` trait
-2. 在 `src/bin/installer.rs` 的 `run_silent_install` 函数中添加任务
+```bash
+# 构建所有二进制文件
+cargo build
 
-### 修改 UI
+# 只构建 installer
+cargo build --bin installer
 
-等待设计稿后使用 GPUI 实现：
-- 页面：`src/ui/pages/`
-- 组件：`src/ui/components/`
-- 样式：`src/ui/styles/`
+# 构建并运行
+cargo run --bin installer
+```
 
-### 测试
+### Release 构建
+
+```bash
+# 优化构建
+cargo build --release
+
+# 输出在 target/release/
+ls target/release/installer.exe
+```
+
+### 运行测试
 
 ```bash
 # 运行所有测试
 cargo test
 
-# 测试特定模块
-cargo test --lib i18n
+# 运行特定测试
+cargo test config
 
-# 测试语言包构建
-cargo test langpack
+# 显示输出
+cargo test -- --nocapture
 ```
 
-### 调试
+### 测试安装器
 
-启用详细日志：
 ```bash
+# 使用示例项目测试
+cd examples/TapTap
+../../target/debug/installer.exe --config installer_config.json
+```
+
+### 代码检查
+
+```bash
+# 检查编译错误
+cargo check
+
+# 代码格式化
+cargo fmt
+
+# Lint 检查
+cargo clippy
+
+# 修复简单问题
+cargo clippy --fix
+```
+
+## 代码风格
+
+### Rust 风格指南
+
+遵循标准 Rust 风格：
+
+```rust
+// ✅ 好的命名
+struct InstallerConfig { ... }
+fn load_config() -> Result<Config> { ... }
+let user_name = "Alice";
+
+// ❌ 不好的命名
+struct installerconfig { ... }
+fn LoadConfig() -> Result<Config> { ... }
+let userName = "Alice";
+```
+
+### 注释规范
+
+```rust
+/// 加载配置文件
+/// 
+/// # Arguments
+/// 
+/// * `path` - 配置文件路径
+/// 
+/// # Returns
+/// 
+/// 成功返回 `InstallerConfig`，失败返回错误
+pub fn load_config(path: &Path) -> Result<InstallerConfig> {
+    // 实现细节注释
+    let content = fs::read_to_string(path)?;
+    // ...
+}
+```
+
+### 错误处理
+
+```rust
+// ✅ 使用 Result 和 ?
+pub fn do_something() -> Result<()> {
+    let config = load_config("config.json")?;
+    process(config)?;
+    Ok(())
+}
+
+// ❌ 避免 unwrap (除非在测试中)
+let config = load_config("config.json").unwrap(); // 不推荐
+```
+
+### 文档
+
+所有公开 API 都应该有文档注释：
+
+```rust
+/// 安装器配置
+/// 
+/// 从 `installer_config.json` 加载的完整配置。
+/// 
+/// # Example
+/// 
+/// ```rust
+/// let config = InstallerConfig::load("config.json")?;
+/// ```
+pub struct InstallerConfig {
+    /// 项目信息
+    pub project: ProjectConfig,
+    // ...
+}
+```
+
+## 贡献流程
+
+### 1. Fork 和克隆
+
+```bash
+# Fork 项目到你的 GitHub
+# 然后克隆你的 fork
+git clone https://github.com/your-username/nano-installer.git
+cd nano-installer
+```
+
+### 2. 创建分支
+
+```bash
+# 从 master 创建特性分支
+git checkout -b feature/my-awesome-feature
+
+# 或修复分支
+git checkout -b fix/bug-description
+```
+
+### 3. 开发
+
+```bash
+# 进行修改
+# 编写测试
+# 运行测试
+cargo test
+
+# 格式化代码
+cargo fmt
+
+# 检查 lint
+cargo clippy
+```
+
+### 4. 提交
+
+```bash
+# 添加修改
+git add .
+
+# 提交（使用清晰的提交信息）
+git commit -m "Add XML validation for Image elements"
+```
+
+**提交信息规范：**
+- `feat: 添加新功能`
+- `fix: 修复 bug`
+- `docs: 更新文档`
+- `style: 代码格式化`
+- `refactor: 重构代码`
+- `test: 添加测试`
+- `chore: 构建/工具相关`
+
+### 5. 推送和 PR
+
+```bash
+# 推送到你的 fork
+git push origin feature/my-awesome-feature
+```
+
+然后在 GitHub 上创建 Pull Request。
+
+### PR 检查清单
+
+在提交 PR 前确认：
+
+- [ ] 代码通过 `cargo test`
+- [ ] 代码通过 `cargo clippy`
+- [ ] 代码已格式化 (`cargo fmt`)
+- [ ] 添加了必要的测试
+- [ ] 更新了相关文档
+- [ ] 提交信息清晰明确
+
+## 调试技巧
+
+### 启用日志
+
+```rust
+// 在代码中添加日志
+use tracing::{info, warn, error, debug};
+
+info!("Loading config from {:?}", path);
+debug!("Config content: {:?}", config);
+```
+
+```bash
+# 运行时设置日志级别
 RUST_LOG=debug cargo run --bin installer
+RUST_LOG=nano_installer=trace cargo run --bin installer
 ```
 
-## 打包流程
+### 使用 Rust 调试器
 
-### 1. 准备 Payload
+Visual Studio Code + rust-analyzer:
 
-将要安装的应用程序打包为 7z：
-```bash
-7z a app.7z your-app-files/
-```
+1. 安装 CodeLLDB 扩展
+2. 设置断点
+3. F5 启动调试
 
-### 2. 嵌入 Payload
-
-使用打包脚本：
-```bash
-./scripts/package.sh app.7z MyAppSetup.exe
-```
-
-### 3. 代码签名（可选）
+### 性能分析
 
 ```bash
-./scripts/sign.sh MyAppSetup.exe cert.pfx password
+# 使用 flamegraph
+cargo install flamegraph
+cargo flamegraph --bin installer
 ```
 
-## 常见问题
+## 常见任务
 
-### Q: GPUI 在 Windows 7 上无法运行？
-A: 确保安装了最新的显卡驱动，GPUI 需要 DirectX 11+ 支持。
+### 添加新的 XML 元素
 
-### Q: 语言包构建失败？
-A: 检查 JSON 文件格式是否正确，所有语言文件必须包含相同的键。
+1. 在 `src/layout/element.rs` 中添加元素类型到 `ElementType` 枚举
+2. 在 `src/ui/layout_renderer.rs` 中实现渲染逻辑
+3. 在 `docs/XML_SCHEMA.md` 中添加文档
+4. 添加测试
 
-### Q: 如何在非 Windows 系统上开发？
-A: 大部分代码可以在任何平台编译，但 Windows 特定功能（注册表、快捷方式）需要条件编译。
+### 添加新的配置选项
 
-### Q: 静默安装不工作？
-A: 检查是否提供了必要的参数，某些路径可能需要管理员权限。
+1. 在 `src/config/installer_config.rs` 中添加字段
+2. 更新 `examples/TapTap/installer_config.json` 示例
+3. 在 `docs/CONFIG_REFERENCE.md` 中添加文档
+4. 在 `docs/JSON_SCHEMA.md` 中更新类型定义
 
-## 贡献
+### 添加新语言
 
-欢迎贡献代码、报告问题或提出建议！
+1. 在 `examples/TapTap/locales/` 中创建 `<locale>.json`
+2. 测试语言加载和显示
+3. 更新 `docs/LOCALIZATION.md`
 
-## 许可证
+## 技术栈
 
-待定
+- **UI**: egui 0.33 (即时模式 GUI)
+- **图片**: image 0.25
+- **压缩**: 7za.exe (外部工具)
+- **XML 解析**: quick-xml 0.36
+- **JSON 解析**: serde_json 1.0
+- **Windows API**: windows 0.58
+- **日志**: tracing + tracing-subscriber
 
+## 发布流程
+
+1. 更新版本号 (`Cargo.toml`)
+2. 更新 `CHANGELOG.md`
+3. 创建 Git tag: `git tag v0.1.0`
+4. 推送 tag: `git push --tags`
+5. 构建 release: `cargo build --release`
+6. 创建 GitHub Release
+
+## 获取帮助
+
+- **文档问题**: 提交 Issue 并标记 `documentation`
+- **Bug 报告**: 提交 Issue 并标记 `bug`
+- **功能请求**: 提交 Issue 并标记 `enhancement`
+- **讨论**: 使用 GitHub Discussions
+
+## 资源链接
+
+- [Rust 官方文档](https://doc.rust-lang.org/)
+- [egui 文档](https://docs.rs/egui/)
+- [quick-xml 文档](https://docs.rs/quick-xml/)
+- [windows-rs 文档](https://microsoft.github.io/windows-docs-rs/)
+
+---
+
+感谢你对 nano-installer 的贡献！ 🎉

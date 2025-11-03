@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Layout width="1148" height="716" dpi="2x">
+  <!-- 背景图片 -->
+  <Image 
+    icon="assets/bg_installing@2x.png" 
+    x="0" y="0" 
+    width="1148" height="716"
+    fit="fill"
+  />
+  
+  <!-- 进度条背�?-->
+  <Image 
+    icon="assets/bar_installing@2x.png" 
+    x="200" y="520" 
+    width="748" height="40"
+    fit="fill"
+  />
+  
+  <!-- 进度�?-->
+  <ProgressBar 
+    id="progress_bar"
+    x="200" y="520" 
+    width="748" height="40"
+    value="0"
+    max_value="100"
+    background_color="transparent"
+    fill_color="#00C4B2"
+  />
+  
+  <!-- 进度文本 -->
+  <Label 
+    id="progress_text"
+    text="正在准备安装..."
+    x="574" y="582" 
+    width="400" height="30"
+    font_size="16"
+    color="#FFFFFF"
+    align="center"
+  />
+  
+  <!-- 状态文�?-->
+  <Label 
+    id="status_text"
+    text="正在解压文件..."
+    x="574" y="620" 
+    width="400" height="30"
+    font_size="14"
+    color="#CCCCCC"
+    align="center"
+  />
+</Layout>

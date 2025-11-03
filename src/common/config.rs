@@ -72,11 +72,11 @@ impl Default for InstallerConfig {
         
         // 如果加载失败，使用默认值
         let mut config = Self {
-            app_name: "MyApp".to_string(),
+            app_name: "TapTap".to_string(),
             app_version: "1.0.0".to_string(),
-            publisher: "My Company".to_string(),
-            default_install_path: r"C:\Users\%USERNAME%\AppData\Local\MyApp".to_string(),
-            default_locale: "en-US".to_string(),
+            publisher: "TapTap".to_string(),
+            default_install_path: r"C:\Program Files\TapTap".to_string(),
+            default_locale: "zh-CN".to_string(),
             supported_locales: vec![
                 "en-US".to_string(),
                 "zh-CN".to_string(),
