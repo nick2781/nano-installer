@@ -1,205 +1,324 @@
-# nano-installer 文档
+# nano-installer 文档中心
 
-欢迎使用 nano-installer！这里是完整的文档索引。
+欢迎来到 nano-installer 文档中心！这里提供完整的文档导航和快速入口。
 
-## 🚀 快速开始
+## 📚 核心文档
 
-- **[主 README](../README.md)** - 项目介绍和快速开始
-- **[示例项目](../examples/TapTap/README.md)** - 通过 TapTap 示例学习
+### 新手入门
 
-## 📖 用户文档
+<table>
+<tr>
+<td width="50%">
+
+#### [快速开始](../README.md#-快速开始)
+5 分钟上手，创建第一个安装器
+
+**适合人群**：初次使用者
+
+**内容**：
+- 安装 nano-installer
+- 创建新项目
+- 构建安装器
+- 测试运行
+
+</td>
+<td width="50%">
+
+#### [项目结构详解](../PROJECT_STRUCTURE.md)
+深入了解项目组织架构
+
+**适合人群**：开发者、贡献者
+
+**内容**：
+- 完整目录结构
+- 组件详细说明
+- 构建流程
+- 扩展指南
+
+</td>
+</tr>
+</table>
 
 ### 核心文档
 
-| 文档 | 说明 |
-|------|------|
-| **[配置参考](CONFIG_REFERENCE.md)** | 完整的配置文件说明，包含所有选项 |
-| **[XML 布局指南](XML_LAYOUT_GUIDE.md)** | 如何使用 XML 自定义安装界面 |
-| **[多语言支持](LOCALIZATION.md)** | 如何添加和管理多语言 |
-| **[XML 布局规范](XML_SCHEMA.md)** | XML 文件的完整 Schema 定义 |
-| **[JSON 配置规范](JSON_SCHEMA.md)** | JSON 配置文件的完整 Schema 定义 |
+<table>
+<tr>
+<td width="50%">
 
-### 开发者文档
+#### [核心代码说明](../installer/README.md)
+installer/ 目录详解
 
-| 文档 | 说明 |
-|------|------|
-| [开发指南](DEVELOPMENT.md) | 如何参与 nano-installer 开发（修改源代码） |
+**适合人群**：开发者
 
-## 📂 按主题浏览
+**内容**：
+- 各包的详细说明
+- 代码结构
+- 开发指南
+- 性能指标
 
-### 配置和设置
+</td>
+<td width="50%">
 
-- [项目信息配置](CONFIG_REFERENCE.md#project---项目信息) - 设置应用名称、版本等
-- [安装设置](CONFIG_REFERENCE.md#install---安装设置) - 配置安装路径、权限等
-- [快捷方式](CONFIG_REFERENCE.md#shortcuts---快捷方式) - 桌面和开始菜单快捷方式
-- [开机自启](CONFIG_REFERENCE.md#autostart---开机自启) - 配置自动启动
-- [注册表集成](CONFIG_REFERENCE.md#registry---注册表) - Windows 注册表设置
+#### [重构总结](../REFACTORING_SUMMARY.md)
+架构演进历史
 
-### 界面定制
+**适合人群**：架构师、维护者
 
-- [XML 布局系统](XML_LAYOUT_GUIDE.md) - 完整的 XML 布局指南
-- [布局元素](XML_LAYOUT_GUIDE.md#布局元素) - VBox, HBox, Button, Label 等
-- [元素属性](XML_LAYOUT_GUIDE.md#元素属性) - 尺寸、样式、对齐等
-- [变量替换](XML_LAYOUT_GUIDE.md#变量替换) - 在文本中使用动态变量
-- [DPI 支持](XML_LAYOUT_GUIDE.md#dpi-支持) - 高分辨率屏幕适配
+**内容**：
+- 重构动机
+- 实施步骤
+- 技术细节
+- 经验总结
 
-### 多语言
-
-- [添加新语言](LOCALIZATION.md#添加新语言) - 创建语言文件
-- [语言文件结构](LOCALIZATION.md#语言文件结构) - JSON 格式说明
-- [在 XML 中使用](LOCALIZATION.md#在-xml-中使用) - 如何引用语言字符串
-- [语言代码规范](LOCALIZATION.md#语言代码规范) - BCP 47 标准
-- [最佳实践](LOCALIZATION.md#最佳实践) - 命名、组织、测试
-
-### 高级功能
-
-- [渠道标识](CONFIG_REFERENCE.md#channel---渠道标识) - 区分不同分发渠道
-- [卸载配置](CONFIG_REFERENCE.md#uninstall---卸载配置) - 自定义卸载行为
-- [路径校验](CONFIG_REFERENCE.md#validation---路径校验) - 安装路径验证规则
-- [调试选项](CONFIG_REFERENCE.md#advanced---高级选项) - 日志和调试
-
-## 🎓 教程和示例
-
-### 从零开始
-
-1. **[查看示例项目](../examples/TapTap/README.md)**
-   - 完整的 TapTap 安装器示例
-   - 展示所有功能的实际应用
-
-2. **[配置你的第一个项目](CONFIG_REFERENCE.md)**
-   - 创建 `installer_config.json`
-   - 设置基本信息
-
-3. **[自定义界面](XML_LAYOUT_GUIDE.md)**
-   - 修改 XML 布局
-   - 添加自己的品牌元素
-
-4. **[添加多语言](LOCALIZATION.md)**
-   - 创建语言文件
-   - 支持国际用户
-
-### 常见任务
-
-- **修改窗口图标** → [resources 配置](CONFIG_REFERENCE.md#resources---资源路径)
-- **更改默认安装路径** → [install 配置](CONFIG_REFERENCE.md#install---安装设置)
-- **添加许可协议** → [wizard 配置](CONFIG_REFERENCE.md#wizard---安装向导)
-- **创建桌面快捷方式** → [shortcuts 配置](CONFIG_REFERENCE.md#shortcuts---快捷方式)
-- **区分不同渠道** → [channel 配置](CONFIG_REFERENCE.md#channel---渠道标识)
-- **自定义卸载行为** → [uninstall 配置](CONFIG_REFERENCE.md#uninstall---卸载配置)
-
-## 💡 提示和技巧
-
-### 调试
-
-启用调试模式查看详细日志：
-
-```json
-{
-  "advanced": {
-    "debug_mode": true,
-    "log_level": "debug"
-  }
-}
-```
-
-日志文件位置：`%TEMP%\nano-installer-XXXX\install.log`
-
-### 高 DPI 支持
-
-为所有图片提供 2x 版本：
-
-```
-assets/
-├── logo.png        # 100x30
-└── logo@2x.png     # 200x60
-```
-
-系统会自动根据 DPI 选择合适的版本。
-
-### 快速测试
-
-使用命令行参数快速测试：
-
-```powershell
-# 静默安装到指定路径
-.\MyApp_Setup.exe --silent --install-path "D:\Test"
-
-# 指定语言
-.\MyApp_Setup.exe --config installer_config.json
-```
-
-## 🔍 快速查找
-
-### 我想...
-
-- **更改窗口大小** → [ui.window_width/height](CONFIG_REFERENCE.md#ui---界面配置)
-- **添加新按钮** → [XML Button 元素](XML_LAYOUT_GUIDE.md#button---按钮)
-- **显示进度条** → [XML ProgressBar 元素](XML_LAYOUT_GUIDE.md#progressbar---进度条)
-- **添加复选框** → [XML Checkbox 元素](XML_LAYOUT_GUIDE.md#checkbox---复选框)
-- **翻译界面文本** → [多语言支持](LOCALIZATION.md)
-- **需要管理员权限** → [install.require_admin](CONFIG_REFERENCE.md#install---安装设置)
-- **检测已安装版本** → [wizard 配置](CONFIG_REFERENCE.md#wizard---安装向导)
-- **在完成页面启动应用** → 在 finish.xml 中添加启动按钮
-
-### 错误排查
-
-| 问题 | 解决方案 |
-|------|----------|
-| 窗口显示不正常 | 检查 [ui 配置](CONFIG_REFERENCE.md#ui---界面配置) |
-| 语言切换无效 | 检查 [localization 配置](CONFIG_REFERENCE.md#localization---多语言) |
-| 布局解析失败 | 查看 [XML 布局指南](XML_LAYOUT_GUIDE.md#基本结构) |
-| 图片加载失败 | 检查 [resources 配置](CONFIG_REFERENCE.md#resources---资源路径) |
-| 安装失败 | 启用 [调试模式](CONFIG_REFERENCE.md#advanced---高级选项) |
-
-## 📚 参考
-
-### 配置选项总览
-
-完整配置结构：
-
-```json
-{
-  "project": { ... },         // 项目信息
-  "install": { ... },         // 安装设置
-  "registry": { ... },        // 注册表
-  "shortcuts": { ... },       // 快捷方式
-  "autostart": { ... },       // 开机自启
-  "localization": { ... },    // 多语言
-  "links": { ... },           // 外部链接
-  "resources": { ... },       // 资源路径
-  "ui": { ... },              // 界面配置
-  "wizard": { ... },          // 安装向导
-  "channel": { ... },         // 渠道标识
-  "uninstall": { ... },       // 卸载配置
-  "validation": { ... },      // 路径校验
-  "advanced": { ... }         // 高级选项
-}
-```
-
-详见 [完整配置参考](CONFIG_REFERENCE.md)
-
-### XML 元素总览
-
-- **容器**：VBox, HBox, Page
-- **控件**：Button, Label, Image, Checkbox, TextInput, ProgressBar
-- **布局**：Spacer
-
-详见 [XML 布局指南](XML_LAYOUT_GUIDE.md)
-
-## 🤝 贡献
-
-想要贡献文档？
-
-1. Fork 项目
-2. 编辑或添加文档
-3. 提交 Pull Request
-
-文档使用 Markdown 格式编写。
-
-## 📝 许可证
-
-文档采用 MIT 许可证，与项目相同。
+</td>
+</tr>
+</table>
 
 ---
 
-**找不到需要的信息？** 提交 [Issue](https://github.com/yourusername/nano-installer/issues) 让我们知道！
+## 🎯 按角色导航
+
+### 🆕 我是新用户
+
+**推荐阅读顺序**：
+
+1. [README.md](../README.md) - 了解项目概况
+2. [快速开始](#) - 动手实践
+3. [配置参考](API.md) - 自定义配置
+4. [示例项目](../examples/TapTap/) - 学习最佳实践
+
+### 💻 我是开发者
+
+**推荐阅读顺序**：
+
+1. [项目结构](PROJECT_STRUCTURE.md) - 理解架构
+2. [核心代码](../installer/README.md) - 深入代码
+3. [开发指南](DEVELOPMENT.md) - 开始贡献
+4. [架构设计](ARCHITECTURE.md) - 设计理念
+
+### 🏗️ 我是架构师
+
+**推荐阅读顺序**：
+
+1. [架构设计](ARCHITECTURE.md) - 详细设计
+2. [项目结构](PROJECT_STRUCTURE.md) - 组织方式
+3. [核心代码](../installer/README.md) - 代码实现
+4. [扩展指南](PROJECT_STRUCTURE.md#-扩展指南) - 如何扩展
+
+---
+
+## 📖 完整文档列表
+
+### 根目录文档
+
+| 文档 | 说明 | 目标读者 |
+|------|------|----------|
+| [README.md](../README.md) | 项目主文档，快速开始 | 所有人 |
+| [CHANGELOG.md](../CHANGELOG.md) | 版本更新日志 | 所有人 |
+
+### installer/ 目录
+
+| 文档 | 说明 | 目标读者 |
+|------|------|----------|
+| [installer/README.md](../installer/README.md) | 核心代码详解 | 开发者 |
+
+### docs/ 目录
+
+| 文档 | 说明 | 目标读者 |
+|------|------|----------|
+| [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) | 项目结构详解 | 开发者 |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | 架构设计文档 | 架构师 |
+| [API.md](API.md) | 配置 API 参考 | 用户、开发者 |
+| [DEVELOPMENT.md](DEVELOPMENT.md) | 开发指南 | 贡献者 |
+| [UI_DESIGN.md](UI_DESIGN.md) | UI 设计指南 | UI 设计师 |
+| [XML_LAYOUT_REFERENCE.md](XML_LAYOUT_REFERENCE.md) | XML 布局参考手册 | 开发者 |
+| [LOCALIZATION_UPDATE.md](LOCALIZATION_UPDATE.md) | 国际化指南 | 翻译者 |
+| [TEST_PLAN.md](TEST_PLAN.md) | 测试计划 | 测试人员 |
+
+### guides/ 目录
+
+| 文档 | 说明 | 目标读者 |
+|------|------|----------|
+| [guides/QUICKSTART.md](guides/QUICKSTART.md) | 5 分钟快速开始 | 新用户 |
+| [guides/START_HERE.md](guides/START_HERE.md) | 从这里开始 | 所有人 |
+| [guides/FINAL_STEP.md](guides/FINAL_STEP.md) | 最后步骤 | 用户 |
+
+---
+
+## 🔍 按主题导航
+
+### 安装和配置
+
+- [安装 nano-installer](../README.md#安装)
+- [创建新项目](../README.md#创建第一个安装器)
+- [配置文件格式](API.md#配置文件)
+- [布局系统](UI_DESIGN.md)
+
+### 构建和发布
+
+- [构建安装器](../README.md#构建指南)
+- [命令行参考](../README.md#命令行参考)
+- [优化大小](../installer/README.md#优化二进制大小)
+- [多架构支持](../PROJECT_STRUCTURE.md#支持多架构)
+
+### 开发和贡献
+
+- [环境搭建](DEVELOPMENT.md#环境要求)
+- [代码结构](../installer/README.md#目录结构)
+- [添加新功能](../installer/README.md#添加新功能到-lib)
+- [调试技巧](../installer/README.md#调试技巧)
+
+### 架构和设计
+
+- [整体架构](../PROJECT_STRUCTURE.md#总体架构)
+- [工作流程](../PROJECT_STRUCTURE.md#工作流程)
+- [设计原则](ARCHITECTURE.md)
+- [与 NSIS 对比](../README.md#与-nsis-的对比)
+
+---
+
+## 🎓 教程和示例
+
+### 入门教程
+
+1. **Hello World** - 创建最简单的安装器
+   ```bash
+   nano-installer init HelloWorld
+   cd HelloWorld
+   nano-installer build
+   ```
+
+2. **自定义 UI** - 修改布局和样式
+   - 编辑 `layouts/*.xml`
+   - 自定义 `assets/`
+   - 查看 [UI 设计指南](UI_DESIGN.md)
+
+3. **多语言支持** - 添加新语言
+   - 创建 `locales/xx-XX.json`
+   - 查看 [国际化指南](LOCALIZATION_UPDATE.md)
+
+### 完整示例
+
+#### [TapTap 客户端安装器](../examples/TapTap/)
+
+完整的生产级示例，包含：
+- 自定义 UI 布局
+- 11 种语言支持
+- 复杂的安装逻辑
+- 高级配置
+
+**学习要点**：
+- 如何组织大型项目
+- 如何优化安装体验
+- 如何处理复杂场景
+
+---
+
+## 🛠️ 工具和资源
+
+### 开发工具
+
+- **VS Code 扩展**：
+  - Rust Analyzer
+  - Even Better TOML
+  - XML Tools
+
+- **调试工具**：
+  - `cargo-bloat` - 分析二进制大小
+  - `cargo-watch` - 自动重新编译
+  - `cargo-edit` - 管理依赖
+
+### 外部资源
+
+- [Rust 官方文档](https://doc.rust-lang.org/)
+- [Egui 文档](https://docs.rs/egui/)
+- [NSIS 文档](https://nsis.sourceforge.io/Docs/) (参考)
+- [7-Zip 文档](https://www.7-zip.org/sdk.html)
+
+---
+
+## 📝 文档贡献
+
+### 改进文档
+
+欢迎帮助改进文档！
+
+1. **发现错误**：提交 Issue
+2. **建议改进**：提交 Pull Request
+3. **添加示例**：贡献新的示例项目
+4. **翻译文档**：帮助翻译成其他语言
+
+### 文档规范
+
+- 使用 Markdown 格式
+- 遵循现有的风格和结构
+- 提供代码示例
+- 添加适当的链接
+
+---
+
+## ❓ 常见问题
+
+### 快速解答
+
+**Q: 如何开始使用 nano-installer？**  
+A: 查看 [快速开始](../README.md#快速开始) 指南
+
+**Q: 如何自定义安装器 UI？**  
+A: 编辑 `layouts/*.xml` 文件，参考 [UI 设计指南](UI_DESIGN.md)
+
+**Q: 如何添加新语言？**  
+A: 创建新的 `locales/xx-XX.json` 文件，参考 [国际化指南](LOCALIZATION_UPDATE.md)
+
+**Q: 如何优化安装器大小？**  
+A: 查看 [优化指南](../installer/README.md#优化二进制大小)
+
+**Q: 如何贡献代码？**  
+A: 阅读 [开发指南](DEVELOPMENT.md) 和 [架构文档](ARCHITECTURE.md)
+
+---
+
+## 📞 获取帮助
+
+### 联系方式
+
+- **Issues**: [GitHub Issues](https://github.com/your-org/nano-installer/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/your-org/nano-installer/discussions)
+- **Email**: your-email@example.com
+
+### 社区
+
+- **Discord**: (待创建)
+- **Telegram**: (待创建)
+- **QQ群**: (待创建)
+
+---
+
+## 🗺️ 文档路线图
+
+### 计划中的文档
+
+- [ ] 视频教程系列
+- [ ] 交互式在线文档
+- [ ] API 文档（rustdoc）
+- [ ] 更多示例项目
+- [ ] 多语言文档（中文优先）
+
+### 正在进行
+
+- [x] 核心文档完善
+- [ ] 代码注释补充
+- [ ] 性能优化指南
+- [ ] 故障排查指南
+
+---
+
+<div align="center">
+
+**[⬆ 回到顶部](#nano-installer-文档中心)**
+
+感谢阅读！希望这些文档对你有帮助。
+
+最后更新：2025-11-05
+
+</div>

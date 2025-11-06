@@ -4,16 +4,19 @@
     <VBox>
       <Image icon="assets/logo.png" width="200" height="60" />
       <Spacer height="20" />
-      <Label text="欢迎使用 TapTap" font_size="24" />
+      <!-- text 为兜底文案，text_i18n 指定翻译键 -->
+      <Label text="欢迎使用 TapTap" text_i18n="welcome.title" font_size="24" />
       <Spacer height="10" />
-      <Label text="版本 {version}" font_size="14" />
+      <Label text="安装 TapTap 来发现和下载游戏" text_i18n="welcome.subtitle" font_size="14" />
       <Spacer height="20" />
-      <Label text="TapTap 是领先的移动游戏社区平台，为您提供最新的游戏资讯、评测和下载服务。" />
+      <Label text="点击\"安装\"即表示您同意我们的服务条款和隐私政策" text_i18n="welcome.agreement" />
       <Spacer height="30" />
       <HBox>
-        <Button id="next" text="下一步" width="100" />
+        <Button id="custom_install" text="自定义安装" text_i18n="welcome.custom_install" width="100" />
         <Spacer width="10" />
-        <Button id="cancel" text="取消" width="100" />
+        <Button id="install" text="安装" text_i18n="welcome.install" width="100" />
+        <Spacer width="10" />
+        <Button id="cancel" text="取消" text_i18n="welcome.cancel" width="100" />
       </HBox>
     </VBox>
   </Page>

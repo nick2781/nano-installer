@@ -1,18 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Layout name="finish" version="1.0">
-  <Page id="finish">
-    <VBox padding="20" spacing="10">
-      <Label text="@finish.title" font_size="20" />
+<Layout name="Finish" version="1.0.0">
+  <Page>
+    <VBox>
+      <Label text="安装完成" text_i18n="finish.title" font_size="20" />
       <Spacer height="20" />
-      <Label text="@finish.description" />
+      <Label text="TapTap 已成功安装到您的计算机。" text_i18n="finish.message" />
       <Spacer height="20" />
-      <Checkbox id="launch_app" text="@finish.launch_app" checked="true" />
+      <Checkbox id="launch_app" text="立即启动 TapTap" text_i18n="finish.launch" checked="true" />
       <Spacer height="30" />
-      <HBox spacing="10">
-        <Spacer />
-        <Button id="finish" text="@common.finish" width="100" height="32" style="primary" />
+      <HBox>
+        <Button id="finish" text="完成" text_i18n="finish.finish" width="100" />
       </HBox>
     </VBox>
   </Page>
 </Layout>
-

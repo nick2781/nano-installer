@@ -1,0 +1,93 @@
+[package]
+name = "nano-installer-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+description = "CLI tool for nano-installer (like makensis.exe)"
+
+[[bin]]
+name = "nano-installer"
+path = "src/main.rs"
+
+[dependencies]
+# 依赖共享库
+nano-installer-lib = { path = "../lib" }
+
+# CLI specific dependencies
+# 从 workspace 继承
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+once_cell.workspace = true
+
+# 日志库
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-appender.workspace = true
+
+# GUI 库
+eframe.workspace = true
+egui.workspace = true
+egui_extras.workspace = true
+image.workspace = true
+
+# 文件对话框
+rfd.workspace = true
+
+# 异步运行时
+tokio.workspace = true
+
+# 工具库
+uuid.workspace = true
+chrono.workspace = true
+clap.workspace = true
+parking_lot.workspace = true
+
+# 校验库
+crc32fast.workspace = true
+sha2.workspace = true
+
+# XML 解析库
+quick-xml.workspace = true
+
+# 正则表达式库
+regex.workspace = true
+
+# JSON with comments 解析库
+jsonc-parser.workspace = true
+
+# TOML 解析库
+toml.workspace = true
+
+# 压缩库
+flate2.workspace = true
+zip.workspace = true
+
+# 文件遍历库
+walkdir.workspace = true
+
+# Windows specific
+[target.'cfg(windows)'.dependencies]
+windows.workspace = true
+winreg.workspace = true
+
+[build-dependencies]
+embed-resource.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+crc32fast.workspace = true
+
+[target.'cfg(windows)'.build-dependencies]
+winres.workspace = true
+jsonc-parser.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[features]
+default = []
+macos-support = []
+
+

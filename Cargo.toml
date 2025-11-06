@@ -1,16 +1,20 @@
-[package]
-name = "nano-installer"
+[workspace]
+resolver = "2"
+members = [
+    "installer/cli",
+    "installer/lib",
+    "installer/stubs/lzma",
+    "installer/stubs/uninst",
+]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.81"
 authors = ["Your Name <your.email@example.com>"]
-description = "Modern installer and uninstaller with multi-language support"
+description = "Modern installer framework inspired by NSIS"
 
-[[bin]]
-name = "nano-installer"
-path = "src/bin/nano-installer.rs"
-
-[dependencies]
+[workspace.dependencies]
 # 基础依赖
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -23,7 +27,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
 
-# GUI 库 - 使用最新版本
+# GUI 库
 eframe = { version = "0.33", default-features = false, features = ["default_fonts", "glow"] }
 egui = "0.33"
 egui_extras = { version = "0.33", features = ["image"] }
@@ -57,13 +61,29 @@ jsonc-parser = "0.27"
 # TOML 解析库
 toml = "0.8"
 
-# 压缩库 - 使用外部 7za.exe 工具
+# 压缩库
 flate2 = "1.0"
 zip = "0.6"
+sevenz-rust = "0.6"
+lzma-rs = "0.3"
 
-# Windows specific - 使用最新版本
-[target.'cfg(windows)'.dependencies]
-windows = { version = "0.58", features = [
+# 文件遍历库
+walkdir = "2.4"
+
+# Windows registry
+winreg = "0.52"
+
+# Build dependencies (used by build.rs)
+embed-resource = "2.4"
+winres = "0.1"
+
+# Dev dependencies
+tempfile = "3.8"
+
+# Windows specific
+[workspace.dependencies.windows]
+version = "0.58"
+features = [
     "Win32_Foundation",
     "Win32_System_Registry",
     "Win32_System_Com",
@@ -80,33 +100,12 @@ windows = { version = "0.58", features = [
     "Win32_System_SystemInformation",
     "Win32_Globalization",
     "Win32_UI_HiDpi",
-] }
-winreg = "0.52"
-
-[build-dependencies]
-embed-resource = "2.4"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-crc32fast = "1.3"
-
-[target.'cfg(windows)'.build-dependencies]
-winres = "0.1"
-jsonc-parser = "0.27"
-
-[dev-dependencies]
-tempfile = "3.10"
+    "Win32_System_LibraryLoader",
+]
 
 [profile.release]
-opt-level = "z"
-lto = true
-codegen-units = 1
-strip = true
-panic = "abort"
-
-[profile.dev]
-opt-level = 0
-
-[features]
-default = []
-# 未来的 macOS 支持
-macos-support = []
+opt-level = "z"     # 优化文件大小
+lto = true          # 启用链接时优化
+codegen-units = 1   # 减少代码生成单元以获得更好的优化
+strip = true        # 剥离符号信息
+panic = "abort"     # 减小 panic 处理代码

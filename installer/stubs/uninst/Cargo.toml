@@ -1,0 +1,24 @@
+[package]
+name = "uninst"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+description = "Lightweight uninstaller stub with pure Win32 API"
+
+[[bin]]
+name = "uninst"
+path = "src/main.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows.workspace = true
+
+[build-dependencies]
+winres.workspace = true
+
+

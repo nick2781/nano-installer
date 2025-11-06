@@ -8,7 +8,9 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=assets/nano-installer.ico");
     
-    // 为 nano-installer.exe 设置图标
+    // 为 nano-installer CLI 工具设置图标
+    // stub 文件的图标会在编译时使用默认图标，
+    // 然后在 `nano-installer build` 时根据项目配置动态替换
     #[cfg(target_os = "windows")]
     {
         set_nano_installer_icon();
@@ -254,49 +256,21 @@ fn generate_resource_code(output_dir: &Path) {
 /// 为 nano-installer.exe 设置图标
 #[cfg(target_os = "windows")]
 fn set_nano_installer_icon() {
-    // 检查图标文件
     let icon_path = "assets/nano-installer.ico";
     let icon_file = Path::new(icon_path);
     
-    println!("cargo:warning=================================================");
-    println!("cargo:warning=Setting up Windows resources for nano-installer");
-    println!("cargo:warning=================================================");
-    println!("cargo:warning=Icon path: {}", icon_path);
-    println!("cargo:warning=Icon exists: {}", icon_file.exists());
-    
     if !icon_file.exists() {
-        println!("cargo:warning=ERROR: Icon file not found!");
-        println!("cargo:warning=Please ensure assets/nano-installer.ico exists");
+        println!("cargo:warning=Icon file not found: {}", icon_path);
         return;
     }
     
-    // 显示图标文件信息
-    if let Ok(metadata) = std::fs::metadata(icon_file) {
-        println!("cargo:warning=Icon size: {} bytes", metadata.len());
-    }
-    
     // 使用 winres 嵌入图标
-    println!("cargo:warning=Compiling Windows resources...");
-    
-    match winres::WindowsResource::new()
+    if let Err(e) = winres::WindowsResource::new()
         .set_icon(icon_path)
         .compile()
     {
-        Ok(_) => {
-            println!("cargo:warning=✓ SUCCESS: Icon embedded successfully!");
-        }
-        Err(e) => {
-            println!("cargo:warning=✗ ERROR: Failed to compile resources");
-            println!("cargo:warning=Error details: {}", e);
-            println!("cargo:warning=");
-            println!("cargo:warning=Possible causes:");
-            println!("cargo:warning=1. Windows SDK not installed");
-            println!("cargo:warning=2. rc.exe not found in PATH");
-            println!("cargo:warning=3. Icon file format invalid");
-        }
+        println!("cargo:warning=Failed to compile Windows resources: {}", e);
     }
-    
-    println!("cargo:warning=================================================");
 }
 
 /// 资源信息结构

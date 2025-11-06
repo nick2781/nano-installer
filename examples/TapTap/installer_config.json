@@ -2,9 +2,15 @@
   "project": {
     "name": "TapTap",
     "version": "1.0.0",
-    "publisher": "TapTap",
+    "publisher": "上海易玩网络科技有限公司",
     "copyright": "© 2025 TapTap",
     "output_name": "TapTap_Setup"
+  },
+  "output": {
+    "installer_name": "TapTap_Setup.exe",
+    "installer_icon": "assets/logo.ico",
+    "uninstaller_name": "uninst.exe",
+    "uninstaller_icon": "assets/uninst.ico"
   },
   "install": {
     "exe_name": "TapTap.exe",
@@ -47,6 +53,7 @@
     "layouts_dir": "layouts",
     "assets_dir": "assets",
     "locales_dir": "locales",
+    "payload_dir": "payload",
     "payload_file": "payload/app.7z",
     "installer_icon": "assets/logo.ico",
     "uninstaller_icon": "assets/uninst.ico"

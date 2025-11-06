@@ -1,0 +1,1131 @@
+// nano-installer CLI 工具
+// 用于创建、编译、验证安装器项目
+
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use clap::{Parser, Subcommand};
+use anyhow::{Result, Context, bail};
+
+mod icon_replacer;
+mod version_info_builder;
+
+#[derive(Parser)]
+#[command(name = "nano-installer")]
+#[command(about = "Universal installer generator - Create professional Windows installers")]
+#[command(version = env!("CARGO_PKG_VERSION"))]
+#[command(author = "nano-installer contributors")]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Initialize a new installer project
+    Init {
+        /// Project name
+        name: String,
+        
+        /// Output directory (defaults to project name)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    
+    /// Build installer from project
+    Build {
+        /// Project directory (defaults to current directory)
+        #[arg(short, long, default_value = ".")]
+        project: PathBuf,
+        
+        /// Output file name (defaults to config output_name)
+        #[arg(short, long)]
+        output: Option<String>,
+        
+        /// Release build (optimized)
+        #[arg(long)]
+        release: bool,
+    },
+    
+    /// Validate project configuration
+    Validate {
+        /// Configuration file path
+        #[arg(short, long, default_value = "installer_config.json")]
+        config: PathBuf,
+    },
+    
+    /// Build language pack from JSON locale file
+    Langpack {
+        /// Input JSON locale file
+        input: PathBuf,
+        
+        /// Output .pak file (optional, defaults to input name with .pak extension)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+}
+
+fn main() {
+    // nano-installer.exe 是纯 CLI 工具
+    // 不再有双重身份，不会作为安装器运行
+    if let Err(e) = run_cli() {
+        eprintln!("❌ Error: {}", e);
+        std::process::exit(1);
+    }
+}
+
+fn run_cli() -> Result<()> {
+    let cli = Cli::parse();
+    
+    match cli.command {
+        Commands::Init { name, output } => {
+            cmd_init(&name, output.as_deref())
+        }
+        Commands::Build { project, output, release } => {
+            cmd_build(&project, output.as_deref(), release)
+        }
+        Commands::Validate { config } => {
+            cmd_validate(&config)
+        }
+        Commands::Langpack { input, output } => {
+            cmd_langpack(&input, output.as_deref())
+        }
+    }
+}
+
+/// 初始化新项目
+fn cmd_init(name: &str, output_dir: Option<&Path>) -> Result<()> {
+    let output_dir = output_dir.unwrap_or_else(|| Path::new(name));
+    
+    println!("🚀 Initializing project: {}", name);
+    println!("📁 Output directory: {}", output_dir.display());
+    
+    if output_dir.exists() {
+        bail!("Directory already exists: {}", output_dir.display());
+    }
+    
+    // 创建项目目录结构
+    std::fs::create_dir_all(output_dir)?;
+    std::fs::create_dir_all(output_dir.join("assets"))?;
+    std::fs::create_dir_all(output_dir.join("layouts"))?;
+    std::fs::create_dir_all(output_dir.join("locales"))?;
+    std::fs::create_dir_all(output_dir.join("files"))?;
+    
+    // 生成配置文件
+    let config = generate_default_config(name);
+    std::fs::write(output_dir.join("installer_config.json"), config)?;
+    println!("✅ Created: installer_config.json");
+    
+    // 生成示例布局文件
+    generate_example_layouts(output_dir)?;
+    println!("✅ Created: layouts/*.xml");
+    
+    // 生成示例语言文件
+    generate_example_locales(output_dir)?;
+    println!("✅ Created: locales/*.json");
+    
+    // 生成 README
+    let readme = generate_readme(name);
+    std::fs::write(output_dir.join("README.md"), readme)?;
+    println!("✅ Created: README.md");
+    
+    // 生成构建脚本
+    generate_build_script(output_dir)?;
+    println!("✅ Created: build.ps1");
+    
+    println!("\n🎉 Project '{}' initialized successfully!", name);
+    println!("\n📝 Next steps:");
+    println!("   1. cd {}", name);
+    println!("   2. Add your application files to payload/");
+    println!("   3. Add your assets (logo, icons) to assets/");
+    println!("   4. Run: nano-installer build");
+    
+    Ok(())
+}
+
+/// 编译项目生成安装器
+fn cmd_build(project_dir: &Path, output_name: Option<&str>, release: bool) -> Result<()> {
+    println!("🔨 Building installer...");
+    println!("📁 Project: {}", project_dir.display());
+    
+    // 检查项目目录
+    if !project_dir.exists() {
+        bail!("Project directory not found: {}", project_dir.display());
+    }
+    
+    let config_path = project_dir.join("installer_config.json");
+    if !config_path.exists() {
+        bail!("Configuration file not found: {}", config_path.display());
+    }
+    
+    // 加载配置
+    let config_content = std::fs::read_to_string(&config_path)
+        .context("Failed to read configuration")?;
+    let config: serde_json::Value = serde_json::from_str(&config_content)
+        .context("Failed to parse configuration")?;
+    
+    // 提取项目信息
+    let project_name = config["project"]["name"].as_str()
+        .context("Missing project.name")?;
+    let output_name = output_name
+        .or_else(|| config["project"]["output_name"].as_str())
+        .unwrap_or(project_name);
+    
+    println!("📦 Product: {}", project_name);
+    println!("📝 Output: {}", output_name);
+    
+    // 验证资源
+    validate_project_resources(project_dir, &config)?;
+    
+    // 创建临时构建目录和 dist 目录
+    let build_dir = project_dir.join(".build");
+    let dist_dir = project_dir.join("dist");
+    
+    // 清理旧的构建目录
+    if build_dir.exists() {
+        std::fs::remove_dir_all(&build_dir)?;
+    }
+    std::fs::create_dir_all(&build_dir)?;
+    std::fs::create_dir_all(&dist_dir)?;
+    
+    println!("📁 Build directory: {}", build_dir.display());
+    println!("📁 Output directory: {}", dist_dir.display());
+    println!();
+    
+    // 先生成卸载器（这样安装器可以将它打包进去）
+    println!("🗑️  Building uninstaller executable...");
+    build_uninstaller_exe(project_dir, &config, output_name, release)?;
+    
+    // 再生成安装器（会自动打包所有资源包括 payload 和 uninst.exe）
+    println!("📦 Building installer executable...");
+    build_installer_exe(project_dir, &config, output_name, release)?;
+    
+    // 保留 .build 目录用于调试（包含中间构建产物）
+    // uninst.exe 已经嵌入到 TapTap_Setup.exe 中，不需要复制到 dist/
+    println!();
+    println!("💡 Build artifacts:");
+    println!("   .build/uninst.exe    - Uninstaller stub with resources (embedded in setup)");
+    println!("   .build/locales/*.pak - Compiled language packs (embedded in setup)");
+    println!("   dist/                - Final installer executable");
+    
+    //  清理临时构建目录（可选，注释掉以保留中间文件用于调试）
+    // println!();
+    // println!("🧹 Cleaning up temporary build directory...");
+    // if build_dir.exists() {
+    //     std::fs::remove_dir_all(&build_dir)?;
+    //     println!("   ✓ Removed {}", build_dir.display());
+    // }
+    
+    println!("\n✅ Build completed successfully!");
+    println!("📁 Output: {}", dist_dir.display());
+    println!("\n📦 Installer package structure (segmented):");
+    println!("   {}_Setup.exe", output_name);
+    println!("   ├─ lzma-x64-unicode.exe stub (~4 MB)");
+    println!("   └─ Resource bundle (5 segments, ~3 MB)");
+    println!("      ├─ Segment 1: Config (JSON)");
+    println!("      ├─ Segment 2: UI Resources (layouts + assets → 7z)");
+    println!("      ├─ Segment 3: Locales (11 .pak files → 7z)");
+    println!("      ├─ Segment 4: Payload (app.7z)");
+    println!("      └─ Segment 5: Uninstaller (uninst.exe)");
+    println!("\n💡 To test:");
+    println!("   cd {}", dist_dir.display());
+    println!("   .\\{}_Setup.exe", output_name);
+    
+    Ok(())
+}
+
+/// 验证配置文件
+fn cmd_validate(config_path: &Path) -> Result<()> {
+    println!("🔍 Validating configuration...");
+    println!("📄 Config: {}", config_path.display());
+    
+    if !config_path.exists() {
+        bail!("Configuration file not found: {}", config_path.display());
+    }
+    
+    // 加载并解析配置
+    let config_content = std::fs::read_to_string(config_path)
+        .context("Failed to read configuration")?;
+    
+    let _config: nano_installer::config::InstallerConfig = serde_json::from_str(&config_content)
+        .context("Failed to parse configuration")?;
+    
+    println!("✅ Configuration is valid!");
+    
+    Ok(())
+}
+
+/// 构建语言包
+fn cmd_langpack(input: &Path, output: Option<&Path>) -> Result<()> {
+    println!("🌐 Building language pack...");
+    println!("📄 Input: {}", input.display());
+    
+    if !input.exists() {
+        bail!("Input file not found: {}", input.display());
+    }
+    
+    // 读取 JSON
+    let json_content = std::fs::read_to_string(input)
+        .context("Failed to read input file")?;
+    let locale_data: serde_json::Value = serde_json::from_str(&json_content)
+        .context("Failed to parse JSON")?;
+    
+    let _locale = locale_data["locale"].as_str()
+        .context("Missing 'locale' field in JSON")?;
+    
+    // 确定输出文件名
+    let output_path = output.map(|p| p.to_path_buf())
+        .unwrap_or_else(|| {
+            input.with_extension("pak")
+        });
+    
+    // 构建 .pak 文件
+    build_langpack(&locale_data, &output_path)
+        .context("Failed to build language pack")?;
+    
+    println!("✅ Language pack created: {}", output_path.display());
+    
+    Ok(())
+}
+
+// ============================================================================
+// 辅助函数
+// ============================================================================
+
+fn validate_project_resources(project_dir: &Path, _config: &serde_json::Value) -> Result<()> {
+    println!("🔍 Validating resources...");
+    
+    // 检查必要的目录
+    let assets_dir = project_dir.join("assets");
+    let layouts_dir = project_dir.join("layouts");
+    let locales_dir = project_dir.join("locales");
+    let files_dir = project_dir.join("files");
+    
+    if !assets_dir.exists() {
+        bail!("assets/ directory not found");
+    }
+    if !layouts_dir.exists() {
+        bail!("layouts/ directory not found");
+    }
+    if !locales_dir.exists() {
+        bail!("locales/ directory not found");
+    }
+    if !files_dir.exists() {
+        bail!("files/ directory not found");
+    }
+    
+    println!("✅ All required directories exist");
+    
+    Ok(())
+}
+
+
+fn build_langpack(locale_data: &serde_json::Value, output_path: &Path) -> Result<()> {
+    use std::io::Write;
+    
+    let locale = locale_data["locale"].as_str()
+        .context("Missing 'locale' field")?;
+    let strings = locale_data["strings"].as_object()
+        .context("Missing 'strings' object")?;
+    
+    let mut buffer = Vec::new();
+    
+    // 魔数 "LNGP"
+    buffer.write_all(b"LNGP")?;
+    
+    // 版本号 (u16)
+    buffer.write_all(&1u16.to_le_bytes())?;
+    
+    // 语言代码
+    let locale_bytes = locale.as_bytes();
+    buffer.write_all(&(locale_bytes.len() as u16).to_le_bytes())?;
+    buffer.write_all(locale_bytes)?;
+    
+    // 预留 CRC32
+    let crc_pos = buffer.len();
+    buffer.write_all(&[0u8; 4])?;
+    
+    // 键值对数量
+    buffer.write_all(&(strings.len() as u32).to_le_bytes())?;
+    
+    // 写入键值对
+    for (key, value) in strings {
+        let key_bytes = key.as_bytes();
+        let value_str = value.as_str().unwrap_or("");
+        let value_bytes = value_str.as_bytes();
+        
+        buffer.write_all(&(key_bytes.len() as u16).to_le_bytes())?;
+        buffer.write_all(key_bytes)?;
+        
+        buffer.write_all(&(value_bytes.len() as u32).to_le_bytes())?;
+        buffer.write_all(value_bytes)?;
+    }
+    
+    // 计算并写入 CRC32
+    let crc = crc32fast::hash(&buffer[crc_pos + 4..]);
+    buffer[crc_pos..crc_pos + 4].copy_from_slice(&crc.to_le_bytes());
+    
+    std::fs::write(output_path, buffer)?;
+    
+    Ok(())
+}
+
+fn generate_default_config(name: &str) -> String {
+    serde_json::to_string_pretty(&serde_json::json!({
+        "project": {
+            "name": name,
+            "version": "1.0.0",
+            "publisher": "Your Company",
+            "copyright": format!("© 2025 {}", name),
+            "output_name": format!("{}_Setup", name)
+        },
+        "install": {
+            "exe_name": format!("{}.exe", name),
+            "default_path": format!("C:\\Program Files\\{}", name),
+            "append_to_path": name,
+            "required_space_mb": 100,
+            "require_admin": true,
+            "mutex_name": format!("{}_Installer", name),
+            "detect_running_process": true,
+            "kill_process_on_install": false,
+            "kill_process_on_uninstall": true
+        },
+        "registry": {
+            "install_path_key": format!("HKLM\\Software\\{}", name),
+            "uninstall_key": format!("HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{}", name),
+            "help_link": "https://example.com/help"
+        },
+        "shortcuts": {
+            "desktop_shortcut": true,
+            "desktop_default": true,
+            "start_menu": true,
+            "start_menu_folder": name
+        },
+        "autostart": {
+            "enabled": true,
+            "default": false,
+            "registry_key": "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+            "registry_value_name": name
+        },
+        "localization": {
+            "default_locale": "en-US",
+            "supported_locales": ["en-US", "zh-CN"],
+            "show_language_selector": true
+        },
+        "links": {
+            "terms_of_service": "https://example.com/terms",
+            "privacy_policy": "https://example.com/privacy"
+        },
+        "resources": {
+            "layouts_dir": "layouts",
+            "assets_dir": "assets",
+            "locales_dir": "locales",
+            "payload_file": "payload.7z",
+            "installer_icon": "assets/logo.ico",
+            "uninstaller_icon": "assets/logo.ico"
+        },
+        "ui": {
+            "window_width": 574,
+            "window_height": 358,
+            "expanded_height": 518,
+            "dpi_aware": true,
+            "dpi_threshold": 144.0
+        },
+        "wizard": {
+            "pages": [
+                {"id": "welcome", "layout": "welcome.xml", "title": "欢迎"},
+                {"id": "config", "layout": "config.xml", "title": "配置"},
+                {"id": "installing", "layout": "installing.xml", "title": "安装中"},
+                {"id": "finish", "layout": "finish.xml", "title": "完成"}
+            ],
+            "uninstall_pages": []
+        },
+        "channel": {
+            "extract_from_filename": true,
+            "filename_regex": ".*_([^_]+)\\.exe$",
+            "default_channel": "default",
+            "output_channel_conf": false
+        },
+        "uninstall": {
+            "show_keep_data_option": true,
+            "keep_data_default": true,
+            "cleanup_game_registry": false,
+            "game_registry_path": ""
+        },
+        "validation": {
+            "check_path_legal": true,
+            "check_disk_type": "Any",
+            "check_disk_space": true
+        },
+        "advanced": {
+            "silent_install_support": true,
+            "update_support": false,
+            "repair_support": false,
+            "launch_after_install": true
+        }
+    })).unwrap()
+}
+
+fn generate_example_layouts(output_dir: &Path) -> Result<()> {
+    let layouts_dir = output_dir.join("layouts");
+    
+    // 从嵌入的模板复制布局文件
+    const WELCOME_XML: &str = include_str!("../../../templates/layouts/welcome.xml");
+    const CONFIG_XML: &str = include_str!("../../../templates/layouts/config.xml");
+    const INSTALLING_XML: &str = include_str!("../../../templates/layouts/installing.xml");
+    const FINISH_XML: &str = include_str!("../../../templates/layouts/finish.xml");
+    
+    std::fs::write(layouts_dir.join("welcome.xml"), WELCOME_XML)?;
+    std::fs::write(layouts_dir.join("config.xml"), CONFIG_XML)?;
+    std::fs::write(layouts_dir.join("installing.xml"), INSTALLING_XML)?;
+    std::fs::write(layouts_dir.join("finish.xml"), FINISH_XML)?;
+    
+    Ok(())
+}
+
+fn generate_example_locales(output_dir: &Path) -> Result<()> {
+    let locales_dir = output_dir.join("locales");
+    
+    // 从嵌入的模板复制语言文件
+    const EN_US_JSON: &str = include_str!("../../../templates/locales/en-US.json");
+    const ZH_CN_JSON: &str = include_str!("../../../templates/locales/zh-CN.json");
+    
+    std::fs::write(locales_dir.join("en-US.json"), EN_US_JSON)?;
+    std::fs::write(locales_dir.join("zh-CN.json"), ZH_CN_JSON)?;
+    
+    Ok(())
+}
+
+fn generate_readme(name: &str) -> String {
+    format!(r#"# {} Installer
+
+This is a nano-installer project for {}.
+
+## Quick Start
+
+1. Add your application files to `files/`
+2. Add your assets (logo, icons) to `assets/`
+3. Edit `installer_config.json` to configure your installer
+4. Build: `nano-installer build`
+
+## Project Structure
+
+```
+{}/
+├── installer_config.json    # Main configuration
+├── assets/                  # Images, icons
+├── layouts/                 # UI layout XML files
+├── locales/                 # Language files
+├── files/                   # Application files to install
+└── dist/                    # Build output
+```
+
+## Configuration
+
+See `installer_config.json` for all configuration options.
+
+## Building
+
+```bash
+nano-installer build
+```
+
+## Documentation
+
+For more information, see the nano-installer documentation.
+"#, name, name, name)
+}
+
+/// 递归复制目录
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
+    if !src.exists() {
+        bail!("Source directory not found: {}", src.display());
+    }
+    
+    std::fs::create_dir_all(dst)?;
+    
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            std::fs::copy(&src_path, &dst_path)?;
+        }
+    }
+    
+    Ok(())
+}
+
+fn generate_build_script(output_dir: &Path) -> Result<()> {
+    let script = r#"# Build script for nano-installer project
+
+Write-Host "Building installer..." -ForegroundColor Yellow
+
+# Run nano-installer build
+nano-installer build
+
+Write-Host "`n✅ Build complete!" -ForegroundColor Green
+Write-Host "Output: dist/" -ForegroundColor Gray
+"#;
+    
+    std::fs::write(output_dir.join("build.ps1"), script)?;
+    
+    Ok(())
+}
+
+/// 计算目录大小（递归）
+fn calculate_dir_size(path: &Path) -> Result<u64> {
+    let mut total = 0u64;
+    if path.is_file() {
+        return Ok(std::fs::metadata(path)?.len());
+    }
+    
+    if path.is_dir() {
+        for entry in std::fs::read_dir(path)? {
+            let entry = entry?;
+            let metadata = entry.metadata()?;
+            if metadata.is_file() {
+                total += metadata.len();
+            } else if metadata.is_dir() {
+                total += calculate_dir_size(&entry.path())?;
+            }
+        }
+    }
+    Ok(total)
+}
+
+/// 编译 JSON 语言文件为 .pak 格式
+fn compile_locales_to_pak(
+    project_dir: &Path,
+    locales_dir: &Path,
+) -> Result<Vec<(String, Vec<u8>)>> {
+    // 创建 .build/locales/ 目录用于存放编译后的 .pak 文件
+    let build_locales_dir = project_dir.join(".build").join("locales");
+    std::fs::create_dir_all(&build_locales_dir)?;
+    
+    let mut pak_files = Vec::new();
+    
+    for entry in std::fs::read_dir(locales_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        
+        // 只处理 .json 文件
+        if !path.is_file() || path.extension().and_then(|s| s.to_str()) != Some("json") {
+            continue;
+        }
+        
+        let locale_name = path.file_stem()
+            .and_then(|s| s.to_str())
+            .context("Invalid locale file name")?;
+        
+        // 读取并解析 JSON
+        let json_content = std::fs::read_to_string(&path)
+            .context(format!("Failed to read {}", path.display()))?;
+        
+        let translations: std::collections::HashMap<String, String> = 
+            serde_json::from_str(&json_content)
+                .context(format!("Failed to parse {}", path.display()))?;
+        
+        // 编译为 .pak 格式
+        let pak_data = compile_langpack_binary(locale_name, &translations)?;
+        
+        // 保存 .pak 文件到 .build/locales/ 目录
+        let pak_filename = format!("{}.pak", locale_name);
+        let pak_path = build_locales_dir.join(&pak_filename);
+        std::fs::write(&pak_path, &pak_data)?;
+        
+        // 添加到列表（文件名，数据）
+        pak_files.push((pak_filename, pak_data));
+    }
+    
+    Ok(pak_files)
+}
+
+/// 编译语言包为二进制 .pak 格式
+fn compile_langpack_binary(
+    locale: &str,
+    translations: &std::collections::HashMap<String, String>,
+) -> Result<Vec<u8>> {
+    use std::io::Write;
+    
+    let mut buffer = Vec::new();
+    
+    // 魔数 "LNGP"
+    buffer.write_all(b"LNGP")?;
+    
+    // 版本号 (u16)
+    buffer.write_all(&1u16.to_le_bytes())?;
+    
+    // 语言代码长度和内容
+    let locale_bytes = locale.as_bytes();
+    buffer.write_all(&(locale_bytes.len() as u16).to_le_bytes())?;
+    buffer.write_all(locale_bytes)?;
+    
+    // 预留 CRC32 位置
+    let crc_pos = buffer.len();
+    buffer.write_all(&[0u8; 4])?;
+    
+    // 键值对数量
+    buffer.write_all(&(translations.len() as u32).to_le_bytes())?;
+    
+    // 写入每个键值对
+    for (key, value) in translations {
+        let key_bytes = key.as_bytes();
+        let value_bytes = value.as_bytes();
+        
+        buffer.write_all(&(key_bytes.len() as u16).to_le_bytes())?;
+        buffer.write_all(key_bytes)?;
+        
+        buffer.write_all(&(value_bytes.len() as u32).to_le_bytes())?;
+        buffer.write_all(value_bytes)?;
+    }
+    
+    // 计算并写入 CRC32
+    let crc = crc32fast::hash(&buffer[crc_pos + 4..]);
+    buffer[crc_pos..crc_pos + 4].copy_from_slice(&crc.to_le_bytes());
+    
+    Ok(buffer)
+}
+
+/// 构建安装器可执行文件
+fn build_installer_exe(
+    project_dir: &Path,
+    config: &serde_json::Value,
+    output_name: &str,
+    _release: bool,
+) -> Result<()> {
+    use nano_installer::resources::bundle::{ResourceBundle, append_bundle_to_exe};
+    
+    let dist_dir = project_dir.join("dist");
+    std::fs::create_dir_all(&dist_dir)?;
+    
+    // 从配置中读取输出文件名
+    let default_installer_name = format!("{}_Setup.exe", output_name);
+    let installer_name = config["output"]["installer_name"]
+        .as_str()
+        .unwrap_or(&default_installer_name);
+    let output_path = dist_dir.join(installer_name);
+    
+    println!("   📦 Packing resources (segmented format)...");
+    
+    // 创建资源包（分段式）
+    let mut bundle = ResourceBundle::new();
+    
+    // 1. 计算 payload 大小（解压后）
+    let payload_dir = project_dir.join(
+        config["resources"]["payload_dir"]
+            .as_str()
+            .unwrap_or("payload")
+    );
+    
+    let mut calculated_size_mb = 0.0;
+    if payload_dir.exists() {
+        let payload_size_bytes = calculate_dir_size(&payload_dir)?;
+        calculated_size_mb = payload_size_bytes as f64 / 1024.0 / 1024.0;
+        println!("      ℹ️  Calculated payload size: {:.2} MB (uncompressed)", calculated_size_mb);
+    }
+    
+    // 2. 动态更新配置中的 required_space_mb
+    let mut config_json: serde_json::Value = config.clone();
+    let fallback_size = config["install"]["required_space_mb"]
+        .as_f64()
+        .unwrap_or(100.0);
+    
+    // 使用计算的大小，如果没有则使用配置的兜底值
+    let final_required_size = if calculated_size_mb > 0.0 {
+        (calculated_size_mb * 1.2) as u64  // 加 20% 缓冲
+    } else {
+        fallback_size as u64
+    };
+    
+    if let Some(install) = config_json.get_mut("install") {
+        install["required_space_mb"] = serde_json::json!(final_required_size);
+    }
+    
+    let updated_config_data = serde_json::to_vec_pretty(&config_json)?;
+    bundle.add_config(updated_config_data.clone())?;
+    
+    // 保存更新后的 config 到 .build/ 目录以便调试
+    let build_dir = project_dir.join(".build");
+    let config_path = build_dir.join("installer_config.json");
+    std::fs::write(&config_path, &updated_config_data)?;
+    println!("      ✓ Segment 1: Config (installer_config.json, {} MB required space, saved to .build/)", final_required_size);
+    
+    // 2. 添加 UI 资源段（layouts + assets 打包为 7z）
+    let mut ui_files = std::collections::HashMap::new();
+    let mut ui_count = 0;
+    
+    // 2.1 收集 layouts
+    let layouts_dir = project_dir.join("layouts");
+    if layouts_dir.exists() {
+        for entry in walkdir::WalkDir::new(&layouts_dir)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file()) 
+        {
+            let path = entry.path();
+            let relative_path = path.strip_prefix(project_dir)
+                .context("Failed to get relative path")?;
+            let name = relative_path.to_string_lossy().replace('\\', "/");
+            let data = std::fs::read(path)?;
+            ui_files.insert(name, data);
+            ui_count += 1;
+        }
+    }
+    
+    // 2.2 收集 assets
+    let assets_dir = project_dir.join("assets");
+    if assets_dir.exists() {
+        for entry in walkdir::WalkDir::new(&assets_dir)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file())
+        {
+            let path = entry.path();
+            let relative_path = path.strip_prefix(project_dir)
+                .context("Failed to get relative path")?;
+            let name = relative_path.to_string_lossy().replace('\\', "/");
+            let data = std::fs::read(path)?;
+            ui_files.insert(name, data);
+            ui_count += 1;
+        }
+    }
+    
+    if ui_count > 0 {
+        bundle.add_ui_resources(ui_files)?;
+        
+        // 保存 ui_resources.7z 到 .build/ 目录以便调试
+        let build_dir = project_dir.join(".build");
+        if let Some(ui_segment) = bundle.segments.iter().find(|s| matches!(s.segment_type, nano_installer::resources::bundle::SegmentType::UIResources)) {
+            let ui_7z_path = build_dir.join("ui_resources.7z");
+            let data_size = ui_segment.data.len();
+            std::fs::write(&ui_7z_path, &ui_segment.data)?;
+            println!("      ✓ Segment 2: UI Resources ({} files compressed to {:.2} KB, saved to .build/ui_resources.7z)", 
+                ui_count, data_size as f64 / 1024.0);
+        }
+    } else {
+        println!("      ⚠️  Warning: No UI resources found");
+    }
+    
+    // 3. 添加语言包段（编译 JSON -> .pak，然后打包为 7z）
+    let locales_dir = project_dir.join("locales");
+    if locales_dir.exists() {
+        let pak_files = compile_locales_to_pak(&project_dir, &locales_dir)?;
+        let locale_count = pak_files.len();
+        let locale_files: std::collections::HashMap<String, Vec<u8>> = 
+            pak_files.into_iter().collect();
+        bundle.add_locales(locale_files)?;
+        
+        // 保存 locales.7z 到 .build/ 目录以便调试
+        let build_dir = project_dir.join(".build");
+        if let Some(locale_segment) = bundle.segments.iter().find(|s| matches!(s.segment_type, nano_installer::resources::bundle::SegmentType::Locales)) {
+            let locales_7z_path = build_dir.join("locales.7z");
+            let data_size = locale_segment.data.len();
+            std::fs::write(&locales_7z_path, &locale_segment.data)?;
+            println!("      ✓ Segment 3: Locales ({} languages compressed to {:.2} KB, saved to .build/locales.7z)", 
+                locale_count, data_size as f64 / 1024.0);
+        }
+    }
+    
+    // 4. 添加 payload 段
+    let configured_payload_file = config["resources"]["payload_file"]
+        .as_str()
+        .unwrap_or("payload.7z");
+    
+    let possible_payloads = vec![
+        project_dir.join(configured_payload_file),
+        project_dir.join("payload").join("app.7z"),  // payload/app.7z
+        project_dir.join("payload.7z"),
+        project_dir.join("app.7z"),
+        project_dir.join("dist").join(configured_payload_file),
+        project_dir.join("dist").join("payload.7z"),
+    ];
+    
+    let payload_data = if let Some(payload_path) = possible_payloads.iter().find(|p| p.exists()) {
+        let data = std::fs::read(payload_path)?;
+        let size_mb = data.len() as f64 / 1024.0 / 1024.0;
+        
+        // 复制 payload 到 .build/ 目录以便调试
+        let build_dir = project_dir.join(".build");
+        let build_payload_path = build_dir.join("payload.7z");
+        std::fs::copy(payload_path, &build_payload_path)?;
+        
+        println!("      ✓ Segment 4: Payload ({:.2} MB compressed, copied to .build/payload.7z)", size_mb);
+        data
+    } else if payload_dir.exists() {
+        bail!("Payload archive not found. Please create {} first", configured_payload_file);
+    } else {
+        bail!("Payload not found");
+    };
+    
+    bundle.add_payload(payload_data)?;
+    
+    // 5. 添加卸载器段
+    let uninstaller_name = config["output"]["uninstaller_name"]
+        .as_str()
+        .unwrap_or("uninst.exe");
+    let uninstaller_path = project_dir.join(".build").join(uninstaller_name);
+    
+    if uninstaller_path.exists() {
+        let uninst_data = std::fs::read(&uninstaller_path)?;
+        let uninst_size_kb = uninst_data.len() as f64 / 1024.0;
+        bundle.add_uninstaller(uninst_data)?;
+        println!("      ✓ Segment 5: Uninstaller ({:.1} KB)", uninst_size_kb);
+    } else {
+        println!("      ⚠️  Warning: Uninstaller not found at {}", uninstaller_path.display());
+    }
+    
+    // 打包资源
+    let bundle_data = bundle.pack()?;
+    let bundle_size_mb = bundle_data.len() as f64 / 1024.0 / 1024.0;
+    println!("      ✓ Bundle size: {:.2} MB", bundle_size_mb);
+    
+    // 复制 lzma-x64-unicode.exe 作为基础（完整的安装器，类似 NSIS 的 lzma-x86-unicode）
+    let possible_stub_paths: Vec<Option<PathBuf>> = vec![
+        Some(PathBuf::from("target/release/lzma-x64-unicode.exe")),
+        Some(PathBuf::from("../../target/release/lzma-x64-unicode.exe")),
+    ];
+    
+    let stub_exe = possible_stub_paths
+        .into_iter()
+        .flatten()
+        .find(|p| p.exists())
+        .context("lzma-x64-unicode.exe not found. Please compile it first with: cargo build --release -p lzma-x64-unicode")?;
+    
+    println!("   📋 Creating installer executable...");
+    let stub_size_mb = std::fs::metadata(&stub_exe)?.len() as f64 / 1024.0 / 1024.0;
+    println!("      Using stub: {} ({:.2} MB)", stub_exe.display(), stub_size_mb);
+    std::fs::copy(&stub_exe, &output_path)
+        .context("Failed to copy installer-stub.exe")?;
+    
+    // 先替换图标为项目配置的图标（必须在追加资源之前，因为 UpdateResourceW 会重写 PE 文件）
+    println!("   🎨 Replacing installer icon...");
+    let installer_icon = config["output"]["installer_icon"]
+        .as_str()
+        .or_else(|| config["resources"]["installer_icon"].as_str())
+        .unwrap_or("assets/logo.ico");
+    let icon_path = project_dir.join(installer_icon);
+    
+    if icon_path.exists() {
+        if let Err(e) = icon_replacer::replace_exe_icon(&output_path, &icon_path) {
+            println!("      ⚠️  Warning: Failed to replace icon: {}", e);
+            println!("      The installer will use the default runtime-stub icon");
+        } else {
+            println!("      ✓ Icon replaced: {}", installer_icon);
+        }
+    } else {
+        println!("      ⚠️  Warning: Icon file not found: {}", icon_path.display());
+    }
+    
+    // 替换版本信息
+    println!("   📝 Updating version info...");
+    let product_name = config["project"]["name"].as_str().unwrap_or("Unknown");
+    let version = config["project"]["version"].as_str().unwrap_or("1.0.0");
+    let publisher = config["project"]["publisher"].as_str().unwrap_or("");
+    let copyright = config["project"]["copyright"].as_str();
+    
+    let version_info = icon_replacer::VersionInfo {
+        product_name: product_name.to_string(),
+        product_version: version.to_string(),
+        file_description: format!("{} Installer", product_name),
+        file_version: version.to_string(),
+        company_name: if !publisher.is_empty() { Some(publisher.to_string()) } else { None },
+        copyright: copyright.map(|s| s.to_string()),
+    };
+    
+    if let Err(e) = icon_replacer::replace_version_info(&output_path, &version_info) {
+        println!("      ⚠️  Warning: Failed to update version info: {}", e);
+    } else {
+        let company_info = if !publisher.is_empty() { 
+            format!(" by {}", publisher) 
+        } else { 
+            String::new() 
+        };
+        println!("      ✓ Version info: {} v{}{}", product_name, version, company_info);
+    }
+    
+    // 最后追加资源包（必须在图标和版本信息之后）
+    println!("   📦 Appending resource bundle...");
+    append_bundle_to_exe(&output_path, &bundle_data)?;
+    println!("      ✓ Resource bundle appended ({:.2} MB)", bundle_data.len() as f64 / 1024.0 / 1024.0);
+    
+    let final_size_mb = std::fs::metadata(&output_path)?.len() as f64 / 1024.0 / 1024.0;
+    println!("   ✅ Installer: {} ({:.2} MB)", output_path.display(), final_size_mb);
+    
+    Ok(())
+}
+
+/// 构建卸载器可执行文件
+fn build_uninstaller_exe(
+    project_dir: &Path,
+    config: &serde_json::Value,
+    output_name: &str,
+    _release: bool,
+) -> Result<()> {
+    use nano_installer::resources::bundle::{ResourceBundle, ResourceType, append_bundle_to_exe};
+    
+    // 卸载器输出到临时构建目录，而不是 dist/
+    let build_dir = project_dir.join(".build");
+    std::fs::create_dir_all(&build_dir)?;
+    
+    // 从配置中读取卸载器文件名
+    let uninstaller_name = config["output"]["uninstaller_name"]
+        .as_str()
+        .unwrap_or("uninst.exe");
+    let output_path = build_dir.join(uninstaller_name);
+    
+    println!("   📦 Packing uninstaller resources...");
+    
+    // 创建卸载器资源包（不包含 payload.7z）
+    let mut bundle = ResourceBundle::new();
+    
+    // 1. 添加配置文件
+    let config_data = std::fs::read(project_dir.join("installer_config.json"))?;
+    bundle.add_config(config_data)?;
+    println!("      ✓ Config: installer_config.json");
+    
+    // 2. 卸载器不需要 payload.7z
+    
+    // 3. 收集 UI 资源（布局和资源文件）
+    let mut ui_files = std::collections::HashMap::new();
+    let mut ui_count = 0;
+    
+    // 3.1 添加布局文件（只需要卸载相关的布局）
+    let layouts_dir = project_dir.join("layouts");
+    if layouts_dir.exists() {
+        for entry in std::fs::read_dir(&layouts_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_file() {
+                let file_name = path.file_name().unwrap().to_string_lossy();
+                // 只包含卸载、语言选择等通用布局
+                if file_name.contains("uninstall") || 
+                   file_name.contains("language") || 
+                   file_name.contains("finish") {
+                    let relative_path = path.strip_prefix(project_dir)
+                        .context("Failed to get relative path")?;
+                    let name = relative_path.to_string_lossy().replace('\\', "/");
+                    let data = std::fs::read(&path)?;
+                    ui_files.insert(name, data);
+                    ui_count += 1;
+                }
+            }
+        }
+    }
+    println!("      ✓ Layouts: {} uninstall-related", ui_count);
+    
+    // 3.2 添加资源文件（只包含卸载器图标，不包含大量的安装界面图片）
+    let assets_dir = project_dir.join("assets");
+    let mut asset_count = 0;
+    if assets_dir.exists() {
+        for entry in std::fs::read_dir(&assets_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_file() {
+                let file_name = path.file_name().unwrap().to_string_lossy().to_lowercase();
+                // 只包含 .ico 图标文件和 uninst 相关资源
+                if file_name.ends_with(".ico") || file_name.contains("uninst") {
+                    let relative_path = path.strip_prefix(project_dir)
+                        .context("Failed to get relative path")?;
+                    let name = relative_path.to_string_lossy().replace('\\', "/");
+                    let data = std::fs::read(&path)?;
+                    ui_files.insert(name, data);
+                    asset_count += 1;
+                }
+            }
+        }
+    }
+    println!("      ✓ Assets: {} (icons only)", asset_count);
+    
+    // 3.3 将 UI 资源添加到 bundle（自动压缩为 7z）
+    bundle.add_ui_resources(ui_files)?;
+    
+    // 4. 编译并添加语言文件（JSON -> .pak）
+    let locales_dir = project_dir.join("locales");
+    if locales_dir.exists() {
+        let pak_files = compile_locales_to_pak(&project_dir, &locales_dir)?;
+        let locale_count = pak_files.len();
+        let locale_files: std::collections::HashMap<String, Vec<u8>> = 
+            pak_files.into_iter().collect();
+        bundle.add_locales(locale_files)?;
+        println!("      ✓ Locales: {}/ ({} compiled to .pak)", locales_dir.display(), locale_count);
+    }
+    
+    // 打包资源
+    let bundle_data = bundle.pack()?;
+    let bundle_size_kb = bundle_data.len() as f64 / 1024.0;
+    println!("      ✓ Bundle size: {:.2} KB", bundle_size_kb);
+    
+    // 复制 uninst.exe 作为基础（轻量级，纯 Win32 API）
+    let possible_stub_paths: Vec<Option<PathBuf>> = vec![
+        Some(PathBuf::from("target/release/uninst.exe")),
+        Some(PathBuf::from("../../target/release/uninst.exe")),
+    ];
+    
+    let stub_exe = possible_stub_paths
+        .into_iter()
+        .flatten()
+        .find(|p| p.exists())
+        .context("uninst.exe not found. Please compile it first with: cargo build --release -p uninst")?;
+    
+    println!("      Using stub: {} ({} KB)", stub_exe.display(), std::fs::metadata(&stub_exe)?.len() / 1024);
+    std::fs::copy(&stub_exe, &output_path)
+        .context("Failed to copy uninstaller-stub.exe")?;
+    
+    // 先替换图标和版本信息（必须在追加资源之前）
+    println!("   🎨 Replacing uninstaller icon...");
+    let uninstaller_icon = config["output"]["uninstaller_icon"]
+        .as_str()
+        .or_else(|| config["resources"]["uninstaller_icon"].as_str())
+        .unwrap_or("assets/uninstall.ico");
+    let icon_path = project_dir.join(uninstaller_icon);
+    
+    if icon_path.exists() {
+        if let Err(e) = icon_replacer::replace_exe_icon(&output_path, &icon_path) {
+            println!("      ⚠️  Warning: Failed to replace icon: {}", e);
+        } else {
+            println!("      ✓ Icon replaced: {}", uninstaller_icon);
+        }
+    } else {
+        println!("      ⚠️  Warning: Icon file not found: {}", icon_path.display());
+    }
+    
+    // 替换版本信息
+    println!("   📝 Updating version info...");
+    let product_name = config["project"]["name"].as_str().unwrap_or("Unknown");
+    let version = config["project"]["version"].as_str().unwrap_or("1.0.0");
+    let publisher = config["project"]["publisher"].as_str().unwrap_or("");
+    let copyright = config["project"]["copyright"].as_str();
+    
+    let version_info = icon_replacer::VersionInfo {
+        product_name: product_name.to_string(),
+        product_version: version.to_string(),
+        file_description: format!("{} Uninstaller", product_name),
+        file_version: version.to_string(),
+        company_name: if !publisher.is_empty() { Some(publisher.to_string()) } else { None },
+        copyright: copyright.map(|s| s.to_string()),
+    };
+    
+    if let Err(e) = icon_replacer::replace_version_info(&output_path, &version_info) {
+        println!("      ⚠️  Warning: Failed to update version info: {}", e);
+    } else {
+        let company_info = if !publisher.is_empty() { 
+            format!(" by {}", publisher) 
+        } else { 
+            String::new() 
+        };
+        println!("      ✓ Version info: {} v{}{}", product_name, version, company_info);
+    }
+    
+    // 最后追加资源包（必须在图标和版本信息之后）
+    println!("   📦 Appending resource bundle...");
+    append_bundle_to_exe(&output_path, &bundle_data)?;
+    println!("      ✓ Resource bundle appended ({:.2} KB)", bundle_data.len() as f64 / 1024.0);
+    
+    let final_size_kb = std::fs::metadata(&output_path)?.len() as f64 / 1024.0;
+    println!("   ✅ Uninstaller: {} ({:.2} KB)", output_path.display(), final_size_kb);
+    
+    Ok(())
+}

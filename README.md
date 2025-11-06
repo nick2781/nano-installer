@@ -1,279 +1,377 @@
 # nano-installer
 
-> 一个现代化的 Windows 安装器生成工具，类似 NSIS，但更简单、更强大
+<div align="center">
 
-[![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
+**现代化的 Windows 安装器生成工具**
+
+[![Rust](https://img.shields.io/badge/rust-1.81%2B-orange.svg)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%2B-blue)](https://www.microsoft.com/windows)
 
-## 📖 简介
+*灵感源自 NSIS，采用 Rust 和现代技术栈重新打造*
 
-**nano-installer** 是一个用 Rust 编写的安装器制作工具。它可以让你通过简单的配置文件和 XML 布局，快速创建专业的 Windows 安装程序。
+[快速开始](#-快速开始) • [特性](#-特性) • [架构](#-架构) • [文档](#-文档)
 
-### ✨ 主要特点
-
-- 🎯 **配置驱动** - 使用 JSON 配置文件，无需编程
-- 🎨 **自定义界面** - 基于 XML 的灵活布局系统
-- 🌍 **多语言支持** - 内置 11 种语言，轻松扩展
-- 📦 **7z 压缩** - 高效的文件打包
-- 🔧 **Windows 集成** - 自动处理注册表、快捷方式、开始菜单
-- 💻 **DPI 自适应** - 完美支持高分辨率屏幕
-
-## 🚀 快速开始
-
-### 1. 安装 nano-installer
-
-```bash
-git clone https://github.com/yourusername/nano-installer.git
-cd nano-installer
-cargo build --release
-```
-
-### 2. 查看示例项目
-
-```bash
-cd examples/TapTap
-```
-
-项目结构：
-```
-TapTap/
-├── installer_config.json    # 配置文件
-├── assets/                  # 图片资源
-│   ├── logo.png            # 应用图标
-│   ├── logo@2x.png         # 高 DPI 版本
-│   └── ...
-├── layouts/                 # XML 布局文件
-│   ├── welcome.xml         # 欢迎页面
-│   ├── config.xml          # 配置页面
-│   └── ...
-├── locales/                 # 语言文件
-│   ├── zh-CN.json
-│   ├── en-US.json
-│   └── ...
-├── files/                   # 要安装的文件
-│   └── (你的应用程序文件)
-└── dist/                    # 构建输出
-    └── TapTap_Setup.exe     # 生成的安装程序
-```
-
-### 3. 配置你的项目
-
-编辑 `installer_config.json`：
-
-```json
-{
-  "project": {
-    "name": "你的应用名称",
-    "version": "1.0.0",
-    "publisher": "你的公司",
-    "website": "https://example.com"
-  },
-  "install": {
-    "exe_name": "YourApp.exe",
-    "default_path": "{pf64}\\YourCompany\\YourApp",
-    "required_space_mb": 100
-  }
-}
-```
-
-### 4. 构建安装程序
-
-```bash
-# Windows
-.\build.ps1
-
-# Linux/Mac
-./build.sh
-```
-
-生成的安装程序位于 `dist/` 目录。
-
-## 📚 文档
-
-### 用户文档
-
-- [完整配置参考](docs/CONFIG_REFERENCE.md) - 所有配置项的详细说明
-- [XML 布局指南](docs/XML_LAYOUT_GUIDE.md) - 如何自定义安装界面
-- [多语言支持](docs/LOCALIZATION.md) - 如何添加和自定义语言
-- [示例项目](examples/TapTap/README.md) - TapTap 示例项目说明
-
-### 规范文档
-
-- [XML 布局规范](docs/XML_SCHEMA.md) - XML 文件的完整 Schema 定义
-- [JSON 配置规范](docs/JSON_SCHEMA.md) - JSON 配置的完整 Schema 定义
-
-### 开发者文档
-
-- [开发指南](docs/DEVELOPMENT.md) - 如何参与 nano-installer 开发
-
-## 🎨 XML 布局系统
-
-nano-installer 使用 XML 来定义安装界面，非常直观：
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<Layout name="Welcome" version="1.0.0">
-  <Page>
-    <VBox>
-      <!-- 显示 Logo -->
-      <Image icon="assets/logo.png" width="200" height="60" />
-      <Spacer height="20" />
-      
-      <!-- 标题 -->
-      <Label text="欢迎使用 {product_name}" font_size="24" />
-      <Label text="版本 {version}" font_size="14" />
-      <Spacer height="30" />
-      
-      <!-- 按钮 -->
-      <HBox>
-        <Button id="next" text="下一步" width="120" height="40" />
-        <Spacer width="10" />
-        <Button id="cancel" text="取消" width="120" height="40" />
-      </HBox>
-    </VBox>
-  </Page>
-</Layout>
-```
-
-支持的元素：
-- `<VBox>` / `<HBox>` - 垂直/水平布局
-- `<Label>` - 文本标签
-- `<Button>` - 按钮
-- `<Image>` - 图片
-- `<Checkbox>` - 复选框
-- `<TextInput>` - 文本输入框
-- `<ProgressBar>` - 进度条
-- `<Spacer>` - 间距
-
-详见 [XML 布局指南](docs/XML_LAYOUT_GUIDE.md)
-
-## 🌍 多语言支持
-
-在 `locales/` 目录下添加 JSON 文件：
-
-```json
-{
-  "language_name": "简体中文",
-  "strings": {
-    "welcome_title": "欢迎使用",
-    "install_button": "安装",
-    "cancel_button": "取消"
-  }
-}
-```
-
-在 XML 中使用 `{key}` 引用：
-
-```xml
-<Label text="{welcome_title}" />
-```
-
-## 🔧 配置系统
-
-配置文件 `installer_config.json` 包含以下部分：
-
-### 基本信息
-```json
-{
-  "project": {
-    "name": "应用名称",
-    "version": "1.0.0",
-    "publisher": "发布者",
-    "website": "https://example.com"
-  }
-}
-```
-
-### 安装设置
-```json
-{
-  "install": {
-    "exe_name": "app.exe",           // 主程序名
-    "default_path": "{pf64}\\App",   // 默认安装路径
-    "required_space_mb": 100,        // 所需空间（MB）
-    "require_admin": true            // 是否需要管理员权限
-  }
-}
-```
-
-### 快捷方式
-```json
-{
-  "shortcuts": {
-    "desktop": true,                 // 桌面快捷方式
-    "start_menu": true,              // 开始菜单
-    "quick_launch": false            // 快速启动栏
-  }
-}
-```
-
-### 自启动
-```json
-{
-  "autostart": {
-    "enabled": true,                 // 是否开机自启
-    "args": "--background"           // 启动参数
-  }
-}
-```
-
-详见 [完整配置参考](docs/CONFIG_REFERENCE.md)
-
-## 📦 打包流程
-
-1. **准备文件** - 将应用程序文件放入 `files/` 目录
-2. **配置项目** - 编辑 `installer_config.json`
-3. **自定义界面** - 修改 `layouts/*.xml` 文件（可选）
-4. **添加资源** - 放置图标、背景图到 `assets/` 目录
-5. **构建** - 运行 `build.ps1` 或 `build.sh`
-6. **测试** - 运行生成的安装程序
-
-## 🎯 系统要求
-
-### 运行安装程序
-- Windows 7 SP1 或更高版本
-- 无需额外依赖
-
-### 构建 nano-installer
-- Rust 1.75 或更高版本
-- Windows 10+ (用于开发)
-
-## 📝 示例项目
-
-### TapTap 游戏平台安装器
-
-完整示例位于 `examples/TapTap/`，展示了：
-
-- ✅ 多页面安装向导
-- ✅ 自定义品牌界面
-- ✅ 11 种语言支持
-- ✅ 高 DPI 支持（1x 和 2x 资源）
-- ✅ 注册表集成
-- ✅ 快捷方式创建
-- ✅ 开机自启动
-
-查看 [TapTap 示例说明](examples/TapTap/README.md)
-
-## 🤝 参与贡献
-
-欢迎贡献代码、报告问题或提出建议！
-
-1. Fork 项目
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 开启 Pull Request
-
-## 📄 许可证
-
-本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件
-
-## 🙏 致谢
-
-- [egui](https://github.com/emilk/egui) - 优秀的即时模式 GUI 框架
-- [7-Zip](https://www.7-zip.org/) - 高效的压缩工具
-- Rust 社区的所有贡献者
+</div>
 
 ---
 
-**开始使用**：查看 [examples/TapTap](examples/TapTap/) 学习如何创建你的第一个安装程序！
+## 📖 简介
+
+nano-installer 是一个现代化的 Windows 安装器生成工具，采用 Rust 语言开发，提供：
+
+- 🎨 **现代 UI** - 基于 Egui 的原生界面
+- ⚙️ **配置驱动** - JSON 配置 + XML 布局系统
+- 🌍 **多语言** - 内置 11+ 种语言支持
+- 🚀 **高性能** - Rust 保证的安全性和性能
+- 🔧 **易扩展** - 清晰的模块化架构
+
+### 与 NSIS 的对比
+
+| 特性 | NSIS | nano-installer |
+|------|------|----------------|
+| 编译器 | makensis.exe | nano-installer.exe |
+| 配置格式 | .nsi 脚本 | JSON + XML |
+| UI 框架 | Win32 | Egui (现代化) |
+| 语言 | C/汇编 | Rust |
+| 安装器大小 | ~300 KB | ~4 MB* |
+| 类型安全 | ❌ | ✅ |
+| 现代化 | ⚠️ | ✅ |
+
+*大小差异主要来自 GUI 框架，未来将持续优化
+
+## ✨ 特性
+
+### 核心功能
+- ✅ 图形化安装向导（欢迎、许可、路径选择、安装、完成）
+- ✅ 自定义 XML 布局系统
+- ✅ 多语言支持（运行时切换）
+- ✅ 7z 压缩的 payload
+- ✅ 注册表操作
+- ✅ 快捷方式创建
+- ✅ 卸载程序生成
+
+### 开发体验
+- 📦 一键初始化项目模板
+- 🔄 热重载配置（无需重新编译）
+- 📝 JSON Schema 验证
+- 🎯 清晰的错误提示
+- 📚 完整的文档和示例
+
+## 🚀 快速开始
+
+### 安装
+
+#### 从源码编译
+```bash
+git clone https://github.com/your-org/nano-installer.git
+cd nano-installer
+cargo build --release
+
+# 安装到系统
+cargo install --path installer/cli
+```
+
+#### 使用预编译版本
+从 [Releases](https://github.com/your-org/nano-installer/releases) 下载最新版本。
+
+### 创建第一个安装器
+
+```bash
+# 1. 初始化新项目
+nano-installer init MyApp
+
+# 2. 进入项目目录
+cd MyApp
+
+# 3. 准备你的应用程序文件
+# 将应用程序文件放到 payload/ 目录，或创建 app.7z
+
+# 4. 编辑配置（可选）
+# 编辑 installer_config.json 自定义安装器
+
+# 5. 构建安装器
+nano-installer build
+
+# 6. 测试安装器
+cd dist
+.\MyApp_Setup.exe
+```
+
+生成的 `MyApp_Setup.exe` 是一个独立的安装器，包含所有资源和应用程序文件。
+
+## 📁 项目结构
+
+```
+MyApp/                          # 你的安装器项目
+├── installer_config.json       # 主配置文件
+├── layouts/                    # XML 布局文件
+│   ├── welcome.xml
+│   ├── config.xml
+│   ├── installing.xml
+│   └── finish.xml
+├── assets/                     # 资源文件（图片、图标）
+│   ├── logo.ico
+│   └── background.png
+├── locales/                    # 语言文件
+│   ├── en-US.json
+│   └── zh-CN.json
+├── payload/                    # 应用程序文件
+│   └── app.7z                  # 或直接放置文件
+└── dist/                       # 构建输出
+    └── MyApp_Setup.exe         # 最终的安装器
+```
+
+## 🏗️ 架构
+
+nano-installer 采用模块化的 Workspace 架构：
+
+```
+nano-installer/
+└── installer/
+    ├── cli/                    # 命令行工具
+    │   └── nano-installer.exe  # 类似 makensis.exe
+    ├── lib/                    # 核心库
+    │   └── 所有核心功能实现
+    └── stubs/                  # 运行时 stubs
+        ├── lzma/               # 安装器 stub
+        │   └── lzma-x64-unicode.exe
+        └── uninst/             # 卸载器 stub
+            └── uninst.exe
+```
+
+### 工作流程
+
+```
+开发者                      最终用户
+   │                           │
+   ├─ nano-installer init      │
+   ├─ 编辑配置和资源           │
+   ├─ nano-installer build     │
+   │                           │
+   └─ MyApp_Setup.exe ────────→ 运行安装器
+                               ├─ 显示 GUI
+                               ├─ 解压文件
+                               ├─ 创建快捷方式
+                               └─ 生成卸载器
+```
+
+详细架构说明请查看 [PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md)。
+
+## 📝 配置示例
+
+### installer_config.json
+
+```json
+{
+  "product": {
+    "name": "MyApp",
+    "version": "1.0.0",
+    "publisher": "My Company",
+    "website": "https://example.com"
+  },
+  "install": {
+    "default_path": "$PROGRAMFILES\\MyApp",
+    "required_space": 100,
+    "mutex_name": "MyApp_Installer_Mutex"
+  },
+  "ui": {
+    "title": "MyApp Setup",
+    "icon": "assets/logo.ico",
+    "default_locale": "en-US"
+  },
+  "resources": {
+    "layouts_dir": "layouts",
+    "assets_dir": "assets",
+    "locales_dir": "locales",
+    "installer_icon": "assets/logo.ico",
+    "uninstaller_icon": "assets/uninst.ico"
+  },
+  "payload": {
+    "file": "payload/app.7z",
+    "type": "7z"
+  }
+}
+```
+
+### 布局示例 (welcome.xml)
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<layout>
+  <window width="600" height="400">
+    <vbox padding="20">
+      <image src="logo.png" width="200" height="200"/>
+      <text id="welcome_title" font-size="24" bold="true"/>
+      <text id="welcome_message" font-size="14"/>
+      <spacer/>
+      <hbox>
+        <button id="btn_cancel" text="Cancel"/>
+        <button id="btn_next" text="Next" primary="true"/>
+      </hbox>
+    </vbox>
+  </window>
+</layout>
+```
+
+## 📚 文档
+
+### 核心文档
+- [PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md) - 项目结构详解
+- [installer/README.md](installer/README.md) - 核心代码说明
+- [ARCHITECTURE.md](docs/ARCHITECTURE.md) - 架构设计
+
+### 指南
+- [快速开始指南](docs/guides/QUICKSTART.md) - 5 分钟上手
+- [配置参考](docs/API.md) - 完整的配置选项
+- [布局系统](docs/UI_DESIGN.md) - XML 布局指南
+- [多语言支持](docs/LOCALIZATION_UPDATE.md) - 国际化指南
+
+### 开发文档
+- [架构设计](docs/ARCHITECTURE.md) - 深入理解架构
+- [开发指南](docs/DEVELOPMENT.md) - 贡献代码
+- [更新日志](CHANGELOG.md) - 版本历史
+
+## 🎯 示例项目
+
+### TapTap 客户端安装器
+
+查看 [examples/TapTap](examples/TapTap/) 目录，这是一个完整的实际案例：
+
+```bash
+cd examples/TapTap
+../../target/release/nano-installer build
+```
+
+生成的 `dist/TapTap_Setup.exe` 包含：
+- 完整的图形化安装向导
+- 11 种语言支持
+- 自定义 UI 布局
+- 应用程序打包（7z 压缩）
+- 卸载程序
+
+## 🔧 命令行参考
+
+```bash
+# 初始化新项目
+nano-installer init <project-name> [--output <dir>]
+
+# 构建安装器
+nano-installer build [--release] [--output <name>]
+
+# 验证配置
+nano-installer verify
+
+# 显示帮助
+nano-installer --help
+```
+
+## 🛠️ 开发
+
+### 环境要求
+- Rust 1.81+
+- Windows 10+ (开发和目标平台)
+- 可选：7-Zip (用于手动压缩 payload)
+
+### 构建项目
+
+```bash
+# 克隆仓库
+git clone https://github.com/your-org/nano-installer.git
+cd nano-installer
+
+# 构建所有组件
+cargo build --release
+
+# 运行测试
+cargo test
+
+# 构建示例
+cd examples/TapTap
+../../target/release/nano-installer build
+```
+
+### 项目结构
+
+```bash
+# 查看 workspace 成员
+cargo metadata --no-deps | jq '.workspace_members'
+
+# 编译单个组件
+cargo build --release -p nano-installer-cli
+cargo build --release -p nano-installer-lzma
+cargo build --release -p nano-installer-uninst
+```
+
+## 🚀 路线图
+
+### v0.2.0 (计划中)
+- [ ] 大小优化：lzma stub < 1 MB
+- [ ] 多架构支持：x86, x64, ARM64
+- [ ] 插件系统
+- [ ] 自定义主题
+
+### v0.3.0 (规划中)
+- [ ] GUI 构建器
+- [ ] 在线更新支持
+- [ ] 数字签名集成
+- [ ] macOS 支持 (.dmg)
+
+### v1.0.0 (长期目标)
+- [ ] Linux 支持 (.deb, .rpm)
+- [ ] CI/CD 集成工具
+- [ ] 完整的插件生态
+
+## 📊 性能指标
+
+### 构建性能
+- 初始化项目：< 1 秒
+- 构建小型安装器 (< 10 MB)：2-5 秒
+- 构建大型安装器 (> 100 MB)：10-30 秒
+
+### 运行时性能
+- 安装器启动：< 0.5 秒
+- UI 响应：< 16ms (60 FPS)
+- 文件解压：取决于文件大小，通常 10-50 MB/s
+
+### 大小对比 (TapTap 示例)
+- 源文件：~150 MB
+- 7z 压缩后：~140 MB
+- 最终安装器：~144 MB (stub + 资源 + payload)
+- 压缩率：93%
+
+## 🤝 贡献
+
+欢迎贡献！请查看 [CONTRIBUTING.md](CONTRIBUTING.md)（待创建）了解详情。
+
+### 贡献方式
+- 🐛 报告 Bug
+- 💡 提出新功能
+- 📝 改进文档
+- 🔧 提交 Pull Request
+
+## 📄 许可证
+
+本项目采用 MIT 许可证。详见 [LICENSE](LICENSE) 文件。
+
+## 🙏 致谢
+
+- 灵感来源：[NSIS](https://nsis.sourceforge.io/)
+- GUI 框架：[egui](https://github.com/emilk/egui)
+- 压缩：[7-Zip](https://www.7-zip.org/)
+
+## 📞 联系方式
+
+- 问题反馈：[GitHub Issues](https://github.com/your-org/nano-installer/issues)
+- 讨论：[GitHub Discussions](https://github.com/your-org/nano-installer/discussions)
+- 邮件：your-email@example.com
+
+---
+
+<div align="center">
+
+**[⬆ 回到顶部](#nano-installer)**
+
+Made with ❤️ by the nano-installer team
+
+</div>

@@ -1,31 +1,34 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Layout name="config" version="1.0">
-  <Page id="config">
-    <VBox padding="20" spacing="10">
-      <Label text="@config.title" font_size="20" />
+<Layout name="Config" version="1.0.0">
+  <Page>
+    <VBox>
+      <Label text="安装选项" text_i18n="config.title" font_size="20" />
       <Spacer height="20" />
-      
-      <VBox spacing="5">
-        <Label text="@config.install_path" />
-        <HBox spacing="10">
+      <VBox>
+        <Label text="安装路径：" text_i18n="config.path" />
+        <HBox>
           <TextInput id="install_path" text="{default_path}" width="300" />
-          <Button id="browse" text="@common.browse" width="80" height="28" />
+          <Spacer width="10" />
+          <Button id="browse" text="浏览..." text_i18n="config.change_path" width="80" />
         </HBox>
       </VBox>
-      
       <Spacer height="20" />
-      
-      <Checkbox id="desktop_shortcut" text="@config.desktop_shortcut" checked="true" />
-      <Checkbox id="start_menu" text="@config.start_menu" checked="true" />
-      <Checkbox id="autostart" text="@config.autostart" checked="false" />
-      
+      <VBox>
+        <Checkbox id="desktop_shortcut" text="创建桌面快捷方式" text_i18n="config.desktop_shortcut" checked="true" />
+        <Checkbox id="start_menu" text="添加到开始菜单" text_i18n="config.start_menu" checked="true" />
+        <Checkbox id="autostart" text="开机自启" text_i18n="config.auto_start" checked="false" />
+      </VBox>
+      <Spacer height="20" />
+      <VBox>
+        <Label text="自定义安装选项：" text_i18n="config.custom_options_label" />
+        <Button id="custom_options" text="自定义安装" text_i18n="config.custom_options_button" width="120" />
+      </VBox>
       <Spacer height="30" />
-      <HBox spacing="10">
-        <Button id="back" text="@common.back" width="100" height="32" />
-        <Spacer />
-        <Button id="install" text="@common.install" width="100" height="32" style="primary" />
+      <HBox>
+        <Button id="back" text="上一步" text_i18n="button.back" width="100" />
+        <Spacer width="10" />
+        <Button id="install" text="安装" text_i18n="config.install" width="100" />
       </HBox>
     </VBox>
   </Page>
 </Layout>
-

@@ -24,5 +24,8 @@
   "uninstall.description": "确定要从计算机中移除 TapTap 吗？",
   "uninstall.keep_user_data": "保留用户数据和设置",
   "uninstall.button": "卸载",
-  "button.cancel": "取消"
+  "button.cancel": "取消",
+  "button.back": "上一步",
+  "config.custom_options_label": "自定义安装选项：",
+  "config.custom_options_button": "自定义安装"
 }

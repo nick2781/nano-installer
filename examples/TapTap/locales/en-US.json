@@ -24,5 +24,8 @@
   "uninstall.description": "Are you sure you want to remove TapTap from your computer?",
   "uninstall.keep_user_data": "Keep user data and settings",
   "uninstall.button": "Uninstall",
-  "button.cancel": "Cancel"
+  "button.cancel": "Cancel",
+  "button.back": "Back",
+  "config.custom_options_label": "Custom Installation Options:",
+  "config.custom_options_button": "Customize"
 }
