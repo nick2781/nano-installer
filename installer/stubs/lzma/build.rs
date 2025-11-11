@@ -24,11 +24,24 @@ fn set_icon() {
         return;
     }
     
-    // 使用 winres 嵌入图标
-    if let Err(e) = winres::WindowsResource::new()
-        .set_icon(icon_path)
-        .compile()
+    // 使用 winres 嵌入图标和子系统设置
+    let mut res = winres::WindowsResource::new();
+    res.set_icon(icon_path);
+    
+    // Release 模式下使用 Windows 子系统（无控制台）
+    // Debug 模式下使用 Console 子系统（有控制台，方便调试）
+    #[cfg(not(debug_assertions))]
     {
+        // 注意：winres 会自动处理这个，我们通过 Cargo.toml 控制
+        println!("cargo:warning=Building in RELEASE mode - GUI application (no console)");
+    }
+    
+    #[cfg(debug_assertions)]
+    {
+        println!("cargo:warning=Building in DEBUG mode - Console application (for debugging)");
+    }
+    
+    if let Err(e) = res.compile() {
         println!("cargo:warning=Failed to compile Windows resources: {}", e);
     } else {
         println!("cargo:warning=Successfully set installer stub icon: {}", icon_path);

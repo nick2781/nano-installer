@@ -27,5 +27,10 @@
   "button.cancel": "取消",
   "button.back": "上一步",
   "config.custom_options_label": "自定义安装选项：",
-  "config.custom_options_button": "自定义安装"
+  "config.custom_options_button": "自定义安装",
+  "config.agree": "同意",
+  "config.agreement": "用户协议",
+  "config.and": "和",
+  "config.policy": "隐私政策",
+  "config.show_more": "自定义安装"
 }

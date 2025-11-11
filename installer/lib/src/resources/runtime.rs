@@ -70,17 +70,22 @@ impl RuntimeResources {
         
         // 确保 UI 资源已解压
         let ui_files = resources.ui_files.get_or_try_init(|| {
+            tracing::debug!("Initializing UI files from bundle...");
             resources.bundle.decompress_segment(SegmentType::UIResources)
         })?;
         
-        let path = if name.starts_with("layouts/") {
-            name.to_string()
-        } else {
-            format!("layouts/{}", name)
-        };
+        tracing::debug!("UI files cache has {} entries", ui_files.len());
+        if ui_files.len() < 10 {
+            for key in ui_files.keys() {
+                tracing::debug!("  - {}", key);
+            }
+        }
         
-        let data = ui_files.get(&path)
+        // 文件名已经包含完整路径（layouts/xxx.xml），直接使用
+        let data = ui_files.get(name)
             .with_context(|| format!("Layout not found: {}", name))?;
+        
+        tracing::debug!("Layout {} loaded, size: {} bytes", name, data.len());
         
         String::from_utf8(data.clone())
             .context("Layout file is not valid UTF-8")
@@ -97,14 +102,11 @@ impl RuntimeResources {
             resources.bundle.decompress_segment(SegmentType::UIResources)
         })?;
         
-        let path = if name.starts_with("assets/") {
-            name.to_string()
-        } else {
-            format!("assets/{}", name)
-        };
-        
-        let data = ui_files.get(&path)
+        // 文件名已经包含完整路径（assets/xxx.png），直接使用
+        let data = ui_files.get(name)
             .with_context(|| format!("Asset not found: {}", name))?;
+        
+        tracing::debug!("Asset {} loaded, size: {} bytes", name, data.len());
         
         Ok(data.clone())
     }

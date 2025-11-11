@@ -1,17 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Layout name="uninstall" version="1.0">
-    <Page>
-        <Image icon="logo.png" x="50" y="50" width="128" height="128" />
-        
-        <Label text="卸载 TapTap" text_i18n="uninstall.title" x="50" y="200" width="500" height="30" font_size="24" />
-        
-        <Label text="确定要从计算机中移除 TapTap 吗？" text_i18n="uninstall.description" x="50" y="250" width="500" height="60" />
-        
-        <Checkbox id="keep_data" text="保留用户数据和设置" text_i18n="uninstall.keep_user_data" x="50" y="330" width="500" height="24" checked="false" />
-        
-        <Button id="uninstall" text="卸载" text_i18n="uninstall.button" x="350" y="500" width="120" height="40" />
-        
-        <Button id="cancel" text="取消" text_i18n="button.cancel" x="480" y="500" width="120" height="40" />
-    </Page>
+<Layout name="Uninstall" version="1.0.0">
+  <Page>
+    <VBox>
+      <Image icon="assets/logo.png" width="128" height="128" />
+      <Spacer height="20" />
+      <Label text="卸载 TapTap" text_i18n="uninstall.title" font_size="24" />
+      <Spacer height="20" />
+      <Label text="确定要从计算机中移除 TapTap 吗？" text_i18n="uninstall.description" font_size="14" />
+      <Spacer height="20" />
+      <Checkbox id="keep_data" text="保留用户数据和设置" text_i18n="uninstall.keep_user_data" checked="false" />
+      <Spacer height="30" />
+      <HBox>
+        <Button id="uninstall" text="卸载" text_i18n="uninstall.button" width="120" height="40" />
+        <Spacer width="10" />
+        <Button id="cancel" text="取消" text_i18n="button.cancel" width="120" height="40" />
+      </HBox>
+    </VBox>
+  </Page>
 </Layout>
-

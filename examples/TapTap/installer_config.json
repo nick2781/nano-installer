@@ -2,7 +2,7 @@
   "project": {
     "name": "TapTap",
     "version": "1.0.0",
-    "publisher": "上海易玩网络科技有限公司",
+    "publisher": "易玩网络(上海)科技有限公司",
     "copyright": "© 2025 TapTap",
     "output_name": "TapTap_Setup"
   },
@@ -26,7 +26,7 @@
   "registry": {
     "install_path_key": "HKLM\\\\Software\\\\TapTap",
     "uninstall_key": "HKLM\\\\Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\TapTap",
-    "help_link": "https://www.taptap.io/help"
+    "help_link": "https://www.taptap.cn/help"
   },
   "shortcuts": {
     "desktop_shortcut": true,
@@ -46,7 +46,7 @@
     "show_language_selector": true
   },
   "links": {
-    "terms_of_service": "https://www.taptap.io/terms",
+    "terms_of_service": "https://www.taptap.cn/terms",
     "privacy_policy": "https://www.taptap.io/privacy"
   },
   "resources": {
@@ -68,12 +68,7 @@
   "wizard": {
     "pages": [
       {
-        "id": "welcome",
-        "layout": "layouts/welcome.xml",
-        "title": "欢迎使用 TapTap"
-      },
-      {
-        "id": "install_path",
+        "id": "config",
         "layout": "layouts/config.xml",
         "title": "安装选项"
       },

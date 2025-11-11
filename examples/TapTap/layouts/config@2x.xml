@@ -1,170 +1,61 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Layout width="1148" height="716" dpi="2x">
-  <!-- 背景图片 -->
-  <Image 
-    icon="assets/bg_main@2x.png" 
-    x="0" y="0" 
-    width="1148" height="716"
-    fit="fill"
-  />
-  
-  <!-- 关闭按钮 -->
-  <Button 
-    id="close_button"
-    icon="assets/btn_close@2x.png" 
-    x="1118" y="10" 
-    width="30" height="30"
-    action="close"
-  />
-  
-  <!-- 语言选择 -->
-  <ComboBox 
-    id="language_selector"
-    x="1018" y="10" 
-    width="90" height="30"
-    options="en-US,zh-CN,ja,ko,th,vi,ru,es,pt,id"
-    default="zh-CN"
-  />
-  
-  <!-- 标题 -->
-  <Label 
-    text="选择安装选项"
-    x="574" y="100" 
-    width="400" height="60"
-    font_size="32"
-    font_weight="bold"
-    color="#FFFFFF"
-    align="center"
-  />
-  
-  <!-- 安装路径 -->
-  <Label 
-    text="安装路径�?
-    x="100" y="200" 
-    width="120" height="40"
-    font_size="18"
-    color="#FFFFFF"
-  />
-  
-  <TextInput 
-    id="install_path"
-    x="240" y="200" 
-    width="400" height="40"
-    font_size="16"
-    background_color="rgba(255,255,255,0.1)"
-    border_color="#00C4B2"
-    text="C:\Program Files\TapTap"
-  />
-  
-  <Button 
-    id="browse_button"
-    icon="assets/btn_dialog@2x.png" 
-    x="660" y="200" 
-    width="120" height="40"
-    text="浏览"
-    font_size="16"
-    action="browse_path"
-  />
-  
-  <!-- 自定义选项按钮 -->
-  <Button 
-    id="custom_options_button"
-    icon="assets/btn_dialog@2x.png" 
-    x="100" y="280" 
-    width="200" height="50"
-    text="自定义选项"
-    font_size="18"
-    action="toggle_custom"
-    arrow="down"
-  />
-  
-  <!-- 自定义选项面板 -->
-  <VBox 
-    id="custom_panel"
-    x="100" y="350" 
-    width="800" height="200"
-    background="assets/bg_color@2x.png"
-    visible="false"
-  >
-    <!-- 协议和政�?-->
-    <HBox x="0" y="0" width="800" height="40">
-      <CheckBox 
-        id="agree_terms"
-        x="20" y="10" 
-        width="20" height="20"
-        checked="true"
-      />
-      <Label 
-        text="我同意《用户协议》和《隐私政策�?
-        x="50" y="5" 
-        width="400" height="30"
-        font_size="16"
-        color="#FFFFFF"
-      />
-    </HBox>
-    
-    <!-- 分隔�?-->
-    <Divider 
-      x="20" y="50" 
-      width="760" height="2"
-      color="#00C4B2"
-      opacity="0.2"
-    />
-    
-    <!-- 桌面快捷方式 -->
-    <HBox x="0" y="70" width="800" height="40">
-      <CheckBox 
-        id="desktop_shortcut"
-        x="20" y="10" 
-        width="20" height="20"
-        checked="true"
-      />
-      <Label 
-        text="创建桌面快捷方式"
-        x="50" y="5" 
-        width="200" height="30"
-        font_size="16"
-        color="#FFFFFF"
-      />
-    </HBox>
-    
-    <!-- 开始菜单快捷方�?-->
-    <HBox x="0" y="120" width="800" height="40">
-      <CheckBox 
-        id="start_menu_shortcut"
-        x="20" y="10" 
-        width="20" height="20"
-        checked="true"
-      />
-      <Label 
-        text="创建开始菜单快捷方�?
-        x="50" y="5" 
-        width="200" height="30"
-        font_size="16"
-        color="#FFFFFF"
-      />
-    </HBox>
-  </VBox>
-  
-  <!-- 安装按钮 -->
-  <Button 
-    id="install_button"
-    icon="assets/btn_primary@2x.png" 
-    x="574" y="600" 
-    width="200" height="60"
-    text="开始安�?
-    font_size="20"
-    action="install"
-  />
-  
-  <!-- 返回按钮 -->
-  <Button 
-    id="back_button"
-    icon="assets/btn_dialog@2x.png" 
-    x="374" y="600" 
-    width="120" height="60"
-    text="返回"
-    font_size="20"
-    action="back"
-  />
+<!-- 配置页面 @2x - 完全匹配 NSIS configpage2x.xml -->
+<Layout name="ConfigPage" version="1.0.0" width="1148" height="716" dpi="2x">
+  <Page background="assets/bg_main@2x.png">
+    <VBox spacing="0">
+      <!-- 顶部空白 192px (96*2) -->
+      <Spacer height="192" />
+
+      <!-- Logo：160px 高 (80*2)，宽度 296px (148*2)，居中（左右各 426px）-->
+      <HBox height="160">
+        <Spacer width="426" />
+        <Image icon="assets/logo@2x.png" width="296" height="160" />
+        <Spacer width="426" />
+      </HBox>
+
+      <!-- 安装按钮：上边距 110px (55*2)，左右各 334px (167*2) -->
+      <Spacer height="110" />
+      <HBox height="80">
+        <Spacer width="334" />
+        <Button id="install" text="安装" text_i18n="config.install" width="480" height="80" style="primary" font_size="28" color="#FFFFFFFF"
+                enabled="false"
+                normalimage="assets/btn_primary@2x.png"
+                hotimage="assets/btn_hover@2x.png"
+                pushedimage="assets/btn_hover@2x.png"
+                disabledimage="assets/btn_disabled@2x.png" />
+        <Spacer width="334" />
+      </HBox>
+
+      <!-- 同意协议区域：上边距70px (35*2)，HBox 高度174px (87*2)，内边距 inset="80,70,80,70" -->
+      <Spacer height="70" />
+
+      <!-- inset="80,70,80,70" = padding 左80, 上70, 右80, 下70 (40*2, 35*2) -->
+      <!-- padding 格式: (top, right, bottom, left)，所以 inset(left,top,right,bottom) 转换为 padding(top,right,bottom,left) = (70,80,70,80) -->
+      <HBox height="104" padding="70,80,70,80">
+        <!-- CheckBox: width=220 (110*2) -->
+        <Checkbox id="agree_license" text="同意" text_i18n="config.agree" width="220" height="40" font_size="24" color="#FFE4E8EC"
+                  normalimage="assets/checkbox-0@2x.png"
+                  selectedimage="assets/checkbox-2@2x.png"
+                  textpadding="40,0,0,0" />
+
+        <!-- 用户协议按钮: width=144 (72*2) -->
+        <Button id="agreement" text="用户协议" text_i18n="config.agreement" width="144" height="40" style="text" font_size="24" color="#FFFFFFFF" />
+
+        <!-- "和" 标签: width=20 (10*2) -->
+        <Label text="和" text_i18n="config.and" width="20" height="40" font_size="24" color="#FFE4E8EC" />
+
+        <!-- 隐私政策按钮: width=144 (72*2) -->
+        <Button id="policy" text="隐私政策" text_i18n="config.policy" width="144" height="40" style="text" font_size="24" color="#FFFFFFFF" />
+
+        <!-- 弹性空间（填充中间）-->
+        <Spacer />
+
+        <!-- 自定义安装按钮: width=160 (80*2)（右对齐）-->
+        <Button id="show_more" text="自定义安装" text_i18n="config.show_more" width="160" height="40" style="text" font_size="24" color="#FFFFFFFF" />
+      </HBox>
+
+      <!-- 底部剩余空间 64px (32*2) -->
+      <Spacer height="64" />
+    </VBox>
+  </Page>
 </Layout>

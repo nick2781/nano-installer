@@ -78,9 +78,9 @@
   "ui": {
     "dpi_aware": true,
     "dpi_threshold": 144,
-    "expanded_height": 518,
-    "window_height": 358,
-    "window_width": 574
+    "expanded_height": 1036,
+    "window_height": 716,
+    "window_width": 1148
   },
   "uninstall": {
     "cleanup_game_registry": true,
@@ -100,14 +100,9 @@
   "wizard": {
     "pages": [
       {
-        "id": "welcome",
-        "layout": "layouts/welcome.xml",
-        "title": "欢迎使用 TapTap"
-      },
-      {
-        "id": "install_path",
+        "id": "config",
         "layout": "layouts/config.xml",
-        "title": "安装选项"
+        "title": "欢迎使用 TapTap"
       },
       {
         "id": "installing",

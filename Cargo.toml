@@ -50,7 +50,7 @@ crc32fast = "1.3"
 sha2 = "0.10"
 
 # XML 解析库
-quick-xml = "0.31"
+roxmltree = "0.20"
 
 # 正则表达式库
 regex = "1.10"

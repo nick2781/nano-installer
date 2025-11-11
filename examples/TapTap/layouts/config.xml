@@ -1,34 +1,59 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Layout name="Config" version="1.0.0">
-  <Page>
-    <VBox>
-      <Label text="安装选项" text_i18n="config.title" font_size="20" />
-      <Spacer height="20" />
-      <VBox>
-        <Label text="安装路径：" text_i18n="config.path" />
-        <HBox>
-          <TextInput id="install_path" text="{default_path}" width="300" />
-          <Spacer width="10" />
-          <Button id="browse" text="浏览..." text_i18n="config.change_path" width="80" />
-        </HBox>
-      </VBox>
-      <Spacer height="20" />
-      <VBox>
-        <Checkbox id="desktop_shortcut" text="创建桌面快捷方式" text_i18n="config.desktop_shortcut" checked="true" />
-        <Checkbox id="start_menu" text="添加到开始菜单" text_i18n="config.start_menu" checked="true" />
-        <Checkbox id="autostart" text="开机自启" text_i18n="config.auto_start" checked="false" />
-      </VBox>
-      <Spacer height="20" />
-      <VBox>
-        <Label text="自定义安装选项：" text_i18n="config.custom_options_label" />
-        <Button id="custom_options" text="自定义安装" text_i18n="config.custom_options_button" width="120" />
-      </VBox>
-      <Spacer height="30" />
-      <HBox>
-        <Button id="back" text="上一步" text_i18n="button.back" width="100" />
-        <Spacer width="10" />
-        <Button id="install" text="安装" text_i18n="config.install" width="100" />
+<!-- 配置页面 - 完全匹配 NSIS configpage.xml -->
+<Layout name="ConfigPage" version="1.0.0">
+  <Page background="assets/bg_main.png" width="574" height="358">
+    <VBox spacing="0">
+      <!-- 顶部空白 96px - 对应 NSIS: <Control height="96" /> -->
+      <Spacer height="96" />
+
+      <!-- Logo：80px 高 - 对应 NSIS: <Control height="80" width="148" bkimage="assets/logo.png" padding="213,0,213,0" /> -->
+      <HBox height="80">
+        <Spacer width="213" />
+        <Image icon="assets/logo.png" width="148" height="80" />
+        <Spacer width="213" />
       </HBox>
+
+      <!-- 安装按钮区域：55px(上边距) + 40px(按钮高) = 95px -->
+      <!-- 对应 NSIS: <Button padding="167,55,167,0" width="240" height="40" /> -->
+      <Spacer height="55" />
+      <HBox height="40">
+        <Spacer width="167" />
+        <Button id="install" text="安装" text_i18n="config.install" width="240" height="40" style="primary" font_size="14" color="#FFFFFFFF"
+                enabled="false"
+                normalimage="assets/btn_primary.png"
+                hotimage="assets/btn_hover.png"
+                pushedimage="assets/btn_hover.png"
+                disabledimage="assets/btn_disabled.png" />
+        <Spacer width="167" />
+      </HBox>
+
+      <!-- 复选框区域：总高度 87px，内边距上35px + 内容17px + 下35px -->
+      <!-- 对应 NSIS: <HorizontalLayout height="87" inset="40,35,40,35"> -->
+      <!-- padding 格式: (top, right, bottom, left)，所以 inset(left,top,right,bottom) 转换为 padding(top,right,bottom,left) = (35,40,35,40) -->
+      <HBox height="87" padding="35,40,35,40">
+        <!-- CheckBox: width=110 -->
+        <Checkbox id="agree_license" text="同意" text_i18n="config.agree" width="110" height="20" font_size="12" color="#FFE4E8EC"
+                  normalimage="assets/checkbox-0.png"
+                  selectedimage="assets/checkbox-2.png"
+                  textpadding="20,0,0,0" />
+
+        <!-- 用户协议按钮: width=72 -->
+        <Button id="agreement" text="用户协议" text_i18n="config.agreement" width="72" height="20" style="text" font_size="12" color="#FFFFFFFF" />
+
+        <!-- "和" 标签: width=10 -->
+        <Label text="和" text_i18n="config.and" width="10" height="20" font_size="12" color="#FFE4E8EC" />
+
+        <!-- 隐私政策按钮: width=72 -->
+        <Button id="policy" text="隐私政策" text_i18n="config.policy" width="72" height="20" style="text" font_size="12" color="#FFFFFFFF" />
+
+        <!-- 空白占位 -->
+        <Spacer width="20" />
+
+        <!-- 自定义安装按钮: width=80（右对齐）-->
+        <Button id="show_more" text="自定义安装" text_i18n="config.show_more" width="80" height="20" style="text" font_size="12" color="#FFFFFFFF" />
+      </HBox>
+
+      <!-- 总计：96 + 80 + 55 + 40 + 87 = 358px -->
     </VBox>
   </Page>
 </Layout>

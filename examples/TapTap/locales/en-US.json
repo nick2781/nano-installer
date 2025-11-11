@@ -27,5 +27,10 @@
   "button.cancel": "Cancel",
   "button.back": "Back",
   "config.custom_options_label": "Custom Installation Options:",
-  "config.custom_options_button": "Customize"
+  "config.custom_options_button": "Customize",
+  "config.agree": "Agree",
+  "config.agreement": "User Agreement",
+  "config.and": "and",
+  "config.policy": "Privacy Policy",
+  "config.show_more": "Custom Install"
 }

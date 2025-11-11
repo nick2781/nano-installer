@@ -1,3 +1,6 @@
 dist/*
 target/*
 *.7z
+.claude
+.idea
+examples/TapTap/.build

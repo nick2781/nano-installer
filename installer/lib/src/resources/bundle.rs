@@ -269,6 +269,12 @@ impl ResourceBundle {
             });
         }
         
+        tracing::debug!("unpack: Total segments parsed: {}", segments.len());
+        for (i, seg) in segments.iter().enumerate() {
+            tracing::debug!("  Segment {}: type={:?}, name={}, size={}, compressed={}", 
+                i+1, seg.segment_type, seg.name, seg.data.len(), seg.compressed);
+        }
+        
         Ok(Self { segments })
     }
 
@@ -321,11 +327,15 @@ impl ResourceBundle {
     fn compress_files_to_7z(files: Vec<(String, Vec<u8>)>) -> Result<Vec<u8>> {
         use lzma_rs::lzma_compress;
         
+        eprintln!("      [DEBUG] compress_files_to_7z: Compressing {} files", files.len());
+        
         // 首先将所有文件打包成一个未压缩的归档
         let mut uncompressed = Vec::new();
         
         // 写入文件数量
         uncompressed.write_all(&(files.len() as u32).to_le_bytes())?;
+        
+        eprintln!("      [DEBUG] compress_files_to_7z: Wrote file count: {}", files.len());
         
         // 写入每个文件
         for (name, data) in &files {
@@ -340,6 +350,8 @@ impl ResourceBundle {
         let mut compressed = Vec::new();
         lzma_compress(&mut Cursor::new(&uncompressed), &mut compressed)
             .context("Failed to compress with LZMA")?;
+        
+        eprintln!("      [DEBUG] compress_files_to_7z: Compressed {} bytes -> {} bytes", uncompressed.len(), compressed.len());
         
         Ok(compressed)
     }
@@ -369,33 +381,52 @@ impl ResourceBundle {
 
     /// 解压段数据（支持 LZMA 和 gzip 格式）
     pub fn decompress_segment(&self, segment_type: SegmentType) -> Result<HashMap<String, Vec<u8>>> {
+        tracing::debug!("Decompressing segment: {:?}", segment_type);
+        
         let segment = self.get_segment(segment_type)
             .context("Segment not found")?;
+        
+        tracing::debug!("Segment found: name={}, compressed={}, size={} bytes", 
+            segment.name, segment.compressed, segment.data.len());
         
         if !segment.compressed {
             // 不压缩的段，直接返回
             let mut map = HashMap::new();
             map.insert(segment.name.clone(), segment.data.clone());
+            tracing::debug!("Segment not compressed, returning as-is");
             return Ok(map);
         }
         
         // 尝试作为 LZMA 格式解压
+        tracing::debug!("Trying LZMA decompression...");
         if let Ok(files) = Self::decompress_lzma(&segment.data) {
+            tracing::debug!("LZMA decompression succeeded, {} files extracted", files.len());
             return Ok(files);
         }
         
         // 回退到 gzip 格式（兼容旧版本）
-        Self::decompress_gzip(&segment.data)
+        tracing::debug!("LZMA failed, trying gzip...");
+        let result = Self::decompress_gzip(&segment.data);
+        if let Ok(ref files) = result {
+            tracing::debug!("Gzip decompression succeeded, {} files extracted", files.len());
+        } else {
+            tracing::error!("All decompression methods failed");
+        }
+        result
     }
     
     /// 解压 LZMA 格式数据
     fn decompress_lzma(data: &[u8]) -> Result<HashMap<String, Vec<u8>>> {
         use lzma_rs::lzma_decompress;
         
+        tracing::debug!("Starting LZMA decompression, compressed size: {} bytes", data.len());
+        
         // 使用 LZMA 解压
         let mut decompressed = Vec::new();
         lzma_decompress(&mut Cursor::new(data), &mut decompressed)
             .context("Failed to decompress LZMA data")?;
+        
+        tracing::debug!("LZMA decompressed to {} bytes", decompressed.len());
         
         // 解析归档格式
         let mut cursor = Cursor::new(&decompressed);
@@ -406,8 +437,10 @@ impl ResourceBundle {
         cursor.read_exact(&mut count_bytes)?;
         let file_count = u32::from_le_bytes(count_bytes);
         
+        tracing::debug!("Archive contains {} files", file_count);
+        
         // 读取每个文件
-        for _ in 0..file_count {
+        for i in 0..file_count {
             let mut path_len_bytes = [0u8; 2];
             cursor.read_exact(&mut path_len_bytes)?;
             let path_len = u16::from_le_bytes(path_len_bytes);
@@ -420,12 +453,15 @@ impl ResourceBundle {
             cursor.read_exact(&mut size_bytes)?;
             let size = u64::from_le_bytes(size_bytes);
             
+            tracing::debug!("  File {}/{}: {} ({} bytes)", i+1, file_count, path, size);
+            
             let mut file_data = vec![0u8; size as usize];
             cursor.read_exact(&mut file_data)?;
             
             files.insert(path, file_data);
         }
         
+        tracing::debug!("Successfully extracted {} files", files.len());
         Ok(files)
     }
     
@@ -488,14 +524,24 @@ impl ResourceBundle {
 pub fn append_bundle_to_exe(exe_path: &Path, bundle_data: &[u8]) -> Result<()> {
     use std::fs::OpenOptions;
     
+    eprintln!("      [DEBUG] append_bundle_to_exe: Opening {} to append {} bytes", exe_path.display(), bundle_data.len());
+    
     let mut file = OpenOptions::new()
         .write(true)
         .append(true)
         .open(exe_path)
         .context("Failed to open exe file")?;
     
+    let initial_size = file.metadata()?.len();
+    eprintln!("      [DEBUG] append_bundle_to_exe: Initial file size: {} bytes", initial_size);
+    
     file.write_all(bundle_data)
         .context("Failed to write bundle data")?;
+    
+    file.sync_all()?;
+    
+    let final_size = file.metadata()?.len();
+    eprintln!("      [DEBUG] append_bundle_to_exe: Final file size: {} bytes (added {} bytes)", final_size, final_size - initial_size);
     
     Ok(())
 }
@@ -505,13 +551,52 @@ pub fn extract_bundle_from_exe(exe_path: &Path) -> Result<ResourceBundle> {
     let exe_data = fs::read(exe_path)
         .context("Failed to read exe file")?;
     
-    // 从后往前搜索魔数
-    let magic_pos = exe_data.windows(MAGIC.len())
-        .rposition(|window| window == MAGIC)
-        .context("Resource bundle magic number not found in exe")?;
+    // 查找所有魔数位置
+    let mut magic_positions = Vec::new();
+    for (i, window) in exe_data.windows(MAGIC.len()).enumerate() {
+        if window == MAGIC {
+            magic_positions.push(i);
+        }
+    }
     
-    let bundle_data = &exe_data[magic_pos..];
-    ResourceBundle::unpack(bundle_data)
+    if magic_positions.is_empty() {
+        bail!("Resource bundle magic number not found in exe");
+    }
+    
+    tracing::debug!("Found {} NANORSRC magic(s) in exe", magic_positions.len());
+    
+    // 从后往前尝试解析，找到第一个有效且段数量 >= 4 的资源包
+    // （安装器应该有 5 个段，卸载器只有 3 个段）
+    for magic_pos in magic_positions.iter().rev() {
+        tracing::debug!("Trying to parse bundle at position {}", magic_pos);
+        let bundle_data = &exe_data[*magic_pos..];
+        
+        match ResourceBundle::unpack(bundle_data) {
+            Ok(bundle) => {
+                tracing::debug!("Successfully parsed bundle with {} segments", bundle.segments.len());
+                // 安装器应该有至少 4 个段（Config, UIResources, Locales, Payload）
+                // 卸载器只有 3 个段（Config, UIResources, Locales）
+                if bundle.segments.len() >= 4 {
+                    tracing::info!("Found installer bundle with {} segments", bundle.segments.len());
+                    return Ok(bundle);
+                }
+            }
+            Err(e) => {
+                tracing::debug!("Failed to parse bundle at position {}: {}", magic_pos, e);
+            }
+        }
+    }
+    
+    // 如果没找到 >= 4 段的，使用最后一个能解析的
+    for magic_pos in magic_positions.iter().rev() {
+        let bundle_data = &exe_data[*magic_pos..];
+        if let Ok(bundle) = ResourceBundle::unpack(bundle_data) {
+            tracing::warn!("Using fallback bundle with {} segments", bundle.segments.len());
+            return Ok(bundle);
+        }
+    }
+    
+    bail!("No valid resource bundle found in exe")
 }
 
 impl ResourceBundle {

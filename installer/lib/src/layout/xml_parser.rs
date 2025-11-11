@@ -4,9 +4,7 @@
 
 use crate::layout::{LayoutTree, LayoutElement, ElementType, ElementAttributes};
 use crate::layout::layout_tree::LayoutMetadata;
-use quick_xml::Reader;
-use quick_xml::events::{Event, BytesStart, BytesEnd, BytesText};
-use quick_xml::events::attributes::AttrError;
+use roxmltree::Document;
 
 /// XML解析器
 pub struct XmlParser {
@@ -39,16 +37,10 @@ impl Default for ParserOptions {
 #[derive(Debug, thiserror::Error)]
 pub enum ParseError {
     #[error("XML解析错误: {0}")]
-    XmlError(#[from] quick_xml::Error),
+    XmlError(String),
     
     #[error("IO错误: {0}")]
     IoError(#[from] std::io::Error),
-    
-    #[error("UTF-8编码错误: {0}")]
-    Utf8Error(#[from] std::str::Utf8Error),
-    
-    #[error("属性解析错误: {0}")]
-    AttrError(#[from] AttrError),
     
     #[error("无效的元素类型: {0}")]
     InvalidElementType(String),
@@ -129,191 +121,88 @@ impl XmlParser {
 
     /// 解析XML字符串
     pub fn parse_string(&self, xml: &str) -> Result<LayoutTree, ParseError> {
-        let mut reader = Reader::from_str(xml);
-        reader.trim_text(true);
-
-        let mut stack = Vec::new();
-        let mut current_element = None;
-        let mut metadata = LayoutMetadata::default();
-        let mut errors = Vec::new();
-
-        loop {
-            match reader.read_event() {
-                Ok(Event::Start(ref e)) => {
-                    if let Err(e) = self.handle_start_element(e, &mut stack, &mut current_element, &mut metadata) {
-                        if self.options.strict_validation {
-                            return Err(e);
-                        } else {
-                            errors.push(format!("{:?}", e));
-                        }
+        // 使用 roxmltree 解析 XML
+        let doc = Document::parse(xml).map_err(|e| {
+            // 输出详细的错误信息用于调试
+            let error_msg = format!("XML解析失败: {}", e);
+            tracing::error!("roxmltree 解析错误: {}", error_msg);
+            #[cfg(debug_assertions)]
+            {
+                eprintln!("[DEBUG] roxmltree 错误详情: {:?}", e);
+                let pos = e.pos();
+                eprintln!("[DEBUG] 错误位置: line {}, column {}", pos.row, pos.col);
+                // 尝试找到错误位置的字节偏移
+                let mut byte_pos: usize = 0;
+                for (i, line) in xml.lines().enumerate() {
+                    if i + 1 == pos.row as usize {
+                        byte_pos += ((pos.col as usize).saturating_sub(1)).min(line.len());
+                        break;
                     }
+                    byte_pos += line.len() + 1; // +1 for newline
                 }
-                Ok(Event::Empty(ref e)) => {
-                    // 处理自闭合标签
-                    if let Err(e) = self.handle_empty_element(e, &mut stack, &mut current_element, &mut metadata) {
-                        if self.options.strict_validation {
-                            return Err(e);
-                        } else {
-                            errors.push(format!("{:?}", e));
-                        }
-                    }
+                if byte_pos < xml.len() {
+                    let start = byte_pos.saturating_sub(20);
+                    let end = (byte_pos + 20).min(xml.len());
+                    eprintln!("[DEBUG] 错误位置周围的文本: {:?}", &xml[start..end]);
                 }
-                Ok(Event::End(ref e)) => {
-                    if let Err(e) = self.handle_end_element(e, &mut stack, &mut current_element) {
-                        if self.options.strict_validation {
-                            return Err(e);
-                        } else {
-                            errors.push(format!("{:?}", e));
-                        }
-                    }
-                }
-                Ok(Event::Text(ref e)) => {
-                    if let Err(e) = self.handle_text(e, &mut current_element) {
-                        if self.options.strict_validation {
-                            return Err(e);
-                        } else {
-                            errors.push(format!("{:?}", e));
-                        }
-                    }
-                }
-                Ok(Event::Eof) => break,
-                Err(e) => {
-                    if self.options.strict_validation {
-                        return Err(ParseError::XmlError(e));
-                    } else {
-                        errors.push(format!("XML解析错误: {}", e));
-                    }
-                }
-                _ => {}
             }
+            ParseError::XmlError(error_msg)
+        })?;
+        
+        let root = doc.root_element();
+        
+        // 检查根元素是否为 Layout
+        if root.tag_name().name() != "Layout" {
+            return Err(ParseError::XmlError("根元素必须是 <Layout>".to_string()));
         }
-
-        let root = current_element.ok_or_else(|| ParseError::ValidationFailed(vec!["没有找到根元素".to_string()]))?;
-
-        let tree = LayoutTree::with_metadata(root, metadata);
+        
+        // 解析元数据
+        let mut metadata = LayoutMetadata::default();
+        self.parse_metadata(&root, &mut metadata)?;
+        
+        // 查找 Page 元素
+        let page_node = root.children()
+            .find(|n| n.is_element() && n.tag_name().name() == "Page")
+            .ok_or_else(|| ParseError::ValidationFailed(vec!["缺少 <Page> 元素".to_string()]))?;
+        
+        // 解析 Page 元素及其子元素
+        let page_element = self.parse_element(&page_node)?;
+        
+        let tree = LayoutTree::with_metadata(page_element, metadata);
 
         // 验证布局树
         if let Err(validation_errors) = tree.validate() {
             if self.options.strict_validation {
                 return Err(ParseError::ValidationFailed(validation_errors));
-            } else {
-                errors.extend(validation_errors);
             }
-        }
-
-        if !errors.is_empty() && self.options.strict_validation {
-            return Err(ParseError::ValidationFailed(errors));
         }
 
         Ok(tree)
     }
 
-    /// 处理开始标签
-    fn handle_start_element(
-        &self,
-        e: &BytesStart,
-        stack: &mut Vec<LayoutElement>,
-        current_element: &mut Option<LayoutElement>,
-        metadata: &mut LayoutMetadata,
-    ) -> Result<(), ParseError> {
-        let name_bytes = e.name();
-        let name = std::str::from_utf8(name_bytes.as_ref())?;
+    /// 解析元素节点
+    fn parse_element(&self, node: &roxmltree::Node) -> Result<LayoutElement, ParseError> {
+        let element_type = self.parse_element_type(node.tag_name().name())?;
+        let attributes = self.parse_attributes(node)?;
         
-        // 处理特殊标签
-        if name == "Layout" {
-            self.parse_metadata(e, metadata)?;
-            return Ok(());
-        }
-
-        let element_type = self.parse_element_type(name)?;
-        let attributes = self.parse_attributes(e)?;
-
-        let element = LayoutElement::with_attributes(element_type, attributes);
-
-        if let Some(parent) = current_element.take() {
-            stack.push(parent);
-        }
-
-        *current_element = Some(element);
-        Ok(())
-    }
-
-    /// 处理自闭合标签
-    fn handle_empty_element(
-        &self,
-        e: &BytesStart,
-        stack: &mut Vec<LayoutElement>,
-        current_element: &mut Option<LayoutElement>,
-        metadata: &mut LayoutMetadata,
-    ) -> Result<(), ParseError> {
-        let name_bytes = e.name();
-        let name = std::str::from_utf8(name_bytes.as_ref())?;
+        let mut element = LayoutElement::with_attributes(element_type, attributes);
         
-        // 处理特殊标签
-        if name == "Layout" {
-            self.parse_metadata(e, metadata)?;
-            return Ok(());
-        }
-
-        let element_type = self.parse_element_type(name)?;
-        let attributes = self.parse_attributes(e)?;
-
-        let element = LayoutElement::with_attributes(element_type, attributes);
-
-        // 自闭合标签直接添加到当前元素中
-        if let Some(current) = current_element.as_mut() {
-            current.children.push(element);
-        } else {
-            // 如果没有当前元素，说明这是根元素
-            *current_element = Some(element);
-        }
-
-        Ok(())
-    }
-
-    /// 处理结束标签
-    fn handle_end_element(
-        &self,
-        e: &BytesEnd,
-        stack: &mut Vec<LayoutElement>,
-        current_element: &mut Option<LayoutElement>,
-    ) -> Result<(), ParseError> {
-        let name_bytes = e.name();
-        let name = std::str::from_utf8(name_bytes.as_ref())?;
-        
-        if name == "Layout" {
-            return Ok(());
-        }
-
-        // 如果当前元素存在，将其添加到父元素中
-        if let Some(element) = current_element.take() {
-            if let Some(mut parent) = stack.pop() {
-                parent.children.push(element);
-                *current_element = Some(parent);
-            } else {
-                // 如果没有父元素，说明这是根元素
-                *current_element = Some(element);
-            }
-        }
-
-        Ok(())
-    }
-
-    /// 处理文本内容
-    fn handle_text(
-        &self,
-        e: &BytesText,
-        current_element: &mut Option<LayoutElement>,
-    ) -> Result<(), ParseError> {
-        let text = e.unescape()?;
-        if !text.trim().is_empty() {
-            if let Some(element) = current_element.as_mut() {
-                if element.attributes.text.is_none() {
+        // 递归解析子元素
+        for child in node.children() {
+            if child.is_element() {
+                let child_element = self.parse_element(&child)?;
+                element.children.push(child_element);
+            } else if child.is_text() {
+                // 处理文本内容
+                let text = child.text().unwrap_or("").trim();
+                if !text.is_empty() && element.attributes.text.is_none() {
                     element.attributes.text = Some(text.to_string());
                 }
             }
+            // 忽略注释等其他节点类型
         }
-        Ok(())
+        
+        Ok(element)
     }
 
     /// 解析元素类型
@@ -337,37 +226,40 @@ impl XmlParser {
     }
 
     /// 解析属性
-    fn parse_attributes(&self, e: &BytesStart) -> Result<ElementAttributes, ParseError> {
+    fn parse_attributes(&self, node: &roxmltree::Node) -> Result<ElementAttributes, ParseError> {
         let mut attributes = ElementAttributes::new();
 
-        for attr in e.attributes() {
-            let attr = attr?;
-            let key = std::str::from_utf8(attr.key.as_ref())?;
-            let value = attr.unescape_value()?;
+        for attr in node.attributes() {
+            let key = attr.name();
+            let value = attr.value();
 
             match key {
                 "id" => attributes.id = Some(value.to_string()),
                 "text" => attributes.text = Some(value.to_string()),
                 "text_i18n" => attributes.text_i18n = Some(value.to_string()),
-                "width" => attributes.width = Some(self.parse_f32(&value)?),
-                "height" => attributes.height = Some(self.parse_f32(&value)?),
-                "min_width" => attributes.min_width = Some(self.parse_f32(&value)?),
-                "max_width" => attributes.max_width = Some(self.parse_f32(&value)?),
-                "padding" => attributes.padding = Some(self.parse_padding(&value)?),
-                "spacing" => attributes.spacing = Some(self.parse_f32(&value)?),
+                "width" => attributes.width = Some(self.parse_f32(value)?),
+                "height" => attributes.height = Some(self.parse_f32(value)?),
+                "min_width" => attributes.min_width = Some(self.parse_f32(value)?),
+                "max_width" => attributes.max_width = Some(self.parse_f32(value)?),
+                "padding" => attributes.padding = Some(self.parse_padding(value)?),
+                "spacing" => attributes.spacing = Some(self.parse_f32(value)?),
                 "background" => attributes.background = Some(value.to_string()),
                 "color" => attributes.color = Some(value.to_string()),
                 "style" => attributes.style = Some(value.to_string()),
                 "align" => attributes.align = Some(value.to_string()),
                 "icon" => attributes.icon = Some(value.to_string()),
-                "visible" => attributes.visible = Some(self.parse_bool(&value)?),
-                "enabled" => attributes.enabled = Some(self.parse_bool(&value)?),
-                "selected" => attributes.selected = Some(self.parse_bool(&value)?),
-                "progress" => attributes.progress = Some(self.parse_f32(&value)?),
-                "position" => attributes.position = Some(self.parse_position(&value)?),
-                "wrap" => attributes.wrap = Some(self.parse_bool(&value)?),
+                "visible" => attributes.visible = Some(self.parse_bool(value)?),
+                "enabled" => attributes.enabled = Some(self.parse_bool(value)?),
+                "selected" => attributes.selected = Some(self.parse_bool(value)?),
+                "progress" => attributes.progress = Some(self.parse_f32(value)?),
+                "position" => attributes.position = Some(self.parse_position(value)?),
+                "wrap" => attributes.wrap = Some(self.parse_bool(value)?),
                 "max_lines" => attributes.max_lines = value.parse().ok(),
-                "flex" => attributes.flex = Some(self.parse_f32(&value)?),
+                "flex" => attributes.flex = Some(self.parse_f32(value)?),
+                "font_size" => {
+                    // font_size 作为自定义属性存储
+                    attributes.custom.insert("font_size".to_string(), value.to_string());
+                }
                 _ => {
                     attributes.custom.insert(key.to_string(), value.to_string());
                 }
@@ -378,11 +270,10 @@ impl XmlParser {
     }
 
     /// 解析元数据
-    fn parse_metadata(&self, e: &BytesStart, metadata: &mut LayoutMetadata) -> Result<(), ParseError> {
-        for attr in e.attributes() {
-            let attr = attr?;
-            let key = std::str::from_utf8(attr.key.as_ref())?;
-            let value = attr.unescape_value()?;
+    fn parse_metadata(&self, node: &roxmltree::Node, metadata: &mut LayoutMetadata) -> Result<(), ParseError> {
+        for attr in node.attributes() {
+            let key = attr.name();
+            let value = attr.value();
 
             match key {
                 "name" => metadata.name = value.to_string(),
@@ -496,23 +387,15 @@ mod tests {
         let parser = XmlParser::new();
         let tree = parser.parse_string(xml).unwrap();
 
-        // 调试信息
-        println!("Tree structure:");
-        tree.walk_nodes(|node| {
-            println!("  {}: {:?}", node.path, node.element.element_type);
-        });
-
         let button = tree.find_by_id("submit-btn");
         match button {
             Some(btn) => {
-                println!("Found button: {:?}", btn.attributes);
                 assert_eq!(btn.attributes.text, Some("@button.submit".to_string()));
                 assert_eq!(btn.attributes.width, Some(100.0));
                 assert_eq!(btn.attributes.height, Some(30.0));
                 assert_eq!(btn.attributes.style, Some("primary".to_string()));
             }
             None => {
-                println!("Button not found!");
                 panic!("Button not found");
             }
         }

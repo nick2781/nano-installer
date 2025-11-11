@@ -4,9 +4,9 @@
     <VBox>
       <Label text="安装完成" text_i18n="finish.title" font_size="20" />
       <Spacer height="20" />
-      <Label text="TapTap 已成功安装到您的计算机。" text_i18n="finish.message" />
+      <Label text="应用程序已成功安装到您的计算机。" text_i18n="finish.message" />
       <Spacer height="20" />
-      <Checkbox id="launch_app" text="立即启动 TapTap" text_i18n="finish.launch" checked="true" />
+      <Checkbox id="launch_app" text="立即启动" text_i18n="finish.launch" checked="true" />
       <Spacer height="30" />
       <HBox>
         <Button id="finish" text="完成" text_i18n="finish.finish" width="100" />
@@ -14,3 +14,4 @@
     </VBox>
   </Page>
 </Layout>
+

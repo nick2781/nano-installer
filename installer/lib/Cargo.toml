@@ -45,7 +45,7 @@ crc32fast.workspace = true
 sha2.workspace = true
 
 # XML 解析库
-quick-xml.workspace = true
+roxmltree.workspace = true
 
 # 正则表达式库
 regex.workspace = true

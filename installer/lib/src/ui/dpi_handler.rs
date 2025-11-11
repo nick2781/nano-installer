@@ -77,17 +77,18 @@ impl DpiConfig {
     /// 加载图片资源
     pub fn load_image(&self, ctx: &egui::Context, path: &str) -> Option<TextureHandle> {
         let resource_path = self.get_resource_path(path);
-        
-        // 尝试加载图片
-        if let Ok(image_data) = std::fs::read(&resource_path) {
+
+        // 优先从嵌入资源加载（运行时）
+        if let Ok(image_data) = crate::resources::RuntimeResources::get_asset(&resource_path) {
             if let Ok(image) = image::load_from_memory(&image_data) {
                 let rgba_image = image.to_rgba8();
                 let size = [rgba_image.width() as usize, rgba_image.height() as usize];
                 let pixels = rgba_image.into_raw();
-                
+
                 // 使用默认纹理选项
                 let options = egui::TextureOptions::LINEAR;
-                
+
+                tracing::debug!("Loaded image from embedded resources: {}", resource_path);
                 return Some(ctx.load_texture(
                     &resource_path,
                     egui::ColorImage::from_rgba_unmultiplied(size, &pixels),
@@ -95,7 +96,26 @@ impl DpiConfig {
                 ));
             }
         }
-        
+
+        // 回退：开发模式下从文件系统读取
+        tracing::warn!("Failed to load image from embedded resources, trying filesystem: {}", resource_path);
+        if let Ok(image_data) = std::fs::read(&resource_path) {
+            if let Ok(image) = image::load_from_memory(&image_data) {
+                let rgba_image = image.to_rgba8();
+                let size = [rgba_image.width() as usize, rgba_image.height() as usize];
+                let pixels = rgba_image.into_raw();
+
+                let options = egui::TextureOptions::LINEAR;
+
+                return Some(ctx.load_texture(
+                    &resource_path,
+                    egui::ColorImage::from_rgba_unmultiplied(size, &pixels),
+                    options
+                ));
+            }
+        }
+
+        tracing::error!("Failed to load image: {}", resource_path);
         None
     }
 

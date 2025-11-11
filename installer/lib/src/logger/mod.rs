@@ -27,7 +27,7 @@ pub fn init(log_dir: Option<&Path>, app_name: &str, is_installer: bool) -> Resul
         .with_thread_ids(false)
         .with_line_number(true);
 
-    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("debug"));
 
     tracing_subscriber::registry()
         .with(env_filter)

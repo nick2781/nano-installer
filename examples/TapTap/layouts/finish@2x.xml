@@ -1,76 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Layout width="1148" height="716" dpi="2x">
-  <!-- 背景图片 -->
-  <Image 
-    icon="assets/bg_main@2x.png" 
-    x="0" y="0" 
-    width="1148" height="716"
-    fit="fill"
-  />
-  
-  <!-- 关闭按钮 -->
-  <Button 
-    id="close_button"
-    icon="assets/btn_close@2x.png" 
-    x="1118" y="10" 
-    width="30" height="30"
-    action="close"
-  />
-  
-  <!-- 成功图标 -->
-  <Image 
-    icon="assets/logo@2x.png" 
-    x="474" y="200" 
-    width="200" height="200"
-    fit="contain"
-  />
-  
-  <!-- 标题 -->
-  <Label 
-    text="安装完成�?
-    x="574" y="420" 
-    width="400" height="60"
-    font_size="32"
-    font_weight="bold"
-    color="#FFFFFF"
-    align="center"
-  />
-  
-  <!-- 副标�?-->
-  <Label 
-    text="TapTap 已成功安装到您的计算�?
-    x="574" y="500" 
-    width="400" height="40"
-    font_size="18"
-    color="#CCCCCC"
-    align="center"
-  />
-  
-  <!-- 完成按钮 -->
-  <Button 
-    id="finish_button"
-    icon="assets/btn_primary@2x.png" 
-    x="574" y="580" 
-    width="200" height="60"
-    text="完成"
-    font_size="20"
-    action="finish"
-  />
-  
-  <!-- 启动应用复选框 -->
-  <HBox x="374" y="660" width="400" height="40">
-    <CheckBox 
-      id="launch_app"
-      x="0" y="10" 
-      width="20" height="20"
-      checked="true"
-    />
-    <Label 
-      text="立即启动 TapTap"
-      x="30" y="5" 
-      width="200" height="30"
-      font_size="16"
-      color="#FFFFFF"
-    />
-  </HBox>
+<Layout name="Finish" version="1.0.0" width="1148" height="716" dpi="2x">
+  <Page>
+    <VBox>
+      <Label text="安装完成" text_i18n="finish.title" font_size="40" />
+      <Spacer height="40" />
+      <Label text="TapTap 已成功安装到您的计算机。" text_i18n="finish.message" font_size="28" />
+      <Spacer height="40" />
+      <Checkbox id="launch_app" text="立即启动 TapTap" text_i18n="finish.launch" checked="true" font_size="28" />
+      <Spacer height="60" />
+      <HBox>
+        <Button id="finish" text="完成" text_i18n="finish.finish" width="200" height="80" font_size="28" />
+      </HBox>
+    </VBox>
+  </Page>
 </Layout>

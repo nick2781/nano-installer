@@ -8,19 +8,47 @@
 // 2. 根据配置判断是安装还是卸载模式
 // 3. 启动对应的 UI 和逻辑
 
+// Release 模式：隐藏控制台窗口（纯 GUI 应用）
+// Debug 模式：保留控制台窗口（方便调试和查看日志）
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use anyhow::Result;
 
 fn main() -> Result<()> {
+    // Debug 模式下输出到控制台
+    #[cfg(debug_assertions)]
+    eprintln!("=== nano-installer DEBUG MODE ===");
+    #[cfg(debug_assertions)]
+    eprintln!("Console output enabled for debugging");
+    
     // 初始化日志
     let _ = nano_installer::logger::init(None, "installer", true);
     
+    #[cfg(debug_assertions)]
+    eprintln!("Logger initialized");
+    
+    tracing::info!("Initializing runtime resources...");
+    
     // 初始化运行时资源（从 exe 中提取）
-    nano_installer::resources::RuntimeResources::init(None)
-        .expect("Failed to initialize runtime resources");
+    if let Err(e) = nano_installer::resources::RuntimeResources::init(None) {
+        tracing::error!("Failed to initialize runtime resources: {:#}", e);
+        eprintln!("ERROR: Failed to initialize runtime resources");
+        eprintln!("Cause: {:#}", e);
+        std::process::exit(1);
+    }
+    
+    tracing::info!("Loading configuration...");
     
     // 加载配置
-    let config = nano_installer::resources::RuntimeResources::get_config()
-        .expect("Failed to load installer config");
+    let config = match nano_installer::resources::RuntimeResources::get_config() {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            tracing::error!("Failed to load installer config: {:#}", e);
+            eprintln!("ERROR: Failed to load installer config");
+            eprintln!("Cause: {:#}", e);
+            std::process::exit(1);
+        }
+    };
     
     // 判断运行模式
     let mode = determine_mode(&config);

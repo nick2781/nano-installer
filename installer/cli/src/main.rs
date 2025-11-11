@@ -770,10 +770,13 @@ fn build_installer_exe(
                 .context("Failed to get relative path")?;
             let name = relative_path.to_string_lossy().replace('\\', "/");
             let data = std::fs::read(path)?;
+            eprintln!("      [DEBUG] Collecting layout: {}", name);
             ui_files.insert(name, data);
             ui_count += 1;
         }
     }
+    
+    eprintln!("      [DEBUG] Total layouts collected: {}", ui_count);
     
     // 2.2 收集 assets
     let assets_dir = project_dir.join("assets");
@@ -788,10 +791,13 @@ fn build_installer_exe(
                 .context("Failed to get relative path")?;
             let name = relative_path.to_string_lossy().replace('\\', "/");
             let data = std::fs::read(path)?;
+            eprintln!("      [DEBUG] Collecting asset: {}", name);
             ui_files.insert(name, data);
             ui_count += 1;
         }
     }
+    
+    eprintln!("      [DEBUG] Total UI files before adding to bundle: {}", ui_files.len());
     
     if ui_count > 0 {
         bundle.add_ui_resources(ui_files)?;
@@ -829,36 +835,35 @@ fn build_installer_exe(
         }
     }
     
-    // 4. 添加 payload 段
+    // 4. 添加 payload 段（直接从配置指定的 7z 文件读取）
     let configured_payload_file = config["resources"]["payload_file"]
         .as_str()
+        .context("Missing 'resources.payload_file' in config")?;
+    
+    let payload_path = project_dir.join(configured_payload_file);
+    
+    if !payload_path.exists() {
+        bail!(
+            "Payload file not found: {}\nPlease ensure the 7z archive exists at the specified path.",
+            payload_path.display()
+        );
+    }
+    
+    let payload_data = std::fs::read(&payload_path)
+        .with_context(|| format!("Failed to read payload file: {}", payload_path.display()))?;
+    
+    let size_mb = payload_data.len() as f64 / 1024.0 / 1024.0;
+    
+    // 复制 payload 到 .build/ 目录以便调试
+    let build_dir = project_dir.join(".build");
+    let build_payload_filename = payload_path.file_name()
+        .and_then(|n| n.to_str())
         .unwrap_or("payload.7z");
+    let build_payload_path = build_dir.join(build_payload_filename);
+    std::fs::copy(&payload_path, &build_payload_path)?;
     
-    let possible_payloads = vec![
-        project_dir.join(configured_payload_file),
-        project_dir.join("payload").join("app.7z"),  // payload/app.7z
-        project_dir.join("payload.7z"),
-        project_dir.join("app.7z"),
-        project_dir.join("dist").join(configured_payload_file),
-        project_dir.join("dist").join("payload.7z"),
-    ];
-    
-    let payload_data = if let Some(payload_path) = possible_payloads.iter().find(|p| p.exists()) {
-        let data = std::fs::read(payload_path)?;
-        let size_mb = data.len() as f64 / 1024.0 / 1024.0;
-        
-        // 复制 payload 到 .build/ 目录以便调试
-        let build_dir = project_dir.join(".build");
-        let build_payload_path = build_dir.join("payload.7z");
-        std::fs::copy(payload_path, &build_payload_path)?;
-        
-        println!("      ✓ Segment 4: Payload ({:.2} MB compressed, copied to .build/payload.7z)", size_mb);
-        data
-    } else if payload_dir.exists() {
-        bail!("Payload archive not found. Please create {} first", configured_payload_file);
-    } else {
-        bail!("Payload not found");
-    };
+    println!("      ✓ Segment 4: Payload ({:.2} MB, {} → .build/{})", 
+        size_mb, configured_payload_file, build_payload_filename);
     
     bundle.add_payload(payload_data)?;
     
@@ -883,7 +888,10 @@ fn build_installer_exe(
     println!("      ✓ Bundle size: {:.2} MB", bundle_size_mb);
     
     // 复制 lzma-x64-unicode.exe 作为基础（完整的安装器，类似 NSIS 的 lzma-x86-unicode）
+    // 优先使用 debug 版本（带控制台输出），如果不存在则使用 release 版本
     let possible_stub_paths: Vec<Option<PathBuf>> = vec![
+        Some(PathBuf::from("target/debug/lzma-x64-unicode.exe")),
+        Some(PathBuf::from("../../target/debug/lzma-x64-unicode.exe")),
         Some(PathBuf::from("target/release/lzma-x64-unicode.exe")),
         Some(PathBuf::from("../../target/release/lzma-x64-unicode.exe")),
     ];
@@ -897,10 +905,16 @@ fn build_installer_exe(
     println!("   📋 Creating installer executable...");
     let stub_size_mb = std::fs::metadata(&stub_exe)?.len() as f64 / 1024.0 / 1024.0;
     println!("      Using stub: {} ({:.2} MB)", stub_exe.display(), stub_size_mb);
+    println!("      Copying stub to: {}", output_path.display());
     std::fs::copy(&stub_exe, &output_path)
         .context("Failed to copy installer-stub.exe")?;
+    let copied_size = std::fs::metadata(&output_path)?.len();
+    println!("      ✓ Stub copied ({:.2} MB)", copied_size as f64 / 1024.0 / 1024.0);
     
     // 先替换图标为项目配置的图标（必须在追加资源之前，因为 UpdateResourceW 会重写 PE 文件）
+    let size_after_copy = std::fs::metadata(&output_path)?.len();
+    println!("      File size after stub copy: {:.2} MB", size_after_copy as f64 / 1024.0 / 1024.0);
+    
     println!("   🎨 Replacing installer icon...");
     let installer_icon = config["output"]["installer_icon"]
         .as_str()
@@ -948,7 +962,13 @@ fn build_installer_exe(
     
     // 最后追加资源包（必须在图标和版本信息之后）
     println!("   📦 Appending resource bundle...");
+    let before_append = std::fs::metadata(&output_path)?.len();
+    println!("      File size before append: {:.2} MB", before_append as f64 / 1024.0 / 1024.0);
     append_bundle_to_exe(&output_path, &bundle_data)?;
+    let after_append = std::fs::metadata(&output_path)?.len();
+    println!("      File size after append: {:.2} MB (added {:.2} MB)", 
+        after_append as f64 / 1024.0 / 1024.0,
+        (after_append - before_append) as f64 / 1024.0 / 1024.0);
     println!("      ✓ Resource bundle appended ({:.2} MB)", bundle_data.len() as f64 / 1024.0 / 1024.0);
     
     let final_size_mb = std::fs::metadata(&output_path)?.len() as f64 / 1024.0 / 1024.0;
