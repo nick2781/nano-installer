@@ -34,7 +34,53 @@ pub struct InteractionState {
     hover_states: HashMap<String, bool>,
 }
 
+/// 图片路径和裁剪信息
+#[derive(Debug, Clone)]
+struct ImagePath {
+    path: String,
+    dest: Option<(f32, f32, f32, f32)>, // (x1, y1, x2, y2) 裁剪区域
+}
+
 impl LayoutRenderer {
+    /// 解析图片路径，支持 NSIS 格式：file='path' dest='x1,y1,x2,y2'
+    fn parse_image_path(image_attr: &str) -> ImagePath {
+        // 如果包含 file=' 和 dest='，解析 NSIS 格式
+        if image_attr.contains("file='") && image_attr.contains("dest='") {
+            // 提取 file='...' 部分
+            let file_start = image_attr.find("file='").unwrap_or(0) + 6;
+            let file_end = image_attr[file_start..].find("'").unwrap_or(image_attr.len() - file_start);
+            let path = image_attr[file_start..file_start + file_end].to_string();
+            
+            // 提取 dest='...' 部分
+            let dest_start = image_attr.find("dest='").unwrap_or(0) + 6;
+            let dest_end = image_attr[dest_start..].find("'").unwrap_or(image_attr.len() - dest_start);
+            let dest_str = image_attr[dest_start..dest_start + dest_end].to_string();
+            
+            // 解析 dest='x1,y1,x2,y2'
+            let dest = dest_str.split(',')
+                .map(|s| s.trim().parse::<f32>().ok())
+                .collect::<Vec<_>>();
+            
+            if dest.len() == 4 && dest.iter().all(|x| x.is_some()) {
+                ImagePath {
+                    path,
+                    dest: Some((dest[0].unwrap(), dest[1].unwrap(), dest[2].unwrap(), dest[3].unwrap())),
+                }
+            } else {
+                ImagePath {
+                    path,
+                    dest: None,
+                }
+            }
+        } else {
+            // 普通路径格式
+            ImagePath {
+                path: image_attr.to_string(),
+                dest: None,
+            }
+        }
+    }
+
     /// 创建新的布局渲染器
     pub fn new(dpi_config: DpiConfig, i18n_strings: HashMap<String, String>) -> Self {
         Self {
@@ -95,11 +141,11 @@ impl LayoutRenderer {
 
     /// 渲染页面
     fn render_page(&mut self, ui: &mut Ui, element: &LayoutElement, result: &mut RenderResult) {
-        tracing::debug!("Rendering Page, children count: {}", element.children.len());
+        // 移除频繁的日志输出，避免每帧都输出
 
-        // 获取窗口尺寸（从 XML 或使用默认值）
-        let page_width = element.attributes.width.unwrap_or(574.0);
-        let page_height = element.attributes.height.unwrap_or(358.0);
+        // 获取窗口尺寸（从 XML 或使用 DpiConfig 的值，确保与窗口大小一致）
+        let page_width = element.attributes.width.unwrap_or(self.dpi_config.window_width);
+        let page_height = element.attributes.height.unwrap_or(self.dpi_config.window_height);
 
         // 先分配整个页面的矩形空间
         let page_rect = ui.max_rect();
@@ -108,21 +154,66 @@ impl LayoutRenderer {
             egui::Sense::hover()
         );
 
-        tracing::debug!("Page rect allocated: {:?}, requested size: {}x{}", full_rect, page_width, page_height);
-
-        // 如果有背景图片，在底层渲染背景
+        // 如果有背景图片，在底层渲染背景（填充整个窗口，而不是只填充页面矩形）
         if let Some(background) = &element.attributes.background {
-            tracing::debug!("Rendering background: {}", background);
+            // 记录背景路径和窗口大小（只在首次加载时输出）
+            use std::sync::Mutex;
+            use once_cell::sync::Lazy;
+            static BACKGROUND_LOADED: Lazy<Mutex<std::collections::HashSet<String>>> = Lazy::new(|| Mutex::new(std::collections::HashSet::new()));
+            let mut loaded = BACKGROUND_LOADED.lock().unwrap();
+            if !loaded.contains(background) {
+                eprintln!("[背景] 加载背景图片: {}", background);
+                eprintln!("[背景]   use_2x: {}, 窗口大小: {}x{}", 
+                    self.dpi_config.use_2x, 
+                    self.dpi_config.window_width, 
+                    self.dpi_config.window_height);
+                loaded.insert(background.clone());
+            }
+            drop(loaded);
+            
             if let Some(texture) = self.resource_cache.get_background(ui.ctx(), &self.dpi_config, background) {
-                // 使用整个页面矩形作为背景
+                let texture_size = texture.size();
+                let window_rect = ui.max_rect();
+                
+                // 只在首次成功加载时输出
+                static BACKGROUND_SUCCESS: Lazy<Mutex<std::collections::HashSet<String>>> = Lazy::new(|| Mutex::new(std::collections::HashSet::new()));
+                let mut success = BACKGROUND_SUCCESS.lock().unwrap();
+                if !success.contains(background) {
+                    eprintln!("[背景] ✓ 背景图片加载成功: {} ({}x{}), 窗口: {}x{}", 
+                        background, texture_size[0], texture_size[1],
+                        window_rect.width(), window_rect.height());
+                    
+                    // 检查图片尺寸和窗口尺寸是否匹配
+                    let width_match = (texture_size[0] as f32 - window_rect.width()).abs() < 1.0;
+                    let height_match = (texture_size[1] as f32 - window_rect.height()).abs() < 1.0;
+                    if !width_match || !height_match {
+                        eprintln!("[背景] ⚠️  警告: 背景图片尺寸与窗口大小不匹配！");
+                        eprintln!("[背景]   图片: {}x{}, 窗口: {}x{}, 差异: {}x{}",
+                            texture_size[0], texture_size[1],
+                            window_rect.width(), window_rect.height(),
+                            (texture_size[0] as f32 - window_rect.width()).abs(),
+                            (texture_size[1] as f32 - window_rect.height()).abs());
+                    } else {
+                        eprintln!("[背景] ✓ 背景图片尺寸与窗口大小匹配");
+                    }
+                    success.insert(background.clone());
+                }
+                drop(success);
+                
+                // 使用整个窗口矩形作为背景，而不是只填充页面矩形
                 ui.painter().image(
                     texture.id(),
-                    full_rect,
+                    window_rect,
                     egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
                     egui::Color32::WHITE,
                 );
             } else {
-                tracing::warn!("Background texture not found: {}", background);
+                static BACKGROUND_FAILED: Lazy<Mutex<std::collections::HashSet<String>>> = Lazy::new(|| Mutex::new(std::collections::HashSet::new()));
+                let mut failed = BACKGROUND_FAILED.lock().unwrap();
+                if !failed.contains(background) {
+                    eprintln!("[背景] ✗ 背景图片加载失败: {}", background);
+                    failed.insert(background.clone());
+                }
             }
         }
 
@@ -156,7 +247,7 @@ impl LayoutRenderer {
             ElementType::Spacer => {
                 // Spacer: 只增加 Y 坐标，不渲染任何东西
                 let height = element.attributes.height.unwrap_or(0.0);
-                tracing::debug!("Spacer: height={}, current_y={}, next_y={}", height, y, y + height);
+                // 移除频繁的日志输出
                 y + height
             }
             ElementType::HBox | ElementType::Image | ElementType::Button | ElementType::Checkbox | ElementType::Label => {
@@ -167,14 +258,6 @@ impl LayoutRenderer {
                 let element_rect = egui::Rect::from_min_size(
                     egui::pos2(parent_rect.min.x, y),
                     egui::vec2(parent_rect.width(), height)
-                );
-
-                tracing::debug!(
-                    "Element {:?} at y={}, height={}, rect={:?}",
-                    element.element_type,
-                    y,
-                    height,
-                    element_rect
                 );
 
                 // 创建子 UI，直接使用 painter 在指定矩形内绘制
@@ -248,7 +331,7 @@ impl LayoutRenderer {
         let halign = element.attributes.get_custom("halign").map(|s| s.as_str()).unwrap_or("left");
 
         let available_height = ui.available_height();
-        tracing::info!("VBox available_height: {}, spacing: {}", available_height, spacing);
+        // 移除频繁的日志输出
 
         // 检查是否有 flex 子元素
         let has_flex_children = element.children.iter()
@@ -271,8 +354,7 @@ impl LayoutRenderer {
                     }
 
                     for (idx, child) in element.children.iter().enumerate() {
-                        tracing::info!("VBox child {} ({:?}), remaining height: {}",
-                            idx, child.element_type, ui.available_height());
+                        // 移除频繁的日志输出
                         self.render_element(ui, child, result);
                     }
 
@@ -461,7 +543,7 @@ impl LayoutRenderer {
                     }
                 }
             );
-            tracing::debug!("HBox with height={} rendered at rect: {:?}", h, response.response.rect);
+            // 移除频繁的日志输出
         } else if has_flex_children {
             self.render_hbox_with_flex(ui, element, result);
         } else if align != "left" || valign != "top" {
@@ -687,18 +769,18 @@ impl LayoutRenderer {
                 egui::vec2(width, spacer_height),
                 egui::Sense::hover()
             );
-            tracing::info!("Spacer H width={}, height={}, rect: {:?}", width, spacer_height, rect);
+            // 移除频繁的日志输出
         } else if height > 0.0 {
             // 垂直 Spacer（在 VBox 中）- 使用 allocate_exact_size 而不是 add_space
             let (rect, _) = ui.allocate_exact_size(
                 egui::vec2(ui.available_width(), height),
                 egui::Sense::hover()
             );
-            tracing::info!("Spacer V height={}, rect: {:?}", height, rect);
+            // 移除频繁的日志输出
         } else {
             // 空 Spacer：弹性空间（填充所有剩余空间）
             ui.allocate_space(egui::vec2(ui.available_width(), 0.0));
-            tracing::info!("Spacer Flex: allocated {} width", ui.available_width());
+            // 移除频繁的日志输出
         }
     }
 
@@ -732,11 +814,29 @@ impl LayoutRenderer {
             .and_then(|c| self.parse_color(c))
             .unwrap_or(Color32::WHITE);
 
-        // 先分配精确尺寸，然后在其中渲染按钮
-        let (rect, response) = ui.allocate_exact_size(
-            egui::vec2(width, height),
-            egui::Sense::click()
-        );
+        // 检查是否有绝对定位（position 属性）
+        let (rect, response) = if let Some(position_str) = element.attributes.get_custom("position") {
+            // 解析 position="x,y"
+            let coords: Vec<f32> = position_str.split(',')
+                .map(|s| s.trim().parse::<f32>().ok())
+                .filter_map(|x| x)
+                .collect();
+            
+            if coords.len() == 2 {
+                // 绝对定位：在指定位置分配空间
+                let pos = egui::pos2(coords[0], coords[1]);
+                let size = egui::vec2(width, height);
+                let rect = egui::Rect::from_min_size(pos, size);
+                let response = ui.allocate_rect(rect, egui::Sense::click());
+                (rect, response)
+            } else {
+                // 解析失败，使用默认布局
+                ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click())
+            }
+        } else {
+            // 默认布局流
+            ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click())
+        };
 
         // 绘制按钮背景和文本
         if ui.is_rect_visible(rect) {
@@ -746,13 +846,8 @@ impl LayoutRenderer {
             let pushedimage = element.attributes.get_custom("pushedimage");
             let disabledimage = element.attributes.get_custom("disabledimage");
 
-            #[cfg(debug_assertions)]
-            {
-                eprintln!("Button '{}' custom attrs:", id);
-                eprintln!("  normalimage: {:?}", normalimage);
-                eprintln!("  hotimage: {:?}", hotimage);
-                eprintln!("  all custom: {:?}", element.attributes.custom);
-            }
+            // 调试日志已移除，避免每帧都输出（egui 的 update 函数会被频繁调用）
+            // 如果需要调试，可以使用 tracing::debug! 并设置日志级别
 
             // 根据按钮状态选择背景图片
             let bg_image = if !enabled {
@@ -766,12 +861,31 @@ impl LayoutRenderer {
             };
 
             // 如果有背景图片，渲染图片背景
-            if let Some(img_path) = bg_image {
-                if let Some(texture) = self.resource_cache.get_background(ui.ctx(), &self.dpi_config, img_path) {
+            if let Some(img_path_str) = bg_image {
+                let image_path = Self::parse_image_path(img_path_str);
+                if let Some(texture) = self.resource_cache.get_background(ui.ctx(), &self.dpi_config, &image_path.path) {
+                    // 如果指定了 dest 裁剪区域，计算 UV 坐标
+                    let uv_rect = if let Some((x1, y1, x2, y2)) = image_path.dest {
+                        // 获取纹理的实际尺寸
+                        let tex_size = texture.size();
+                        // 计算 UV 坐标（归一化到 0-1）
+                        let uv_min_x = x1 / tex_size[0] as f32;
+                        let uv_min_y = y1 / tex_size[1] as f32;
+                        let uv_max_x = x2 / tex_size[0] as f32;
+                        let uv_max_y = y2 / tex_size[1] as f32;
+                        egui::Rect::from_min_max(
+                            egui::pos2(uv_min_x, uv_min_y),
+                            egui::pos2(uv_max_x, uv_max_y)
+                        )
+                    } else {
+                        // 使用整个纹理
+                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0))
+                    };
+                    
                     ui.painter().image(
                         texture.id(),
                         rect,
-                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                        uv_rect,
                         egui::Color32::WHITE,
                     );
                 } else {
@@ -805,7 +919,7 @@ impl LayoutRenderer {
             );
         }
 
-        tracing::debug!("Button '{}' rendered at rect: {:?}", text, rect);
+        // 移除频繁的日志输出
 
         if response.clicked() && enabled {
             result.button_clicks.insert(id.clone(), true);
@@ -953,7 +1067,8 @@ impl LayoutRenderer {
                     .unwrap_or(20.0);
 
                 // 使用图片渲染复选框
-                let checkbox_size = 16.0; // 复选框图片大小
+                // 根据 DPI 使用不同的复选框大小：1x = 16px, 2x = 32px
+                let checkbox_size = if self.dpi_config.use_2x { 32.0 } else { 16.0 };
                 let checkbox_rect = egui::Rect::from_min_size(
                     rect.min,
                     egui::Vec2::splat(checkbox_size)
@@ -969,12 +1084,31 @@ impl LayoutRenderer {
                 };
 
                 // 渲染复选框图片
-                if let Some(img_path) = checkbox_image {
-                    if let Some(texture) = self.resource_cache.get_background(ui.ctx(), &self.dpi_config, img_path) {
+                if let Some(img_path_str) = checkbox_image {
+                    let image_path = Self::parse_image_path(img_path_str);
+                    if let Some(texture) = self.resource_cache.get_background(ui.ctx(), &self.dpi_config, &image_path.path) {
+                        // 如果指定了 dest 裁剪区域，计算 UV 坐标
+                        let uv_rect = if let Some((x1, y1, x2, y2)) = image_path.dest {
+                            // 获取纹理的实际尺寸
+                            let tex_size = texture.size();
+                            // 计算 UV 坐标（归一化到 0-1）
+                            let uv_min_x = x1 / tex_size[0] as f32;
+                            let uv_min_y = y1 / tex_size[1] as f32;
+                            let uv_max_x = x2 / tex_size[0] as f32;
+                            let uv_max_y = y2 / tex_size[1] as f32;
+                            egui::Rect::from_min_max(
+                                egui::pos2(uv_min_x, uv_min_y),
+                                egui::pos2(uv_max_x, uv_max_y)
+                            )
+                        } else {
+                            // 使用整个纹理
+                            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0))
+                        };
+                        
                         ui.painter().image(
                             texture.id(),
                             checkbox_rect,
-                            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                            uv_rect,
                             egui::Color32::WHITE,
                         );
                     } else {
@@ -1036,7 +1170,7 @@ impl LayoutRenderer {
             ui.add(checkbox)
         };
 
-        tracing::debug!("Checkbox '{}' rendered at rect: {:?}", text, response.rect);
+        // 移除频繁的日志输出
 
         if response.clicked() {
             let new_checked = !current_checked;
@@ -1109,7 +1243,7 @@ impl LayoutRenderer {
                         // 点击事件
                         if link_response.clicked() {
                             result.link_clicks.insert(link_id.clone(), true);
-                            tracing::info!("Link clicked: {}", link_id);
+                            tracing::info!("Link clicked: {}", link_id); // 保留，因为这是用户交互事件
                         }
                     }
                 }
@@ -1180,7 +1314,7 @@ impl LayoutRenderer {
                     );
                 }
 
-                tracing::debug!("Image '{}' rendered at rect: {:?} with size: {:?}", icon, rect, size);
+                // 移除频繁的日志输出
             }
         }
     }

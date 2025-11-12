@@ -27,7 +27,9 @@ pub fn init(log_dir: Option<&Path>, app_name: &str, is_installer: bool) -> Resul
         .with_thread_ids(false)
         .with_line_number(true);
 
-    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("debug"));
+    // 默认日志级别为 warn，避免 debug/info 日志频繁输出
+    // 可以通过 RUST_LOG 环境变量覆盖（例如：RUST_LOG=debug）
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn"));
 
     tracing_subscriber::registry()
         .with(env_filter)

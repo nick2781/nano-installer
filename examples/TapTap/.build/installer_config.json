@@ -30,7 +30,7 @@
   },
   "links": {
     "privacy_policy": "https://www.taptap.io/privacy",
-    "terms_of_service": "https://www.taptap.io/terms"
+    "terms_of_service": "https://www.taptap.cn/terms"
   },
   "localization": {
     "default_locale": "zh-CN",
@@ -52,11 +52,11 @@
     "copyright": "© 2025 TapTap",
     "name": "TapTap",
     "output_name": "TapTap_Setup",
-    "publisher": "上海易玩网络科技有限公司",
+    "publisher": "易玩网络(上海)科技有限公司",
     "version": "1.0.0"
   },
   "registry": {
-    "help_link": "https://www.taptap.io/help",
+    "help_link": "https://www.taptap.cn/help",
     "install_path_key": "HKLM\\\\Software\\\\TapTap",
     "uninstall_key": "HKLM\\\\Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\TapTap"
   },
@@ -78,9 +78,9 @@
   "ui": {
     "dpi_aware": true,
     "dpi_threshold": 144,
-    "expanded_height": 1036,
-    "window_height": 716,
-    "window_width": 1148
+    "expanded_height": 518,
+    "window_height": 358,
+    "window_width": 574
   },
   "uninstall": {
     "cleanup_game_registry": true,
@@ -102,7 +102,7 @@
       {
         "id": "config",
         "layout": "layouts/config.xml",
-        "title": "欢迎使用 TapTap"
+        "title": "安装选项"
       },
       {
         "id": "installing",

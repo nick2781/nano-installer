@@ -50,9 +50,12 @@ pub struct InstallerApp {
 }
 
 impl InstallerApp {
-    pub fn new(config: InstallerConfig, config_base_path: PathBuf) -> Self {
+    /// 创建 InstallerApp（接受已检测的 DpiConfig，避免重复检测导致不一致）
+    pub fn new_with_dpi(config: InstallerConfig, config_base_path: PathBuf, dpi_config: DpiConfig) -> Self {
         let install_path = config.install.default_path.clone();
-        let dpi_config = DpiConfig::new(&config);
+        eprintln!("[App] 开始创建 InstallerApp - 使用已检测的 DpiConfig");
+        eprintln!("[App] DpiConfig: use_2x={}, 窗口: {}x{}", 
+            dpi_config.use_2x, dpi_config.window_width, dpi_config.window_height);
         
         // 加载国际化字符串
         let i18n_strings = Self::load_i18n_strings(&config, &config_base_path);
@@ -65,8 +68,28 @@ impl InstallerApp {
             i18n_strings,
         );
         
+        // 从配置读取初始页面（第一个页面），直接使用配置中的页面 ID
+        let initial_page = config.wizard.pages.first()
+            .and_then(|page_config| {
+                match page_config.id.as_str() {
+                    "config" => Some(WizardPage::Config),
+                    "welcome" => Some(WizardPage::Welcome),
+                    "language" => Some(WizardPage::Language),
+                    "license" => Some(WizardPage::License),
+                    "install_path" => Some(WizardPage::InstallPath),
+                    "installing" => Some(WizardPage::Installing),
+                    "finish" => Some(WizardPage::Finish),
+                    _ => None,
+                }
+            })
+            .unwrap_or(WizardPage::Config); // 默认使用 Config
+        
+        // 创建向导并设置初始页面
+        let mut wizard = Wizard::new(WizardMode::Install);
+        wizard.set_page(initial_page);
+        
         Self {
-            wizard: Wizard::new(WizardMode::Install),
+            wizard,
             config,
             config_base_path,
             install_state: Some(Arc::new(InstallState::new(install_path.clone()))),
@@ -106,95 +129,91 @@ impl InstallerApp {
         
         // 查找页面对应的布局文件
         let layout_file = self.find_layout_file_for_page(page)?;
-        tracing::debug!("Loading layout: {}", layout_file);
         
         // 从嵌入资源加载
         use crate::resources::RuntimeResources;
         
-        // 尝试加载（可能需要 @2x 版本）
-        let dpi = crate::layout::xml_parser::XmlParser::detect_system_dpi();
-        tracing::info!("System DPI detected: {}", dpi);
-        let selected_file = if dpi >= 144.0 {
-            let stem = std::path::Path::new(&layout_file)
-                .file_stem()
+        // 使用已创建的 DpiConfig 来判断是否使用 2x 布局（避免重复检测导致不一致）
+        let selected_file = if self.dpi_config.use_2x {
+            // 保留目录路径，只修改文件名
+            let path = std::path::Path::new(&layout_file);
+            let parent = path.parent().and_then(|p| p.to_str()).unwrap_or("");
+            let stem = path.file_stem()
                 .and_then(|s| s.to_str())
-                .unwrap_or(&layout_file);
-            let ext = std::path::Path::new(&layout_file)
-                .extension()
+                .unwrap_or_else(|| {
+                    // 如果没有文件名，使用整个路径作为 stem
+                    path.to_str().unwrap_or(&layout_file)
+                });
+            let ext = path.extension()
                 .and_then(|s| s.to_str())
                 .unwrap_or("xml");
-            let file_2x = format!("{}@2x.{}", stem, ext);
-            tracing::info!("High DPI detected, trying @2x version: {}", file_2x);
+            
+            // 构建 2x 文件路径，保留目录结构
+            let file_2x = if parent.is_empty() {
+                format!("{}@2x.{}", stem, ext)
+            } else {
+                format!("{}/{}@2x.{}", parent, stem, ext)
+            };
+            eprintln!("[布局] 使用 2x 布局: {} -> {}", layout_file, file_2x);
             file_2x
         } else {
-            tracing::info!("Normal DPI, using standard version: {}", layout_file);
+            eprintln!("[布局] 使用 1x 布局: {}", layout_file);
             layout_file.clone()
         };
         
         // 文件名已经包含完整路径，直接使用
-        tracing::debug!("Trying to load: {} or {}", selected_file, layout_file);
-        
         let layout_content = RuntimeResources::get_layout(&selected_file)
-            .or_else(|e1| {
-                tracing::debug!("Failed to load {}: {}", selected_file, e1);
+            .or_else(|_e1| {
+                eprintln!("[布局] 2x 布局加载失败，回退到 1x: {} -> {}", selected_file, layout_file);
                 RuntimeResources::get_layout(&layout_file)
                     .map_err(|e2| {
-                        tracing::error!("Failed to load {}: {}", layout_file, e2);
+                        tracing::error!("Failed to load layout {}: {}", layout_file, e2);
                         e2
                     })
             })
             .ok()?;
         
-        tracing::debug!("Layout content loaded, length: {} bytes", layout_content.len());
-        
-        // 调试：输出前 100 字符和字节
-        let preview = if layout_content.len() > 100 {
-            &layout_content[..100]
-        } else {
-            &layout_content[..]
-        };
-        tracing::debug!("Layout content preview (first 100 chars): {}", preview);
-        
-        #[cfg(debug_assertions)]
-        {
-            eprintln!("Layout content (first 100 bytes as hex):");
-            let bytes = layout_content.as_bytes();
-            let hex_preview = &bytes[..bytes.len().min(100)];
-            for (i, byte) in hex_preview.iter().enumerate() {
-                if i % 16 == 0 {
-                    eprint!("\n  {:04x}: ", i);
-                }
-                eprint!("{:02x} ", byte);
-            }
-            eprintln!("\n");
-        }
-        
         // 解析布局
         match self.layout_parser.parse_string(&layout_content) {
             Ok(layout_tree) => {
-                tracing::info!("Layout parsed successfully: {:?}", page);
-                #[cfg(debug_assertions)]
-                eprintln!("✓ Layout parsed successfully: {:?}", page);
+                // 检查布局中的页面尺寸
+                let layout_width = layout_tree.root.attributes.width.unwrap_or(0.0);
+                let layout_height = layout_tree.root.attributes.height.unwrap_or(0.0);
+                
+                // 只在首次加载时输出一次清晰的日志
+                let page_name = match page {
+                    WizardPage::Config => "Config (配置页)",
+                    WizardPage::Welcome => "Welcome (欢迎页)",
+                    WizardPage::Installing => "Installing (安装中)",
+                    WizardPage::Finish => "Finish (完成页)",
+                    _ => "其他页面",
+                };
+                eprintln!("[布局] ✓ 加载成功: {} -> {}", page_name, selected_file);
+                eprintln!("[布局]   布局尺寸: {}x{} (窗口: {}x{})", 
+                    layout_width, layout_height, 
+                    self.dpi_config.window_width, self.dpi_config.window_height);
+                
+                // 检查尺寸是否匹配
+                if layout_width > 0.0 && layout_height > 0.0 {
+                    let width_match = (layout_width - self.dpi_config.window_width).abs() < 1.0;
+                    let height_match = (layout_height - self.dpi_config.window_height).abs() < 1.0;
+                    if !width_match || !height_match {
+                        eprintln!("[布局] ⚠️  警告: 布局尺寸与窗口大小不匹配！");
+                        eprintln!("[布局]   布局: {}x{}, 窗口: {}x{}, 差异: {}x{}",
+                            layout_width, layout_height,
+                            self.dpi_config.window_width, self.dpi_config.window_height,
+                            (layout_width - self.dpi_config.window_width).abs(),
+                            (layout_height - self.dpi_config.window_height).abs());
+                    } else {
+                        eprintln!("[布局] ✓ 布局尺寸与窗口大小匹配");
+                    }
+                }
+                
                 self.layout_cache.insert(page, layout_tree);
                 self.layout_cache.get(&page)
             }
             Err(e) => {
-                tracing::error!("Failed to parse layout: {}", e);
-                #[cfg(debug_assertions)]
-                {
-                    eprintln!("✗ XML Parse Error for {:?}:", page);
-                    eprintln!("  Error: {}", e);
-                    eprintln!("  Content length: {} bytes", layout_content.len());
-                    eprintln!("  Bytes 75-95 (around position 84):");
-                    if layout_content.len() >= 95 {
-                        let bytes = layout_content.as_bytes();
-                        eprintln!("    Hex: {:02x?}", &bytes[75..95]);
-                        eprintln!("    Text: {:?}", &layout_content[75..95]);
-                    }
-                    eprintln!("  Content preview (first 300 chars):");
-                    let preview_len = layout_content.len().min(300);
-                    eprintln!("  {}", &layout_content[..preview_len]);
-                }
+                eprintln!("[布局] ✗ 解析失败: {} - {}", selected_file, e);
                 None
             }
         }
@@ -202,43 +221,41 @@ impl InstallerApp {
     
     /// 查找页面对应的布局文件
     fn find_layout_file_for_page(&self, page: WizardPage) -> Option<String> {
-        tracing::debug!("Looking for layout for page: {:?}", page);
-        tracing::debug!("Config has {} pages", self.config.wizard.pages.len());
+        // 直接根据页面枚举查找对应的配置，不使用字符串映射
+        let page_id = match page {
+            WizardPage::Config => "config",
+            WizardPage::Welcome => "welcome",
+            WizardPage::Language => "language",
+            WizardPage::License => "license",
+            WizardPage::InstallPath => "install_path",
+            WizardPage::Installing => "installing",
+            WizardPage::Finish => "finish",
+            WizardPage::UninstallConfirm => "uninstall_confirm",
+            WizardPage::UninstallProgress => "uninstall_progress",
+            WizardPage::UninstallFinish => "uninstall_finish",
+        };
         
         // 从配置中查找页面配置
         for page_config in &self.config.wizard.pages {
-            let page_id = &page_config.id;
-            tracing::debug!("Checking page_id: {}", page_id);
-            
-            let expected_page = match page_id.as_str() {
-                "config" | "welcome" => WizardPage::Welcome,  // config 对应 NSIS 的 configpage
-                "license" => WizardPage::License,
-                "install_path" => WizardPage::InstallPath,
-                "installing" => WizardPage::Installing,
-                "finish" => WizardPage::Finish,
-                "language" => WizardPage::Language,
-                _ => {
-                    tracing::debug!("Unknown page_id: {}", page_id);
-                    continue;
-                }
-            };
-            
-            if expected_page == page {
-                tracing::debug!("Found layout: {}", page_config.layout);
+            if page_config.id == page_id {
                 return Some(page_config.layout.clone());
             }
         }
         
-        tracing::error!("No layout found for page: {:?}", page);
         None
     }
     
     /// 处理布局渲染结果
-    fn handle_layout_result(&mut self, result: crate::ui::layout_renderer::RenderResult) {
+    fn handle_layout_result(&mut self, ctx: &egui::Context, result: crate::ui::layout_renderer::RenderResult) {
         // 处理按钮点击
         for (button_id, clicked) in &result.button_clicks {
             if *clicked {
-                self.handle_button_click(button_id);
+                // 特殊处理关闭按钮
+                if button_id == "close" {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                } else {
+                    self.handle_button_click(button_id);
+                }
             }
         }
         
@@ -264,9 +281,13 @@ impl InstallerApp {
             "back" => {
                 self.wizard.previous();
             }
-            "cancel" | "close" => {
-                // 处理取消/关闭
+            "cancel" => {
+                // 处理取消
                 tracing::info!("User cancelled installation");
+            }
+            "close" => {
+                // 关闭按钮已在 handle_layout_result 中处理
+                tracing::info!("Close button clicked");
             }
             "finish" => {
                 tracing::info!("Installation finished");
@@ -329,13 +350,67 @@ impl eframe::App for InstallerApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         // 禁用 egui 的自动 DPI 缩放，我们手动处理
         ctx.set_pixels_per_point(1.0);
-
-        // 根据系统 DPI 决定使用哪套资源
-        let system_dpi = ctx.native_pixels_per_point().unwrap_or(1.0);
-        self.dpi_config.scale_factor = system_dpi;
-        self.dpi_config.use_2x = system_dpi >= 1.5;
-
-        tracing::debug!("System DPI: {}, use_2x: {}", system_dpi, self.dpi_config.use_2x);
+        
+        // 追踪 pixels_per_point 和窗口大小（只在首次或变化时输出）
+        static LAST_PIXELS_PER_POINT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        static LAST_WINDOW_SIZE: std::sync::Mutex<Option<(f32, f32)>> = std::sync::Mutex::new(None);
+        static FIRST_FRAME: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+        
+        let current_ppp = ctx.pixels_per_point();
+        let ppp_bits = (current_ppp.to_bits() as u64);
+        let last_ppp_bits = LAST_PIXELS_PER_POINT.swap(ppp_bits, std::sync::atomic::Ordering::SeqCst);
+        
+        let viewport_rect = ctx.viewport_rect();
+        let window_size = (viewport_rect.width(), viewport_rect.height());
+        
+        let mut last_size = LAST_WINDOW_SIZE.lock().unwrap();
+        let size_changed = last_size.map_or(true, |(w, h)| (w - window_size.0).abs() > 0.1 || (h - window_size.1).abs() > 0.1);
+        let is_first_frame = FIRST_FRAME.swap(false, std::sync::atomic::Ordering::SeqCst);
+        
+        // 如果窗口大小不匹配，强制重置窗口大小
+        if size_changed {
+            let size_diff = (
+                (window_size.0 - self.dpi_config.window_width).abs(),
+                (window_size.1 - self.dpi_config.window_height).abs()
+            );
+            if size_diff.0 > 1.0 || size_diff.1 > 1.0 {
+                eprintln!("[渲染] ⚠️  窗口大小被改变: {}x{} -> 期望: {}x{}，强制重置", 
+                    window_size.0, window_size.1,
+                    self.dpi_config.window_width, self.dpi_config.window_height);
+                
+                // 强制设置窗口大小为期望大小
+                ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
+                    self.dpi_config.window_width,
+                    self.dpi_config.window_height
+                )));
+            }
+        }
+        
+        // 只在首次或真正变化时输出日志（减少不必要的日志）
+        let ppp_changed = ppp_bits != last_ppp_bits && (current_ppp - 1.0).abs() > 0.01;
+        let size_changed_significantly = size_changed && 
+            ((window_size.0 - self.dpi_config.window_width).abs() > 1.0 || 
+             (window_size.1 - self.dpi_config.window_height).abs() > 1.0);
+        
+        if is_first_frame || ppp_changed || size_changed_significantly {
+            if is_first_frame {
+                eprintln!("[渲染] 第一帧: pixels_per_point={}, 窗口: {}x{} (期望: {}x{})", 
+                    current_ppp, window_size.0, window_size.1,
+                    self.dpi_config.window_width, self.dpi_config.window_height);
+            }
+            
+            if ppp_changed {
+                eprintln!("[渲染] ⚠️  pixels_per_point 被改变: {} -> 1.0 (强制覆盖)", current_ppp);
+            }
+            
+            if size_changed_significantly {
+                eprintln!("[渲染] ⚠️  窗口大小被改变: {}x{} -> {}x{} (已重置)", 
+                    window_size.0, window_size.1,
+                    self.dpi_config.window_width, self.dpi_config.window_height);
+            }
+            
+            *last_size = Some(window_size);
+        }
 
         // 设置暗色主题
         ctx.set_visuals(egui::Visuals::dark());
@@ -370,7 +445,7 @@ impl eframe::App for InstallerApp {
                 
                 // 渲染 XML 布局
                 // 动态更新安装按钮的 enabled 状态（根据协议复选框）
-                if current_page == WizardPage::Welcome {
+                if current_page == WizardPage::Config || current_page == WizardPage::Welcome {
                     if let Some(layout) = self.layout_cache.get_mut(&current_page) {
                         Self::update_button_enabled_recursive(&mut layout.root, "install", self.agree_to_terms);
                     }
@@ -380,7 +455,7 @@ impl eframe::App for InstallerApp {
                 if let Some(layout) = layout_opt {
                     if let Some(ref mut renderer) = self.layout_renderer {
                         let render_result = renderer.render(ui, layout);
-                        self.handle_layout_result(render_result);
+                        self.handle_layout_result(ctx, render_result);
                     }
                 } else {
                     // 布局加载失败，显示错误

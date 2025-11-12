@@ -257,7 +257,17 @@ impl ElementAttributes {
 
         // 检查必需属性
         match element_type {
-            ElementType::Button | ElementType::Label => {
+            ElementType::Button => {
+                // Button 可以有 text、icon 或 normalimage（图片按钮）
+                let has_text = self.text.is_some() || self.text_i18n.is_some();
+                let has_icon = self.icon.is_some();
+                let has_image = self.custom.contains_key("normalimage");
+                
+                if !has_text && !has_icon && !has_image {
+                    errors.push(format!("{:?} 元素必须设置 text、icon 或 normalimage 属性", element_type));
+                }
+            }
+            ElementType::Label => {
                 if self.text.is_none() && self.icon.is_none() {
                     errors.push(format!("{:?} 元素必须设置 text 或 icon 属性", element_type));
                 }

@@ -69,14 +69,17 @@ fn run_gui_install(config: InstallerConfig) -> Result<()> {
     // 加载图标
     let icon = load_icon_from_config(&config)?;
     
-    // 从配置读取窗口大小
-    let window_width = config.ui.window_width as f32;
-    let window_height = config.ui.window_height as f32;
+    // 注意：在窗口创建前，我们无法准确检测到真实的系统 DPI（因为 DPI 感知模式）
+    // 所以先使用一个合理的默认值，然后在窗口创建回调中根据 egui 检测到的真实 DPI 调整
+    // 默认使用 2x 大小（1148x716），因为大多数高 DPI 显示器都是 192 DPI
+    // 如果实际是 96 DPI，会在回调中调整为 1x（574x358）
+    eprintln!("[窗口] 开始创建窗口 - 调用位置: run_gui_install");
+    eprintln!("[窗口] 初始窗口大小: 1148x716 (2x，将在窗口创建后根据实际 DPI 调整)");
     
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title(format!("{} Setup", config.project.name))
-            .with_inner_size([window_width, window_height])
+            .with_inner_size([1148.0, 716.0])  // 默认使用 2x 大小
             .with_resizable(false)
             .with_decorations(false)  // 无边框窗口
             .with_transparent(false)
@@ -92,13 +95,70 @@ fn run_gui_install(config: InstallerConfig) -> Result<()> {
         &format!("{} Setup", config.project.name),
         native_options,
         Box::new(move |cc| {
-            // 禁用 egui 的自动 DPI 缩放
+            // 在窗口创建后，此时线程应该已经是 AWARE 模式了
+            // 使用 GetDpiForSystem() 再次检测真实的系统 DPI
+            #[cfg(target_os = "windows")]
+            let window_dpi = {
+                use windows::Win32::UI::HiDpi::GetDpiForSystem;
+                
+                unsafe {
+                    let dpi = GetDpiForSystem() as u32;
+                    eprintln!("[窗口创建] 窗口创建后 GetDpiForSystem() = {} (此时应该是 AWARE 模式)", dpi);
+                    dpi
+                }
+            };
+            
+            #[cfg(not(target_os = "windows"))]
+            let window_dpi = 96;
+            
+            // 根据窗口 DPI 判断使用 1x 还是 2x（与 NSIS 一致：>= 144 使用 2x）
+            let actual_use_2x = window_dpi >= config.ui.dpi_threshold;
+            let (actual_window_width, actual_window_height) = if actual_use_2x {
+                (1148.0, 716.0)
+            } else {
+                (574.0, 358.0)
+            };
+            
+            let scale_factor = window_dpi as f32 / 96.0;
+            
+            eprintln!("[窗口创建] 根据窗口 DPI 计算: DPI={}, use_2x={}, 窗口大小: {}x{}", 
+                window_dpi, actual_use_2x, actual_window_width, actual_window_height);
+            
+            // 如果窗口大小需要调整，立即调整
+            let current_size = cc.egui_ctx.viewport_rect().size();
+            if (current_size.x - actual_window_width).abs() > 1.0 ||
+               (current_size.y - actual_window_height).abs() > 1.0 {
+                eprintln!("[窗口创建] 调整窗口大小: {}x{} -> {}x{}", 
+                    current_size.x, current_size.y, actual_window_width, actual_window_height);
+                cc.egui_ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
+                    actual_window_width,
+                    actual_window_height
+                )));
+                // 注意：窗口居中由 NativeOptions 的 centered: true 处理
+            }
+            
+            // 创建新的 DpiConfig，使用窗口的实际 DPI
+            use crate::ui::dpi_handler::DpiConfig;
+            let actual_dpi_config = DpiConfig {
+                scale_factor,
+                use_2x: actual_use_2x,
+                window_width: actual_window_width,
+                window_height: actual_window_height,
+                expanded_height: if actual_use_2x { 1036.0 } else { 518.0 },
+            };
+            
+            eprintln!("[窗口创建] 使用实际 DpiConfig: use_2x={}, 窗口: {}x{}", 
+                actual_dpi_config.use_2x, actual_dpi_config.window_width, actual_dpi_config.window_height);
+            
+            // 强制设置 pixels_per_point = 1.0，我们手动处理缩放
             cc.egui_ctx.set_pixels_per_point(1.0);
+            eprintln!("[窗口创建] 强制设置 pixels_per_point = 1.0");
 
             // 设置中文字体
             setup_chinese_font(&cc.egui_ctx);
 
-            Ok(Box::new(InstallerApp::new(config.clone(), config_base_path.clone())))
+            // 使用实际检测到的 dpi_config
+            Ok(Box::new(InstallerApp::new_with_dpi(config.clone(), config_base_path.clone(), actual_dpi_config)))
         }),
     ).map_err(|e| anyhow::anyhow!("Failed to run GUI: {}", e))?;
     

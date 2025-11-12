@@ -32,5 +32,8 @@
   "config.agreement": "用户协议",
   "config.and": "和",
   "config.policy": "隐私政策",
-  "config.show_more": "自定义安装"
+  "config.show_more": "自定义安装",
+  "config.install_now": "立即安装",
+  "config.agreement_full": "我已阅读并同意《服务协议》&《隐私政策》",
+  "config.custom_options": "自定义选项"
 }

@@ -1,7 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- 配置页面 @2x - 完全匹配 NSIS configpage2x.xml -->
-<Layout name="ConfigPage" version="1.0.0" width="1148" height="716" dpi="2x">
-  <Page background="assets/bg_main@2x.png">
+<Layout name="ConfigPage" version="1.0.0" width="1148" height="716">
+  <Page background="assets/bg_main@2x.png" width="1148" height="716">
+    <!-- 右上角关闭按钮（绝对定位） -->
+    <Button id="close" position="1100,16" width="32" height="32" style="text"
+            normalimage="assets/btn_close@2x.png"
+            hotimage="assets/btn_close@2x.png"
+            pushedimage="assets/btn_close@2x.png" />
+    
     <VBox spacing="0">
       <!-- 顶部空白 192px (96*2) -->
       <Spacer height="192" />
@@ -26,16 +32,13 @@
         <Spacer width="334" />
       </HBox>
 
-      <!-- 同意协议区域：上边距70px (35*2)，HBox 高度174px (87*2)，内边距 inset="80,70,80,70" -->
-      <Spacer height="70" />
-
-      <!-- inset="80,70,80,70" = padding 左80, 上70, 右80, 下70 (40*2, 35*2) -->
+      <!-- 复选框区域：总高度 174px (87*2)，内边距 inset="80,70,80,70" -->
       <!-- padding 格式: (top, right, bottom, left)，所以 inset(left,top,right,bottom) 转换为 padding(top,right,bottom,left) = (70,80,70,80) -->
-      <HBox height="104" padding="70,80,70,80">
-        <!-- CheckBox: width=220 (110*2) -->
-        <Checkbox id="agree_license" text="同意" text_i18n="config.agree" width="220" height="40" font_size="24" color="#FFE4E8EC"
-                  normalimage="assets/checkbox-0@2x.png"
-                  selectedimage="assets/checkbox-2@2x.png"
+      <HBox height="174" padding="70,80,70,80">
+        <!-- CheckBox: width=215 (与 NSIS 一致)，图片裁剪 dest='0,2,32,34' -->
+        <Checkbox id="agree_license" text="同意" text_i18n="config.agree" width="215" height="40" font_size="24" color="#FFE4E8EC"
+                  normalimage="file='assets/checkbox-0@2x.png' dest='0,2,32,34'"
+                  selectedimage="file='assets/checkbox-2@2x.png' dest='0,2,32,34'"
                   textpadding="40,0,0,0" />
 
         <!-- 用户协议按钮: width=144 (72*2) -->
@@ -50,8 +53,12 @@
         <!-- 弹性空间（填充中间）-->
         <Spacer />
 
-        <!-- 自定义安装按钮: width=160 (80*2)（右对齐）-->
-        <Button id="show_more" text="自定义安装" text_i18n="config.show_more" width="160" height="40" style="text" font_size="24" color="#FFFFFFFF" />
+        <!-- 自定义安装按钮: width=160 (80*2)（右对齐），带箭头图标，textpadding="0,0,32,0" -->
+        <Button id="show_more" text="自定义安装" text_i18n="config.show_more" width="160" height="40" style="text" font_size="24" color="#FFFFFFFF"
+                normalimage="file='assets/arrow-down@2x.png' dest='136,4,160,30'"
+                hotimage="file='assets/arrow-down@2x.png' dest='136,4,160,30'"
+                pushedimage="file='assets/arrow-down@2x.png' dest='136,4,160,30'"
+                textpadding="0,0,32,0" />
       </HBox>
 
       <!-- 底部剩余空间 64px (32*2) -->

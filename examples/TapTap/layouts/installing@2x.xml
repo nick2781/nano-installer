@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Layout name="Installing" version="1.0.0" width="1148" height="716" dpi="2x">
+<Layout name="Installing" version="1.0.0" width="1148" height="716">
   <Page>
     <VBox>
       <Label text="正在安装 TapTap" text_i18n="processing.title" font_size="40" />

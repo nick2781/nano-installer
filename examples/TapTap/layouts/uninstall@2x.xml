@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Layout name="Uninstall" version="1.0.0" width="1148" height="716" dpi="2x">
+<Layout name="Uninstall" version="1.0.0" width="1148" height="716">
   <Page>
     <VBox>
       <Image icon="assets/logo@2x.png" width="256" height="256" />

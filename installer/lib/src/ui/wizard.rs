@@ -6,6 +6,7 @@ use crate::layout::LayoutTree;
 /// 向导页面枚举（基于 NSIS 设计）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum WizardPage {
+    Config,      // 配置页（对应 config）
     Welcome,     // 欢迎页
     Language,    // 语言选择页
     License,     // 许可协议页
@@ -43,7 +44,7 @@ impl Wizard {
     /// 创建新的向导
     pub fn new(mode: WizardMode) -> Self {
         let initial_page = match mode {
-            WizardMode::Install | WizardMode::Update => WizardPage::Welcome,
+            WizardMode::Install | WizardMode::Update => WizardPage::Config,
             WizardMode::Uninstall => WizardPage::UninstallConfirm,
         };
         
@@ -73,11 +74,8 @@ impl Wizard {
     
     /// 设置当前页面
     pub fn set_page(&mut self, page: WizardPage) {
-        if page != self.current_page {
-            self.page_history.push(self.current_page);
-            self.current_page = page;
-            self.update_window_height();
-        }
+        self.current_page = page;
+        self.update_window_height();
     }
     
     /// 下一步
@@ -101,6 +99,7 @@ impl Wizard {
         match self.mode {
             WizardMode::Install | WizardMode::Update => {
                 match self.current_page {
+                    WizardPage::Config => WizardPage::Installing,
                     WizardPage::Welcome => WizardPage::InstallPath,
                     WizardPage::Language => WizardPage::InstallPath,
                     WizardPage::License => WizardPage::InstallPath,
@@ -207,6 +206,7 @@ impl Wizard {
         } else {
             // 默认高度
             self.current_height = match self.current_page {
+                WizardPage::Config => 400.0,
                 WizardPage::Welcome => 400.0,
                 WizardPage::Language => 300.0,
                 WizardPage::License => 500.0,
@@ -223,7 +223,7 @@ impl Wizard {
     /// 重置向导
     pub fn reset(&mut self) {
         let initial_page = match self.mode {
-            WizardMode::Install | WizardMode::Update => WizardPage::Welcome,
+            WizardMode::Install | WizardMode::Update => WizardPage::Config,
             WizardMode::Uninstall => WizardPage::UninstallConfirm,
         };
         
