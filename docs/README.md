@@ -131,7 +131,9 @@ installer/ 目录详解
 | [API.md](API.md) | 配置 API 参考 | 用户、开发者 |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | 开发指南 | 贡献者 |
 | [UI_DESIGN.md](UI_DESIGN.md) | UI 设计指南 | UI 设计师 |
-| [XML_LAYOUT_REFERENCE.md](XML_LAYOUT_REFERENCE.md) | XML 布局参考手册 | 开发者 |
+| [XML_LAYOUT_REFERENCE.md](XML_LAYOUT_REFERENCE.md) | XML 布局参考手册（支持 NSIS 格式） | 开发者 |
+| [XML_LAYOUT_GUIDE.md](XML_LAYOUT_GUIDE.md) | XML 布局指南（支持 NSIS 格式） | 开发者 |
+| [XML_SCHEMA.md](XML_SCHEMA.md) | XML 布局规范（支持 NSIS 格式） | 开发者 |
 | [LOCALIZATION_UPDATE.md](LOCALIZATION_UPDATE.md) | 国际化指南 | 翻译者 |
 | [TEST_PLAN.md](TEST_PLAN.md) | 测试计划 | 测试人员 |
 
@@ -189,9 +191,9 @@ installer/ 目录详解
    ```
 
 2. **自定义 UI** - 修改布局和样式
-   - 编辑 `layouts/*.xml`
+   - 编辑 `layouts/*.xml`（支持传统格式和 NSIS 格式）
    - 自定义 `assets/`
-   - 查看 [UI 设计指南](UI_DESIGN.md)
+   - 查看 [XML 布局指南](XML_LAYOUT_GUIDE.md) 和 [UI 设计指南](UI_DESIGN.md)
 
 3. **多语言支持** - 添加新语言
    - 创建 `locales/xx-XX.json`
@@ -265,7 +267,10 @@ installer/ 目录详解
 A: 查看 [快速开始](../README.md#快速开始) 指南
 
 **Q: 如何自定义安装器 UI？**  
-A: 编辑 `layouts/*.xml` 文件，参考 [UI 设计指南](UI_DESIGN.md)
+A: 编辑 `layouts/*.xml` 文件（支持传统格式和 NSIS 格式），参考 [XML 布局指南](XML_LAYOUT_GUIDE.md) 和 [UI 设计指南](UI_DESIGN.md)
+
+**Q: 是否支持 NSIS 布局格式？**  
+A: 是的！nano-installer **完全兼容 NSIS 布局格式**，可以直接使用 NSIS 的 XML 布局文件，无需任何转换。同时保持向后兼容，现有布局文件仍然可用。详见 [XML 布局指南](XML_LAYOUT_GUIDE.md#nsis-格式支持)
 
 **Q: 如何添加新语言？**  
 A: 创建新的 `locales/xx-XX.json` 文件，参考 [国际化指南](LOCALIZATION_UPDATE.md)

@@ -1,0 +1,21 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Windows>
+<!-- 完成 -->
+  <VerticalLayout >
+    <VerticalLayout bkcolor="#FF181B22" width="574" height="358" bkimage="assets/bg_main.png">
+
+      <Control height="80" />
+      <!-- <HorizontalLayout height="80" > -->
+      <Control height="80" width="148"  bkimage="assets/logo.png" padding="213,0,213,0" />
+      <Label font="2" textcolor="#FFFFFFFF" text="安    装    完    成" heigh="20" valign="center" align="center" padding="0,16,0,0" />
+
+      <Button name="btnRun" padding="167,40,167,0" text="立即使用" font="3"
+        normalimage="assets/btn_primary.png"
+        hotimage="assets/btn_hover.png"
+        pushedimage="assets/btn_hover.png"
+        disabledimage="assets/btn_disabled.png"
+        textcolor="0xffffffff" hottextcolor="#FFFFFFFF" pushedtextcolor="#FFFFFFFF" disabledtextcolor="0xff7f7f7f" height="40" width="240" cursor="hand" />
+
+    </VerticalLayout>
+  </VerticalLayout>
+</Windows>

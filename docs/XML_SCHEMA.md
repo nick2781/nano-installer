@@ -2,6 +2,8 @@
 
 本文档定义 nano-installer 的 XML 布局文件的完整规范，包括所有元素、属性的类型和约束。
 
+**重要提示**：nano-installer **完全兼容 NSIS 布局格式**，可以直接使用 NSIS 的 XML 布局文件，同时也支持传统的布局格式（向后兼容）。
+
 ## 📖 目录
 
 - [文件结构](#文件结构)
@@ -10,11 +12,13 @@
 - [控件元素](#控件元素)
 - [属性类型](#属性类型)
 - [验证规则](#验证规则)
+- [NSIS 格式规范](#nsis-格式规范)
 
 ## 文件结构
 
 ### 基本格式
 
+**传统格式：**
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <Layout name="PageName" version="1.0.0">
@@ -22,6 +26,17 @@
     <!-- 页面内容 -->
   </Page>
 </Layout>
+```
+
+**NSIS 格式：**
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<Windows>
+  <Font id="0" name="微软雅黑" size="14" bold="false" />
+  <VerticalLayout>
+    <!-- 页面内容 -->
+  </VerticalLayout>
+</Windows>
 ```
 
 ### 文件编码
@@ -32,7 +47,7 @@
 
 ## 根元素
 
-### `<Layout>`
+### `<Layout>`（传统格式）
 
 布局文件的根元素。
 
@@ -56,7 +71,57 @@
 </Layout>
 ```
 
-### `<Page>`
+### `<Windows>`（NSIS 格式）
+
+页面布局的根元素。
+
+**属性：**
+- 无
+
+**子元素：**
+- `<Font>` (可选，多个)
+- `<VerticalLayout>`, `<HorizontalLayout>`, `<TabLayout>` (必需，至少一个)
+
+**示例：**
+
+```xml
+<Windows>
+  <Font id="0" name="微软雅黑" size="14" />
+  <VerticalLayout>
+    ...
+  </VerticalLayout>
+</Windows>
+```
+
+### `<Window>`（NSIS 格式，用于对话框）
+
+窗口定义，用于 msgbox 等对话框。
+
+**属性：**
+
+| 属性 | 类型 | 必需 | 约束 | 说明 |
+|------|------|------|------|------|
+| `name` | string | ❌ | - | 窗口名称 |
+| `size` | string | ❌ | 格式 `"width,height"` | 窗口大小 |
+| `roundcorner` | string | ❌ | 格式 `"x,y"` | 圆角参数 |
+| `showshadow` | boolean | ❌ | - | 是否显示阴影 |
+
+**子元素：**
+- `<Font>` (可选，多个)
+- `<VerticalLayout>`, `<HorizontalLayout>` (必需，至少一个)
+
+**示例：**
+
+```xml
+<Window name="msgbox" size="800,460" roundcorner="32,32" showshadow="true">
+  <Font id="0" name="微软雅黑" size="14" />
+  <VerticalLayout>
+    ...
+  </VerticalLayout>
+</Window>
+```
+
+### `<Page>`（传统格式）
 
 页面容器，是所有内容的父元素。
 
@@ -82,13 +147,48 @@
 </Page>
 ```
 
-## 容器元素
+## NSIS 格式规范
 
-### `<VBox>` - 垂直布局
+### `<Font>` - 字体定义
 
-将子元素垂直排列。
+定义字体样式，供其他元素通过 `font="id"` 引用。
 
 **属性：**
+
+| 属性 | 类型 | 必需 | 约束 | 说明 |
+|------|------|------|------|------|
+| `id` | number | ✅ | 非负整数 | 字体 ID，用于引用 |
+| `name` | string | ❌ | - | 字体名称，默认 "微软雅黑" |
+| `size` | number | ✅ | > 0 | 字体大小（像素） |
+| `bold` | boolean | ❌ | - | 是否粗体，默认 false |
+| `default` | boolean | ❌ | - | 是否默认字体，默认 false |
+
+**位置：**
+- 必须在 `<Windows>` 或 `<Window>` 根元素下
+- 必须在布局容器之前
+
+**示例：**
+
+```xml
+<Windows>
+  <Font id="0" name="微软雅黑" size="14" bold="false" default="true" />
+  <Font id="1" name="微软雅黑" size="20" bold="true" />
+  <VerticalLayout>
+    <Label text="标题" font="1" />
+    <Label text="正文" font="0" />
+  </VerticalLayout>
+</Windows>
+```
+
+## 容器元素
+
+### `<VBox>` / `<VerticalLayout>` - 垂直布局
+
+将子元素垂直排列。两种格式都支持。
+
+**属性：**
+
+**传统格式 (`<VBox>`)**：
 
 | 属性 | 类型 | 必需 | 默认值 | 说明 |
 |------|------|------|--------|------|
@@ -101,58 +201,98 @@
 | `background` | color | ❌ | - | 背景颜色 |
 | `visible` | boolean | ❌ | true | 是否可见 |
 
+**NSIS 格式 (`<VerticalLayout>`)**：
+
+| 属性 | 类型 | 必需 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `name` | string | ❌ | - | 元素名称 |
+| `width` | number | ❌ | auto | 容器宽度 |
+| `height` | number | ❌ | auto | 容器高度 |
+| `bkcolor` | color | ❌ | - | 背景颜色 |
+| `bkimage` | string | ❌ | - | 背景图片路径 |
+| `inset` | padding | ❌ | - | 内边距（左,上,右,下） |
+| `padding` | padding | ❌ | - | 内边距（左,上,右,下） |
+| `bordercolor` | color | ❌ | - | 边框颜色 |
+| `bordersize` | number | ❌ | - | 边框大小（像素） |
+| `borderround` | string | ❌ | - | 边框圆角，格式 `"x,y"` |
+| `visible` | boolean | ❌ | true | 是否可见 |
+| `float` | boolean | ❌ | false | 是否浮动（绝对定位） |
+| `pos` | string | ❌ | - | 浮动位置，格式 `"x1,y1,x2,y2"` |
+| `align` | align | ❌ | "left" | 水平对齐："left" \| "center" \| "right" |
+| `valign` | string | ❌ | "top" | 垂直对齐："top" \| "center" \| "vcenter" \| "bottom" |
+
 **子元素：**
 - 任意元素（无限制）
 
 **示例：**
 
 ```xml
+<!-- 传统格式 -->
 <VBox padding="20,20,20,20" spacing="15" align="center">
   <Label text="标题" />
   <Label text="内容" />
   <Button text="确定" />
 </VBox>
+
+<!-- NSIS 格式 -->
+<VerticalLayout 
+  name="main" 
+  bkcolor="#1A1D28" 
+  inset="80,70,80,70" 
+  align="center"
+  valign="top">
+  <Label text="标题" />
+  <Label text="内容" />
+  <Button text="确定" />
+</VerticalLayout>
 ```
 
-### `<HBox>` - 水平布局
+### `<HBox>` / `<HorizontalLayout>` - 水平布局
 
-将子元素水平排列。
+将子元素水平排列。两种格式都支持。
 
-**属性：**
-
-| 属性 | 类型 | 必需 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `id` | string | ❌ | - | 元素标识符 |
-| `width` | number | ❌ | auto | 容器宽度 |
-| `height` | number | ❌ | auto | 容器高度 |
-| `padding` | padding | ❌ | "0,0,0,0" | 内边距 |
-| `spacing` | number | ❌ | 0 | 子元素间距 |
-| `align` | align | ❌ | "top" | 垂直对齐："top" \| "center" \| "bottom" |
-| `background` | color | ❌ | - | 背景颜色 |
-| `visible` | boolean | ❌ | true | 是否可见 |
-
-**子元素：**
-- 任意元素（无限制）
+**属性：** 与 `<VBox>` / `<VerticalLayout>` 相同。
 
 **示例：**
 
 ```xml
+<!-- 传统格式 -->
 <HBox spacing="10" align="center">
   <Button text="取消" width="100" />
   <Button text="确定" width="100" />
 </HBox>
+
+<!-- NSIS 格式 -->
+<HorizontalLayout spacing="10" align="center" valign="center">
+  <Button text="取消" width="100" />
+  <Button text="确定" width="100" />
+</HorizontalLayout>
 ```
 
-### `<Spacer>` - 间距
+### `<Spacer>` / `<Container>` / `<Control>` - 间距
 
-创建固定或弹性的空白间距。
+创建固定或弹性的空白间距。三种格式都支持。
 
 **属性：**
+
+**传统格式 (`<Spacer>`)**：
 
 | 属性 | 类型 | 必需 | 默认值 | 说明 |
 |------|------|------|--------|------|
 | `width` | number \| "auto" | ❌ | 0 | 水平间距，"auto" 表示占满剩余空间 |
 | `height` | number \| "auto" | ❌ | 0 | 垂直间距，"auto" 表示占满剩余空间 |
+
+**NSIS 格式 (`<Container>` 和 `<Control>`)**：
+
+| 属性 | 类型 | 必需 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `name` | string | ❌ | - | 元素名称 |
+| `width` | number | ❌ | 0 | 宽度（像素） |
+| `height` | number | ❌ | 0 | 高度（像素） |
+| `bkcolor` | color | ❌ | - | 背景颜色（仅 `<Container>` 和 `<Control>`） |
+| `bkimage` | string | ❌ | - | 背景图片（仅 `<Container>` 和 `<Control>`） |
+| `padding` | padding | ❌ | - | 内边距（仅 `<Control>`） |
+| `visible` | boolean | ❌ | true | 是否可见 |
 
 **子元素：**
 - 无
@@ -160,20 +300,28 @@
 **示例：**
 
 ```xml
-<!-- 固定间距 -->
+<!-- 传统格式：固定间距 -->
 <Spacer height="20" />
 
-<!-- 弹性间距（填充剩余空间） -->
+<!-- 传统格式：弹性间距 -->
 <Spacer width="auto" />
+
+<!-- NSIS 格式：空白占位符 -->
+<Container width="20" height="20" />
+
+<!-- NSIS 格式：带背景的占位符 -->
+<Control width="100" height="50" bkimage="assets/bg.png" />
 ```
 
 ## 控件元素
 
 ### `<Button>` - 按钮
 
-可点击的按钮控件。
+可点击的按钮控件。两种格式都支持。
 
 **属性：**
+
+**传统格式：**
 
 | 属性 | 类型 | 必需 | 默认值 | 说明 |
 |------|------|------|--------|------|
@@ -185,7 +333,31 @@
 | `enabled` | boolean | ❌ | true | 是否启用 |
 | `visible` | boolean | ❌ | true | 是否可见 |
 
-**button-style 枚举：**
+**NSIS 格式：**
+
+| 属性 | 类型 | 必需 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `name` | string | ✅ | - | 按钮标识符，用于事件处理 |
+| `text` | string | ✅ | - | 按钮文本 |
+| `width` | number | ❌ | 120 | 按钮宽度 |
+| `height` | number | ❌ | 40 | 按钮高度 |
+| `font` | number | ❌ | - | 字体 ID（引用 `<Font>` 元素） |
+| `textcolor` | color | ❌ | - | 文本颜色 |
+| `normalimage` | string | ❌ | - | 正常状态图片（支持 `file='path' dest='x1,y1,x2,y2' corner='x1,y1,x2,y2' fade='value'` 格式） |
+| `hotimage` | string | ❌ | - | 悬停状态图片 |
+| `pushedimage` | string | ❌ | - | 按下状态图片 |
+| `disabledimage` | string | ❌ | - | 禁用状态图片 |
+| `padding` | padding | ❌ | - | 内边距（左,上,右,下） |
+| `textpadding` | padding | ❌ | - | 文本内边距（左,上,右,下） |
+| `align` | align | ❌ | "left" | 水平对齐 |
+| `valign` | string | ❌ | "top" | 垂直对齐 |
+| `borderround` | string | ❌ | - | 圆角，格式 `"x,y"` |
+| `enabled` | boolean | ❌ | true | 是否启用 |
+| `visible` | boolean | ❌ | true | 是否可见 |
+| `float` | boolean | ❌ | false | 是否浮动（绝对定位） |
+| `pos` | string | ❌ | - | 浮动位置，格式 `"x1,y1,x2,y2"` |
+
+**button-style 枚举（仅传统格式）：**
 - `"primary"` - 主要按钮
 - `"secondary"` - 次要按钮
 - `"link"` - 链接样式按钮
@@ -274,17 +446,38 @@
 <Image icon="assets/logo.png" width="200" height="60" />
 ```
 
-### `<Checkbox>` - 复选框
+### `<Checkbox>` / `<CheckBox>` - 复选框
 
-用户可勾选的选项。
+用户可勾选的选项。两种格式都支持。
 
 **属性：**
+
+**传统格式 (`<Checkbox>`)**：
 
 | 属性 | 类型 | 必需 | 默认值 | 说明 |
 |------|------|------|--------|------|
 | `id` | string | ✅ | - | 复选框标识符 |
 | `text` | string | ✅ | - | 显示文本，支持 {key} 语法 |
 | `checked` | boolean | ❌ | false | 初始勾选状态 |
+| `enabled` | boolean | ❌ | true | 是否启用 |
+| `visible` | boolean | ❌ | true | 是否可见 |
+
+**NSIS 格式 (`<CheckBox>`)**：
+
+| 属性 | 类型 | 必需 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `name` | string | ✅ | - | 复选框标识符 |
+| `text` | string | ✅ | - | 显示文本 |
+| `selected` | boolean | ❌ | false | 初始勾选状态 |
+| `font` | number | ❌ | - | 字体 ID（引用 `<Font>` 元素） |
+| `textcolor` | color | ❌ | - | 文本颜色 |
+| `normalimage` | string | ❌ | - | 未选中正常状态图片 |
+| `normalhotimage` | string | ❌ | - | 未选中悬停状态图片 |
+| `selectedimage` | string | ❌ | - | 选中正常状态图片 |
+| `selectedhotimage` | string | ❌ | - | 选中悬停状态图片 |
+| `textpadding` | padding | ❌ | - | 文本内边距（左,上,右,下） |
+| `align` | align | ❌ | "left" | 水平对齐 |
+| `valign` | string | ❌ | "top" | 垂直对齐 |
 | `enabled` | boolean | ❌ | true | 是否启用 |
 | `visible` | boolean | ❌ | true | 是否可见 |
 
@@ -307,11 +500,13 @@
 <Checkbox id="auto_start" text="{auto_start_option}" checked="false" />
 ```
 
-### `<TextInput>` - 文本输入框
+### `<TextInput>` / `<RichEdit>` - 文本输入框
 
-用户输入文本的控件。
+用户输入文本的控件。两种格式都支持。
 
 **属性：**
+
+**传统格式 (`<TextInput>`)**：
 
 | 属性 | 类型 | 必需 | 默认值 | 说明 |
 |------|------|------|--------|------|
@@ -323,6 +518,27 @@
 | `readonly` | boolean | ❌ | false | 是否只读 |
 | `password` | boolean | ❌ | false | 是否密码框（显示为 ***） |
 | `multiline` | boolean | ❌ | false | 是否多行 |
+| `enabled` | boolean | ❌ | true | 是否启用 |
+| `visible` | boolean | ❌ | true | 是否可见 |
+
+**NSIS 格式 (`<RichEdit>`)**：
+
+| 属性 | 类型 | 必需 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `name` | string | ✅ | - | 输入框标识符 |
+| `text` | string | ❌ | "" | 初始文本内容 |
+| `width` | number | ❌ | 200 | 输入框宽度 |
+| `height` | number | ❌ | 32 | 输入框高度 |
+| `font` | number | ❌ | - | 字体 ID（引用 `<Font>` 元素） |
+| `textcolor` | color | ❌ | - | 文本颜色 |
+| `bkcolor` | color | ❌ | - | 背景颜色 |
+| `inset` | padding | ❌ | - | 内边距（左,上,右,下） |
+| `borderround` | string | ❌ | - | 圆角，格式 `"x,y"` |
+| `readonly` | boolean | ❌ | false | 是否只读 |
+| `multiline` | boolean | ❌ | false | 是否多行 |
+| `autohscroll` | boolean | ❌ | false | 是否自动水平滚动 |
+| `wantreturn` | boolean | ❌ | false | 是否接受回车 |
+| `wantctrlreturn` | boolean | ❌ | false | 是否接受 Ctrl+回车 |
 | `enabled` | boolean | ❌ | true | 是否启用 |
 | `visible` | boolean | ❌ | true | 是否可见 |
 
@@ -342,11 +558,13 @@
 <TextInput id="username" placeholder="请输入用户名" width="300" />
 ```
 
-### `<ProgressBar>` - 进度条
+### `<ProgressBar>` / `<Slider>` - 进度条
 
-显示进度的控件。
+显示进度的控件。两种格式都支持。
 
 **属性：**
+
+**传统格式 (`<ProgressBar>`)**：
 
 | 属性 | 类型 | 必需 | 默认值 | 说明 |
 |------|------|------|--------|------|
@@ -357,7 +575,24 @@
 | `style` | progress-style | ❌ | "default" | 样式类型 |
 | `visible` | boolean | ❌ | true | 是否可见 |
 
-**progress-style 枚举：**
+**NSIS 格式 (`<Slider>`)**：
+
+| 属性 | 类型 | 必需 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `name` | string | ✅ | - | 进度条标识符 |
+| `min` | number | ❌ | 0 | 最小值 |
+| `max` | number | ❌ | 100 | 最大值 |
+| `value` | number | ❌ | 0 | 当前值（计算进度：`(value - min) / (max - min)`） |
+| `width` | number | ❌ | 300 | 进度条宽度 |
+| `height` | number | ❌ | 8 | 进度条高度 |
+| `bkcolor` | color | ❌ | - | 背景颜色 |
+| `foreimage` | string | ❌ | - | 前景图片（支持 `file='path'` 格式） |
+| `thumbsize` | string | ❌ | - | 滑块大小，格式 `"width,height"` |
+| `mouse` | boolean | ❌ | true | 是否可用鼠标 |
+| `enabled` | boolean | ❌ | true | 是否启用 |
+| `visible` | boolean | ❌ | true | 是否可见 |
+
+**progress-style 枚举（仅传统格式）：**
 - `"default"` - 默认样式
 - `"smooth"` - 平滑动画
 - `"striped"` - 条纹样式
@@ -451,13 +686,21 @@ color="#FF0000AA"
 ```
 
 #### padding
-内边距，格式：`"top,right,bottom,left"`
+内边距，格式取决于格式类型：
+
+**传统格式**：`"top,right,bottom,left"`
+
+**NSIS 格式**：`"left,top,right,bottom"`
 
 **示例：**
 ```xml
-padding="20,20,20,20"   <!-- 四周 20px -->
+<!-- 传统格式 -->
+padding="20,20,20,20"   <!-- 四周 20px（上,右,下,左） -->
 padding="10,20,10,20"   <!-- 上下 10px，左右 20px -->
-padding="0,0,0,0"       <!-- 无内边距 -->
+
+<!-- NSIS 格式 -->
+padding="20,20,20,20"   <!-- 四周 20px（左,上,右,下） -->
+inset="80,70,80,70"     <!-- 内边距（左,上,右,下） -->
 ```
 
 #### path
@@ -503,18 +746,33 @@ icon="assets/icons/button.png"
 
 ### 必需元素
 
+**传统格式：**
 - `<Layout>` 必须是根元素
 - `<Layout>` 必须包含一个 `<Page>` 元素
 - `<Layout>` 必须有 `name` 和 `version` 属性
 
+**NSIS 格式：**
+- `<Windows>` 或 `<Window>` 必须是根元素
+- `<Windows>` 或 `<Window>` 必须包含至少一个布局容器（`<VerticalLayout>`, `<HorizontalLayout>` 等）
+- `<Font>` 元素（如果使用）必须在布局容器之前
+
 ### 必需属性
 
+**传统格式：**
 - `<Button>` 必须有 `id` 和 `text`
 - `<Label>` 必须有 `text`
 - `<Image>` 必须有 `icon`
 - `<Checkbox>` 必须有 `id` 和 `text`
 - `<TextInput>` 必须有 `id`
 - `<ProgressBar>` 必须有 `id`
+
+**NSIS 格式：**
+- `<Button>` 必须有 `name` 和 `text`
+- `<Label>` 必须有 `text`
+- `<CheckBox>` 必须有 `name` 和 `text`
+- `<RichEdit>` 必须有 `name`
+- `<Slider>` 必须有 `name`
+- `<Font>` 必须有 `id` 和 `size`
 
 ### ID 唯一性
 

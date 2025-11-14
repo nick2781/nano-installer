@@ -46,8 +46,8 @@
     "show_language_selector": true
   },
   "links": {
-    "terms_of_service": "https://www.taptap.cn/terms",
-    "privacy_policy": "https://www.taptap.io/privacy"
+    "terms_of_service": "https://www.taptap.cn/doc/terms/",
+    "privacy_policy": "https://www.taptap.cn/doc/privacy-policy/"
   },
   "resources": {
     "layouts_dir": "layouts",
@@ -69,34 +69,34 @@
     "pages": [
       {
         "id": "config",
-        "layout": "layouts/config.xml",
+        "layout": "layouts/configpage.xml",
         "title": "安装选项"
       },
       {
         "id": "installing",
-        "layout": "layouts/installing.xml",
+        "layout": "layouts/installingpage.xml",
         "title": "正在安装"
       },
       {
         "id": "finish",
-        "layout": "layouts/finish.xml",
+        "layout": "layouts/finishpage.xml",
         "title": "安装完成"
       }
     ],
     "uninstall_pages": [
       {
         "id": "uninstall_confirm",
-        "layout": "layouts/uninstall_confirm.xml",
+        "layout": "layouts/uninstallpage.xml",
         "title": "确认卸载"
       },
       {
         "id": "uninstall_progress",
-        "layout": "layouts/uninstall_progress.xml",
+        "layout": "layouts/uninstallingpage.xml",
         "title": "正在卸载"
       },
       {
         "id": "uninstall_finish",
-        "layout": "layouts/uninstall_finish.xml",
+        "layout": "layouts/uninstallfinishpage.xml",
         "title": "卸载完成"
       }
     ]

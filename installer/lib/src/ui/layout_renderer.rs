@@ -39,45 +39,88 @@ pub struct InteractionState {
 struct ImagePath {
     path: String,
     dest: Option<(f32, f32, f32, f32)>, // (x1, y1, x2, y2) 裁剪区域
+    corner: Option<(f32, f32, f32, f32)>, // (x1, y1, x2, y2) 圆角参数
+    fade: Option<f32>, // 透明度 (0.0-1.0)
 }
 
 impl LayoutRenderer {
-    /// 解析图片路径，支持 NSIS 格式：file='path' dest='x1,y1,x2,y2'
+    /// 解析图片路径，支持 NSIS 格式：file='path' dest='x1,y1,x2,y2' corner='x1,y1,x2,y2' fade='value'
     fn parse_image_path(image_attr: &str) -> ImagePath {
-        // 如果包含 file=' 和 dest='，解析 NSIS 格式
-        if image_attr.contains("file='") && image_attr.contains("dest='") {
-            // 提取 file='...' 部分
-            let file_start = image_attr.find("file='").unwrap_or(0) + 6;
-            let file_end = image_attr[file_start..].find("'").unwrap_or(image_attr.len() - file_start);
-            let path = image_attr[file_start..file_start + file_end].to_string();
-            
-            // 提取 dest='...' 部分
-            let dest_start = image_attr.find("dest='").unwrap_or(0) + 6;
-            let dest_end = image_attr[dest_start..].find("'").unwrap_or(image_attr.len() - dest_start);
-            let dest_str = image_attr[dest_start..dest_start + dest_end].to_string();
-            
-            // 解析 dest='x1,y1,x2,y2'
-            let dest = dest_str.split(',')
-                .map(|s| s.trim().parse::<f32>().ok())
-                .collect::<Vec<_>>();
-            
-            if dest.len() == 4 && dest.iter().all(|x| x.is_some()) {
-                ImagePath {
-                    path,
-                    dest: Some((dest[0].unwrap(), dest[1].unwrap(), dest[2].unwrap(), dest[3].unwrap())),
-                }
-            } else {
-                ImagePath {
-                    path,
-                    dest: None,
-                }
+        let mut path = String::new();
+        let mut dest = None;
+        let mut corner = None;
+        let mut fade = None;
+
+        // 解析 file='...'
+        if let Some(start) = image_attr.find("file='") {
+            let start_pos = start + 6;
+            if let Some(end) = image_attr[start_pos..].find("'") {
+                path = image_attr[start_pos..start_pos + end].to_string();
+            }
+        } else if let Some(start) = image_attr.find("file=\"") {
+            let start_pos = start + 6;
+            if let Some(end) = image_attr[start_pos..].find("\"") {
+                path = image_attr[start_pos..start_pos + end].to_string();
             }
         } else {
-            // 普通路径格式
-            ImagePath {
-                path: image_attr.to_string(),
-                dest: None,
+            // 如果没有 file='...'，整个值就是文件路径
+            path = image_attr.trim().to_string();
+        }
+
+        // 解析 dest='x1,y1,x2,y2'
+        if let Some(start) = image_attr.find("dest='") {
+            let start_pos = start + 6;
+            if let Some(end) = image_attr[start_pos..].find("'") {
+                let dest_str = &image_attr[start_pos..start_pos + end];
+                let parts: Vec<&str> = dest_str.split(',').map(|s| s.trim()).collect();
+                if parts.len() == 4 {
+                    if let (Ok(x1), Ok(y1), Ok(x2), Ok(y2)) = (
+                        parts[0].parse::<f32>(),
+                        parts[1].parse::<f32>(),
+                        parts[2].parse::<f32>(),
+                        parts[3].parse::<f32>(),
+                    ) {
+                        dest = Some((x1, y1, x2, y2));
+                    }
+                }
             }
+        }
+
+        // 解析 corner='x1,y1,x2,y2'
+        if let Some(start) = image_attr.find("corner='") {
+            let start_pos = start + 8;
+            if let Some(end) = image_attr[start_pos..].find("'") {
+                let corner_str = &image_attr[start_pos..start_pos + end];
+                let parts: Vec<&str> = corner_str.split(',').map(|s| s.trim()).collect();
+                if parts.len() == 4 {
+                    if let (Ok(x1), Ok(y1), Ok(x2), Ok(y2)) = (
+                        parts[0].parse::<f32>(),
+                        parts[1].parse::<f32>(),
+                        parts[2].parse::<f32>(),
+                        parts[3].parse::<f32>(),
+                    ) {
+                        corner = Some((x1, y1, x2, y2));
+                    }
+                }
+            }
+        }
+
+        // 解析 fade='value' (0-255，转换为 0.0-1.0)
+        if let Some(start) = image_attr.find("fade='") {
+            let start_pos = start + 6;
+            if let Some(end) = image_attr[start_pos..].find("'") {
+                let fade_str = &image_attr[start_pos..start_pos + end];
+                if let Ok(fade_val) = fade_str.parse::<u8>() {
+                    fade = Some(fade_val as f32 / 255.0);
+                }
+            }
+        }
+
+        ImagePath {
+            path,
+            dest,
+            corner,
+            fade,
         }
     }
 
@@ -154,6 +197,10 @@ impl LayoutRenderer {
             egui::Sense::hover()
         );
 
+        // 应用圆角裁剪（窗口圆角）
+        // 注意：圆角效果通过背景图片和窗口透明背景实现
+        // 实际的窗口圆角由 Windows 系统处理（通过 DwmSetWindowAttribute）
+
         // 如果有背景图片，在底层渲染背景（填充整个窗口，而不是只填充页面矩形）
         if let Some(background) = &element.attributes.background {
             // 记录背景路径和窗口大小（只在首次加载时输出）
@@ -227,7 +274,39 @@ impl LayoutRenderer {
                 .layout(egui::Layout::top_down(egui::Align::Min))
         );
 
+        // 先渲染绝对定位的元素（如关闭按钮），它们不参与布局流
+        let mut absolute_children = Vec::new();
+        let mut layout_children = Vec::new();
+
         for child in &element.children {
+            // 检查是否有绝对定位（position 属性或 float="true" + pos 属性）
+            let is_absolute = child.attributes.get_custom("position").is_some()
+                || child.attributes.get_custom("is_absolute").map(|s| s == "true").unwrap_or(false)
+                || (child.attributes.get_custom("float").map(|s| s == "true").unwrap_or(false)
+                    && child.attributes.get_custom("pos").is_some());
+            
+            if is_absolute {
+                absolute_children.push(child);
+            } else {
+                layout_children.push(child);
+            }
+        }
+        
+        // 先渲染绝对定位的元素（直接使用 painter，不参与布局流）
+        // 注意：绝对定位的元素需要使用父级 UI 来获取正确的窗口坐标
+        // 但是需要传递 full_rect 信息，以便正确计算坐标
+        for child in &absolute_children {
+            // 对于绝对定位的元素，使用父级 UI 而不是 page_ui，以确保坐标系统正确
+            // 同时需要传递 full_rect 信息，以便在 render_button 中正确计算坐标
+            // 创建一个临时的上下文来传递 full_rect 信息
+            // 由于 render_element 不接受额外的参数，我们需要在 render_button 中使用 viewport_rect
+            // 但 viewport_rect 可能返回的是相对于整个屏幕的坐标，而不是相对于窗口的
+            // 所以我们需要使用 full_rect.min 作为原点
+            self.render_element(ui, child, result);
+        }
+        
+        // 然后渲染布局流中的元素
+        for child in &layout_children {
             // 渲染子元素并更新 Y 坐标
             current_y = self.render_element_at_y_absolute(&mut page_ui, child, current_y, full_rect, result);
         }
@@ -754,7 +833,7 @@ impl LayoutRenderer {
         });
     }
 
-    /// 渲染空白占位
+    /// 渲染空白占位（Container 和 Control）
     fn render_spacer(&mut self, ui: &mut Ui, element: &LayoutElement, _result: &mut RenderResult) {
         let width = element.attributes.width.unwrap_or(0.0);
         let height = element.attributes.height.unwrap_or(0.0);
@@ -762,25 +841,70 @@ impl LayoutRenderer {
         // 水平方向：使用 width 占位
         // 垂直方向：使用 height 占位
         // 空 Spacer：作为弹性空间（在 HBox 中填充剩余空间）
-        if width > 0.0 {
+        let rect = if width > 0.0 {
             // 水平 Spacer（在 HBox 中）- 使用可用高度确保占位正确
             let spacer_height = ui.available_height().max(0.0);
             let (rect, _) = ui.allocate_exact_size(
                 egui::vec2(width, spacer_height),
                 egui::Sense::hover()
             );
-            // 移除频繁的日志输出
+            rect
         } else if height > 0.0 {
             // 垂直 Spacer（在 VBox 中）- 使用 allocate_exact_size 而不是 add_space
             let (rect, _) = ui.allocate_exact_size(
                 egui::vec2(ui.available_width(), height),
                 egui::Sense::hover()
             );
-            // 移除频繁的日志输出
+            rect
         } else {
             // 空 Spacer：弹性空间（填充所有剩余空间）
             ui.allocate_space(egui::vec2(ui.available_width(), 0.0));
-            // 移除频繁的日志输出
+            return;
+        };
+
+        // 支持 Container 和 Control 的背景图片（bkimage）
+        if let Some(background) = &element.attributes.background {
+            if ui.is_rect_visible(rect) {
+                // 解析背景（可能是图片路径或颜色）
+                if background.starts_with("assets/") || background.ends_with(".png") || background.ends_with(".jpg") {
+                    // 背景图片
+                    if let Some(texture) = self.resource_cache.get_background(ui.ctx(), &self.dpi_config, background) {
+                        // 应用圆角和边框
+                        let corner_radius = self.get_corner_radius(element);
+                        let stroke = self.get_border_stroke(element);
+                        
+                        if let Some(stroke) = stroke {
+                            // 有边框：先绘制背景图片，再绘制边框
+                            ui.painter().image(
+                                texture.id(),
+                                rect,
+                                egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                                egui::Color32::WHITE,
+                            );
+                            ui.painter().rect_stroke(rect, corner_radius, stroke);
+                        } else {
+                            // 无边框：直接绘制背景图片
+                            ui.painter().image(
+                                texture.id(),
+                                rect,
+                                egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                                egui::Color32::WHITE,
+                            );
+                        }
+                    }
+                } else {
+                    // 背景颜色
+                    if let Some(color) = self.parse_color(background) {
+                        let corner_radius = self.get_corner_radius(element);
+                        let stroke = self.get_border_stroke(element);
+                        
+                        ui.painter().rect_filled(rect, corner_radius, color);
+                        if let Some(stroke) = stroke {
+                            ui.painter().rect_stroke(rect, corner_radius, stroke);
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -806,15 +930,15 @@ impl LayoutRenderer {
         let height = element.attributes.height.unwrap_or(40.0);
 
         // 获取字体和颜色配置
-        let font_size = element.attributes.get_custom("font_size")
-            .and_then(|s| s.parse::<f32>().ok())
-            .unwrap_or(14.0);
+        let font_id = self.get_font_id(element);
 
         let text_color = element.attributes.color.as_ref()
             .and_then(|c| self.parse_color(c))
             .unwrap_or(Color32::WHITE);
 
-        // 检查是否有绝对定位（position 属性）
+        // 检查是否有绝对定位（position 属性或 float="true" + pos 属性）
+        let is_float = element.attributes.get_custom("float").map(|s| s == "true").unwrap_or(false);
+        let has_pos = element.attributes.get_custom("pos").is_some();
         let (rect, response) = if let Some(position_str) = element.attributes.get_custom("position") {
             // 解析 position="x,y"
             let coords: Vec<f32> = position_str.split(',')
@@ -823,12 +947,52 @@ impl LayoutRenderer {
                 .collect();
             
             if coords.len() == 2 {
-                // 绝对定位：在指定位置分配空间
-                let pos = egui::pos2(coords[0], coords[1]);
+                // 绝对定位：相对于窗口左上角
+                // 注意：对于关闭按钮，position 是相对于窗口的绝对坐标
+                // 在 render_page 中，绝对定位的元素使用父级 UI 渲染
+                // 父级 UI 的 max_rect() 应该返回窗口的矩形（从 (0,0) 开始）
+                // 但是为了确保正确，我们使用 viewport_rect() 来获取窗口的实际坐标
+                let viewport_rect = ui.ctx().viewport_rect();
+                // position="x,y" 中的 x 和 y 是相对于窗口左上角的像素坐标
+                // viewport_rect.min 是窗口在屏幕上的位置，我们需要相对于窗口的坐标
+                // 所以直接使用 coords[0] 和 coords[1] 作为相对于窗口左上角的偏移
+                let pos = egui::pos2(viewport_rect.min.x + coords[0], viewport_rect.min.y + coords[1]);
                 let size = egui::vec2(width, height);
                 let rect = egui::Rect::from_min_size(pos, size);
-                let response = ui.allocate_rect(rect, egui::Sense::click());
+                
+                // 对于绝对定位的元素，需要：
+                // 1. 使用 painter 直接绘制（在布局流之外）
+                // 2. 使用 interact 处理交互（在布局流之外）
+                // 注意：绝对定位的元素不应该影响布局流，所以使用 painter 和 interact
+                let response = ui.interact(rect, ui.id().with("abs_pos"), egui::Sense::click());
                 (rect, response)
+            } else if is_float && has_pos {
+                // float="true" + pos="x1,y1,x2,y2" 格式的绝对定位
+                if let Some(pos_str) = element.attributes.get_custom("pos") {
+                    let coords: Vec<f32> = pos_str.split(',')
+                        .map(|s| s.trim().parse::<f32>().ok())
+                        .filter_map(|x| x)
+                        .collect();
+                    
+                    if coords.len() == 4 {
+                        let x1 = coords[0];
+                        let y1 = coords[1];
+                        let x2 = coords[2];
+                        let y2 = coords[3];
+                        let viewport_rect = ui.ctx().viewport_rect();
+                        let pos = egui::pos2(viewport_rect.min.x + x1, viewport_rect.min.y + y1);
+                        let size = egui::vec2(x2 - x1, y2 - y1);
+                        let rect = egui::Rect::from_min_size(pos, size);
+                        let response = ui.interact(rect, ui.id().with("abs_pos"), egui::Sense::click());
+                        (rect, response)
+                    } else {
+                        // 解析失败，使用默认布局
+                        ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click())
+                    }
+                } else {
+                    // 没有 pos 属性，使用默认布局
+                    ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click())
+                }
             } else {
                 // 解析失败，使用默认布局
                 ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click())
@@ -839,6 +1003,12 @@ impl LayoutRenderer {
         };
 
         // 绘制按钮背景和文本
+        // 检查是否有绝对定位（position 属性或 float="true" + pos 属性）
+        let is_absolute = element.attributes.get_custom("position").is_some()
+            || element.attributes.get_custom("is_absolute").map(|s| s == "true").unwrap_or(false)
+            || (element.attributes.get_custom("float").map(|s| s == "true").unwrap_or(false)
+                && element.attributes.get_custom("pos").is_some());
+        
         if ui.is_rect_visible(rect) {
             // 从 custom 属性读取图片配置
             let normalimage = element.attributes.get_custom("normalimage");
@@ -882,41 +1052,130 @@ impl LayoutRenderer {
                         egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0))
                     };
                     
-                    ui.painter().image(
-                        texture.id(),
-                        rect,
-                        uv_rect,
-                        egui::Color32::WHITE,
-                    );
-                } else {
-                    // 图片加载失败，使用纯色背景
-                    ui.painter().rect_filled(
-                        rect,
-                        egui::CornerRadius::same(4),
-                        if enabled {
-                            if response.hovered() {
-                                Color32::from_rgb(70, 70, 70)
+                    // 应用 fade 透明度
+                    let image_color = if let Some(fade) = image_path.fade {
+                        egui::Color32::from_rgba_unmultiplied(255, 255, 255, (fade * 255.0) as u8)
+                    } else {
+                        egui::Color32::WHITE
+                    };
+                    
+                    // 对于有 dest 裁剪的图片（如箭头图标），需要调整渲染位置
+                    // 如果 dest 指定了裁剪区域，图片应该只显示裁剪的部分
+                    if let Some((x1, y1, x2, y2)) = image_path.dest {
+                        // 计算裁剪区域的尺寸
+                        let crop_width = x2 - x1;
+                        let crop_height = y2 - y1;
+                        // 如果裁剪区域小于按钮尺寸，需要调整渲染矩形
+                        let render_rect = if crop_width < width || crop_height < height {
+                            // 裁剪区域较小，可能需要调整位置（如箭头图标在右侧）
+                            // 对于自定义安装按钮，箭头图标应该在右侧
+                            let text_padding_right = element.attributes.get_custom("textpadding")
+                                .and_then(|s| {
+                                    let parts: Vec<&str> = s.split(',').collect();
+                                    if parts.len() >= 3 {
+                                        parts[2].trim().parse::<f32>().ok()
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .unwrap_or(0.0);
+                            
+                            if text_padding_right > 0.0 {
+                                // 箭头图标在右侧
+                                let icon_width = crop_width.min(width);
+                                let icon_height = crop_height.min(height);
+                                let icon_x = rect.max.x - icon_width;
+                                let icon_y = rect.center().y - icon_height / 2.0;
+                                egui::Rect::from_min_size(
+                                    egui::pos2(icon_x, icon_y),
+                                    egui::vec2(icon_width, icon_height)
+                                )
                             } else {
-                                Color32::from_rgb(50, 50, 50)
+                                // 默认居中
+                                rect
                             }
                         } else {
-                            Color32::from_rgb(30, 30, 30)
+                            rect
+                        };
+                        
+                        ui.painter().image(
+                            texture.id(),
+                            render_rect,
+                            uv_rect,
+                            image_color,
+                        );
+                    } else {
+                        ui.painter().image(
+                            texture.id(),
+                            rect,
+                            uv_rect,
+                            image_color,
+                        );
+                    }
+                } else {
+                    // 图片加载失败，使用纯色背景
+                    let corner_radius = self.get_corner_radius(element);
+                    let bg_color = if enabled {
+                        if response.hovered() {
+                            Color32::from_rgb(70, 70, 70)
+                        } else {
+                            Color32::from_rgb(50, 50, 50)
                         }
-                    );
+                    } else {
+                        Color32::from_rgb(30, 30, 30)
+                    };
+                    ui.painter().rect_filled(rect, corner_radius, bg_color);
+                    
+                    // 绘制边框
+                    if let Some(stroke) = self.get_border_stroke(element) {
+                        ui.painter().rect_stroke(rect, corner_radius, stroke);
+                    }
                 }
             } else {
                 // 没有配置图片：不绘制背景（文本按钮）
             }
 
             // 绘制按钮文本
-            let text_pos = rect.center();
+            // 如果按钮有图片，文本可能需要特殊处理（如自定义安装按钮的箭头图标在右侧）
+            let text_padding_right = element.attributes.get_custom("textpadding")
+                .and_then(|s| {
+                    let parts: Vec<&str> = s.split(',').collect();
+                    if parts.len() >= 3 {
+                        parts[2].trim().parse::<f32>().ok()
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(0.0);
+            
+            // 如果有右侧 padding（如箭头图标），文本需要左对齐并留出右侧空间
+            let text_pos = if text_padding_right > 0.0 {
+                // 文本左对齐，留出右侧空间给图标
+                egui::pos2(rect.min.x + 8.0, rect.center().y)
+            } else {
+                // 默认居中
+                rect.center()
+            };
+            
+            let text_align = if text_padding_right > 0.0 {
+                egui::Align2::LEFT_CENTER
+            } else {
+                egui::Align2::CENTER_CENTER
+            };
+            
             ui.painter().text(
                 text_pos,
-                egui::Align2::CENTER_CENTER,
+                text_align,
                 &text,
-                egui::FontId::proportional(font_size),
+                font_id,
                 text_color
             );
+            
+            // 如果有右侧图标（通过 textpadding 判断），需要单独渲染图标
+            // 注意：如果 normalimage 是箭头图标（通过 dest 裁剪），它已经作为背景渲染了
+            // 但我们需要确保文本和图标都正确显示
+            // 对于自定义安装按钮，normalimage 是箭头图标，应该显示在右侧
+            // 文本已经通过 textpadding 左对齐，留出右侧空间
         }
 
         // 移除频繁的日志输出
@@ -937,15 +1196,24 @@ impl LayoutRenderer {
         let _style_type = StyleType::from(&element.attributes);
         let _label_style = self.style_engine.get_label_style(&_style_type);
 
-        // 获取字体大小
-        let font_size = element.attributes.get_custom("font_size")
-            .and_then(|s| s.parse::<f32>().ok())
-            .unwrap_or(12.0);
-
+        // 获取字体配置（从 font_id 或 font_size）
+        let font_id = self.get_font_id(element);
+        
         // 获取文字颜色
         let text_color = element.attributes.color.as_ref()
             .and_then(|c| self.parse_color(c))
             .unwrap_or(Color32::WHITE);
+
+        // 获取文本对齐方式（textalign 优先，否则使用 align）
+        let text_align = element.attributes.get_custom("textalign")
+            .map(|s| s.as_str())
+            .or_else(|| element.attributes.align.as_deref())
+            .unwrap_or("left");
+
+        // 获取垂直对齐方式（valign）
+        let valign = element.attributes.get_custom("valign")
+            .map(|s| s.as_str())
+            .unwrap_or("top");
 
         // 获取尺寸约束
         let width = element.attributes.width;
@@ -959,12 +1227,38 @@ impl LayoutRenderer {
             );
 
             if ui.is_rect_visible(rect) {
-                // 在分配的区域内绘制文本（居中）
+                // 根据 textalign 和 valign 确定文本位置
+                let text_pos = match (text_align, valign) {
+                    ("left", "top") => egui::pos2(rect.min.x, rect.min.y),
+                    ("left", "center") | ("left", "vcenter") => egui::pos2(rect.min.x, rect.center().y),
+                    ("left", "bottom") => egui::pos2(rect.min.x, rect.max.y),
+                    ("center", "top") => egui::pos2(rect.center().x, rect.min.y),
+                    ("center", "center") | ("center", "vcenter") => rect.center(),
+                    ("center", "bottom") => egui::pos2(rect.center().x, rect.max.y),
+                    ("right", "top") => egui::pos2(rect.max.x, rect.min.y),
+                    ("right", "center") | ("right", "vcenter") => egui::pos2(rect.max.x, rect.center().y),
+                    ("right", "bottom") => egui::pos2(rect.max.x, rect.max.y),
+                    _ => rect.center(),
+                };
+
+                let align2 = match (text_align, valign) {
+                    ("left", "top") => egui::Align2::LEFT_TOP,
+                    ("left", "center") | ("left", "vcenter") => egui::Align2::LEFT_CENTER,
+                    ("left", "bottom") => egui::Align2::LEFT_BOTTOM,
+                    ("center", "top") => egui::Align2::CENTER_TOP,
+                    ("center", "center") | ("center", "vcenter") => egui::Align2::CENTER_CENTER,
+                    ("center", "bottom") => egui::Align2::CENTER_BOTTOM,
+                    ("right", "top") => egui::Align2::RIGHT_TOP,
+                    ("right", "center") | ("right", "vcenter") => egui::Align2::RIGHT_CENTER,
+                    ("right", "bottom") => egui::Align2::RIGHT_BOTTOM,
+                    _ => egui::Align2::CENTER_CENTER,
+                };
+
                 ui.painter().text(
-                    rect.center(),
-                    egui::Align2::CENTER_CENTER,
+                    text_pos,
+                    align2,
                     &text,
-                    egui::FontId::proportional(font_size),
+                    font_id,
                     text_color
                 );
             }
@@ -975,7 +1269,7 @@ impl LayoutRenderer {
                 egui::Layout::left_to_right(egui::Align::Min),
                 |ui| {
                     let mut rich_text = egui::RichText::new(&text)
-                        .size(font_size)
+                        .font(font_id)
                         .color(text_color);
 
                     let label = egui::Label::new(rich_text);
@@ -985,7 +1279,7 @@ impl LayoutRenderer {
         } else {
             // 没有尺寸约束，使用默认渲染
             let rich_text = egui::RichText::new(&text)
-                .size(font_size)
+                .font(font_id)
                 .color(text_color);
 
             let label = egui::Label::new(rich_text);
@@ -995,14 +1289,111 @@ impl LayoutRenderer {
     
     /// 解析颜色字符串
     fn parse_color(&self, color_str: &str) -> Option<egui::Color32> {
-        // 支持 #RRGGBB 格式
-        if color_str.starts_with('#') && color_str.len() == 7 {
-            let r = u8::from_str_radix(&color_str[1..3], 16).ok()?;
-            let g = u8::from_str_radix(&color_str[3..5], 16).ok()?;
-            let b = u8::from_str_radix(&color_str[5..7], 16).ok()?;
-            return Some(egui::Color32::from_rgb(r, g, b));
+        // 支持 #RRGGBB 和 #AARRGGBB 格式
+        if color_str.starts_with('#') {
+            if color_str.len() == 7 {
+                // #RRGGBB
+                let r = u8::from_str_radix(&color_str[1..3], 16).ok()?;
+                let g = u8::from_str_radix(&color_str[3..5], 16).ok()?;
+                let b = u8::from_str_radix(&color_str[5..7], 16).ok()?;
+                return Some(egui::Color32::from_rgb(r, g, b));
+            } else if color_str.len() == 9 {
+                // #AARRGGBB
+                let a = u8::from_str_radix(&color_str[1..3], 16).ok()?;
+                let r = u8::from_str_radix(&color_str[3..5], 16).ok()?;
+                let g = u8::from_str_radix(&color_str[5..7], 16).ok()?;
+                let b = u8::from_str_radix(&color_str[7..9], 16).ok()?;
+                return Some(egui::Color32::from_rgba_unmultiplied(r, g, b, a));
+            }
+        }
+        // 支持 0xRRGGBB 和 0xAARRGGBB 格式
+        if color_str.starts_with("0x") || color_str.starts_with("0X") {
+            let hex_str = &color_str[2..];
+            if hex_str.len() == 6 {
+                // 0xRRGGBB
+                let r = u8::from_str_radix(&hex_str[0..2], 16).ok()?;
+                let g = u8::from_str_radix(&hex_str[2..4], 16).ok()?;
+                let b = u8::from_str_radix(&hex_str[4..6], 16).ok()?;
+                return Some(egui::Color32::from_rgb(r, g, b));
+            } else if hex_str.len() == 8 {
+                // 0xAARRGGBB
+                let a = u8::from_str_radix(&hex_str[0..2], 16).ok()?;
+                let r = u8::from_str_radix(&hex_str[2..4], 16).ok()?;
+                let g = u8::from_str_radix(&hex_str[4..6], 16).ok()?;
+                let b = u8::from_str_radix(&hex_str[6..8], 16).ok()?;
+                return Some(egui::Color32::from_rgba_unmultiplied(r, g, b, a));
+            }
         }
         None
+    }
+
+    /// 获取圆角半径（从 borderround 属性）
+    fn get_corner_radius(&self, element: &LayoutElement) -> egui::CornerRadius {
+        if let Some(borderround_str) = element.attributes.get_custom("borderround") {
+            let parts: Vec<&str> = borderround_str.split(',').map(|s| s.trim()).collect();
+            if parts.len() == 2 {
+                if let (Ok(x), Ok(y)) = (parts[0].parse::<f32>(), parts[1].parse::<f32>()) {
+                    return egui::CornerRadius {
+                        nw: x,
+                        ne: x,
+                        sw: y,
+                        se: y,
+                    };
+                }
+            }
+        }
+        egui::CornerRadius::ZERO
+    }
+
+    /// 获取边框描边（从 bordercolor 和 bordersize 属性）
+    fn get_border_stroke(&self, element: &LayoutElement) -> Option<egui::Stroke> {
+        let border_color = element.attributes.get_custom("bordercolor")
+            .and_then(|c| self.parse_color(c))
+            .unwrap_or(Color32::GRAY);
+        
+        let border_size = element.attributes.get_custom("bordersize")
+            .and_then(|s| s.parse::<f32>().ok())
+            .unwrap_or(0.0);
+        
+        if border_size > 0.0 {
+            Some(egui::Stroke::new(border_size, border_color))
+        } else {
+            None
+        }
+    }
+
+    /// 获取字体 ID（从 font_id 或 font_size 属性）
+    fn get_font_id(&self, element: &LayoutElement) -> egui::FontId {
+        // 优先从 font_id 获取字体配置
+        if let Some(font_id_str) = element.attributes.get_custom("font_id") {
+            if let Ok(font_id) = font_id_str.parse::<u32>() {
+                // 从 custom 中获取字体配置
+                if let (Some(font_name), Some(font_size_str), Some(font_bold_str)) = (
+                    element.attributes.get_custom("font_name"),
+                    element.attributes.get_custom("font_size"),
+                    element.attributes.get_custom("font_bold"),
+                ) {
+                    if let Ok(font_size) = font_size_str.parse::<f32>() {
+                        let is_bold = font_bold_str.parse::<bool>().unwrap_or(false);
+                        return egui::FontId {
+                            size: font_size,
+                            family: if is_bold {
+                                egui::FontFamily::Name(font_name.clone().into())
+                            } else {
+                                egui::FontFamily::Proportional
+                            },
+                        };
+                    }
+                }
+            }
+        }
+        
+        // 回退到 font_size
+        let font_size = element.attributes.get_custom("font_size")
+            .and_then(|s| s.parse::<f32>().ok())
+            .unwrap_or(12.0);
+        
+        egui::FontId::proportional(font_size)
     }
 
     /// 渲染复选框
@@ -1201,12 +1592,99 @@ impl LayoutRenderer {
 
         // 获取当前状态
         let mut current_checked = self.interaction_state.checkbox_states.get(&id).copied().unwrap_or(false);
+        
+        // 获取尺寸约束
+        let width = element.attributes.width;
+        let height = element.attributes.height;
+        
+        // 从 custom 属性读取 textpadding（格式：left,top,right,bottom）
+        // 注意：textpadding 的第一个值是左侧间距，用于 checkbox 图片和文本之间的间距
+        let text_padding_left = element.attributes.get_custom("textpadding")
+            .and_then(|s| {
+                let parts: Vec<&str> = s.split(',').collect();
+                if parts.len() >= 1 {
+                    parts[0].trim().parse::<f32>().ok()
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(8.0);  // 默认间距改为 8.0，而不是 20.0
+
+        // 如果指定了宽度和高度，使用精确尺寸
+        let _rect = if let (Some(_w), Some(_h)) = (width, height) {
+            // 尺寸会在 horizontal 布局中自动处理
+        } else {
+            // 没有尺寸约束，使用默认布局
+        };
 
         // 使用水平布局渲染 checkbox 和文本
-        let changed = ui.horizontal(|ui| {
-            // 渲染 checkbox 框
-            let checkbox = egui::Checkbox::without_text(&mut current_checked);
-            let checkbox_response = ui.add(checkbox);
+        let checkbox_changed = ui.horizontal(|ui| {
+            // 如果有图片配置，使用图片渲染 checkbox
+            let normalimage = element.attributes.get_custom("normalimage");
+            let selectedimage = element.attributes.get_custom("selectedimage");
+            
+            // 使用图片渲染复选框
+            let checkbox_size = if self.dpi_config.use_2x { 32.0 } else { 16.0 };
+            let checkbox_rect = egui::Rect::from_min_size(
+                ui.min_rect().min,
+                egui::Vec2::splat(checkbox_size)
+            );
+            
+            // 根据状态选择图片
+            let checkbox_image = if current_checked {
+                selectedimage.or(normalimage)
+            } else {
+                normalimage
+            };
+            
+            // 渲染复选框图片
+            if let Some(img_path_str) = checkbox_image {
+                let image_path = Self::parse_image_path(img_path_str);
+                if let Some(texture) = self.resource_cache.get_background(ui.ctx(), &self.dpi_config, &image_path.path) {
+                    let uv_rect = if let Some((x1, y1, x2, y2)) = image_path.dest {
+                        let tex_size = texture.size();
+                        let uv_min_x = x1 / tex_size[0] as f32;
+                        let uv_min_y = y1 / tex_size[1] as f32;
+                        let uv_max_x = x2 / tex_size[0] as f32;
+                        let uv_max_y = y2 / tex_size[1] as f32;
+                        egui::Rect::from_min_max(
+                            egui::pos2(uv_min_x, uv_min_y),
+                            egui::pos2(uv_max_x, uv_max_y)
+                        )
+                    } else {
+                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0))
+                    };
+                    
+                    ui.painter().image(
+                        texture.id(),
+                        checkbox_rect,
+                        uv_rect,
+                        egui::Color32::WHITE,
+                    );
+                }
+            }
+            
+            // 可点击区域（包括整个 checkbox 区域，不仅仅是图片）
+            // 注意：需要先分配空间，然后再绘制图片
+            let checkbox_response = ui.allocate_rect(checkbox_rect, egui::Sense::click());
+            
+            // 处理点击事件
+            if checkbox_response.clicked() {
+                current_checked = !current_checked;
+            }
+            
+            // 添加文本左侧间距（checkbox 图片和文本之间的间距）
+            // 注意：textpadding 的第一个值已经包含了 checkbox 图片的宽度，所以只需要添加额外的间距
+            // 如果 textpadding_left 很大（如 40），说明已经包含了 checkbox 宽度，直接使用
+            // 如果 textpadding_left 很小（如 8），说明只是额外间距
+            let actual_padding = if text_padding_left > checkbox_size {
+                // textpadding 已经包含了 checkbox 宽度，减去 checkbox 宽度得到实际间距
+                text_padding_left - checkbox_size
+            } else {
+                // textpadding 只是额外间距
+                text_padding_left
+            };
+            ui.add_space(actual_padding);
 
             // 记录复选框响应
             if let Some(elem_id) = element.attributes.id.as_ref() {
@@ -1249,38 +1727,91 @@ impl LayoutRenderer {
                 }
             }
 
-            checkbox_response.changed()
+            // 返回是否有变化（通过检查 current_checked 是否改变）
+            let was_checked = self.interaction_state.checkbox_states.get(&id).copied().unwrap_or(false);
+            current_checked != was_checked
         }).inner;
 
         // 更新状态
-        if changed {
+        if checkbox_changed {
             self.interaction_state.checkbox_states.insert(id.clone(), current_checked);
             result.checkbox_changes.insert(id.clone(), current_checked);
         }
     }
 
-    /// 渲染文本输入框
+    /// 渲染文本输入框（RichEdit）
     fn render_text_input(&mut self, ui: &mut Ui, element: &LayoutElement, result: &mut RenderResult) {
         let id = element.attributes.id.as_ref().unwrap_or(&"".to_string()).clone();
         let _style_type = StyleType::from(&element.attributes);
-        let _enabled = element.attributes.enabled.unwrap_or(true);
+        let enabled = element.attributes.enabled.unwrap_or(true);
+        
+        // 获取 RichEdit 特有属性
+        let readonly = element.attributes.get_custom("readonly")
+            .and_then(|s| s.parse::<bool>().ok())
+            .unwrap_or(false);
+        let multiline = element.attributes.get_custom("multiline")
+            .and_then(|s| s.parse::<bool>().ok())
+            .unwrap_or(false);
+        
+        // 获取字体配置
+        let font_id = self.get_font_id(element);
         
         // 获取当前内容
-        let _current_text = self.interaction_state.text_inputs.get(&id).cloned().unwrap_or_default();
+        let text_input_value = self.interaction_state.text_inputs.entry(id.clone()).or_insert_with(String::new);
         
-        let mut text_input = egui::TextEdit::singleline(self.interaction_state.text_inputs.entry(id.clone()).or_insert_with(String::new));
+        // 创建文本输入框
+        let mut text_input = if multiline {
+            egui::TextEdit::multiline(text_input_value)
+        } else {
+            egui::TextEdit::singleline(text_input_value)
+        };
         
+        // 设置字体
+        text_input = text_input.font(font_id);
+        
+        // 设置只读
+        if readonly || !enabled {
+            text_input = text_input.interactive(false);
+        }
+        
+        // 设置尺寸
         if let Some(width) = element.attributes.width {
             text_input = text_input.desired_width(width);
         }
         if let Some(height) = element.attributes.height {
-            text_input = text_input.desired_rows((height / 20.0) as usize);
+            if multiline {
+                text_input = text_input.desired_rows((height / 20.0) as usize);
+            }
+        }
+        
+        // 获取背景颜色和圆角
+        let bg_color = element.attributes.background.as_ref()
+            .and_then(|c| self.parse_color(c))
+            .or_else(|| Some(Color32::from_rgb(30, 30, 30)));
+        
+        let corner_radius = self.get_corner_radius(element);
+        
+        // 渲染背景（如果有）
+        if let Some(bg_color) = bg_color {
+            let (rect, _) = ui.allocate_exact_size(
+                egui::vec2(
+                    element.attributes.width.unwrap_or(ui.available_width()),
+                    element.attributes.height.unwrap_or(if multiline { 100.0 } else { 30.0 })
+                ),
+                egui::Sense::click()
+            );
+            ui.painter().rect_filled(rect, corner_radius, bg_color);
+            
+            // 绘制边框
+            if let Some(stroke) = self.get_border_stroke(element) {
+                ui.painter().rect_stroke(rect, corner_radius, stroke);
+            }
         }
         
         let response = ui.add(text_input);
         
         if response.changed() {
-            result.text_input_changes.insert(id.clone(), self.interaction_state.text_inputs.get(&id).cloned().unwrap_or_default());
+            result.text_input_changes.insert(id.clone(), text_input_value.clone());
         }
         
         // 记录文本输入响应
@@ -1319,9 +1850,27 @@ impl LayoutRenderer {
         }
     }
 
-    /// 渲染进度条
+    /// 渲染进度条（Slider）
     fn render_progress_bar(&mut self, ui: &mut Ui, element: &LayoutElement, _result: &mut RenderResult) {
-        let progress = element.attributes.progress.unwrap_or(0.0);
+        // 获取 Slider 特有属性
+        let min = element.attributes.get_custom("min")
+            .and_then(|s| s.parse::<f32>().ok())
+            .unwrap_or(0.0);
+        let max = element.attributes.get_custom("max")
+            .and_then(|s| s.parse::<f32>().ok())
+            .unwrap_or(100.0);
+        let value = element.attributes.get_custom("value")
+            .and_then(|s| s.parse::<f32>().ok())
+            .or_else(|| element.attributes.progress.map(|p| p * (max - min) + min))
+            .unwrap_or(0.0);
+        
+        // 计算进度值（0.0-1.0）
+        let progress = if max > min {
+            ((value - min) / (max - min)).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        
         let _style_type = StyleType::from(&element.attributes);
         let _progress_style = self.style_engine.get_progress_style(&_style_type);
 
@@ -1335,26 +1884,39 @@ impl LayoutRenderer {
         );
 
         if ui.is_rect_visible(rect) {
-            // 先绘制背景图片（未填充部分）
-            let bg_image = "assets/progress_bg.png";
-            if let Some(bg_texture) = self.resource_cache.get_background(ui.ctx(), &self.dpi_config, bg_image) {
-                ui.painter().image(
-                    bg_texture.id(),
-                    rect,
-                    Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
-                    Color32::WHITE,
-                );
-            } else {
-                // 背景图片加载失败，绘制灰色背景
+            // 获取背景颜色
+            let bg_color = element.attributes.background.as_ref()
+                .and_then(|c| self.parse_color(c))
+                .or_else(|| Some(Color32::from_rgb(40, 40, 40)));
+            
+            // 先绘制背景（未填充部分）
+            if let Some(bg_color) = bg_color {
                 ui.painter().rect_filled(
                     rect,
                     egui::CornerRadius::same(3),
-                    Color32::from_rgb(40, 40, 40)
+                    bg_color
                 );
+            } else {
+                // 尝试加载背景图片
+                let bg_image = "assets/progress_bg.png";
+                if let Some(bg_texture) = self.resource_cache.get_background(ui.ctx(), &self.dpi_config, bg_image) {
+                    ui.painter().image(
+                        bg_texture.id(),
+                        rect,
+                        Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
+                        Color32::WHITE,
+                    );
+                } else {
+                    // 背景图片加载失败，绘制灰色背景
+                    ui.painter().rect_filled(
+                        rect,
+                        egui::CornerRadius::same(3),
+                        Color32::from_rgb(40, 40, 40)
+                    );
+                }
             }
 
-            // 绘制前景图片（填充部分）
-            let fg_image = "assets/progress_fg.png";
+            // 绘制前景（填充部分）
             let progress_width = width * progress;
             if progress_width > 0.0 {
                 let progress_rect = Rect::from_min_size(
@@ -1362,21 +1924,59 @@ impl LayoutRenderer {
                     Vec2::new(progress_width, height)
                 );
 
-                if let Some(fg_texture) = self.resource_cache.get_background(ui.ctx(), &self.dpi_config, fg_image) {
-                    // 根据进度裁剪前景图片
-                    ui.painter().image(
-                        fg_texture.id(),
-                        progress_rect,
-                        Rect::from_min_max(Pos2::ZERO, Pos2::new(progress, 1.0)),
-                        Color32::WHITE,
-                    );
+                // 尝试使用 foreimage（前景图片）
+                if let Some(foreimage_str) = element.attributes.get_custom("foreimage") {
+                    let image_path = Self::parse_image_path(foreimage_str);
+                    if let Some(fg_texture) = self.resource_cache.get_background(ui.ctx(), &self.dpi_config, &image_path.path) {
+                        // 如果指定了 dest 裁剪区域，计算 UV 坐标
+                        let uv_rect = if let Some((x1, y1, x2, y2)) = image_path.dest {
+                            let tex_size = fg_texture.size();
+                            let uv_min_x = x1 / tex_size[0] as f32;
+                            let uv_min_y = y1 / tex_size[1] as f32;
+                            let uv_max_x = x2 / tex_size[0] as f32;
+                            let uv_max_y = y2 / tex_size[1] as f32;
+                            egui::Rect::from_min_max(
+                                egui::pos2(uv_min_x, uv_min_y),
+                                egui::pos2(uv_max_x, uv_max_y)
+                            )
+                        } else {
+                            // 根据进度裁剪前景图片
+                            egui::Rect::from_min_max(Pos2::ZERO, Pos2::new(progress, 1.0))
+                        };
+                        
+                        ui.painter().image(
+                            fg_texture.id(),
+                            progress_rect,
+                            uv_rect,
+                            Color32::WHITE,
+                        );
+                    } else {
+                        // 前景图片加载失败，使用纯色填充
+                        ui.painter().rect_filled(
+                            progress_rect,
+                            egui::CornerRadius::same(3),
+                            Color32::from_rgb(0, 196, 178)
+                        );
+                    }
                 } else {
-                    // 前景图片加载失败，使用纯色填充
-                    ui.painter().rect_filled(
-                        progress_rect,
-                        egui::CornerRadius::same(3),
-                        Color32::from_rgb(0, 196, 178)
-                    );
+                    // 没有配置 foreimage，尝试使用默认前景图片
+                    let fg_image = "assets/progress_fg.png";
+                    if let Some(fg_texture) = self.resource_cache.get_background(ui.ctx(), &self.dpi_config, fg_image) {
+                        // 根据进度裁剪前景图片
+                        ui.painter().image(
+                            fg_texture.id(),
+                            progress_rect,
+                            Rect::from_min_max(Pos2::ZERO, Pos2::new(progress, 1.0)),
+                            Color32::WHITE,
+                        );
+                    } else {
+                        // 前景图片加载失败，使用纯色填充
+                        ui.painter().rect_filled(
+                            progress_rect,
+                            egui::CornerRadius::same(3),
+                            Color32::from_rgb(0, 196, 178)
+                        );
+                    }
                 }
             }
         }
@@ -1453,6 +2053,11 @@ impl LayoutRenderer {
     /// 获取文本输入内容
     pub fn get_text_input_value(&self, id: &str) -> String {
         self.interaction_state.text_inputs.get(id).cloned().unwrap_or_default()
+    }
+
+    /// 获取资源缓存的可变引用（用于 MessageBoxManager）
+    pub fn get_resource_cache_mut(&mut self) -> &mut crate::ui::dpi_handler::ResourceCache {
+        &mut self.resource_cache
     }
 
     /// 设置文本输入内容

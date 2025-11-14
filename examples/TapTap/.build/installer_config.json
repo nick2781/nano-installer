@@ -29,8 +29,8 @@
     "required_space_mb": 0
   },
   "links": {
-    "privacy_policy": "https://www.taptap.io/privacy",
-    "terms_of_service": "https://www.taptap.cn/terms"
+    "privacy_policy": "https://www.taptap.cn/doc/privacy-policy/",
+    "terms_of_service": "https://www.taptap.cn/doc/terms/"
   },
   "localization": {
     "default_locale": "zh-CN",

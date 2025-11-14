@@ -1,0 +1,42 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Windows>
+<!-- 完成 -->
+  <VerticalLayout >
+    <VerticalLayout bkcolor="#FF181B22" width="574" height="358" bkimage="assets/bg_main.png">
+
+      <Control height="80" />
+      <!-- <HorizontalLayout height="80" > -->
+      <Control height="80" width="148"  bkimage="assets/logo.png" padding="213,0,213,0" />
+      <Label font="2" textcolor="#FFFFFFFF" text="确定要卸载 TapTap 吗" height="20" valign="center" align="center" padding="0,16,0,0" />
+
+      <HorizontalLayout padding="0,40,0,0" >
+        <Control width="103"/>
+        <Button name="btnNotNow" text="再想想" font="3" height="40" width="172"
+          normalimage="file='assets/btn_primary.png' corner='9,3,9,7'"
+          hotimage="file='assets/btn_hover.png' corner='9,3,9,7'"
+          pushedimage="file='assets/btn_hover.png' corner='9,3,9,7'"
+           textcolor="0xffffffff" hottextcolor="#FFFFFFFF" pushedtextcolor="#FFFFFFFF" disabledtextcolor="0xff7f7f7f" cursor="hand" />
+
+        <Control width="25"/>
+
+        <Button name="btnUnInstall" text="卸载" font="3" height="40" width="172"
+          normalimage="file='assets/btn_disabled.png' corner='9,3,9,7'"
+          hotimage="file='assets/btn_disabled.png'  corner='9,3,9,7' fade='230'"
+          pushedimage="file='assets/btn_disabled.png'  corner='9,3,9,7' fade='230'"
+           textcolor="0xffffffff" hottextcolor="#FFFFFFFF" pushedtextcolor="#FFFFFFFF" disabledtextcolor="0xff7f7f7f" cursor="hand" />
+      </HorizontalLayout>
+
+
+      <HorizontalLayout padding="0,30,0,0" >
+        <Control width="239"/>
+        <CheckBox name="chkReserveData" width="96" height="20" font="0" text="保留本地数据"
+            textcolor="#FFE4E8EC" selected="true" valign="center" align="left" textpadding="20,0,0,0"
+            normalimage="file='assets/checkbox-0.png' dest='0,1,16,17'"
+            normalhotimage="file='assets/checkbox-0.png' dest='0,1,16,17'"
+            selectedimage="file='assets/checkbox-2.png' dest='0,1,16,17'"
+            selectedhotimage="file='assets/checkbox-2.png' dest='0,1,16,17'"/>
+      </HorizontalLayout>
+
+    </VerticalLayout>
+  </VerticalLayout>
+</Windows>

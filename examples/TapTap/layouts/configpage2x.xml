@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Windows>
+  <!-- 安装目录 -->
+  <VerticalLayout>
+    <!-- Main -->
+    <VerticalLayout bkcolor="#FF181B22" width="1148" height="716" bkimage="assets/bg_main@2x.png">
+
+      <Control height="192" />
+      <!-- <HorizontalLayout height="80" > -->
+      <Control height="160" width="296"  bkimage="assets/logo@2x.png" padding="426,0,426,0" />
+      <!-- </HorizontalLayout> -->
+      <Button name="btnInstall2x" padding="334,110,334,0" width="480" height="80" normalimage="assets/btn_primary@2x.png" hotimage="assets/btn_hover@2x.png" pushedimage="assets/btn_hover@2x.png" disabledimage="assets/btn_disabled@2x.png" font="7" textcolor="#ffffffff" hottextcolor="#FFFFFFFF" pushedtextcolor="#FFFFFFFF" disabledtextcolor="#FF7F7F7F" margin="0,20,0,0" text="" cursor="hand" />
+
+      <!-- Agree & ShowMore -->
+      <HorizontalLayout height="174" inset="80,70,80,70">
+
+        <CheckBox name="chkAgree2x" width="215" height="40" font="1" text="" textcolor="#FFE4E8EC" selected="false" valign="center" align="left" textpadding="40,0,0,0"
+          normalimage="file='assets/checkbox-0@2x.png' dest='0,2,32,34'"
+          normalhotimage="file='assets/checkbox-0@2x.png' dest='0,2,32,34'"
+          selectedimage="file='assets/checkbox-2@2x.png' dest='0,2,32,34'"
+          selectedhotimage="file='assets/checkbox-2@2x.png' dest='0,2,32,34'"/>
+        <Button font="1" name="btnAgreement2x" text="" height="40" width="144" textcolor="#FFFFFFFF" hottextcolor="#FF00FFE8" pushedtextcolor="#FF00D9C5" cursor="hand" valign="center" align="left" />
+        <Label  font="1" name="lblAnd2x" textcolor="#FFE4E8EC" text="" height="40" width="20" valign="center" align="center" />
+        <Button font="1" name="btnPolicy2x" text="" height="40"  width="144" textcolor="#FFFFFFFF" hottextcolor="#FF00FFE8" pushedtextcolor="#FF00D9C5" cursor="hand" valign="center" align="left" />
+        
+        <Control height="40" />
+
+        <Button name="btnShowMore2x" width="160" height="40" text="" font="1" textpadding="0,0,32,0"
+          textcolor="#FFFFFFFF" hottextcolor="#FFFFFFFF" pushedtextcolor="#FFFFFFFF" disabledtextcolor="#FFFFFFFF" cursor="hand" valign="center" align="right"
+          normalimage="file='assets/arrow-down@2x.png' dest='136,4,160,30'"
+          hotimage="file='assets/arrow-down@2x.png' dest='136,4,160,30'"
+          pushedimage="file='assets/arrow-down@2x.png' dest='136,4,160,30'" />
+
+        <Button name="btnHideMore2x" width="160" height="40" text="" font="1" textpadding="0,0,32,0" visible="false"
+          textcolor="#FFFFFFFF" hottextcolor="#FFFFFFFF" pushedtextcolor="#FFFFFFFF" disabledtextcolor="#FFFFFFFF" cursor="hand" valign="center" align="right"
+          normalimage="file='assets/arrow-up@2x.png' dest='136,4,160,30'"
+          hotimage="file='assets/arrow-up@2x.png' dest='136,4,160,30'"
+          pushedimage="file='assets/arrow-up@2x.png' dest='136,4,160,30'" />
+
+      </HorizontalLayout>
+
+    </VerticalLayout>
+
+    <!-- <HorizontalLayout height="87" gradientangle="90" bkcolor="#FFFFFFFF" bkcolor2="#FFF00FFF" bkcolor3="#FFF00F00" /> -->
+
+    <VerticalLayout name="moreconfiginfo2x" bkcolor="#FF181B22" bkimage="assets/bg_color.png" visible="false" float="true" pos="0,716,1148,1036">
+      <Control height="2" bkcolor="#3300C4B2" padding="32,0,32,0" />
+      <Control height="48" />
+
+      <!-- <Label font="2" textcolor="#FF333333" text="安装路径：" padding="0,0,0,0" /> -->
+      <HorizontalLayout height="64" padding="0,0,0,0" inset="80,0,80,0">
+        <RichEdit  name="editDir2x" text="" textcolor="#CCFFFFFF" readonly="true" borderround="16,16" inset="32,16,32,0" bkcolor="#1AFFFFFF" autohscroll="false" wantreturn="false" wantctrlreturn="false" multiline="false" width="820" font="1" />
+        <Control />
+
+        <Button font="4" name="btnSelectDir2x" width="120" height="64" text="" textcolor="#FF00C4B2" hottextcolor="#FF00FFE8" pushedtextcolor="#FF00D9C5" cursor="hand" valign="center" align="center" />
+      </HorizontalLayout>
+
+      <HorizontalLayout height="48" padding="80,10,0,0">
+        <Label font="1" name="lblRequiredSpace2x" textcolor="#FF96A1A9" width="320" text="" />
+        <Label font="1" name="local_space2x" width="400" textcolor="#FF96A1A9"  />
+        <Control />
+      </HorizontalLayout>
+
+      <HorizontalLayout height="40" padding="80,40,80,0">
+        <CheckBox name="chkShotcut2x" width="300" height="48" font="4" text="" textcolor="#FFFFFFFF" selected="true" valign="center" align="left" textpadding="40,0,0,0"
+          normalimage="file='assets/checkbox-0@2x.png' dest='0,6,32,38'"
+          normalhotimage="file='assets/checkbox-0@2x.png' dest='0,6,32,38'"
+          selectedimage="file='assets/checkbox-2@2x.png' dest='0,6,32,38'"
+          selectedhotimage="file='assets/checkbox-2@2x.png' dest='0,6,32,38'"/>
+        <!-- Control width="24" />
+        <CheckBox width="120" height="24" font="2" text="添加到任务栏" textcolor="#FFE4E8EC" selected="true" valign="center" align="left" textpadding="20,0,0,0"
+          normalimage="file='assets/checkbox-0@2x.png' dest='0,6,32,38'"
+          normalhotimage="file='assets/checkbox-0@2x.png' dest='0,6,32,38'"
+          selectedimage="file='assets/checkbox-2@2x.png' dest='0,6,32,38'"
+          selectedhotimage="file='assets/checkbox-2@2x.png' dest='0,6,32,38'"/ -->
+        <Control width="48" />
+        <CheckBox name="chkAutoRun2x" width="240" height="48" font="4" text="" textcolor="#FFFFFF" selected="true" valign="center" align="left" textpadding="40,0,0,0"
+          normalimage="file='assets/checkbox-0@2x.png' dest='0,6,32,38'"
+          normalhotimage="file='assets/checkbox-0@2x.png' dest='0,6,32,38'"
+          selectedimage="file='assets/checkbox-2@2x.png' dest='0,6,32,38'"
+          selectedhotimage="file='assets/checkbox-2@2x.png' dest='0,6,32,38'"/>
+        <Control />
+      </HorizontalLayout>
+    </VerticalLayout>
+  </VerticalLayout>
+</Windows>

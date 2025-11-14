@@ -1,0 +1,57 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Window name="mainWindow" size="574,358" roundcorner="16,16" sizebox="0,0,0,0" caption="0,0,0,40" disabledfontcolor="#7FFFFFFF" >
+  <Font id="0" name="微软雅黑" size="12" bold="false" default="true" />
+  <Font id="1" name="微软雅黑" size="24" bold="false" />
+
+  <Font id="2" name="微软雅黑" size="14" bold="false" />
+  <Font id="3" name="微软雅黑" size="14" bold="true" />
+
+  <Font id="4" name="微软雅黑" size="28" bold="false" />
+  <Font id="5" name="微软雅黑" size="28" bold="true" />
+
+  <Font id="6" name="Microsoft YaHei" size="14" bold="true" />
+  <Font id="7" name="Microsoft YaHei" size="28" bold="true" />
+
+<!--   <Font id="2" name="微软雅黑" size="24" bold="false" />
+  <Font id="3" name="微软雅黑" size="16" bold="false" />
+  <Font id="5" name="微软雅黑" size="14" bold="false" />
+  <Font id="6" name="微软雅黑" size="14" bold="true" />
+  <Font id="7" name="微软雅黑" size="13" bold="false" />
+  <Font id="8" name="微软雅黑" size="18" bold="false" /> -->
+
+  <VerticalLayout>
+    <TabLayout name="wizardTab">
+      <Include source="configpage.xml" />
+      <Include source="configpage2x.xml" />
+
+      <Include source="installingpage.xml" />
+      <Include source="installingpage2x.xml" />
+
+      <Include source="finishpage.xml" />
+      <Include source="finishpage2x.xml" />
+
+      <Include source="uninstallpage.xml" />
+      <Include source="uninstallpage2x.xml" />
+
+      <Include source="uninstallingpage.xml" />
+      <Include source="uninstallingpage2x.xml" />
+
+      <Include source="uninstallfinishpage.xml" />
+      <Include source="uninstallfinishpage2x.xml" />
+    </TabLayout>
+    <HorizontalLayout name="wndControl" visible="false" float="true" pos="0,0,574,64" inset="0,16,16,0" >
+      <Container />
+      <Button name="btnClose" width="32" height="32"
+        normalimage="file='assets/btn_close.png' fade='160' dest='0,0,32,32'"
+        hotimage="file='assets/btn_close.png' dest='0,0,32,32'"
+        pushedimage="file='assets/btn_close.png' dest='0,0,32,32'" />
+     </HorizontalLayout>
+    <HorizontalLayout name="wndControl2x" visible="false" float="true" pos="0,0,1148,128" inset="0,32,32,0" >
+      <Container />
+      <Button name="btnClose2x" width="64" height="64"
+        normalimage="file='assets/btn_close@2x.png' fade='160' dest='0,0,64,64'"
+        hotimage="file='assets/btn_close@2x.png' dest='0,0,64,64'"
+        pushedimage="file='assets/btn_close@2x.png' dest='0,0,64,64'" />
+     </HorizontalLayout>
+  </VerticalLayout>
+</Window>

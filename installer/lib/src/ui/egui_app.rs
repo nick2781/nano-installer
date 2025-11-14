@@ -168,7 +168,7 @@ impl InstallerApp {
             let layouts_dir = self.config_base_path.join(&self.config.resources.layouts_dir);
             let layout_file = layouts_dir.join(&layout_id);
             
-            let parser = XmlParser::new();
+            let mut parser = XmlParser::new();
             match parser.parse_file(&layout_file) {
                 Ok(layout_tree) => {
                     self.layout_cache.insert(layout_id.clone(), layout_tree);
@@ -380,7 +380,9 @@ impl eframe::App for InstallerApp {
         ctx.set_visuals(egui::Visuals::dark());
         
         // 渲染消息框
-        let _message_results = self.message_box_manager.render(ctx);
+        // 注意：egui_app.rs 是旧实现，现在使用 egui_app_xml.rs
+        // 如果需要消息框功能，需要传递 DpiConfig 和 ResourceCache
+        // let _message_results = self.message_box_manager.render(ctx, &dpi_config, &mut resource_cache);
         // TODO: 处理消息框结果
         
         // 主面板

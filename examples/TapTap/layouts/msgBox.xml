@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window size="400,230" sizebox="0,0,0,0" caption="0,0,0,0" roundcorner="16,16" showshadow="true" shadowsharpness="128" shadowsize="4" shadowpositon="0,8" shadowcolor="#000000" shadowdarkness="100" >
+  <Font id="0" name="微软雅黑" size="14" bold="true" default="true" />
+	<Font id="1" name="微软雅黑" size="16" bold="true" />
+
+  <VerticalLayout width="400" height="230" inset="1,1,1,1" bkcolor="#FF2A3844" bordercolor="#FF474B59" bordersize="1" borderround="16,16" >
+
+  	<Container height="70" />
+
+  	<HorizontalLayout height="24">
+			<Label name="lblMsg" valign="vcenter" align="center" textcolor="0xFFFFFFFF" showhtml="true" font="1" />
+  	</HorizontalLayout>
+
+  	<Container height="64" />
+
+    <HorizontalLayout height="40">
+    	<Container width="32" />
+
+	  	<Button name="btnCancel" visible="false" font="0" text="取消" textcolor="#FFFFFFFF" width="160" height="40" align="center" borderround="12,12"
+	  	normalimage="file='assets/btn_dialog.png'" hotimage="file='assets/btn_dialog.png' fade='230'" pushedimage="file='assets/btn_dialog.png' fade='230'" focusedimage="file='assets/btn_dialog.png' fade='230'" cursor="hand" />
+    	<Container name="centerPadding" width="72" visible="true" />
+
+    	<Container width="16" />
+      <Button name="btnOK" font="0" text="确定" textcolor="#FFFFFFFF" width="160" height="40" align="center" borderround="12,12"
+	  	normalimage="file='assets/btn_dialog_primary.png'" hotimage="file='assets/btn_dialog_primary.png' fade='230'" pushedimage="file='assets/btn_dialog_primary.png' fade='230'" focusedimage="file='assets/btn_dialog_primary.png' fade='230'" cursor="hand" />
+
+    	<Container width="32" />
+     </HorizontalLayout>
+
+  </VerticalLayout>
+</Window>

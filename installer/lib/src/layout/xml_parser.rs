@@ -5,11 +5,33 @@
 use crate::layout::{LayoutTree, LayoutElement, ElementType, ElementAttributes};
 use crate::layout::layout_tree::LayoutMetadata;
 use roxmltree::Document;
+use std::collections::HashMap;
+
+/// 字体配置
+#[derive(Debug, Clone)]
+pub struct FontConfig {
+    pub id: u32,
+    pub name: String,
+    pub size: f32,
+    pub bold: bool,
+    pub default: bool,
+}
+
+/// 图片路径（支持 file, dest, corner, fade）
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImagePath {
+    pub file: String,
+    pub dest: Option<(u32, u32, u32, u32)>,  // x1, y1, x2, y2
+    pub corner: Option<(u32, u32, u32, u32)>, // x1, y1, x2, y2
+    pub fade: Option<u8>,  // 0-255
+}
 
 /// XML解析器
 pub struct XmlParser {
     /// 解析选项
     options: ParserOptions,
+    /// 字体映射表（字体 ID -> 字体配置）
+    font_map: HashMap<u32, FontConfig>,
 }
 
 /// 解析选项
@@ -63,12 +85,16 @@ impl XmlParser {
     pub fn new() -> Self {
         Self {
             options: ParserOptions::default(),
+            font_map: HashMap::new(),
         }
     }
 
     /// 创建带选项的解析器
     pub fn with_options(options: ParserOptions) -> Self {
-        Self { options }
+        Self { 
+            options,
+            font_map: HashMap::new(),
+        }
     }
     
     /// 根据 DPI 选择合适的布局文件
@@ -100,7 +126,7 @@ impl XmlParser {
     }
 
     /// 解析XML文件
-    pub fn parse_file<P: AsRef<std::path::Path>>(&self, path: P) -> Result<LayoutTree, ParseError> {
+    pub fn parse_file<P: AsRef<std::path::Path>>(&mut self, path: P) -> Result<LayoutTree, ParseError> {
         let path = path.as_ref();
         let path_str = path.to_string_lossy();
         
@@ -120,7 +146,7 @@ impl XmlParser {
     }
 
     /// 解析XML字符串
-    pub fn parse_string(&self, xml: &str) -> Result<LayoutTree, ParseError> {
+    pub fn parse_string(&mut self, xml: &str) -> Result<LayoutTree, ParseError> {
         // 使用 roxmltree 解析 XML
         let doc = Document::parse(xml).map_err(|e| {
             // 输出详细的错误信息用于调试
@@ -150,22 +176,61 @@ impl XmlParser {
         })?;
         
         let root = doc.root_element();
+        let root_name = root.tag_name().name();
         
-        // 检查根元素是否为 Layout
-        if root.tag_name().name() != "Layout" {
-            return Err(ParseError::XmlError("根元素必须是 <Layout>".to_string()));
-        }
+        // 清空字体映射表（每次解析新文件时重置）
+        self.font_map.clear();
         
-        // 解析元数据
-        let mut metadata = LayoutMetadata::default();
-        self.parse_metadata(&root, &mut metadata)?;
+        // 支持 <Layout> 和 <Windows>/<Window> 作为根元素
+        let (page_node, mut metadata) = match root_name {
+            "Layout" => {
+                // 旧格式：<Layout> -> <Page>
+                let mut metadata = LayoutMetadata::default();
+                self.parse_metadata(&root, &mut metadata)?;
+                
+                let page_node = root.children()
+                    .find(|n| n.is_element() && n.tag_name().name() == "Page")
+                    .ok_or_else(|| ParseError::ValidationFailed(vec!["缺少 <Page> 元素".to_string()]))?;
+                
+                (page_node, metadata)
+            }
+            "Windows" | "Window" => {
+                // 新格式：<Windows> 或 <Window> -> 直接包含布局元素
+                let mut metadata = LayoutMetadata::default();
+                
+                // 如果是 <Window>，解析窗口属性
+                if root_name == "Window" {
+                    self.parse_window_metadata(&root, &mut metadata)?;
+                }
+                
+                // 解析 <Font> 元素（在 <Window> 或 <Windows> 下）
+                for child in root.children() {
+                    if child.is_element() && child.tag_name().name() == "Font" {
+                        let font_config = self.parse_font(&child)?;
+                        self.font_map.insert(font_config.id, font_config);
+                    }
+                }
+                
+                // 查找第一个布局容器（VerticalLayout 或 HorizontalLayout）
+                // 或者查找 TabLayout（包含 Include）
+                let layout_node = root.children()
+                    .find(|n| {
+                        n.is_element() && matches!(
+                            n.tag_name().name(),
+                            "VerticalLayout" | "HorizontalLayout" | "TabLayout"
+                        )
+                    })
+                    .ok_or_else(|| ParseError::ValidationFailed(vec!["缺少布局容器元素".to_string()]))?;
+                
+                // 创建一个虚拟的 Page 元素来包装布局
+                (layout_node, metadata)
+            }
+            _ => {
+                return Err(ParseError::XmlError(format!("不支持的根元素: {}", root_name)));
+            }
+        };
         
-        // 查找 Page 元素
-        let page_node = root.children()
-            .find(|n| n.is_element() && n.tag_name().name() == "Page")
-            .ok_or_else(|| ParseError::ValidationFailed(vec!["缺少 <Page> 元素".to_string()]))?;
-        
-        // 解析 Page 元素及其子元素
+        // 解析布局元素
         let page_element = self.parse_element(&page_node)?;
         
         let tree = LayoutTree::with_metadata(page_element, metadata);
@@ -208,6 +273,7 @@ impl XmlParser {
     /// 解析元素类型
     fn parse_element_type(&self, name: &str) -> Result<ElementType, ParseError> {
         match name {
+            // 旧格式元素（保留兼容）
             "Page" => Ok(ElementType::Page),
             "VBox" => Ok(ElementType::VBox),
             "HBox" => Ok(ElementType::HBox),
@@ -221,6 +287,19 @@ impl XmlParser {
             "ProgressBar" => Ok(ElementType::ProgressBar),
             "Divider" => Ok(ElementType::Divider),
             "Overlay" => Ok(ElementType::Overlay),
+            // 新格式元素（标准布局格式）
+            "Windows" => Ok(ElementType::Page),  // 根元素，映射为 Page
+            "Window" => Ok(ElementType::Page),   // 窗口元素，映射为 Page
+            "VerticalLayout" => Ok(ElementType::VBox),
+            "HorizontalLayout" => Ok(ElementType::HBox),
+            "Container" => Ok(ElementType::Spacer),
+            "Control" => Ok(ElementType::Spacer),
+            "CheckBox" => Ok(ElementType::Checkbox),  // 支持 CheckBox（NSIS 格式）
+            "RichEdit" => Ok(ElementType::TextInput),
+            "Slider" => Ok(ElementType::ProgressBar),
+            "TabLayout" => Ok(ElementType::VBox),  // 暂时映射为 VBox
+            "Include" => Err(ParseError::InvalidElementType("Include 需要特殊处理".to_string())),
+            "Font" => Err(ParseError::InvalidElementType("Font 需要特殊处理".to_string())),
             _ => Err(ParseError::InvalidElementType(name.to_string())),
         }
     }
@@ -234,6 +313,7 @@ impl XmlParser {
             let value = attr.value();
 
             match key {
+                // 旧格式属性（保留兼容）
                 "id" => attributes.id = Some(value.to_string()),
                 "text" => attributes.text = Some(value.to_string()),
                 "text_i18n" => attributes.text_i18n = Some(value.to_string()),
@@ -241,7 +321,12 @@ impl XmlParser {
                 "height" => attributes.height = Some(self.parse_f32(value)?),
                 "min_width" => attributes.min_width = Some(self.parse_f32(value)?),
                 "max_width" => attributes.max_width = Some(self.parse_f32(value)?),
-                "padding" => attributes.padding = Some(self.parse_padding(value)?),
+                "padding" => {
+                    // 新格式：padding="left,top,right,bottom"，需要转换
+                    let padding = self.parse_inset(value)?;  // left,top,right,bottom
+                    // 转换为 top,right,bottom,left
+                    attributes.padding = Some((padding.1, padding.2, padding.3, padding.0));
+                }
                 "spacing" => attributes.spacing = Some(self.parse_f32(value)?),
                 "background" => attributes.background = Some(value.to_string()),
                 "color" => attributes.color = Some(value.to_string()),
@@ -257,8 +342,131 @@ impl XmlParser {
                 "max_lines" => attributes.max_lines = value.parse().ok(),
                 "flex" => attributes.flex = Some(self.parse_f32(value)?),
                 "font_size" => {
-                    // font_size 作为自定义属性存储
                     attributes.custom.insert("font_size".to_string(), value.to_string());
+                }
+                // 新格式属性（标准布局格式）
+                "name" => {
+                    // name 映射到 id
+                    attributes.id = Some(value.to_string());
+                }
+                "bkcolor" => {
+                    // bkcolor 映射到 background（颜色）
+                    attributes.background = Some(value.to_string());
+                }
+                "bkimage" => {
+                    // bkimage 映射到 background（图片）
+                    attributes.background = Some(value.to_string());
+                }
+                "textcolor" => {
+                    // textcolor 映射到 color
+                    attributes.color = Some(value.to_string());
+                }
+                "inset" => {
+                    // inset="left,top,right,bottom" -> padding="top,right,bottom,left"
+                    let inset = self.parse_inset(value)?;
+                    attributes.padding = Some((inset.1, inset.2, inset.3, inset.0));
+                }
+                "margin" => {
+                    // margin 存储到 custom
+                    let margin = self.parse_inset(value)?;
+                    attributes.custom.insert("margin".to_string(), format!("{},{},{},{}", margin.0, margin.1, margin.2, margin.3));
+                }
+                "textpadding" => {
+                    // textpadding="left,top,right,bottom" 存储到 custom
+                    let textpadding = self.parse_inset(value)?;
+                    attributes.custom.insert("textpadding".to_string(), format!("{},{},{},{}", textpadding.0, textpadding.1, textpadding.2, textpadding.3));
+                }
+                "valign" => {
+                    // 垂直对齐
+                    attributes.custom.insert("valign".to_string(), value.to_string());
+                }
+                "textalign" => {
+                    // 文本对齐（Label 专用）
+                    attributes.custom.insert("textalign".to_string(), value.to_string());
+                }
+                "font" => {
+                    // 字体 ID，需要查找字体映射表
+                    if let Ok(font_id) = value.parse::<u32>() {
+                        if let Some(font_config) = self.font_map.get(&font_id) {
+                            attributes.custom.insert("font_id".to_string(), font_id.to_string());
+                            attributes.custom.insert("font_name".to_string(), font_config.name.clone());
+                            attributes.custom.insert("font_size".to_string(), font_config.size.to_string());
+                            attributes.custom.insert("font_bold".to_string(), font_config.bold.to_string());
+                        } else {
+                            // 字体 ID 未找到，存储原始值
+                            attributes.custom.insert("font_id".to_string(), font_id.to_string());
+                        }
+                    }
+                }
+                "borderround" => {
+                    // 圆角格式：x,y
+                    let parts: Vec<&str> = value.split(',').map(|s| s.trim()).collect();
+                    if parts.len() == 2 {
+                        if let (Ok(x), Ok(y)) = (parts[0].parse::<f32>(), parts[1].parse::<f32>()) {
+                            attributes.custom.insert("borderround".to_string(), format!("{},{}", x, y));
+                        }
+                    }
+                }
+                "bordercolor" => {
+                    attributes.custom.insert("bordercolor".to_string(), value.to_string());
+                }
+                "bordersize" => {
+                    attributes.custom.insert("bordersize".to_string(), value.to_string());
+                }
+                "float" => {
+                    // float="true" 启用绝对定位
+                    let is_float = self.parse_bool(value).unwrap_or(false);
+                    attributes.custom.insert("float".to_string(), value.to_string());
+                    if is_float {
+                        // 如果 float=true，标记为绝对定位
+                        attributes.custom.insert("is_absolute".to_string(), "true".to_string());
+                    }
+                }
+                "pos" => {
+                    // pos="x1,y1,x2,y2" 存储到 custom
+                    if let Ok(pos) = self.parse_pos_rect(value) {
+                        attributes.custom.insert("pos".to_string(), format!("{},{},{},{}", pos.0, pos.1, pos.2, pos.3));
+                        // 同时计算 position 和尺寸（用于绝对定位）
+                        attributes.position = Some((pos.0, pos.1));
+                        attributes.width = Some(pos.2 - pos.0);
+                        attributes.height = Some(pos.3 - pos.1);
+                        // 标记为绝对定位
+                        attributes.custom.insert("is_absolute".to_string(), "true".to_string());
+                    }
+                }
+                // 图片属性（需要解析 file, dest, corner, fade）
+                "normalimage" | "hotimage" | "pushedimage" | "disabledimage" | "focusedimage" |
+                "normalhotimage" | "selectedimage" | "selectedhotimage" | "foreimage" => {
+                    let image_path = self.parse_image_path(value);
+                    // 将 ImagePath 序列化为字符串存储到 custom
+                    let mut image_str = image_path.file.clone();
+                    if let Some(dest) = image_path.dest {
+                        image_str.push_str(&format!(" dest='{},{},{},{}'", dest.0, dest.1, dest.2, dest.3));
+                    }
+                    if let Some(corner) = image_path.corner {
+                        image_str.push_str(&format!(" corner='{},{},{},{}'", corner.0, corner.1, corner.2, corner.3));
+                    }
+                    if let Some(fade) = image_path.fade {
+                        image_str.push_str(&format!(" fade='{}'", fade));
+                    }
+                    attributes.custom.insert(key.to_string(), image_str);
+                }
+                // RichEdit 特有属性
+                "readonly" | "autohscroll" | "wantreturn" | "wantctrlreturn" | "multiline" => {
+                    attributes.custom.insert(key.to_string(), value.to_string());
+                }
+                // Slider 特有属性
+                "min" | "max" | "value" | "thumbsize" | "mouse" => {
+                    attributes.custom.insert(key.to_string(), value.to_string());
+                }
+                // 其他属性
+                "showhtml" | "cursor" | "heigh" => {
+                    // heigh 是 height 的拼写错误，修正为 height
+                    if key == "heigh" {
+                        attributes.height = Some(self.parse_f32(value)?);
+                    } else {
+                        attributes.custom.insert(key.to_string(), value.to_string());
+                    }
                 }
                 _ => {
                     attributes.custom.insert(key.to_string(), value.to_string());
@@ -339,6 +547,175 @@ impl XmlParser {
         let y = self.parse_f32(parts[1])?;
         Ok((x, y))
     }
+
+    /// 解析字体元素
+    fn parse_font(&self, node: &roxmltree::Node) -> Result<FontConfig, ParseError> {
+        let mut id = None;
+        let mut name = None;
+        let mut size = None;
+        let mut bold = false;
+        let mut default = false;
+
+        for attr in node.attributes() {
+            match attr.name() {
+                "id" => {
+                    id = Some(attr.value().parse::<u32>()
+                        .map_err(|_| ParseError::InvalidAttributeValue(format!("无效的字体 ID: {}", attr.value())))?);
+                }
+                "name" => name = Some(attr.value().to_string()),
+                "size" => {
+                    size = Some(self.parse_f32(attr.value())?);
+                }
+                "bold" => {
+                    bold = self.parse_bool(attr.value())?;
+                }
+                "default" => {
+                    default = self.parse_bool(attr.value())?;
+                }
+                _ => {}
+            }
+        }
+
+        Ok(FontConfig {
+            id: id.ok_or_else(|| ParseError::MissingRequiredAttribute("Font 元素缺少 id 属性".to_string()))?,
+            name: name.unwrap_or_else(|| "微软雅黑".to_string()),
+            size: size.ok_or_else(|| ParseError::MissingRequiredAttribute("Font 元素缺少 size 属性".to_string()))?,
+            bold,
+            default,
+        })
+    }
+
+    /// 解析窗口元数据（Window 元素）
+    fn parse_window_metadata(&self, node: &roxmltree::Node, metadata: &mut LayoutMetadata) -> Result<(), ParseError> {
+        for attr in node.attributes() {
+            match attr.name() {
+                "name" => metadata.name = attr.value().to_string(),
+                "size" => {
+                    // size="width,height"
+                    let parts: Vec<&str> = attr.value().split(',').map(|s| s.trim()).collect();
+                    if parts.len() == 2 {
+                        // 存储到 metadata 的 custom 字段（如果 LayoutMetadata 有的话）
+                        // 或者存储到 custom HashMap 中
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
+    /// 解析图片路径（格式：file='path' dest='x1,y1,x2,y2' corner='x1,y1,x2,y2' fade='value'）
+    fn parse_image_path(&self, value: &str) -> ImagePath {
+        let mut file = String::new();
+        let mut dest = None;
+        let mut corner = None;
+        let mut fade = None;
+
+        // 解析 file='...'
+        if let Some(start) = value.find("file='") {
+            let start_pos = start + 6;
+            if let Some(end) = value[start_pos..].find("'") {
+                file = value[start_pos..start_pos + end].to_string();
+            }
+        } else if let Some(start) = value.find("file=\"") {
+            let start_pos = start + 6;
+            if let Some(end) = value[start_pos..].find("\"") {
+                file = value[start_pos..start_pos + end].to_string();
+            }
+        } else {
+            // 如果没有 file='...'，整个值就是文件路径
+            file = value.trim().to_string();
+        }
+
+        // 解析 dest='x1,y1,x2,y2'
+        if let Some(start) = value.find("dest='") {
+            let start_pos = start + 6;
+            if let Some(end) = value[start_pos..].find("'") {
+                let dest_str = &value[start_pos..start_pos + end];
+                let parts: Vec<&str> = dest_str.split(',').map(|s| s.trim()).collect();
+                if parts.len() == 4 {
+                    if let (Ok(x1), Ok(y1), Ok(x2), Ok(y2)) = (
+                        parts[0].parse::<u32>(),
+                        parts[1].parse::<u32>(),
+                        parts[2].parse::<u32>(),
+                        parts[3].parse::<u32>(),
+                    ) {
+                        dest = Some((x1, y1, x2, y2));
+                    }
+                }
+            }
+        }
+
+        // 解析 corner='x1,y1,x2,y2'
+        if let Some(start) = value.find("corner='") {
+            let start_pos = start + 8;
+            if let Some(end) = value[start_pos..].find("'") {
+                let corner_str = &value[start_pos..start_pos + end];
+                let parts: Vec<&str> = corner_str.split(',').map(|s| s.trim()).collect();
+                if parts.len() == 4 {
+                    if let (Ok(x1), Ok(y1), Ok(x2), Ok(y2)) = (
+                        parts[0].parse::<u32>(),
+                        parts[1].parse::<u32>(),
+                        parts[2].parse::<u32>(),
+                        parts[3].parse::<u32>(),
+                    ) {
+                        corner = Some((x1, y1, x2, y2));
+                    }
+                }
+            }
+        }
+
+        // 解析 fade='value'
+        if let Some(start) = value.find("fade='") {
+            let start_pos = start + 6;
+            if let Some(end) = value[start_pos..].find("'") {
+                let fade_str = &value[start_pos..start_pos + end];
+                if let Ok(fade_val) = fade_str.parse::<u8>() {
+                    fade = Some(fade_val);
+                }
+            }
+        }
+
+        ImagePath {
+            file,
+            dest,
+            corner,
+            fade,
+        }
+    }
+
+    /// 解析 inset 格式（left,top,right,bottom）
+    fn parse_inset(&self, value: &str) -> Result<(f32, f32, f32, f32), ParseError> {
+        let parts: Vec<&str> = value.split(',').map(|s| s.trim()).collect();
+        match parts.len() {
+            1 => {
+                let val = self.parse_f32(parts[0])?;
+                Ok((val, val, val, val))
+            }
+            4 => {
+                let left = self.parse_f32(parts[0])?;
+                let top = self.parse_f32(parts[1])?;
+                let right = self.parse_f32(parts[2])?;
+                let bottom = self.parse_f32(parts[3])?;
+                Ok((left, top, right, bottom))
+            }
+            _ => Err(ParseError::InvalidAttributeValue(format!("无效的 inset 格式: {}", value))),
+        }
+    }
+
+    /// 解析 pos 格式（x1,y1,x2,y2）
+    fn parse_pos_rect(&self, value: &str) -> Result<(f32, f32, f32, f32), ParseError> {
+        let parts: Vec<&str> = value.split(',').map(|s| s.trim()).collect();
+        if parts.len() != 4 {
+            return Err(ParseError::InvalidAttributeValue(format!("无效的 pos 格式: {}", value)));
+        }
+        
+        let x1 = self.parse_f32(parts[0])?;
+        let y1 = self.parse_f32(parts[1])?;
+        let x2 = self.parse_f32(parts[2])?;
+        let y2 = self.parse_f32(parts[3])?;
+        Ok((x1, y1, x2, y2))
+    }
 }
 
 impl Default for XmlParser {
@@ -384,7 +761,7 @@ mod tests {
         </Layout>
         "#;
 
-        let parser = XmlParser::new();
+        let mut parser = XmlParser::new();
         let tree = parser.parse_string(xml).unwrap();
 
         let button = tree.find_by_id("submit-btn");
@@ -413,7 +790,7 @@ mod tests {
         </Layout>
         "#;
 
-        let parser = XmlParser::new();
+        let mut parser = XmlParser::new();
         let tree = parser.parse_string(xml).unwrap();
 
         let vbox = tree.find_by_type(&ElementType::VBox)[0];
@@ -430,7 +807,7 @@ mod tests {
         </Layout>
         "#;
 
-        let parser = XmlParser::new();
+        let mut parser = XmlParser::new();
         let result = parser.parse_string(xml);
         assert!(result.is_err());
     }
@@ -447,7 +824,7 @@ mod tests {
         </Layout>
         "#;
 
-        let parser = XmlParser::new();
+        let mut parser = XmlParser::new();
         let tree = parser.parse_string(xml).unwrap();
 
         let keys = tree.get_i18n_keys();

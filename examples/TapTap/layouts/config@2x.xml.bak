@@ -2,11 +2,14 @@
 <!-- 配置页面 @2x - 完全匹配 NSIS configpage2x.xml -->
 <Layout name="ConfigPage" version="1.0.0" width="1148" height="716">
   <Page background="assets/bg_main@2x.png" width="1148" height="716">
-    <!-- 右上角关闭按钮（绝对定位） -->
-    <Button id="close" position="1100,16" width="32" height="32" style="text"
-            normalimage="assets/btn_close@2x.png"
-            hotimage="assets/btn_close@2x.png"
-            pushedimage="assets/btn_close@2x.png" />
+    <!-- 右上角关闭按钮（绝对定位，参考 NSIS inset="0,32,32,0"） -->
+    <!-- 窗口宽度 1148，右边距 32，按钮宽度 64（NSIS 2x 为 64x64），所以 x = 1148 - 32 - 64 = 1052 -->
+    <!-- 注意：position 是相对于窗口左上角的坐标，右上角应该是窗口宽度减去按钮宽度和右边距 -->
+    <!-- 计算：1148 - 32 - 64 = 1052，但 NSIS 的 inset="0,32,32,0" 表示右边距 32，上边距 32 -->
+    <Button id="close" position="1052,32" width="64" height="64" style="text"
+            normalimage="file='assets/btn_close@2x.png' dest='0,0,64,64'"
+            hotimage="file='assets/btn_close@2x.png' dest='0,0,64,64'"
+            pushedimage="file='assets/btn_close@2x.png' dest='0,0,64,64'" />
     
     <VBox spacing="0">
       <!-- 顶部空白 192px (96*2) -->
@@ -19,7 +22,7 @@
         <Spacer width="426" />
       </HBox>
 
-      <!-- 安装按钮：上边距 110px (55*2)，左右各 334px (167*2) -->
+      <!-- 安装按钮：上边距 110px（对应 NSIS padding="334,110,334,0"），左右各 334px (167*2) -->
       <Spacer height="110" />
       <HBox height="80">
         <Spacer width="334" />
@@ -34,21 +37,15 @@
 
       <!-- 复选框区域：总高度 174px (87*2)，内边距 inset="80,70,80,70" -->
       <!-- padding 格式: (top, right, bottom, left)，所以 inset(left,top,right,bottom) 转换为 padding(top,right,bottom,left) = (70,80,70,80) -->
-      <HBox height="174" padding="70,80,70,80">
-        <!-- CheckBox: width=215 (与 NSIS 一致)，图片裁剪 dest='0,2,32,34' -->
-        <Checkbox id="agree_license" text="同意" text_i18n="config.agree" width="215" height="40" font_size="24" color="#FFE4E8EC"
+      <!-- 增加上边距，让 checkbox 离按钮更远 -->
+      <Spacer height="20" />
+      <HBox height="174" padding="50,80,70,80">
+        <!-- CheckBox: 使用 markdown 格式支持超链接 -->
+        <!-- 格式: "同意[用户协议](agreement)和[隐私政策](policy)" -->
+        <Checkbox id="agree_license" text="同意[用户协议](agreement)和[隐私政策](policy)" text_i18n="config.agree" width="500" height="40" font_size="24" color="#FFE4E8EC"
                   normalimage="file='assets/checkbox-0@2x.png' dest='0,2,32,34'"
                   selectedimage="file='assets/checkbox-2@2x.png' dest='0,2,32,34'"
                   textpadding="40,0,0,0" />
-
-        <!-- 用户协议按钮: width=144 (72*2) -->
-        <Button id="agreement" text="用户协议" text_i18n="config.agreement" width="144" height="40" style="text" font_size="24" color="#FFFFFFFF" />
-
-        <!-- "和" 标签: width=20 (10*2) -->
-        <Label text="和" text_i18n="config.and" width="20" height="40" font_size="24" color="#FFE4E8EC" />
-
-        <!-- 隐私政策按钮: width=144 (72*2) -->
-        <Button id="policy" text="隐私政策" text_i18n="config.policy" width="144" height="40" style="text" font_size="24" color="#FFFFFFFF" />
 
         <!-- 弹性空间（填充中间）-->
         <Spacer />

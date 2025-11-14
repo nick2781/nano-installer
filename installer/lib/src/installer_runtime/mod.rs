@@ -82,7 +82,7 @@ fn run_gui_install(config: InstallerConfig) -> Result<()> {
             .with_inner_size([1148.0, 716.0])  // 默认使用 2x 大小
             .with_resizable(false)
             .with_decorations(false)  // 无边框窗口
-            .with_transparent(false)
+            .with_transparent(true)  // 启用透明背景以支持圆角
             .with_icon(icon.unwrap_or_default()),
         centered: true,  // 自动居中显示
         ..Default::default()
@@ -95,6 +95,10 @@ fn run_gui_install(config: InstallerConfig) -> Result<()> {
         &format!("{} Setup", config.project.name),
         native_options,
         Box::new(move |cc| {
+            // 注意：窗口圆角通过透明背景和背景图片的圆角边缘来实现视觉效果
+            // Windows 11+ 的系统级圆角需要在窗口完全创建后通过 DwmSetWindowAttribute 设置
+            // 这里先使用透明背景，圆角效果由背景图片提供
+            
             // 在窗口创建后，此时线程应该已经是 AWARE 模式了
             // 使用 GetDpiForSystem() 再次检测真实的系统 DPI
             #[cfg(target_os = "windows")]

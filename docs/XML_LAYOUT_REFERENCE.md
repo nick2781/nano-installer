@@ -2,9 +2,12 @@
 
 > 本文档是 nano-installer XML 布局系统的完整参考手册，面向安装器界面开发者。
 
+**重要提示**：nano-installer **完全兼容 NSIS 布局格式**，可以直接使用 NSIS 的 XML 布局文件，同时也支持传统的布局格式（向后兼容）。
+
 ## 📑 目录
 
 - [快速开始](#-快速开始)
+- [NSIS 格式支持](#nsis-格式支持)
 - [基本概念](#-基本概念)
 - [容器元素](#-容器元素)
 - [可视化组件](#-可视化组件)
@@ -17,7 +20,7 @@
 
 ## 🚀 快速开始
 
-### 第一个布局文件
+### 第一个布局文件（传统格式）
 
 创建 `layouts/welcome.xml`：
 
@@ -39,6 +42,92 @@
   </Page>
 </Layout>
 ```
+
+### 第一个布局文件（NSIS 格式）
+
+创建 `layouts/welcome.xml`：
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<Windows>
+  <Font id="0" name="微软雅黑" size="14" bold="false" default="true" />
+  <VerticalLayout>
+    <Label name="title" text="欢迎安装" font="0" textcolor="#FFFFFF" />
+    <Label name="message" text="点击下一步继续" font="0" textcolor="#CCCCCC" />
+    
+    <Container height="1" />
+    
+    <HorizontalLayout>
+      <Container width="1" />
+      <Button name="next" text="下一步" width="100" height="40" font="0" />
+    </HorizontalLayout>
+  </VerticalLayout>
+</Windows>
+```
+
+## NSIS 格式支持
+
+nano-installer **完全兼容** NSIS 布局格式，这意味着：
+
+✅ **可以直接使用 NSIS 的布局文件**，无需任何转换  
+✅ **保持向后兼容**，现有布局文件仍然可用  
+✅ **与 NSIS 完全一致**，便于参考和调试  
+✅ **无需维护两套布局文件**
+
+### 格式对比
+
+| 特性 | 传统格式 | NSIS 格式 |
+|------|---------|-----------|
+| 根元素 | `<Layout><Page>` | `<Windows>` 或 `<Window>` |
+| 垂直布局 | `<VBox>` | `<VerticalLayout>` |
+| 水平布局 | `<HBox>` | `<HorizontalLayout>` |
+| 空白占位 | `<Spacer>` | `<Container>` 或 `<Control>` |
+| 复选框 | `<Checkbox>` | `<CheckBox>` |
+| 文本输入 | `<TextInput>` | `<RichEdit>` |
+| 进度条 | `<ProgressBar>` | `<Slider>` |
+| 元素 ID | `id` | `name` |
+| 背景颜色 | `background` | `bkcolor` |
+| 背景图片 | `background` | `bkimage` |
+| 文本颜色 | `color` | `textcolor` |
+| 内边距 | `padding="top,right,bottom,left"` | `padding="left,top,right,bottom"` 或 `inset="left,top,right,bottom"` |
+| 字体 | `font_size="14"` | `font="0"`（引用 `<Font>` 元素） |
+
+### 字体系统
+
+NSIS 使用 `<Font>` 元素定义字体：
+
+```xml
+<Windows>
+  <Font id="0" name="微软雅黑" size="14" bold="false" default="true" />
+  <Font id="1" name="微软雅黑" size="20" bold="true" />
+  
+  <VerticalLayout>
+    <Label text="标题" font="1" />
+    <Label text="正文" font="0" />
+  </VerticalLayout>
+</Windows>
+```
+
+### 图片路径格式
+
+NSIS 支持复杂的图片路径格式：
+
+```xml
+<!-- 基本格式 -->
+<Button normalimage="file='assets/btn_primary@2x.png'" />
+
+<!-- 带裁剪区域 -->
+<Button normalimage="file='assets/checkbox-0@2x.png' dest='0,2,32,34'" />
+
+<!-- 带圆角和透明度 -->
+<Button normalimage="file='assets/btn_primary.png' corner='18,6,18,14' fade='230'" />
+```
+
+**格式说明**：
+- `file='path'` - 图片路径（必需）
+- `dest='x1,y1,x2,y2'` - 裁剪区域（可选）
+- `corner='x1,y1,x2,y2'` - 圆角参数（可选）
+- `fade='value'` - 透明度 0-255（可选）
 
 ### 在配置中引用
 
@@ -63,6 +152,7 @@
 
 ### 布局结构
 
+**传统格式：**
 ```
 Layout (布局根节点)
   └── Page (页面容器)
@@ -71,6 +161,17 @@ Layout (布局根节点)
             ├── Button (按钮)
             ├── Checkbox (复选框)
             └── ... (其他组件)
+```
+
+**NSIS 格式：**
+```
+Windows (布局根节点)
+  ├── Font (字体定义，可选)
+  └── VerticalLayout/HorizontalLayout (容器)
+       ├── Label (标签)
+       ├── Button (按钮)
+       ├── CheckBox (复选框)
+       └── ... (其他组件)
 ```
 
 ### 坐标系统
@@ -94,23 +195,57 @@ Layout (布局根节点)
 
 容器用于组织和排列子元素。
 
-### `<Layout>` - 布局根节点
+### `<Layout>` / `<Windows>` / `<Window>` - 布局根节点
 
 **必须**作为 XML 文件的根元素。
 
-#### 属性
+#### 传统格式：`<Layout>`
 
 | 属性 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `name` | String | ✅ | 布局名称，用于识别 |
 | `version` | String | ✅ | 布局版本，如 "1.0.0" |
 
-#### 示例
-
+**示例：**
 ```xml
 <Layout name="Welcome" version="1.0.0">
-  <!-- 页面内容 -->
+  <Page>
+    <!-- 页面内容 -->
+  </Page>
 </Layout>
+```
+
+#### NSIS 格式：`<Windows>` 或 `<Window>`
+
+**`<Windows>`** - 页面布局根元素（无属性）
+
+**示例：**
+```xml
+<Windows>
+  <Font id="0" name="微软雅黑" size="14" />
+  <VerticalLayout>
+    <!-- 页面内容 -->
+  </VerticalLayout>
+</Windows>
+```
+
+**`<Window>`** - 窗口定义（用于对话框）
+
+| 属性 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `name` | String | ❌ | 窗口名称 |
+| `size` | String | ❌ | 窗口大小，格式 `"width,height"` |
+| `roundcorner` | String | ❌ | 圆角，格式 `"x,y"` |
+| `showshadow` | Boolean | ❌ | 是否显示阴影 |
+
+**示例：**
+```xml
+<Window name="msgbox" size="800,460" roundcorner="32,32" showshadow="true">
+  <Font id="0" name="微软雅黑" size="14" />
+  <VerticalLayout>
+    <!-- 对话框内容 -->
+  </VerticalLayout>
+</Window>
 ```
 
 ---
@@ -144,23 +279,42 @@ Layout (布局根节点)
 
 ---
 
-### `<VBox>` - 垂直布局容器
+### `<VBox>` / `<VerticalLayout>` - 垂直布局容器
 
-垂直排列子元素（从上到下）。
+垂直排列子元素（从上到下）。两种格式都支持。
 
 #### 属性
+
+**传统格式 (`<VBox>`)**：
 
 | 属性 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `spacing` | Number | ❌ | 子元素间距，默认 0 |
-| `padding` | Number | ❌ | 内边距（四周相同） |
-| `padding_left` | Number | ❌ | 左内边距 |
-| `padding_right` | Number | ❌ | 右内边距 |
-| `padding_top` | Number | ❌ | 上内边距 |
-| `padding_bottom` | Number | ❌ | 下内边距 |
+| `padding` | String | ❌ | 内边距，格式 `"top,right,bottom,left"` |
 | `width` | Number | ❌ | 固定宽度 |
 | `height` | Number | ❌ | 固定高度 |
 | `flex` | Number | ❌ | 弹性增长系数 |
+| `align` | String | ❌ | 水平对齐：`"left"` \| `"center"` \| `"right"` |
+
+**NSIS 格式 (`<VerticalLayout>`)**：
+
+| 属性 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `name` | String | ❌ | 元素名称 |
+| `width` | Number | ❌ | 固定宽度 |
+| `height` | Number | ❌ | 固定高度 |
+| `bkcolor` | String | ❌ | 背景颜色，格式 `"#AARRGGBB"` 或 `"#RRGGBB"` |
+| `bkimage` | String | ❌ | 背景图片路径 |
+| `inset` | String | ❌ | 内边距，格式 `"left,top,right,bottom"` |
+| `padding` | String | ❌ | 内边距，格式 `"left,top,right,bottom"` |
+| `bordercolor` | String | ❌ | 边框颜色 |
+| `bordersize` | Number | ❌ | 边框大小（像素） |
+| `borderround` | String | ❌ | 边框圆角，格式 `"x,y"` |
+| `visible` | Boolean | ❌ | 是否可见 |
+| `float` | Boolean | ❌ | 是否浮动（绝对定位） |
+| `pos` | String | ❌ | 浮动位置，格式 `"x1,y1,x2,y2"`（矩形区域） |
+| `align` | String | ❌ | 水平对齐：`"left"` \| `"center"` \| `"right"` |
+| `valign` | String | ❌ | 垂直对齐：`"top"` \| `"center"` \| `"vcenter"` \| `"bottom"` |
 
 #### 示例
 
@@ -190,13 +344,13 @@ Layout (布局根节点)
 
 ---
 
-### `<HBox>` - 水平布局容器
+### `<HBox>` / `<HorizontalLayout>` - 水平布局容器
 
-水平排列子元素（从左到右）。
+水平排列子元素（从左到右）。两种格式都支持。
 
 #### 属性
 
-与 `<VBox>` 相同。
+与 `<VBox>` / `<VerticalLayout>` 相同。
 
 #### 示例
 
@@ -232,17 +386,31 @@ Layout (布局根节点)
 
 ---
 
-### `<Spacer>` - 空白占位符
+### `<Spacer>` / `<Container>` / `<Control>` - 空白占位符
 
-用于创建空白间隔或实现 Flex 布局。
+用于创建空白间隔或实现 Flex 布局。三种格式都支持。
 
 #### 属性
+
+**传统格式 (`<Spacer>`)**：
 
 | 属性 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `width` | Number | ❌ | 固定宽度 |
 | `height` | Number | ❌ | 固定高度 |
 | `flex` | Number | ❌ | 弹性增长系数 |
+
+**NSIS 格式 (`<Container>` 和 `<Control>`)**：
+
+| 属性 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `name` | String | ❌ | 元素名称 |
+| `width` | Number | ❌ | 固定宽度 |
+| `height` | Number | ❌ | 固定高度 |
+| `bkcolor` | String | ❌ | 背景颜色（仅 `<Container>` 和 `<Control>`） |
+| `bkimage` | String | ❌ | 背景图片（仅 `<Container>` 和 `<Control>`） |
+| `padding` | String | ❌ | 内边距（仅 `<Control>`） |
+| `visible` | Boolean | ❌ | 是否可见 |
 
 #### 示例
 
