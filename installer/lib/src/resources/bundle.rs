@@ -26,6 +26,7 @@ pub enum SegmentType {
     Locales = 3,       // 语言包 (7z 压缩)
     Payload = 4,       // 应用程序 (7z)
     Uninstaller = 5,   // uninst.exe
+    Scripts = 6,       // scripts/*.rhai (7z compressed)
 }
 
 /// 资源段
@@ -123,6 +124,22 @@ impl ResourceBundle {
             name: "uninst.exe".to_string(),
             data,
             compressed: false,
+        });
+        Ok(())
+    }
+
+    /// 添加脚本段 (scripts/*.rhai 打包为 7z)
+    pub fn add_scripts(&mut self, files: HashMap<String, Vec<u8>>) -> Result<()> {
+        if files.is_empty() {
+            return Ok(());
+        }
+        let file_list: Vec<(String, Vec<u8>)> = files.into_iter().collect();
+        let compressed = Self::compress_files_to_7z(file_list)?;
+        self.segments.push(ResourceSegment {
+            segment_type: SegmentType::Scripts,
+            name: "scripts.7z".to_string(),
+            data: compressed,
+            compressed: true,
         });
         Ok(())
     }
@@ -235,7 +252,11 @@ impl ResourceBundle {
                 3 => SegmentType::Locales,
                 4 => SegmentType::Payload,
                 5 => SegmentType::Uninstaller,
-                _ => bail!("Unknown segment type: {}", type_byte[0]),
+                6 => SegmentType::Scripts,
+                _ => {
+                    tracing::warn!("Unknown segment type: {}, skipping", type_byte[0]);
+                    continue;
+                }
             };
             
             let mut name_len_bytes = [0u8; 2];

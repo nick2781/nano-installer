@@ -49,6 +49,9 @@ regex.workspace = true
 # TOML 解析库
 toml.workspace = true
 
+# 脚本引擎
+rhai.workspace = true
+
 # 布局引擎
 taffy.workspace = true
 

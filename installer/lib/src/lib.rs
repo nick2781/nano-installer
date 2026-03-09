@@ -51,6 +51,7 @@ pub mod layout;
 pub mod i18n;
 pub mod resources;
 pub mod logger;
+pub mod scripting;
 
 // Re-export commonly used types
 pub use common::{Error, Result};

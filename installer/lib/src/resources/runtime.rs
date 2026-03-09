@@ -20,6 +20,7 @@ pub struct RuntimeResources {
     // 解压后的分段缓存
     ui_files: OnceCell<HashMap<String, Vec<u8>>>,
     locale_files: OnceCell<HashMap<String, Vec<u8>>>,
+    script_files: OnceCell<HashMap<String, Vec<u8>>>,
 }
 
 impl RuntimeResources {
@@ -37,6 +38,7 @@ impl RuntimeResources {
             cache: HashMap::new(),
             ui_files: OnceCell::new(),
             locale_files: OnceCell::new(),
+            script_files: OnceCell::new(),
         };
         
         RUNTIME_RESOURCES.set(RwLock::new(resources))
@@ -129,6 +131,23 @@ impl RuntimeResources {
         Ok(data.clone())
     }
     
+    /// 获取脚本文件 (e.g., "scripts/install.rhai")
+    pub fn get_script(name: &str) -> Result<String> {
+        let resources = RUNTIME_RESOURCES.get()
+            .context("Runtime resources not initialized")?;
+        let resources = resources.write();
+
+        let script_files = resources.script_files.get_or_try_init(|| {
+            resources.bundle.decompress_segment(SegmentType::Scripts)
+        })?;
+
+        let data = script_files.get(name)
+            .with_context(|| format!("Script not found: {}", name))?;
+
+        String::from_utf8(data.clone())
+            .with_context(|| format!("Script {} is not valid UTF-8", name))
+    }
+
     /// 获取 payload（如果存在）
     pub fn get_payload() -> Option<Vec<u8>> {
         let resources = RUNTIME_RESOURCES.get()?;

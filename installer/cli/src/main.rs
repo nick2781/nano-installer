@@ -965,7 +965,29 @@ fn build_installer_exe(
     } else {
         println!("      ⚠️  Warning: Uninstaller not found at {}", uninstaller_path.display());
     }
-    
+
+    // 6. 收集脚本文件 (scripts/*.rhai, 可选)
+    let scripts_dir = project_dir.join("scripts");
+    if scripts_dir.exists() {
+        let mut script_files = std::collections::HashMap::new();
+        for entry in walkdir::WalkDir::new(&scripts_dir)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().map_or(false, |ext| ext == "rhai"))
+        {
+            let relative = entry.path().strip_prefix(project_dir)
+                .context("Failed to get relative path")?;
+            let name = relative.to_string_lossy().replace('\\', "/");
+            let data = std::fs::read(entry.path())?;
+            script_files.insert(name, data);
+        }
+        if !script_files.is_empty() {
+            let script_count = script_files.len();
+            bundle.add_scripts(script_files)?;
+            println!("      ✓ Segment 6: Scripts ({} .rhai files)", script_count);
+        }
+    }
+
     // 打包资源
     let bundle_data = bundle.pack()?;
     let bundle_size_mb = bundle_data.len() as f64 / 1024.0 / 1024.0;

@@ -551,14 +551,23 @@ impl InstallerApp {
         state.set_create_start_menu_shortcut(self.create_start_menu_shortcut);
         self.install_state = Some(state.clone());
 
-        // e) Build task runner and spawn background thread
+        // e) Run installation — script mode or config mode
         let config_clone = self.config.clone();
         let ctx_clone = ctx.clone();
 
         let handle = std::thread::spawn(move || {
-            let mut runner = TaskRunner::new(&config_clone);
-            runner.execute(&state, &config_clone)
-                .map_err(|e| format!("{}", e))?;
+            // Check if scripts/install.rhai exists in embedded resources
+            if let Ok(script_source) = crate::resources::RuntimeResources::get_script("scripts/install.rhai") {
+                tracing::info!("Running install script (scripts/install.rhai)");
+                let script_ctx = crate::scripting::ScriptContext::for_install(state, config_clone);
+                let mut engine = crate::scripting::ScriptEngine::new(script_ctx);
+                engine.run_script(&script_source)?;
+            } else {
+                // Config mode: existing TaskRunner behavior
+                let mut runner = TaskRunner::new(&config_clone);
+                runner.execute(&state, &config_clone)
+                    .map_err(|e| format!("{}", e))?;
+            }
 
             ctx_clone.request_repaint();
             Ok(())
@@ -606,6 +615,20 @@ impl InstallerApp {
 
         std::thread::spawn(move || {
             tracing::info!("Uninstall background thread started");
+
+            // Check if scripts/uninstall.rhai exists
+            if let Ok(script_source) = crate::resources::RuntimeResources::get_script("scripts/uninstall.rhai") {
+                tracing::info!("Running uninstall script (scripts/uninstall.rhai)");
+                let script_ctx = crate::scripting::ScriptContext::for_uninstall(
+                    config.clone(), install_path, progress, status, finished, reserve_data,
+                );
+                let mut engine = crate::scripting::ScriptEngine::new(script_ctx);
+                if let Err(e) = engine.run_script(&script_source) {
+                    tracing::error!("Uninstall script failed: {}", e);
+                }
+                ctx_clone.request_repaint();
+                return;
+            }
 
             // Step 1: Kill running process
             *status.write() = status_closing;
@@ -1330,13 +1353,16 @@ impl InstallerApp {
     fn launch_self_delete_script(&self) {
         #[cfg(windows)]
         {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+
             let batch_path = std::env::temp_dir()
                 .join(format!("{}_uninstall_cleanup.bat", self.config.project.name));
             if batch_path.exists() {
-                // 工作目录设为 temp，否则 cmd.exe 占用安装目录导致 rmdir 失败
                 let _ = Command::new("cmd")
-                    .args(["/C", "start", "/MIN", "", &batch_path.to_string_lossy()])
+                    .args(["/C", &batch_path.to_string_lossy().to_string()])
                     .current_dir(std::env::temp_dir())
+                    .creation_flags(CREATE_NO_WINDOW)
                     .spawn();
                 tracing::info!("Launched self-deletion script: {:?}", batch_path);
             }

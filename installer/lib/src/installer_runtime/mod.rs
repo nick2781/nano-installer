@@ -127,10 +127,18 @@ fn run_silent_mode(config: InstallerConfig) -> Result<()> {
     state.set_create_desktop_shortcut(config.shortcuts.desktop_default);
     state.set_create_start_menu_shortcut(config.shortcuts.start_menu);
 
-    // 使用 TaskRunner 执行任务流水线
-    let mut runner = TaskRunner::new(&config);
-    runner.execute(&state, &config)
-        .map_err(|e| anyhow::anyhow!("Silent installation failed: {}", e))?;
+    // Script mode or config mode
+    if let Ok(script_source) = crate::resources::RuntimeResources::get_script("scripts/install.rhai") {
+        tracing::info!("Running install script (silent mode)");
+        let script_ctx = crate::scripting::ScriptContext::for_install(state, config.clone());
+        let mut engine = crate::scripting::ScriptEngine::new(script_ctx);
+        engine.run_script(&script_source)
+            .map_err(|e| anyhow::anyhow!("Script error: {}", e))?;
+    } else {
+        let mut runner = TaskRunner::new(&config);
+        runner.execute(&state, &config)
+            .map_err(|e| anyhow::anyhow!("Silent installation failed: {}", e))?;
+    }
 
     tracing::info!("Silent installation completed successfully");
 
