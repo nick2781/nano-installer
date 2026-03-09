@@ -10,7 +10,10 @@
 4. **dest UV 用逻辑尺寸** — `compute_uv_rect` 使用 `get_render_size()`，不是 `texture.size()`
 5. **双格式同步** — 动态修改元素属性时同时更新 `attributes.*` 和 `visual_style.*`
 6. **测试验证传递关系** — 断言值来自配置，不是断言硬编码默认值
-7. **Action 驱动** — 按钮行为由 XML `action` 属性声明，代码通过 `dispatch_action()` 分发，禁止硬编码 button_id→行为映射
-8. **配置驱动页面** — 页面使用 String ID（非枚举），顺序从 `config.wizard.pages[]` 读取，新增页面不需要修改代码
-9. **Links 通用映射** — `config.links` 是 `HashMap<String, String>`，`action="open_url:KEY"` 查 map
-10. **Locale 覆盖** — 所有用户可见文案必须在 `locales/*.json` 中定义，Rust 代码中不出现用户可见的中文字符串
+7. **Action 驱动** — 按钮行为由 XML `action` 属性声明，代码通过 `dispatch_action()` 分发
+8. **配置驱动页面** — 页面使用 String ID，顺序从 `config.wizard.pages[]` 读取
+9. **Links 通用映射** — `config.links` 是 `HashMap<String, String>`
+10. **Locale 覆盖** — 所有用户可见文案必须在 `locales/*.json` 中定义
+11. **三层架构** — config.json (声明式) > TaskRunner (默认) > scripts/*.rhai (脚本覆盖)
+12. **原子化 API** — 脚本 API 提供原子能力（文件/注册表/进程等），业务逻辑在脚本中组合
+13. **配置是数据，脚本是逻辑** — 配置描述"是什么"，脚本描述"做什么"，不在配置中表达逻辑流程

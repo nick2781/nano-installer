@@ -172,6 +172,7 @@ fn run_gui(config: InstallerConfig, wizard_mode: WizardMode) -> Result<()> {
             .with_resizable(false)
             .with_decorations(false)
             .with_transparent(true)
+            .with_active(true)
             .with_icon(icon.unwrap_or_default()),
         centered: true,
         ..Default::default()

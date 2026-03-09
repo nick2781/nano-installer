@@ -554,12 +554,17 @@ impl InstallerApp {
         // e) Run installation — script mode or config mode
         let config_clone = self.config.clone();
         let ctx_clone = ctx.clone();
+        let create_desktop_shortcut = self.create_desktop_shortcut;
+        let autorun_pref = self.autorun_preference;
 
         let handle = std::thread::spawn(move || {
             // Check if scripts/install.rhai exists in embedded resources
             if let Ok(script_source) = crate::resources::RuntimeResources::get_script("scripts/install.rhai") {
                 tracing::info!("Running install script (scripts/install.rhai)");
-                let script_ctx = crate::scripting::ScriptContext::for_install(state, config_clone);
+                let mut script_ctx = crate::scripting::ScriptContext::for_install(state, config_clone);
+                // Populate checkbox values from UI state
+                script_ctx.checkbox_values.write().insert("desktop_shortcut".to_string(), create_desktop_shortcut);
+                script_ctx.checkbox_values.write().insert("autorun".to_string(), autorun_pref);
                 let mut engine = crate::scripting::ScriptEngine::new(script_ctx);
                 engine.run_script(&script_source)?;
             } else {
@@ -772,6 +777,7 @@ impl InstallerApp {
                         timeout /t 2 /nobreak >nul\r\n\
                         del /F /Q \"{exe}\"\r\n\
                         if exist \"{exe}\" goto retry\r\n\
+                        del /F /Q \"{dir}\\*.*\"\r\n\
                         rmdir /S /Q \"{dir}\"\r\n\
                         del /F /Q \"%~f0\"\r\n",
                         exe = exe_path.display(),

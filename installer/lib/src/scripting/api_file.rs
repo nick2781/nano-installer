@@ -125,6 +125,65 @@ pub fn register(engine: &mut Engine, ctx: ScriptContext) {
         result
     });
 
+    // Extract payload with smooth progress animation
+    // extract_payload_with_progress(start_pct, end_pct) — animates progress during extraction
+    let c = ctx.clone();
+    engine.register_fn("extract_payload_with_progress", move |start_pct: f64, end_pct: f64| -> bool {
+        let install_path = c.get_install_path();
+        tracing::info!("[script] extract_payload_with_progress {}% → {}%", start_pct, end_pct);
+
+        let payload = match crate::resources::RuntimeResources::get_payload() {
+            Some(data) => data,
+            None => {
+                tracing::error!("[script] No payload found");
+                return false;
+            }
+        };
+
+        // Run extraction in background thread
+        let install_path_clone = install_path.clone();
+        let payload_clone = payload;
+        let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let failed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let done2 = done.clone();
+        let failed2 = failed.clone();
+
+        std::thread::spawn(move || {
+            match crate::resources::PayloadExt::extract_7z_to_dir(
+                &payload_clone, std::path::Path::new(&install_path_clone)
+            ) {
+                Ok(()) => {}
+                Err(e) => {
+                    tracing::error!("[script] extract failed: {}", e);
+                    failed2.store(true, std::sync::atomic::Ordering::SeqCst);
+                }
+            }
+            done2.store(true, std::sync::atomic::Ordering::SeqCst);
+        });
+
+        // Animate progress while waiting
+        let range = end_pct - start_pct;
+        let mut elapsed_ms: u64 = 0;
+        let poll_interval = 100u64; // ms
+
+        while !done.load(std::sync::atomic::Ordering::SeqCst) {
+            elapsed_ms += poll_interval;
+            // Non-linear progress: fast start, slow finish (asymptotic to 95% of range)
+            let t = (elapsed_ms as f64 / 1000.0).min(120.0); // cap at 120s
+            let ratio = 1.0 - (-t / 15.0f64).exp(); // ~95% after 45s
+            let pct = start_pct + range * ratio * 0.95; // never reach end_pct until done
+            c.set_progress(pct as f32);
+            std::thread::sleep(std::time::Duration::from_millis(poll_interval));
+        }
+
+        if failed.load(std::sync::atomic::Ordering::SeqCst) {
+            return false;
+        }
+
+        c.set_progress(end_pct as f32);
+        true
+    });
+
     // Copy file
     engine.register_fn("copy_file", |src: &str, dst: &str| -> bool {
         match std::fs::copy(src, dst) {
