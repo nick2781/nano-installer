@@ -61,6 +61,9 @@ jsonc-parser = "0.27"
 # TOML 解析库
 toml = "0.8"
 
+# 布局引擎
+taffy = "0.7"
+
 # 压缩库
 flate2 = "1.0"
 zip = "0.6"
@@ -104,8 +107,7 @@ features = [
 ]
 
 [profile.release]
-opt-level = "z"     # 优化文件大小
+opt-level = "s"     # 优化文件大小 (比 "z" 更安全)
 lto = true          # 启用链接时优化
 codegen-units = 1   # 减少代码生成单元以获得更好的优化
 strip = true        # 剥离符号信息
-panic = "abort"     # 减小 panic 处理代码

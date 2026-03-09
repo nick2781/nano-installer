@@ -4,7 +4,7 @@
     "version": "1.0.0",
     "publisher": "易玩网络(上海)科技有限公司",
     "copyright": "© 2025 TapTap",
-    "output_name": "TapTap_Setup"
+    "output_name": "TapTap"
   },
   "output": {
     "installer_name": "TapTap_Setup.exe",
@@ -14,31 +14,31 @@
   },
   "install": {
     "exe_name": "TapTap.exe",
-    "default_path": "C:\\\\Program Files\\\\TapTap",
-    "append_to_path": "TapTap",
+    "default_path": "C:\\Program Files\\TapTapTest",
+    "append_to_path": "TapTapTest",
     "required_space_mb": 200,
     "require_admin": true,
-    "mutex_name": "TapTap_Installer",
+    "mutex_name": "TapTapTest_Installer",
     "detect_running_process": true,
     "kill_process_on_install": true,
     "kill_process_on_uninstall": true
   },
   "registry": {
-    "install_path_key": "HKLM\\\\Software\\\\TapTap",
-    "uninstall_key": "HKLM\\\\Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\TapTap",
+    "install_path_key": "HKCU\\\\Software\\\\TapTapTest",
+    "uninstall_key": "HKCU\\\\Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\TapTapTest",
     "help_link": "https://www.taptap.cn/help"
   },
   "shortcuts": {
     "desktop_shortcut": true,
     "desktop_default": true,
     "start_menu": true,
-    "start_menu_folder": "TapTap"
+    "start_menu_folder": "TapTapTest"
   },
   "autostart": {
     "enabled": true,
     "default": false,
     "registry_key": "HKLM\\\\Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run",
-    "registry_value_name": "TapTap"
+    "registry_value_name": "TapTapTest"
   },
   "localization": {
     "default_locale": "zh-CN",
@@ -47,7 +47,8 @@
   },
   "links": {
     "terms_of_service": "https://www.taptap.cn/doc/terms/",
-    "privacy_policy": "https://www.taptap.cn/doc/privacy-policy/"
+    "privacy_policy": "https://www.taptap.cn/doc/privacy-policy/",
+    "help": "https://www.taptap.cn/help"
   },
   "resources": {
     "layouts_dir": "layouts",
@@ -83,6 +84,18 @@
         "title": "安装完成"
       }
     ],
+    "update_pages": [
+      {
+        "id": "installing",
+        "layout": "layouts/installingpage.xml",
+        "title": "Updating"
+      },
+      {
+        "id": "finish",
+        "layout": "layouts/finishpage.xml",
+        "title": "Update Complete"
+      }
+    ],
     "uninstall_pages": [
       {
         "id": "uninstall_confirm",
@@ -110,9 +123,9 @@
   "uninstall": {
     "show_keep_data_option": true,
     "keep_data_default": true,
-    "data_paths": ["%APPDATA%\\\\TapTap", "%LOCALAPPDATA%\\\\TapTap"],
-    "cleanup_game_registry": true,
-    "game_registry_path": "SOFTWARE\\\\TapTap\\\\Games"
+    "data_paths": ["%APPDATA%\\\\TapTapTest", "%LOCALAPPDATA%\\\\TapTapTest"],
+    "cleanup_game_registry": false,
+    "game_registry_path": "SOFTWARE\\\\TapTapTest\\\\Games"
   },
   "validation": {
     "check_path_legal": true,

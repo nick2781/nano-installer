@@ -176,6 +176,9 @@ fn cmd_build(project_dir: &Path, output_name: Option<&str>, release: bool) -> Re
     // 验证资源
     validate_project_resources(project_dir, &config)?;
     
+    // 验证布局文件
+    validate_layout_files(project_dir, &config)?;
+    
     // 创建临时构建目录和 dist 目录
     let build_dir = project_dir.join(".build");
     let dist_dir = project_dir.join("dist");
@@ -291,14 +294,13 @@ fn cmd_langpack(input: &Path, output: Option<&Path>) -> Result<()> {
 // 辅助函数
 // ============================================================================
 
-fn validate_project_resources(project_dir: &Path, _config: &serde_json::Value) -> Result<()> {
+fn validate_project_resources(project_dir: &Path, config: &serde_json::Value) -> Result<()> {
     println!("🔍 Validating resources...");
     
     // 检查必要的目录
     let assets_dir = project_dir.join("assets");
     let layouts_dir = project_dir.join("layouts");
     let locales_dir = project_dir.join("locales");
-    let files_dir = project_dir.join("files");
     
     if !assets_dir.exists() {
         bail!("assets/ directory not found");
@@ -309,13 +311,103 @@ fn validate_project_resources(project_dir: &Path, _config: &serde_json::Value) -
     if !locales_dir.exists() {
         bail!("locales/ directory not found");
     }
-    if !files_dir.exists() {
-        bail!("files/ directory not found");
+    
+    // 检查 payload_file 配置（必需）
+    let payload_file = config["resources"]["payload_file"]
+        .as_str()
+        .context("Missing 'resources.payload_file' in installer_config.json. Please configure the path to your payload archive (e.g., 'payload/app.7z')")?;
+    
+    let payload_path = project_dir.join(payload_file);
+    if !payload_path.exists() {
+        bail!(
+            "Payload file not found: {}\nPlease ensure the payload archive exists at the specified path.\nYou can create it by:\n  1. Place your application files in a directory\n  2. Compress them to a 7z archive\n  3. Update 'resources.payload_file' in installer_config.json",
+            payload_path.display()
+        );
     }
     
-    println!("✅ All required directories exist");
+    println!("✅ All required directories and files exist");
+    println!("   📦 Payload: {}", payload_file);
     
     Ok(())
+}
+
+/// 验证所有布局文件
+fn validate_layout_files(project_dir: &Path, config: &serde_json::Value) -> Result<()> {
+    use nano_installer::layout::xml_parser::XmlParser;
+    
+    println!("🔍 Validating layout files...");
+    
+    let layouts_dir = project_dir.join(
+        config["resources"]["layouts_dir"]
+            .as_str()
+            .unwrap_or("layouts")
+    );
+    
+    if !layouts_dir.exists() {
+        bail!("Layouts directory not found: {}", layouts_dir.display());
+    }
+    
+    let mut errors = Vec::new();
+    let mut validated_count = 0;
+    
+    // 查找所有 XML 布局文件
+    for entry in std::fs::read_dir(&layouts_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        
+        if path.extension().and_then(|s| s.to_str()) == Some("xml") {
+            let file_name = path.file_name().unwrap().to_string_lossy();
+            
+            // 跳过备份文件
+            if file_name.ends_with(".bak") {
+                continue;
+            }
+            
+            match validate_single_layout_file(&path) {
+                Ok(_) => {
+                    validated_count += 1;
+                }
+                Err(e) => {
+                    errors.push(format!("{}: {}", file_name, e));
+                }
+            }
+        }
+    }
+    
+    if !errors.is_empty() {
+        eprintln!("\n❌ Layout validation failed:");
+        for error in &errors {
+            eprintln!("   {}", error);
+        }
+        bail!("{} layout file(s) failed validation", errors.len());
+    }
+    
+    println!("✅ All {} layout file(s) validated successfully", validated_count);
+    
+    Ok(())
+}
+
+/// 验证单个布局文件
+fn validate_single_layout_file(path: &Path) -> Result<()> {
+    use nano_installer::layout::xml_parser::XmlParser;
+    
+    let content = std::fs::read_to_string(path)
+        .with_context(|| format!("Failed to read layout file: {}", path.display()))?;
+    
+    let mut parser = XmlParser::new();
+    match parser.parse_string(&content) {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            // 提取具体的验证错误信息
+            let error_msg = format!("{}", e);
+            if error_msg.contains("验证失败") {
+                // 解析错误信息，提取验证失败的具体原因
+                bail!("{}", error_msg);
+            } else {
+                bail!("{}", error_msg);
+            }
+        }
+    }
 }
 
 
@@ -713,32 +805,30 @@ fn build_installer_exe(
     // 创建资源包（分段式）
     let mut bundle = ResourceBundle::new();
     
-    // 1. 计算 payload 大小（解压后）
-    let payload_dir = project_dir.join(
-        config["resources"]["payload_dir"]
+    // 1. 计算 payload 解压后大小（从 .7z 文件读取）
+    let payload_file_path = project_dir.join(
+        config["resources"]["payload_file"]
             .as_str()
-            .unwrap_or("payload")
+            .unwrap_or("payload/app.7z")
     );
-    
-    let mut calculated_size_mb = 0.0;
-    if payload_dir.exists() {
-        let payload_size_bytes = calculate_dir_size(&payload_dir)?;
-        calculated_size_mb = payload_size_bytes as f64 / 1024.0 / 1024.0;
-        println!("      ℹ️  Calculated payload size: {:.2} MB (uncompressed)", calculated_size_mb);
+
+    let mut uncompressed_size_bytes: u64 = 0;
+    if payload_file_path.exists() {
+        // 用 sevenz-rust 遍历归档中的文件，累计解压后大小
+        if let Ok(mut source) = std::fs::File::open(&payload_file_path) {
+            let _ = sevenz_rust::decompress_with_extract_fn(&mut source, ".", |entry, _, _| {
+                uncompressed_size_bytes += entry.size();
+                Ok(true) // skip actual extraction
+            });
+        }
     }
-    
+    let uncompressed_size_mb = uncompressed_size_bytes as f64 / 1024.0 / 1024.0;
+    // 加 20% 缓冲 (注册表、快捷方式、临时文件等)
+    let final_required_size = ((uncompressed_size_mb * 1.2) as u64).max(1);
+    println!("      ℹ️  Payload uncompressed: {:.2} MB, required space: {} MB", uncompressed_size_mb, final_required_size);
+
     // 2. 动态更新配置中的 required_space_mb
     let mut config_json: serde_json::Value = config.clone();
-    let fallback_size = config["install"]["required_space_mb"]
-        .as_f64()
-        .unwrap_or(100.0);
-    
-    // 使用计算的大小，如果没有则使用配置的兜底值
-    let final_required_size = if calculated_size_mb > 0.0 {
-        (calculated_size_mb * 1.2) as u64  // 加 20% 缓冲
-    } else {
-        fallback_size as u64
-    };
     
     if let Some(install) = config_json.get_mut("install") {
         install["required_space_mb"] = serde_json::json!(final_required_size);
@@ -835,19 +925,13 @@ fn build_installer_exe(
         }
     }
     
-    // 4. 添加 payload 段（直接从配置指定的 7z 文件读取）
+    // 4. 添加 payload 段（从配置指定的 7z 文件读取）
+    // 注意：payload_file 已经在 validate_project_resources 中验证过，这里直接使用
     let configured_payload_file = config["resources"]["payload_file"]
         .as_str()
-        .context("Missing 'resources.payload_file' in config")?;
+        .expect("payload_file should be validated in validate_project_resources");
     
     let payload_path = project_dir.join(configured_payload_file);
-    
-    if !payload_path.exists() {
-        bail!(
-            "Payload file not found: {}\nPlease ensure the 7z archive exists at the specified path.",
-            payload_path.display()
-        );
-    }
     
     let payload_data = std::fs::read(&payload_path)
         .with_context(|| format!("Failed to read payload file: {}", payload_path.display()))?;
@@ -890,10 +974,10 @@ fn build_installer_exe(
     // 复制 lzma-x64-unicode.exe 作为基础（完整的安装器，类似 NSIS 的 lzma-x86-unicode）
     // 优先使用 debug 版本（带控制台输出），如果不存在则使用 release 版本
     let possible_stub_paths: Vec<Option<PathBuf>> = vec![
-        Some(PathBuf::from("target/debug/lzma-x64-unicode.exe")),
-        Some(PathBuf::from("../../target/debug/lzma-x64-unicode.exe")),
         Some(PathBuf::from("target/release/lzma-x64-unicode.exe")),
         Some(PathBuf::from("../../target/release/lzma-x64-unicode.exe")),
+        Some(PathBuf::from("target/debug/lzma-x64-unicode.exe")),
+        Some(PathBuf::from("../../target/debug/lzma-x64-unicode.exe")),
     ];
     
     let stub_exe = possible_stub_paths
@@ -928,6 +1012,8 @@ fn build_installer_exe(
             println!("      The installer will use the default runtime-stub icon");
         } else {
             println!("      ✓ Icon replaced: {}", installer_icon);
+            // 等待 Windows 释放文件锁
+            std::thread::sleep(std::time::Duration::from_secs(1));
         }
     } else {
         println!("      ⚠️  Warning: Icon file not found: {}", icon_path.display());
@@ -959,6 +1045,9 @@ fn build_installer_exe(
         };
         println!("      ✓ Version info: {} v{}{}", product_name, version, company_info);
     }
+    
+    // 等待 Windows 释放文件锁后再追加资源（更长的延迟，确保文件锁被释放）
+    std::thread::sleep(std::time::Duration::from_secs(2));
     
     // 最后追加资源包（必须在图标和版本信息之后）
     println!("   📦 Appending resource bundle...");
@@ -1012,31 +1101,25 @@ fn build_uninstaller_exe(
     let mut ui_files = std::collections::HashMap::new();
     let mut ui_count = 0;
     
-    // 3.1 添加布局文件（只需要卸载相关的布局）
+    // 3.1 添加所有布局文件（uninst 是完整引擎，需要 uninstall + msgBox 等通用布局）
     let layouts_dir = project_dir.join("layouts");
     if layouts_dir.exists() {
         for entry in std::fs::read_dir(&layouts_dir)? {
             let entry = entry?;
             let path = entry.path();
             if path.is_file() {
-                let file_name = path.file_name().unwrap().to_string_lossy();
-                // 只包含卸载、语言选择等通用布局
-                if file_name.contains("uninstall") || 
-                   file_name.contains("language") || 
-                   file_name.contains("finish") {
-                    let relative_path = path.strip_prefix(project_dir)
-                        .context("Failed to get relative path")?;
-                    let name = relative_path.to_string_lossy().replace('\\', "/");
-                    let data = std::fs::read(&path)?;
-                    ui_files.insert(name, data);
-                    ui_count += 1;
-                }
+                let relative_path = path.strip_prefix(project_dir)
+                    .context("Failed to get relative path")?;
+                let name = relative_path.to_string_lossy().replace('\\', "/");
+                let data = std::fs::read(&path)?;
+                ui_files.insert(name, data);
+                ui_count += 1;
             }
         }
     }
-    println!("      ✓ Layouts: {} uninstall-related", ui_count);
+    println!("      ✓ Layouts: {}", ui_count);
     
-    // 3.2 添加资源文件（只包含卸载器图标，不包含大量的安装界面图片）
+    // 3.2 添加所有资源文件（uninst 现在是完整 egui 引擎，需要全部 UI 资源）
     let assets_dir = project_dir.join("assets");
     let mut asset_count = 0;
     if assets_dir.exists() {
@@ -1044,20 +1127,16 @@ fn build_uninstaller_exe(
             let entry = entry?;
             let path = entry.path();
             if path.is_file() {
-                let file_name = path.file_name().unwrap().to_string_lossy().to_lowercase();
-                // 只包含 .ico 图标文件和 uninst 相关资源
-                if file_name.ends_with(".ico") || file_name.contains("uninst") {
-                    let relative_path = path.strip_prefix(project_dir)
-                        .context("Failed to get relative path")?;
-                    let name = relative_path.to_string_lossy().replace('\\', "/");
-                    let data = std::fs::read(&path)?;
-                    ui_files.insert(name, data);
-                    asset_count += 1;
-                }
+                let relative_path = path.strip_prefix(project_dir)
+                    .context("Failed to get relative path")?;
+                let name = relative_path.to_string_lossy().replace('\\', "/");
+                let data = std::fs::read(&path)?;
+                ui_files.insert(name, data);
+                asset_count += 1;
             }
         }
     }
-    println!("      ✓ Assets: {} (icons only)", asset_count);
+    println!("      ✓ Assets: {}", asset_count);
     
     // 3.3 将 UI 资源添加到 bundle（自动压缩为 7z）
     bundle.add_ui_resources(ui_files)?;
@@ -1078,17 +1157,19 @@ fn build_uninstaller_exe(
     let bundle_size_kb = bundle_data.len() as f64 / 1024.0;
     println!("      ✓ Bundle size: {:.2} KB", bundle_size_kb);
     
-    // 复制 uninst.exe 作为基础（轻量级，纯 Win32 API）
-    let possible_stub_paths: Vec<Option<PathBuf>> = vec![
-        Some(PathBuf::from("target/release/uninst.exe")),
-        Some(PathBuf::from("../../target/release/uninst.exe")),
+    // 复制 uninst.exe stub（完整 egui 引擎，和安装器共用同一套代码）
+    let possible_stub_paths = [
+        "target/release/uninst.exe",
+        "target/debug/uninst.exe",
+        "../../target/release/uninst.exe",
+        "../../target/debug/uninst.exe",
     ];
-    
+
     let stub_exe = possible_stub_paths
-        .into_iter()
-        .flatten()
+        .iter()
+        .map(PathBuf::from)
         .find(|p| p.exists())
-        .context("uninst.exe not found. Please compile it first with: cargo build --release -p uninst")?;
+        .context("uninst.exe not found. Please compile it first with: cargo build -p uninst")?;
     
     println!("      Using stub: {} ({} KB)", stub_exe.display(), std::fs::metadata(&stub_exe)?.len() / 1024);
     std::fs::copy(&stub_exe, &output_path)

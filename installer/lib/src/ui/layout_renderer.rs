@@ -4,8 +4,11 @@
 
 use egui::{Ui, Response, Rect, Vec2, Pos2, Color32, CornerRadius, Align};
 use crate::layout::{LayoutTree, LayoutElement, ElementType, ElementAttributes};
+use crate::layout::taffy_bridge::{TaffyBridge, ComputedLayout};
 use crate::ui::{dpi_handler::DpiConfig, style_engine::{StyleEngine, StyleType}};
 use std::collections::HashMap;
+use once_cell::sync::Lazy;
+use std::sync::Mutex;
 
 /// 布局渲染器
 pub struct LayoutRenderer {
@@ -19,6 +22,8 @@ pub struct LayoutRenderer {
     i18n_strings: HashMap<String, String>,
     /// 交互状态
     interaction_state: InteractionState,
+    /// Taffy 布局引擎桥接
+    taffy_bridge: TaffyBridge,
 }
 
 /// 交互状态
@@ -132,13 +137,14 @@ impl LayoutRenderer {
             resource_cache: crate::ui::dpi_handler::ResourceCache::new(),
             i18n_strings,
             interaction_state: InteractionState::default(),
+            taffy_bridge: TaffyBridge::new(),
         }
     }
 
     /// 创建带样式引擎的布局渲染器
     pub fn with_style_engine(
-        dpi_config: DpiConfig, 
-        style_engine: StyleEngine, 
+        dpi_config: DpiConfig,
+        style_engine: StyleEngine,
         i18n_strings: HashMap<String, String>
     ) -> Self {
         Self {
@@ -147,24 +153,614 @@ impl LayoutRenderer {
             resource_cache: crate::ui::dpi_handler::ResourceCache::new(),
             i18n_strings,
             interaction_state: InteractionState::default(),
+            taffy_bridge: TaffyBridge::new(),
         }
     }
 
     /// 渲染布局树
     pub fn render(&mut self, ui: &mut Ui, layout_tree: &LayoutTree) -> RenderResult {
         let mut result = RenderResult::new();
-        
+
         // 应用全局样式
         self.style_engine.apply_global_style(ui.style_mut());
-        
-        // 渲染根元素
-        self.render_element(ui, &layout_tree.root, &mut result);
-        
+
+        // 检测是否使用新格式 (根元素有 flex_style)
+        if layout_tree.root.flex_style.is_some() {
+            self.render_with_taffy(ui, layout_tree, &mut result);
+        } else {
+            // 旧格式: 使用原有渲染路径
+            self.render_element(ui, &layout_tree.root, &mut result);
+        }
+
         result
+    }
+
+    /// 使用 Taffy 布局引擎渲染 (新格式)
+    /// Taffy 在 1x 逻辑像素坐标系中计算布局，输出直接作为 egui 逻辑坐标
+    fn render_with_taffy(&mut self, ui: &mut Ui, layout_tree: &LayoutTree, result: &mut RenderResult) {
+        // 计算布局 (逻辑像素，尺寸来自配置，直接匹配 egui 逻辑空间)
+        let computed = self.taffy_bridge.compute_layout(
+            layout_tree,
+            self.dpi_config.window_width,
+            self.dpi_config.window_height,
+        );
+
+        let window_rect = ui.max_rect();
+        self.render_taffy_node(ui, &layout_tree.root, &computed, window_rect, result);
+    }
+
+    /// 递归渲染 Taffy 计算后的节点
+    fn render_taffy_node(
+        &mut self,
+        ui: &mut Ui,
+        element: &LayoutElement,
+        computed: &ComputedLayout,
+        window_rect: Rect,
+        result: &mut RenderResult,
+    ) {
+        // 检查可见性
+        let visible = element.visual_style.as_ref().map_or(
+            element.attributes.visible.unwrap_or(true),
+            |vs| vs.visible,
+        );
+        if !visible {
+            return;
+        }
+
+        // 获取计算后的 egui::Rect
+        let egui_rect = self.lookup_egui_rect(element, computed, window_rect);
+
+        // 渲染当前元素的视觉部分 (背景、边框等)
+        self.render_element_visual(ui, element, egui_rect);
+
+        // 渲染控件内容 (按钮文字/图片、标签文字等)
+        self.render_widget_at_rect(ui, element, egui_rect, result);
+
+        // 递归渲染子元素
+        for child in &element.children {
+            self.render_taffy_node(ui, child, computed, window_rect, result);
+        }
+    }
+
+    /// 查找元素对应的 egui::Rect
+    fn lookup_egui_rect(&self, element: &LayoutElement, computed: &ComputedLayout, window_rect: Rect) -> Rect {
+        let offset = window_rect.min;
+
+        // 优先通过 ID 查找
+        let id = element.attributes.id.as_deref()
+            .or_else(|| element.widget_props.as_ref().and_then(|wp| wp.id.as_deref()));
+
+        if let Some(id_str) = id {
+            if let Some(cr) = computed.get_rect(id_str) {
+                return cr.to_egui_rect(offset);
+            }
+        }
+
+        // 回退: 遍历 computed.nodes 找匹配的 element_type (无 ID 的容器)
+        for node in &computed.nodes {
+            if node.element_type == element.element_type && node.id.is_none() {
+                return node.rect.to_egui_rect(offset);
+            }
+        }
+
+        // 最终回退: 使用整个窗口
+        window_rect
+    }
+
+    /// 渲染元素的视觉部分 (背景色/图、边框)
+    fn render_element_visual(&mut self, ui: &mut Ui, element: &LayoutElement, rect: Rect) {
+        let painter = ui.painter();
+
+        // 背景色
+        if let Some(vs) = &element.visual_style {
+            if let Some(bg) = &vs.background {
+                if let Some(color) = Self::parse_color_static(bg) {
+                    let rounding = vs.border_radius.unwrap_or(0.0) as u8;
+                    painter.rect_filled(rect, CornerRadius::same(rounding), color);
+                }
+            }
+        } else if let Some(bg) = &element.attributes.background {
+            // 只有纯色值才在这里渲染，图片路径由下面的背景图处理
+            if !bg.contains("assets/") && !bg.ends_with(".png") && !bg.ends_with(".jpg") && !bg.contains("@2x") {
+                if let Some(color) = Self::parse_color_static(bg) {
+                    let corner_radius = self.get_corner_radius(element);
+                    painter.rect_filled(rect, corner_radius, color);
+                }
+            }
+        }
+
+        // 背景图
+        let bg_image = element.visual_style.as_ref()
+            .and_then(|vs| vs.background_image.as_deref())
+            .or_else(|| {
+                element.attributes.background.as_deref()
+                    .filter(|bg| bg.contains("assets/") || bg.ends_with(".png") || bg.ends_with(".jpg") || bg.contains("@2x"))
+            });
+
+        if let Some(img_path) = bg_image {
+            if let Some(texture) = self.resource_cache.get_background(
+                ui.ctx(),
+                &self.dpi_config,
+                img_path,
+            ) {
+                painter.image(
+                    texture.id(),
+                    rect,
+                    Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
+                    Color32::WHITE,
+                );
+            }
+        }
+
+        // 边框
+        if let Some(vs) = &element.visual_style {
+            if let (Some(border_color), Some(border_width)) = (&vs.border_color, vs.border_width) {
+                if let Some(color) = Self::parse_color_static(border_color) {
+                    let rounding = vs.border_radius.unwrap_or(0.0) as u8;
+                    let stroke = egui::Stroke::new(border_width, color);
+                    painter.rect(rect, CornerRadius::same(rounding), Color32::TRANSPARENT, stroke, egui::StrokeKind::Outside);
+                }
+            }
+        } else {
+            // 旧格式边框
+            if let Some(stroke) = self.get_border_stroke(element) {
+                let corner_radius = self.get_corner_radius(element);
+                painter.rect_stroke(rect, corner_radius, stroke, egui::epaint::StrokeKind::Outside);
+            }
+        }
+    }
+
+    /// 在 Taffy 计算的 rect 内渲染控件
+    fn render_widget_at_rect(
+        &mut self,
+        ui: &mut Ui,
+        element: &LayoutElement,
+        rect: Rect,
+        result: &mut RenderResult,
+    ) {
+        match &element.element_type {
+            // 容器类型不需要额外控件渲染
+            ElementType::Page | ElementType::VBox | ElementType::HBox
+            | ElementType::Overlay | ElementType::Spacer | ElementType::Flex => {}
+
+            ElementType::Button => self.render_button_at_rect(ui, element, rect, result),
+            ElementType::Label => self.render_label_at_rect(ui, element, rect),
+            ElementType::Checkbox => self.render_checkbox_at_rect(ui, element, rect, result),
+            ElementType::Image => self.render_image_at_rect(ui, element, rect),
+            ElementType::TextInput => self.render_text_input_at_rect(ui, element, rect, result),
+            ElementType::ProgressBar => self.render_progress_at_rect(ui, element, rect),
+            ElementType::Divider => self.render_divider_at_rect(ui, element, rect),
+        }
+    }
+
+    // =========================================================================
+    //  Rect-based 控件渲染方法 (Taffy 新路径)
+    // =========================================================================
+
+    /// 在指定 rect 内渲染按钮
+    fn render_button_at_rect(&mut self, ui: &mut Ui, element: &LayoutElement, rect: Rect, result: &mut RenderResult) {
+        let id = element.attributes.id.as_ref().map(|s| s.as_str()).unwrap_or("");
+        let text = self.get_display_text(&element.attributes);
+        let enabled = element.attributes.enabled.unwrap_or(true);
+
+        let sense = if enabled { egui::Sense::click() } else { egui::Sense::hover() };
+        let response = ui.interact(rect, egui::Id::new(id), sense);
+
+        if ui.is_rect_visible(rect) {
+            // 选择背景图片
+            let normalimage = element.attributes.get_custom("normalimage");
+            let hotimage = element.attributes.get_custom("hotimage");
+            let pushedimage = element.attributes.get_custom("pushedimage");
+            let disabledimage = element.attributes.get_custom("disabledimage");
+
+            let bg_image = if !enabled {
+                disabledimage.or(normalimage)
+            } else if response.is_pointer_button_down_on() {
+                pushedimage.or(hotimage).or(normalimage)
+            } else if response.hovered() {
+                hotimage.or(normalimage)
+            } else {
+                normalimage
+            };
+
+            // 渲染背景图片
+            if let Some(img_path_str) = bg_image {
+                let image_path = Self::parse_image_path(img_path_str);
+                if let Some(texture) = self.resource_cache.get_background(ui.ctx(), &self.dpi_config, &image_path.path) {
+                    let full_uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
+
+                    let image_color = if let Some(fade) = image_path.fade {
+                        Color32::from_rgba_unmultiplied(255, 255, 255, (fade * 255.0) as u8)
+                    } else {
+                        Color32::WHITE
+                    };
+
+                    if let Some((x1, y1, x2, y2)) = image_path.dest {
+                        // NSIS dest = 在控件 rect 内的目标绘制子区域 (1x 逻辑像素)
+                        let dest_rect = Rect::from_min_max(
+                            Pos2::new(rect.min.x + x1, rect.min.y + y1),
+                            Pos2::new(rect.min.x + x2, rect.min.y + y2),
+                        );
+                        ui.painter().image(texture.id(), dest_rect, full_uv, image_color);
+                    } else {
+                        // 无 dest: 铺满整个按钮
+                        ui.painter().image(texture.id(), rect, full_uv, image_color);
+                    }
+                }
+            }
+
+            // 文本颜色 (按状态)
+            let text_color = if !enabled {
+                element.attributes.get_custom("disabledtextcolor")
+                    .and_then(|c| self.parse_color(c))
+                    .unwrap_or(Color32::GRAY)
+            } else if response.is_pointer_button_down_on() {
+                element.attributes.get_custom("pushedtextcolor")
+                    .and_then(|c| self.parse_color(c))
+                    .or_else(|| element.attributes.get_custom("hottextcolor").and_then(|c| self.parse_color(c)))
+                    .or_else(|| element.attributes.color.as_ref().and_then(|c| self.parse_color(c)))
+                    .unwrap_or(Color32::WHITE)
+            } else if response.hovered() {
+                element.attributes.get_custom("hottextcolor")
+                    .and_then(|c| self.parse_color(c))
+                    .or_else(|| element.attributes.color.as_ref().and_then(|c| self.parse_color(c)))
+                    .unwrap_or(Color32::WHITE)
+            } else {
+                element.attributes.color.as_ref()
+                    .and_then(|c| self.parse_color(c))
+                    .unwrap_or(Color32::WHITE)
+            };
+
+            // 文字 — 解析 textpadding="left,top,right,bottom"
+            let font_id = self.get_font_id(element);
+            let tp = element.attributes.get_custom("textpadding")
+                .map(|s| {
+                    let parts: Vec<f32> = s.split(',').filter_map(|v| v.trim().parse().ok()).collect();
+                    (
+                        parts.get(0).copied().unwrap_or(0.0), // left
+                        parts.get(1).copied().unwrap_or(0.0), // top
+                        parts.get(2).copied().unwrap_or(0.0), // right
+                        parts.get(3).copied().unwrap_or(0.0), // bottom
+                    )
+                })
+                .unwrap_or((0.0, 0.0, 0.0, 0.0));
+
+            // 文本绘制区域 = rect 减去 textpadding
+            let text_rect = Rect::from_min_max(
+                Pos2::new(rect.min.x + tp.0, rect.min.y + tp.1),
+                Pos2::new(rect.max.x - tp.2, rect.max.y - tp.3),
+            );
+            ui.painter().text(text_rect.center(), egui::Align2::CENTER_CENTER, &text, font_id, text_color);
+        }
+
+        // hover 光标
+        if response.hovered() && enabled {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+
+        if response.clicked() && enabled {
+            result.button_clicks.insert(id.to_string(), true);
+            // Capture action attribute if present
+            if let Some(action) = element.attributes.get_custom("action") {
+                result.button_actions.insert(id.to_string(), action.clone());
+            }
+        }
+        result.button_responses.insert(id.to_string(), response);
+    }
+
+    /// 在指定 rect 内渲染标签
+    fn render_label_at_rect(&mut self, ui: &mut Ui, element: &LayoutElement, rect: Rect) {
+        if !ui.is_rect_visible(rect) {
+            return;
+        }
+
+        let text = self.get_display_text(&element.attributes);
+        let font_id = self.get_font_id(element);
+        let text_color = element.attributes.color.as_ref()
+            .and_then(|c| self.parse_color(c))
+            .unwrap_or(Color32::WHITE);
+
+        let text_align_str = element.attributes.get_custom("textalign")
+            .map(|s| s.as_str())
+            .or_else(|| element.attributes.align.as_deref())
+            .unwrap_or("left");
+        let valign = element.attributes.get_custom("valign")
+            .map(|s| s.as_str())
+            .unwrap_or("top");
+
+        let (text_pos, align2) = match (text_align_str, valign) {
+            ("left", "center") | ("left", "vcenter") => (Pos2::new(rect.min.x, rect.center().y), egui::Align2::LEFT_CENTER),
+            ("left", "bottom") => (Pos2::new(rect.min.x, rect.max.y), egui::Align2::LEFT_BOTTOM),
+            ("center", "top") => (Pos2::new(rect.center().x, rect.min.y), egui::Align2::CENTER_TOP),
+            ("center", "center") | ("center", "vcenter") => (rect.center(), egui::Align2::CENTER_CENTER),
+            ("center", "bottom") => (Pos2::new(rect.center().x, rect.max.y), egui::Align2::CENTER_BOTTOM),
+            ("right", "top") => (Pos2::new(rect.max.x, rect.min.y), egui::Align2::RIGHT_TOP),
+            ("right", "center") | ("right", "vcenter") => (Pos2::new(rect.max.x, rect.center().y), egui::Align2::RIGHT_CENTER),
+            ("right", "bottom") => (rect.max, egui::Align2::RIGHT_BOTTOM),
+            _ => (rect.min, egui::Align2::LEFT_TOP), // left,top default
+        };
+
+        ui.painter().text(text_pos, align2, &text, font_id, text_color);
+    }
+
+    /// 在指定 rect 内渲染复选框
+    fn render_checkbox_at_rect(&mut self, ui: &mut Ui, element: &LayoutElement, rect: Rect, result: &mut RenderResult) {
+        let id = element.attributes.id.as_ref().map(|s| s.as_str()).unwrap_or("");
+        let text = self.get_display_text(&element.attributes);
+        let enabled = element.attributes.enabled.unwrap_or(true);
+
+        let response = ui.interact(rect, egui::Id::new(id), egui::Sense::click());
+
+        // 初始化 checkbox 状态: 优先用交互状态, 否则从 XML checked 属性读取
+        let xml_default = element.widget_props.as_ref()
+            .and_then(|wp| wp.checked)
+            .unwrap_or(false);
+        let current_checked = *self.interaction_state.checkbox_states
+            .entry(id.to_string())
+            .or_insert(xml_default);
+
+        if ui.is_rect_visible(rect) {
+            let normalimage = element.attributes.get_custom("normalimage");
+            let normalhotimage = element.attributes.get_custom("normalhotimage");
+            let selectedimage = element.attributes.get_custom("selectedimage");
+            let selectedhotimage = element.attributes.get_custom("selectedhotimage");
+            let disabledimage = element.attributes.get_custom("disabledimage");
+
+            let is_hovered = response.hovered();
+            let checkbox_image = if !enabled {
+                disabledimage.or(normalimage)
+            } else if current_checked {
+                if is_hovered { selectedhotimage.or(selectedimage).or(normalhotimage).or(normalimage) }
+                else { selectedimage.or(normalimage) }
+            } else {
+                if is_hovered { normalhotimage.or(normalimage) }
+                else { normalimage }
+            };
+
+            // 复选框图标尺寸: 从纹理推算逻辑尺寸 (get_render_size 会将 @2x 纹理除 2)
+            let checkbox_size = normalimage
+                .and_then(|img_str| {
+                    let ip = Self::parse_image_path(img_str);
+                    self.resource_cache.get_background(ui.ctx(), &self.dpi_config, &ip.path)
+                        .map(|tex| self.dpi_config.get_render_size(tex).y)
+                })
+                .unwrap_or(rect.height().min(16.0));
+            // 图标垂直居中
+            let icon_y = rect.min.y + (rect.height() - checkbox_size) / 2.0;
+            let checkbox_rect = Rect::from_min_size(Pos2::new(rect.min.x, icon_y), Vec2::splat(checkbox_size));
+
+            if let Some(img_path_str) = checkbox_image {
+                let image_path = Self::parse_image_path(img_path_str);
+                if let Some(texture) = self.resource_cache.get_background(ui.ctx(), &self.dpi_config, &image_path.path) {
+                    let full_uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
+                    if let Some((x1, y1, x2, y2)) = image_path.dest {
+                        // dest = checkbox rect 内的目标绘制子区域
+                        let dest_rect = Rect::from_min_max(
+                            Pos2::new(checkbox_rect.min.x + x1, checkbox_rect.min.y + y1),
+                            Pos2::new(checkbox_rect.min.x + x2, checkbox_rect.min.y + y2),
+                        );
+                        ui.painter().image(texture.id(), dest_rect, full_uv, Color32::WHITE);
+                    } else {
+                        ui.painter().image(texture.id(), checkbox_rect, full_uv, Color32::WHITE);
+                    }
+                } else {
+                    // 回退: 简单方框 (图片加载失败)
+                    ui.painter().rect_stroke(checkbox_rect, CornerRadius::same(2), egui::Stroke::new(1.0, Color32::GRAY), egui::epaint::StrokeKind::Outside);
+                    if current_checked {
+                        ui.painter().rect_filled(checkbox_rect.shrink(3.0), CornerRadius::same(1), Color32::WHITE);
+                    }
+                }
+            } else {
+                // 回退: 无图片配置
+                ui.painter().rect_stroke(checkbox_rect, CornerRadius::same(2), egui::Stroke::new(1.0, Color32::GRAY), egui::epaint::StrokeKind::Outside);
+                if current_checked {
+                    ui.painter().rect_filled(checkbox_rect.shrink(3.0), CornerRadius::same(1), Color32::WHITE);
+                }
+            }
+
+            // 文字 (在复选框右侧)
+            let text_padding_left = element.attributes.get_custom("textpadding")
+                .and_then(|s| s.split(',').next().and_then(|v| v.trim().parse::<f32>().ok()))
+                .unwrap_or(checkbox_size + 4.0);
+            let font_size = self.get_font_id(element).size;
+            let text_color = element.attributes.color.as_ref()
+                .and_then(|c| self.parse_color(c))
+                .unwrap_or(Color32::WHITE);
+
+            // 解析带链接的文本
+            let segments = self.parse_text_with_links(&text);
+            if segments.iter().any(|s| matches!(s, TextSegment::Link { .. })) {
+                // 有链接时，用 child_ui 渲染
+                let text_rect = Rect::from_min_max(
+                    Pos2::new(rect.min.x + text_padding_left, rect.min.y),
+                    rect.max,
+                );
+                let mut child_ui = ui.new_child(egui::UiBuilder::new().max_rect(text_rect));
+                child_ui.horizontal(|ui| {
+                    for segment in &segments {
+                        match segment {
+                            TextSegment::Text(t) => {
+                                ui.add(egui::Label::new(egui::RichText::new(t).size(font_size).color(text_color)));
+                            }
+                            TextSegment::Link { id: link_id, text: link_text } => {
+                                let link_color = element.attributes.get_custom("linkcolor")
+                                    .and_then(|c| self.parse_color(c))
+                                    .unwrap_or(text_color);
+                                let btn = egui::Button::new(egui::RichText::new(link_text).size(font_size).color(link_color))
+                                    .frame(false).fill(Color32::TRANSPARENT);
+                                let link_resp = ui.add(btn);
+                                if link_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                                if link_resp.clicked() { result.link_clicks.insert(link_id.clone(), true); }
+                            }
+                        }
+                    }
+                });
+            } else {
+                let text_pos = Pos2::new(rect.min.x + text_padding_left, rect.center().y);
+                ui.painter().text(text_pos, egui::Align2::LEFT_CENTER, &text, egui::FontId::proportional(font_size), text_color);
+            }
+        }
+
+        if response.clicked() {
+            let new_checked = !current_checked;
+            self.interaction_state.checkbox_states.insert(id.to_string(), new_checked);
+            result.checkbox_changes.insert(id.to_string(), new_checked);
+        }
+        result.checkbox_responses.insert(id.to_string(), response);
+    }
+
+    /// 在指定 rect 内渲染图片
+    fn render_image_at_rect(&mut self, ui: &mut Ui, element: &LayoutElement, rect: Rect) {
+        if !ui.is_rect_visible(rect) {
+            return;
+        }
+        if let Some(icon) = &element.attributes.icon {
+            if let Some(texture) = self.resource_cache.get_background(ui.ctx(), &self.dpi_config, icon) {
+                ui.painter().image(
+                    texture.id(),
+                    rect,
+                    Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
+                    Color32::WHITE,
+                );
+            }
+        }
+    }
+
+    /// 在指定 rect 内渲染文本输入框
+    fn render_text_input_at_rect(&mut self, ui: &mut Ui, element: &LayoutElement, rect: Rect, result: &mut RenderResult) {
+        let id = element.attributes.id.as_ref().map(|s| s.as_str()).unwrap_or("");
+        let enabled = element.attributes.enabled.unwrap_or(true);
+        let readonly = element.attributes.get_custom("readonly")
+            .and_then(|s| s.parse::<bool>().ok())
+            .unwrap_or(false);
+        let multiline = element.attributes.get_custom("multiline")
+            .and_then(|s| s.parse::<bool>().ok())
+            .unwrap_or(false);
+        let font_id = self.get_font_id(element);
+
+        // 背景
+        if let Some(bg_color) = element.attributes.background.as_ref().and_then(|c| self.parse_color(c)) {
+            let corner_radius = self.get_corner_radius(element);
+            ui.painter().rect_filled(rect, corner_radius, bg_color);
+            if let Some(stroke) = self.get_border_stroke(element) {
+                ui.painter().rect_stroke(rect, corner_radius, stroke, egui::epaint::StrokeKind::Outside);
+            }
+        }
+
+        // 先读颜色 (避免借用冲突)
+        let text_color = element.attributes.color.as_ref()
+            .and_then(|c| self.parse_color(c))
+            .unwrap_or(Color32::WHITE);
+
+        let text_value = self.interaction_state.text_inputs.entry(id.to_string()).or_insert_with(String::new);
+        // 内缩 padding (模拟 NSIS inset)
+        let inner_rect = rect.shrink2(Vec2::new(8.0, 4.0));
+        let mut child_ui = ui.new_child(egui::UiBuilder::new().max_rect(inner_rect));
+        child_ui.style_mut().visuals.extreme_bg_color = Color32::TRANSPARENT;
+
+        let mut text_input = if multiline {
+            egui::TextEdit::multiline(text_value)
+        } else {
+            egui::TextEdit::singleline(text_value)
+        };
+        text_input = text_input
+            .font(font_id)
+            .text_color(text_color)
+            .frame(false);
+        if readonly || !enabled {
+            text_input = text_input.interactive(false);
+        }
+        text_input = text_input.desired_width(inner_rect.width());
+
+        let response = child_ui.add(text_input);
+        if response.changed() {
+            result.text_input_changes.insert(id.to_string(), self.interaction_state.text_inputs.get(id).cloned().unwrap_or_default());
+        }
+        result.text_input_responses.insert(id.to_string(), response);
+    }
+
+    /// 在指定 rect 内渲染进度条
+    fn render_progress_at_rect(&mut self, ui: &mut Ui, element: &LayoutElement, rect: Rect) {
+        if !ui.is_rect_visible(rect) {
+            return;
+        }
+
+        let min = element.attributes.get_custom("min").and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
+        let max = element.attributes.get_custom("max").and_then(|s| s.parse::<f32>().ok()).unwrap_or(100.0);
+        let value = element.attributes.get_custom("value")
+            .and_then(|s| s.parse::<f32>().ok())
+            .or_else(|| element.attributes.progress.map(|p| p * (max - min) + min))
+            .unwrap_or(0.0);
+        let progress = if max > min { ((value - min) / (max - min)).clamp(0.0, 1.0) } else { 0.0 };
+
+        let corner_radius = self.get_corner_radius(element);
+        // forecolor 用于前景纯色回退
+        let fore_color = element.attributes.get_custom("forecolor")
+            .and_then(|c| self.parse_color(c))
+            .or_else(|| element.attributes.color.as_ref().and_then(|c| self.parse_color(c)));
+
+        // 背景
+        if let Some(bg_color) = element.attributes.background.as_ref().and_then(|c| self.parse_color(c)) {
+            ui.painter().rect_filled(rect, corner_radius, bg_color);
+        }
+
+        // 前景
+        let progress_width = rect.width() * progress;
+        if progress_width > 0.0 {
+            let progress_rect = Rect::from_min_size(rect.min, Vec2::new(progress_width, rect.height()));
+
+            if let Some(foreimage_str) = element.attributes.get_custom("foreimage") {
+                let image_path = Self::parse_image_path(foreimage_str);
+                if let Some(fg_texture) = self.resource_cache.get_background(ui.ctx(), &self.dpi_config, &image_path.path) {
+                    // 进度条前景: 按进度裁剪 UV 的 x 轴
+                    let uv_rect = Rect::from_min_max(Pos2::ZERO, Pos2::new(progress, 1.0));
+                    ui.painter().image(fg_texture.id(), progress_rect, uv_rect, Color32::WHITE);
+                } else if let Some(fc) = fore_color {
+                    ui.painter().rect_filled(progress_rect, corner_radius, fc);
+                }
+            } else if let Some(fc) = fore_color {
+                ui.painter().rect_filled(progress_rect, corner_radius, fc);
+            }
+        }
+    }
+
+    /// 在指定 rect 内渲染分隔线
+    fn render_divider_at_rect(&mut self, ui: &mut Ui, element: &LayoutElement, rect: Rect) {
+        if let Some(color) = element.attributes.color.as_ref().and_then(|c| self.parse_color(c))
+            .or_else(|| element.attributes.background.as_ref().and_then(|c| self.parse_color(c)))
+        {
+            let corner_radius = self.get_corner_radius(element);
+            ui.painter().rect_filled(rect, corner_radius, color);
+        }
     }
 
     /// 渲染单个元素
     fn render_element(&mut self, ui: &mut Ui, element: &LayoutElement, result: &mut RenderResult) {
+        use std::sync::Mutex;
+        use once_cell::sync::Lazy;
+        static RENDER_LOGGED: Lazy<Mutex<std::collections::HashSet<String>>> = Lazy::new(|| Mutex::new(std::collections::HashSet::new()));
+        let mut logged = RENDER_LOGGED.lock().unwrap();
+        let element_type_str = format!("{:?}", element.element_type);
+        let element_id = element.attributes.id.as_ref().map(|s| s.as_str()).unwrap_or("unnamed");
+        let log_key = format!("{}:{}", element_type_str, element_id);
+        
+        // 检查绝对定位属性
+        let has_float = element.attributes.get_custom("float").is_some();
+        let has_pos = element.attributes.get_custom("pos").is_some();
+        let is_absolute = element.attributes.get_custom("is_absolute").map(|s| s == "true").unwrap_or(false);
+        
+        if !logged.contains(&log_key) {
+            eprintln!("[渲染] 渲染元素: {} (id: {}, 子元素数: {}, float={}, pos={}, is_absolute={})", 
+                element_type_str, element_id, element.children.len(), has_float, has_pos, is_absolute);
+            if has_pos {
+                if let Some(pos_str) = element.attributes.get_custom("pos") {
+                    eprintln!("[渲染]   pos 值: {}", pos_str);
+                }
+            }
+            logged.insert(log_key);
+        }
+        drop(logged);
+        
         match &element.element_type {
             ElementType::Page => self.render_page(ui, element, result),
             ElementType::VBox => self.render_vbox(ui, element, result),
@@ -306,9 +902,22 @@ impl LayoutRenderer {
         }
         
         // 然后渲染布局流中的元素
+        // 如果第一个子元素是布局容器（VBox/HBox），直接使用 page_ui 渲染，让它使用正常的布局流
+        // 否则使用绝对定位渲染
+        if let Some(first_child) = layout_children.first() {
+            match &first_child.element_type {
+                ElementType::VBox | ElementType::HBox => {
+                    // 布局容器直接使用 page_ui 渲染，使用正常的布局流
+                    // render_vbox/render_hbox 会自己处理空间分配，所以直接调用即可
+                    self.render_element(&mut page_ui, first_child, result);
+                }
+                _ => {
+                    // 其他元素使用绝对定位渲染
         for child in &layout_children {
-            // 渲染子元素并更新 Y 坐标
             current_y = self.render_element_at_y_absolute(&mut page_ui, child, current_y, full_rect, result);
+                    }
+                }
+            }
         }
     }
 
@@ -408,22 +1017,198 @@ impl LayoutRenderer {
         let padding = element.attributes.padding;
         let align = element.attributes.align.as_deref().unwrap_or("top");
         let halign = element.attributes.get_custom("halign").map(|s| s.as_str()).unwrap_or("left");
+        // NSIS 格式：valign 用于垂直对齐（在 VBox 中，align 是水平对齐，valign 是垂直对齐）
+        let valign = element.attributes.get_custom("valign").map(|s| s.as_str()).unwrap_or("top");
 
         let available_height = ui.available_height();
-        // 移除频繁的日志输出
+        let available_width = ui.available_width();
+        
+        // 获取 VBox 的尺寸（如果有指定）
+        // 如果没有指定 width/height，使用全部可用空间（而不是 0）
+        let vbox_width = element.attributes.width.unwrap_or(available_width);
+        let vbox_height = element.attributes.height.unwrap_or(available_height);
+        
+        // 添加调试日志
+        static VBOX_SIZE_LOGGED: Lazy<Mutex<std::collections::HashSet<String>>> = Lazy::new(|| Mutex::new(std::collections::HashSet::new()));
+        let mut logged = VBOX_SIZE_LOGGED.lock().unwrap();
+        let vbox_id = element.attributes.id.as_ref().map(|s| s.as_str()).unwrap_or("unnamed");
+        let log_key = format!("{}:{}x{}", vbox_id, vbox_width, vbox_height);
+        if !logged.contains(&log_key) {
+            eprintln!("[VBox尺寸] VBox '{}': 指定尺寸={}x{}, 可用空间={}x{}, 最终尺寸={}x{}", 
+                vbox_id,
+                element.attributes.width.unwrap_or(0.0), 
+                element.attributes.height.unwrap_or(0.0),
+                available_width, available_height,
+                vbox_width, vbox_height);
+            logged.insert(log_key);
+        }
+        drop(logged);
+        
+        // 分配 VBox 的矩形空间
+        let (vbox_rect, _) = ui.allocate_exact_size(
+            egui::vec2(vbox_width, vbox_height),
+            egui::Sense::hover()
+        );
+
+        // 如果有背景图片或背景颜色，先渲染背景
+        // 注意：在 egui 中，painter 的绘制是在当前层的，需要确保背景在最底层
+        // 如果有背景图片，优先使用背景图片；如果有背景颜色但没有背景图片，使用背景颜色
+        let mut has_bg_image = false;
+        let mut bg_image_path = None;
+        let mut bg_color = None;
+        
+        if let Some(background) = &element.attributes.background {
+            if background.starts_with("assets/") || background.ends_with(".png") || background.ends_with(".jpg") || background.contains("@2x") {
+                // 背景图片
+                bg_image_path = Some(background.clone());
+            } else {
+                // 背景颜色（bkcolor）
+                bg_color = self.parse_color(background);
+            }
+        }
+        
+        // 先渲染背景图片（如果有）
+        if let Some(background) = bg_image_path {
+            if ui.is_rect_visible(vbox_rect) {
+                use std::sync::Mutex;
+                use once_cell::sync::Lazy;
+                static VBOX_BG_LOADED: Lazy<Mutex<std::collections::HashSet<String>>> = Lazy::new(|| Mutex::new(std::collections::HashSet::new()));
+                let mut loaded = VBOX_BG_LOADED.lock().unwrap();
+                if !loaded.contains(&background) {
+                    eprintln!("[VBox背景] 尝试加载背景图片: {}", background);
+                    eprintln!("[VBox背景]   VBox尺寸: {}x{}, 矩形: {:?}", vbox_width, vbox_height, vbox_rect);
+                    loaded.insert(background.clone());
+                }
+                drop(loaded);
+                
+                let corner_radius = self.get_corner_radius(element);
+                let stroke = self.get_border_stroke(element);
+                if let Some(texture) = self.resource_cache.get_background(ui.ctx(), &self.dpi_config, &background) {
+                    let texture_size = texture.size();
+                    static VBOX_BG_SUCCESS: Lazy<Mutex<std::collections::HashSet<String>>> = Lazy::new(|| Mutex::new(std::collections::HashSet::new()));
+                    let mut success = VBOX_BG_SUCCESS.lock().unwrap();
+                    if !success.contains(&background) {
+                        eprintln!("[VBox背景] ✓ 背景图片加载成功: {} ({}x{}), VBox: {}x{}", 
+                            background, texture_size[0], texture_size[1], vbox_width, vbox_height);
+                        success.insert(background.clone());
+                    }
+                    drop(success);
+                    
+                    has_bg_image = true;
+                    
+                    if let Some(stroke) = stroke {
+                        // 有边框：先绘制背景图片，再绘制边框
+                        ui.painter().image(
+                            texture.id(),
+                            vbox_rect,
+                            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                            egui::Color32::WHITE,
+                        );
+                        ui.painter().rect_stroke(vbox_rect, corner_radius, stroke, egui::epaint::StrokeKind::Outside);
+                    } else {
+                        // 无边框：直接绘制背景图片
+                        ui.painter().image(
+                            texture.id(),
+                            vbox_rect,
+                            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                            egui::Color32::WHITE,
+                        );
+                    }
+                } else {
+                    static VBOX_BG_FAILED: Lazy<Mutex<std::collections::HashSet<String>>> = Lazy::new(|| Mutex::new(std::collections::HashSet::new()));
+                    let mut failed = VBOX_BG_FAILED.lock().unwrap();
+                    if !failed.contains(&background) {
+                        eprintln!("[VBox背景] ✗ 背景图片加载失败: {}", background);
+                        failed.insert(background.clone());
+                    }
+                }
+            }
+        }
+        
+        // 如果没有背景图片，但有背景颜色，渲染背景颜色
+        if !has_bg_image {
+            if let Some(color) = bg_color {
+                if ui.is_rect_visible(vbox_rect) {
+                    let corner_radius = self.get_corner_radius(element);
+                    let stroke = self.get_border_stroke(element);
+                    
+                    ui.painter().rect_filled(vbox_rect, corner_radius, color);
+                    if let Some(stroke) = stroke {
+                        ui.painter().rect_stroke(vbox_rect, corner_radius, stroke, egui::epaint::StrokeKind::Outside);
+                    }
+                }
+            }
+        }
 
         // 检查是否有 flex 子元素
         let has_flex_children = element.children.iter()
             .any(|child| child.attributes.flex.is_some());
 
+        // 在 VBox 矩形内创建子 UI
+        let mut vbox_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(vbox_rect)
+                .layout(egui::Layout::top_down(egui::Align::Min))
+        );
+
+        // 添加调试日志
+        use std::sync::Mutex;
+        use once_cell::sync::Lazy;
+        static VBOX_RENDER_LOGGED: Lazy<Mutex<std::collections::HashSet<String>>> = Lazy::new(|| Mutex::new(std::collections::HashSet::new()));
+        let mut logged = VBOX_RENDER_LOGGED.lock().unwrap();
+        let vbox_id = element.attributes.id.as_ref().map(|s| s.as_str()).unwrap_or("unnamed");
+        let log_key = format!("{}:{}:{}:{}", vbox_id, has_flex_children, align, element.children.len());
+        if !logged.contains(&log_key) {
+            eprintln!("[VBox渲染] VBox '{}' 渲染路径: has_flex={}, align={}, halign={}, valign={}, 子元素数={}", 
+                vbox_id, has_flex_children, align, halign, valign, element.children.len());
+            // 列出所有子元素的 ID
+            for (idx, child) in element.children.iter().enumerate() {
+                let child_id = child.attributes.id.as_ref().map(|s| s.as_str()).unwrap_or("unnamed");
+                let child_type = format!("{:?}", child.element_type);
+                eprintln!("[VBox渲染]   子元素 [{}]: {} (id: {})", idx, child_type, child_id);
+            }
+            logged.insert(log_key);
+        }
+        drop(logged);
+
+        // 添加调试日志：显示第一个 VBox 的渲染分支选择
+        static VBOX_BRANCH_LOGGED: Lazy<Mutex<std::collections::HashSet<String>>> = Lazy::new(|| Mutex::new(std::collections::HashSet::new()));
+        let mut branch_logged = VBOX_BRANCH_LOGGED.lock().unwrap();
+        let vbox_id = element.attributes.id.as_ref().map(|s| s.as_str()).unwrap_or("unnamed");
+        let branch_key = format!("{}:{}:{}:{}:{}", vbox_id, has_flex_children, align, halign, valign);
+        if !branch_logged.contains(&branch_key) {
+            eprintln!("[VBox分支] VBox '{}' 选择渲染分支: has_flex={}, align={}, halign={}, valign={}", 
+                vbox_id, has_flex_children, align, halign, valign);
+            branch_logged.insert(branch_key);
+        }
+        drop(branch_logged);
+        
         if has_flex_children {
-            self.render_vbox_with_flex(ui, element, result);
-        } else if align != "top" || halign != "left" {
-            self.render_vbox_with_align(ui, element, result, align, halign);
+            self.render_vbox_with_flex(&mut vbox_ui, element, result);
+        } else if align != "left" || halign != "left" || valign != "top" {
+            self.render_vbox_with_align(&mut vbox_ui, element, result, align, halign, valign);
         } else {
+            // 在闭包外部先分离绝对定位和布局流子元素
+            let mut absolute_children = Vec::new();
+            let mut layout_children = Vec::new();
+            
+            for child in &element.children {
+                // 检查是否有绝对定位（position 属性或 float="true" + pos 属性）
+                let is_absolute = child.attributes.get_custom("position").is_some()
+                    || child.attributes.get_custom("is_absolute").map(|s| s == "true").unwrap_or(false)
+                    || (child.attributes.get_custom("float").map(|s| s == "true").unwrap_or(false)
+                        && child.attributes.get_custom("pos").is_some());
+                
+                if is_absolute {
+                    absolute_children.push(child);
+                } else {
+                    layout_children.push(child);
+                }
+            }
+            
             // 使用 allocate_ui_with_layout 确保占据全部可用高度
-            ui.allocate_ui_with_layout(
-                egui::vec2(ui.available_width(), available_height),
+            vbox_ui.allocate_ui_with_layout(
+                egui::vec2(vbox_rect.width(), vbox_rect.height()),
                 egui::Layout::top_down(egui::Align::Min),
                 |ui| {
                     ui.spacing_mut().item_spacing = egui::vec2(0.0, spacing);
@@ -432,8 +1217,29 @@ impl LayoutRenderer {
                         ui.add_space(top);
                     }
 
-                    for (idx, child) in element.children.iter().enumerate() {
-                        // 移除频繁的日志输出
+                    static VBOX_CHILDREN_LOGGED: Lazy<Mutex<std::collections::HashSet<String>>> = Lazy::new(|| Mutex::new(std::collections::HashSet::new()));
+                    let mut logged = VBOX_CHILDREN_LOGGED.lock().unwrap();
+                    let vbox_id = element.attributes.id.as_ref().map(|s| s.as_str()).unwrap_or("unnamed");
+                    let log_key = format!("{}:{}", vbox_id, element.children.len());
+                    if !logged.contains(&log_key) {
+                        eprintln!("[VBox子元素] VBox '{}' 开始渲染 {} 个子元素 (布局流: {}, 绝对定位: {})", 
+                            vbox_id, element.children.len(), layout_children.len(), absolute_children.len());
+                        for (idx, child) in layout_children.iter().enumerate() {
+                            let child_type = format!("{:?}", child.element_type);
+                            let child_id = child.attributes.id.as_ref().map(|s| s.as_str()).unwrap_or("unnamed");
+                            eprintln!("[VBox子元素]   [布局流 {}] {} (id: {})", idx, child_type, child_id);
+                        }
+                        for (idx, child) in absolute_children.iter().enumerate() {
+                            let child_type = format!("{:?}", child.element_type);
+                            let child_id = child.attributes.id.as_ref().map(|s| s.as_str()).unwrap_or("unnamed");
+                            eprintln!("[VBox子元素]   [绝对定位 {}] {} (id: {})", idx, child_type, child_id);
+                        }
+                        logged.insert(log_key);
+                    }
+                    drop(logged);
+                    
+                    // 只渲染布局流中的元素
+                    for child in &layout_children {
                         self.render_element(ui, child, result);
                     }
 
@@ -442,13 +1248,60 @@ impl LayoutRenderer {
                     }
                 }
             );
+            
+            // 在闭包外部渲染绝对定位的元素（使用父级 UI，确保坐标正确）
+            // 注意：绝对定位的元素需要使用父级 UI 来获取正确的窗口坐标
+            // 在 VBox 内部，绝对定位的元素应该相对于窗口（Page），而不是 VBox
+            for child in &absolute_children {
+                self.render_element(ui, child, result);
+            }
         }
     }
     
     /// 渲染带对齐的垂直布局
-    fn render_vbox_with_align(&mut self, ui: &mut Ui, element: &LayoutElement, result: &mut RenderResult, align: &str, halign: &str) {
+    fn render_vbox_with_align(&mut self, ui: &mut Ui, element: &LayoutElement, result: &mut RenderResult, align: &str, halign: &str, valign: &str) {
         let spacing = element.attributes.spacing.unwrap_or(0.0);
         let padding = element.attributes.padding;
+        
+        // 在闭包外部先分离绝对定位和布局流子元素
+        let mut absolute_children = Vec::new();
+        let mut layout_children = Vec::new();
+        
+        for child in &element.children {
+            // 检查是否有绝对定位（position 属性或 float="true" + pos 属性）
+            let is_absolute = child.attributes.get_custom("position").is_some()
+                || child.attributes.get_custom("is_absolute").map(|s| s == "true").unwrap_or(false)
+                || (child.attributes.get_custom("float").map(|s| s == "true").unwrap_or(false)
+                    && child.attributes.get_custom("pos").is_some());
+            
+            if is_absolute {
+                absolute_children.push(child);
+            } else {
+                layout_children.push(child);
+            }
+        }
+        
+        // 添加调试日志
+        static VBOX_ALIGN_CHILDREN_LOGGED: Lazy<Mutex<std::collections::HashSet<String>>> = Lazy::new(|| Mutex::new(std::collections::HashSet::new()));
+        let mut logged = VBOX_ALIGN_CHILDREN_LOGGED.lock().unwrap();
+        let vbox_id = element.attributes.id.as_ref().map(|s| s.as_str()).unwrap_or("unnamed");
+        let log_key = format!("{}:{}", vbox_id, element.children.len());
+        if !logged.contains(&log_key) {
+            eprintln!("[VBox子元素] VBox '{}' (render_vbox_with_align) 开始渲染 {} 个子元素 (布局流: {}, 绝对定位: {})", 
+                vbox_id, element.children.len(), layout_children.len(), absolute_children.len());
+            for (idx, child) in layout_children.iter().enumerate() {
+                let child_type = format!("{:?}", child.element_type);
+                let child_id = child.attributes.id.as_ref().map(|s| s.as_str()).unwrap_or("unnamed");
+                eprintln!("[VBox子元素]   [布局流 {}] {} (id: {})", idx, child_type, child_id);
+            }
+            for (idx, child) in absolute_children.iter().enumerate() {
+                let child_type = format!("{:?}", child.element_type);
+                let child_id = child.attributes.id.as_ref().map(|s| s.as_str()).unwrap_or("unnamed");
+                eprintln!("[VBox子元素]   [绝对定位 {}] {} (id: {})", idx, child_type, child_id);
+            }
+            logged.insert(log_key);
+        }
+        drop(logged);
         
         ui.vertical(|ui| {
             ui.spacing_mut().item_spacing = egui::vec2(0.0, spacing);
@@ -457,36 +1310,36 @@ impl LayoutRenderer {
                 ui.add_space(top);
             }
             
-            // 计算子元素总高度
+            // 计算布局流子元素总高度
             let mut total_height = 0.0;
-            for child in &element.children {
+            for child in &layout_children {
                 if let Some(height) = child.attributes.height {
                     total_height += height;
                 }
             }
-            total_height += spacing * (element.children.len() as f32 - 1.0).max(0.0);
+            total_height += spacing * (layout_children.len() as f32 - 1.0).max(0.0);
             
             let available_height = ui.available_height();
             let remaining_height = (available_height - total_height).max(0.0);
             
-            // 垂直对齐
-            match align {
-                "center" | "middle" => {
+            // 垂直对齐（NSIS 格式：valign 用于垂直对齐，align 用于水平对齐）
+            match valign {
+                "center" | "vcenter" | "middle" => {
                     ui.add_space(remaining_height / 2.0);
                 }
                 "bottom" => {
                     ui.add_space(remaining_height);
                 }
                 "space-between" => {
-                    let gap = if element.children.len() > 1 {
-                        remaining_height / (element.children.len() as f32 - 1.0)
+                    let gap = if layout_children.len() > 1 {
+                        remaining_height / (layout_children.len() as f32 - 1.0)
                     } else {
                         0.0
                     };
                     
-                    for (i, child) in element.children.iter().enumerate() {
+                    for (i, child) in layout_children.iter().enumerate() {
                         self.render_element_with_halign(ui, child, result, halign);
-                        if i < element.children.len() - 1 {
+                        if i < layout_children.len() - 1 {
                             ui.add_space(gap);
                         }
                     }
@@ -499,8 +1352,8 @@ impl LayoutRenderer {
                 _ => {} // "top" - 默认，不添加空间
             }
             
-            // 渲染子元素（带水平对齐）
-            for child in &element.children {
+            // 渲染布局流子元素（带水平对齐）
+            for child in &layout_children {
                 self.render_element_with_halign(ui, child, result, halign);
             }
             
@@ -508,6 +1361,13 @@ impl LayoutRenderer {
                 ui.add_space(bottom);
             }
         });
+        
+        // 在闭包外部渲染绝对定位的元素（使用父级 UI，确保坐标正确）
+        // 注意：绝对定位的元素需要使用父级 UI 来获取正确的窗口坐标
+        // 在 VBox 内部，绝对定位的元素应该相对于窗口（Page），而不是 VBox
+        for child in &absolute_children {
+            self.render_element(ui, child, result);
+        }
     }
     
     /// 渲染元素（带水平对齐）
@@ -534,6 +1394,24 @@ impl LayoutRenderer {
     fn render_vbox_with_flex(&mut self, ui: &mut Ui, element: &LayoutElement, result: &mut RenderResult) {
         let spacing = element.attributes.spacing.unwrap_or(0.0);
         
+        // 在闭包外部先分离绝对定位和布局流子元素
+        let mut absolute_children = Vec::new();
+        let mut layout_children = Vec::new();
+        
+        for child in &element.children {
+            // 检查是否有绝对定位（position 属性或 float="true" + pos 属性）
+            let is_absolute = child.attributes.get_custom("position").is_some()
+                || child.attributes.get_custom("is_absolute").map(|s| s == "true").unwrap_or(false)
+                || (child.attributes.get_custom("float").map(|s| s == "true").unwrap_or(false)
+                    && child.attributes.get_custom("pos").is_some());
+            
+            if is_absolute {
+                absolute_children.push(child);
+            } else {
+                layout_children.push(child);
+            }
+        }
+        
         ui.vertical(|ui| {
             ui.spacing_mut().item_spacing = egui::vec2(0.0, spacing);
             
@@ -541,7 +1419,7 @@ impl LayoutRenderer {
             let mut fixed_height = 0.0;
             let mut total_flex = 0.0;
             
-            for child in &element.children {
+            for child in &layout_children {
                 if let Some(flex) = child.attributes.flex {
                     total_flex += flex;
                 } else if let Some(height) = child.attributes.height {
@@ -551,11 +1429,11 @@ impl LayoutRenderer {
             
             // 计算剩余可用空间
             let available_height = ui.available_height();
-            let spacing_total = spacing * (element.children.len() as f32 - 1.0).max(0.0);
+            let spacing_total = spacing * (layout_children.len() as f32 - 1.0).max(0.0);
             let remaining_height = (available_height - fixed_height - spacing_total).max(0.0);
             
-            // 第二遍：渲染元素
-            for child in &element.children {
+            // 第二遍：渲染布局流元素
+            for child in &layout_children {
                 if let Some(flex) = child.attributes.flex {
                     // Flex 元素：分配剩余空间
                     let flex_height = if total_flex > 0.0 {
@@ -593,8 +1471,48 @@ impl LayoutRenderer {
         let valign = element.attributes.get_custom("valign").map(|s| s.as_str()).unwrap_or("top");
         let height = element.attributes.height;
 
-        // 检查是否有 flex 子元素
-        let has_flex_children = element.children.iter()
+        // 在闭包外部先分离绝对定位和布局流子元素
+        let mut absolute_children = Vec::new();
+        let mut layout_children = Vec::new();
+        
+        for child in &element.children {
+            // 检查是否有绝对定位（position 属性或 float="true" + pos 属性）
+            let is_absolute = child.attributes.get_custom("position").is_some()
+                || child.attributes.get_custom("is_absolute").map(|s| s == "true").unwrap_or(false)
+                || (child.attributes.get_custom("float").map(|s| s == "true").unwrap_or(false)
+                    && child.attributes.get_custom("pos").is_some());
+            
+            if is_absolute {
+                absolute_children.push(child);
+            } else {
+                layout_children.push(child);
+            }
+        }
+        
+        // 添加调试日志
+        static HBOX_CHILDREN_LOGGED: Lazy<Mutex<std::collections::HashSet<String>>> = Lazy::new(|| Mutex::new(std::collections::HashSet::new()));
+        let mut logged = HBOX_CHILDREN_LOGGED.lock().unwrap();
+        let hbox_id = element.attributes.id.as_ref().map(|s| s.as_str()).unwrap_or("unnamed");
+        let log_key = format!("{}:{}", hbox_id, element.children.len());
+        if !logged.contains(&log_key) {
+            eprintln!("[HBox子元素] HBox '{}' 开始渲染 {} 个子元素 (布局流: {}, 绝对定位: {})", 
+                hbox_id, element.children.len(), layout_children.len(), absolute_children.len());
+            for (idx, child) in layout_children.iter().enumerate() {
+                let child_type = format!("{:?}", child.element_type);
+                let child_id = child.attributes.id.as_ref().map(|s| s.as_str()).unwrap_or("unnamed");
+                eprintln!("[HBox子元素]   [布局流 {}] {} (id: {})", idx, child_type, child_id);
+            }
+            for (idx, child) in absolute_children.iter().enumerate() {
+                let child_type = format!("{:?}", child.element_type);
+                let child_id = child.attributes.id.as_ref().map(|s| s.as_str()).unwrap_or("unnamed");
+                eprintln!("[HBox子元素]   [绝对定位 {}] {} (id: {})", idx, child_type, child_id);
+            }
+            logged.insert(log_key);
+        }
+        drop(logged);
+
+        // 检查是否有 flex 子元素（只检查布局流子元素）
+        let has_flex_children = layout_children.iter()
             .any(|child| child.attributes.flex.is_some());
 
         // 如果指定了高度，先分配固定高度的区域
@@ -610,9 +1528,11 @@ impl LayoutRenderer {
                     }
 
                     if has_flex_children {
-                        self.render_hbox_flex_children(ui, element, result);
+                        // 传递 layout_children 而不是 element.children
+                        self.render_hbox_flex_children_list(ui, &layout_children, spacing, result);
                     } else {
-                        for child in &element.children {
+                        // 只渲染布局流子元素
+                        for child in &layout_children {
                             self.render_element(ui, child, result);
                         }
                     }
@@ -624,9 +1544,9 @@ impl LayoutRenderer {
             );
             // 移除频繁的日志输出
         } else if has_flex_children {
-            self.render_hbox_with_flex(ui, element, result);
+            self.render_hbox_with_flex_list(ui, &layout_children, spacing, result);
         } else if align != "left" || valign != "top" {
-            self.render_hbox_with_align(ui, element, result, align, valign);
+            self.render_hbox_with_align_list(ui, &layout_children, spacing, padding, align, valign, result);
         } else {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing = egui::vec2(spacing, 0.0);
@@ -635,7 +1555,8 @@ impl LayoutRenderer {
                     ui.add_space(left);
                 }
 
-                for child in &element.children {
+                // 只渲染布局流子元素
+                for child in &layout_children {
                     self.render_element(ui, child, result);
                 }
 
@@ -644,17 +1565,29 @@ impl LayoutRenderer {
                 }
             });
         }
+        
+        // 在闭包外部渲染绝对定位的元素（使用父级 UI，确保坐标正确）
+        // 注意：绝对定位的元素需要使用父级 UI 来获取正确的窗口坐标
+        // 在 HBox 内部，绝对定位的元素应该相对于窗口（Page），而不是 HBox
+        for child in &absolute_children {
+            self.render_element(ui, child, result);
+        }
     }
 
     /// 渲染 HBox 的 flex 子元素（不包含外层 horizontal）
     fn render_hbox_flex_children(&mut self, ui: &mut Ui, element: &LayoutElement, result: &mut RenderResult) {
         let spacing = element.attributes.spacing.unwrap_or(0.0);
-
+        let children_refs: Vec<&LayoutElement> = element.children.iter().collect();
+        self.render_hbox_flex_children_list(ui, &children_refs, spacing, result);
+    }
+    
+    /// 渲染 HBox 的 flex 子元素列表（不包含外层 horizontal）
+    fn render_hbox_flex_children_list(&mut self, ui: &mut Ui, children: &[&LayoutElement], spacing: f32, result: &mut RenderResult) {
         // 第一遍：计算固定宽度元素和总 flex 权重
         let mut fixed_width = 0.0;
         let mut total_flex = 0.0;
 
-        for child in &element.children {
+        for child in children {
             if let Some(flex) = child.attributes.flex {
                 total_flex += flex;
             } else if let Some(width) = child.attributes.width {
@@ -664,11 +1597,11 @@ impl LayoutRenderer {
 
         // 计算剩余可用空间
         let available_width = ui.available_width();
-        let spacing_total = spacing * (element.children.len() as f32 - 1.0).max(0.0);
+        let spacing_total = spacing * (children.len() as f32 - 1.0).max(0.0);
         let remaining_width = (available_width - fixed_width - spacing_total).max(0.0);
 
         // 第二遍：渲染元素
-        for child in &element.children {
+        for child in children {
             if let Some(flex) = child.attributes.flex {
                 // Flex 元素：分配剩余空间
                 let flex_width = if total_flex > 0.0 {
@@ -701,7 +1634,12 @@ impl LayoutRenderer {
     fn render_hbox_with_align(&mut self, ui: &mut Ui, element: &LayoutElement, result: &mut RenderResult, align: &str, valign: &str) {
         let spacing = element.attributes.spacing.unwrap_or(0.0);
         let padding = element.attributes.padding;
-        
+        let children_refs: Vec<&LayoutElement> = element.children.iter().collect();
+        self.render_hbox_with_align_list(ui, &children_refs, spacing, padding, align, valign, result);
+    }
+    
+    /// 渲染带对齐的水平布局（使用子元素列表）
+    fn render_hbox_with_align_list(&mut self, ui: &mut Ui, children: &[&LayoutElement], spacing: f32, padding: Option<(f32, f32, f32, f32)>, align: &str, valign: &str, result: &mut RenderResult) {
         // 确定垂直对齐方式
         let vertical_align = match valign {
             "center" | "middle" => egui::Align::Center,
@@ -718,14 +1656,14 @@ impl LayoutRenderer {
             
             // 计算子元素总宽度
             let mut total_width = 0.0;
-            for child in &element.children {
+            for child in children {
                 if let Some(width) = child.attributes.width {
                     total_width += width;
                 } else if let Some(min_width) = child.attributes.min_width {
                     total_width += min_width;
                 }
             }
-            total_width += spacing * (element.children.len() as f32 - 1.0).max(0.0);
+            total_width += spacing * (children.len() as f32 - 1.0).max(0.0);
             
             let available_width = ui.available_width();
             let remaining_width = (available_width - total_width).max(0.0);
@@ -739,15 +1677,15 @@ impl LayoutRenderer {
                     ui.add_space(remaining_width);
                 }
                 "space-between" => {
-                    let gap = if element.children.len() > 1 {
-                        remaining_width / (element.children.len() as f32 - 1.0)
+                    let gap = if children.len() > 1 {
+                        remaining_width / (children.len() as f32 - 1.0)
                     } else {
                         0.0
                     };
                     
-                    for (i, child) in element.children.iter().enumerate() {
+                    for (i, child) in children.iter().enumerate() {
                         self.render_element_with_valign(ui, child, result, vertical_align);
-                        if i < element.children.len() - 1 {
+                        if i < children.len() - 1 {
                             ui.add_space(gap);
                         }
                     }
@@ -761,7 +1699,7 @@ impl LayoutRenderer {
             }
             
             // 渲染子元素（带垂直对齐）
-            for child in &element.children {
+            for child in children {
                 self.render_element_with_valign(ui, child, result, vertical_align);
             }
             
@@ -781,7 +1719,12 @@ impl LayoutRenderer {
     /// 渲染带 flex 的水平布局
     fn render_hbox_with_flex(&mut self, ui: &mut Ui, element: &LayoutElement, result: &mut RenderResult) {
         let spacing = element.attributes.spacing.unwrap_or(0.0);
-        
+        let children_refs: Vec<&LayoutElement> = element.children.iter().collect();
+        self.render_hbox_with_flex_list(ui, &children_refs, spacing, result);
+    }
+    
+    /// 渲染带 flex 的水平布局（使用子元素列表）
+    fn render_hbox_with_flex_list(&mut self, ui: &mut Ui, children: &[&LayoutElement], spacing: f32, result: &mut RenderResult) {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing = egui::vec2(spacing, 0.0);
             
@@ -789,7 +1732,7 @@ impl LayoutRenderer {
             let mut fixed_width = 0.0;
             let mut total_flex = 0.0;
             
-            for child in &element.children {
+            for child in children {
                 if let Some(flex) = child.attributes.flex {
                     total_flex += flex;
                 } else if let Some(width) = child.attributes.width {
@@ -799,11 +1742,11 @@ impl LayoutRenderer {
             
             // 计算剩余可用空间
             let available_width = ui.available_width();
-            let spacing_total = spacing * (element.children.len() as f32 - 1.0).max(0.0);
+            let spacing_total = spacing * (children.len() as f32 - 1.0).max(0.0);
             let remaining_width = (available_width - fixed_width - spacing_total).max(0.0);
             
             // 第二遍：渲染元素
-            for child in &element.children {
+            for child in children {
                 if let Some(flex) = child.attributes.flex {
                     // Flex 元素：分配剩余空间
                     let flex_width = if total_flex > 0.0 {
@@ -837,25 +1780,43 @@ impl LayoutRenderer {
     fn render_spacer(&mut self, ui: &mut Ui, element: &LayoutElement, _result: &mut RenderResult) {
         let width = element.attributes.width.unwrap_or(0.0);
         let height = element.attributes.height.unwrap_or(0.0);
+        let padding = element.attributes.padding.unwrap_or((0.0, 0.0, 0.0, 0.0));
+        let (pad_top, pad_right, pad_bottom, pad_left) = padding;
 
         // 水平方向：使用 width 占位
         // 垂直方向：使用 height 占位
         // 空 Spacer：作为弹性空间（在 HBox 中填充剩余空间）
         let rect = if width > 0.0 {
-            // 水平 Spacer（在 HBox 中）- 使用可用高度确保占位正确
-            let spacer_height = ui.available_height().max(0.0);
-            let (rect, _) = ui.allocate_exact_size(
-                egui::vec2(width, spacer_height),
+            // 水平 Spacer（在 HBox 中）
+            // 注意：如果同时指定了 height，则应使用显式的 height；
+            // 只有在未指定 height 时，才使用可用高度填满父容器。
+            let content_height = if height > 0.0 { height } else { ui.available_height().max(0.0) };
+            // NSIS 中 Control/Container 的 padding 表示内容区域的内边距：
+            // 总宽度 = left + content_width + right
+            // 总高度 = top + content_height + bottom
+            let total_width = width + pad_left + pad_right;
+            let total_height = content_height + pad_top + pad_bottom;
+
+            let (outer_rect, _) = ui.allocate_exact_size(
+                egui::vec2(total_width, total_height),
                 egui::Sense::hover()
             );
-            rect
+            // 实际内容区域（例如 logo 图片）位于 padding 之后
+            egui::Rect::from_min_size(
+                egui::pos2(outer_rect.min.x + pad_left, outer_rect.min.y + pad_top),
+                egui::vec2(width, content_height),
+            )
         } else if height > 0.0 {
             // 垂直 Spacer（在 VBox 中）- 使用 allocate_exact_size 而不是 add_space
-            let (rect, _) = ui.allocate_exact_size(
-                egui::vec2(ui.available_width(), height),
+            let total_height = height + pad_top + pad_bottom;
+            let (outer_rect, _) = ui.allocate_exact_size(
+                egui::vec2(ui.available_width(), total_height),
                 egui::Sense::hover()
             );
-            rect
+            egui::Rect::from_min_size(
+                egui::pos2(outer_rect.min.x + pad_left, outer_rect.min.y + pad_top),
+                egui::vec2(outer_rect.width() - pad_left - pad_right, height),
+            )
         } else {
             // 空 Spacer：弹性空间（填充所有剩余空间）
             ui.allocate_space(egui::vec2(ui.available_width(), 0.0));
@@ -868,10 +1829,10 @@ impl LayoutRenderer {
                 // 解析背景（可能是图片路径或颜色）
                 if background.starts_with("assets/") || background.ends_with(".png") || background.ends_with(".jpg") {
                     // 背景图片
-                    if let Some(texture) = self.resource_cache.get_background(ui.ctx(), &self.dpi_config, background) {
-                        // 应用圆角和边框
+                    // 先获取圆角和边框配置，避免借用冲突
                         let corner_radius = self.get_corner_radius(element);
                         let stroke = self.get_border_stroke(element);
+                    if let Some(texture) = self.resource_cache.get_background(ui.ctx(), &self.dpi_config, background) {
                         
                         if let Some(stroke) = stroke {
                             // 有边框：先绘制背景图片，再绘制边框
@@ -881,7 +1842,7 @@ impl LayoutRenderer {
                                 egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
                                 egui::Color32::WHITE,
                             );
-                            ui.painter().rect_stroke(rect, corner_radius, stroke);
+                            ui.painter().rect_stroke(rect, corner_radius, stroke, egui::epaint::StrokeKind::Outside);
                         } else {
                             // 无边框：直接绘制背景图片
                             ui.painter().image(
@@ -900,7 +1861,7 @@ impl LayoutRenderer {
                         
                         ui.painter().rect_filled(rect, corner_radius, color);
                         if let Some(stroke) = stroke {
-                            ui.painter().rect_stroke(rect, corner_radius, stroke);
+                            ui.painter().rect_stroke(rect, corner_radius, stroke, egui::epaint::StrokeKind::Outside);
                         }
                     }
                 }
@@ -928,6 +1889,20 @@ impl LayoutRenderer {
 
         let width = element.attributes.width.unwrap_or(120.0);
         let height = element.attributes.height.unwrap_or(40.0);
+        let padding = element.attributes.padding.unwrap_or((0.0, 0.0, 0.0, 0.0));
+        let (pad_top, pad_right, pad_bottom, pad_left) = padding;
+        
+        // 添加调试日志
+        static BUTTON_LOGGED: Lazy<Mutex<std::collections::HashSet<String>>> = Lazy::new(|| Mutex::new(std::collections::HashSet::new()));
+        let mut logged = BUTTON_LOGGED.lock().unwrap();
+        if !logged.contains(&id) {
+            let available_size = ui.available_size();
+            let max_rect = ui.max_rect();
+            eprintln!("[Button渲染] Button '{}': 尺寸={}x{}, 可用空间={:?}, max_rect={:?}", 
+                id, width, height, available_size, max_rect);
+            logged.insert(id.clone());
+        }
+        drop(logged);
 
         // 获取字体和颜色配置
         let font_id = self.get_font_id(element);
@@ -983,8 +1958,8 @@ impl LayoutRenderer {
                         let pos = egui::pos2(viewport_rect.min.x + x1, viewport_rect.min.y + y1);
                         let size = egui::vec2(x2 - x1, y2 - y1);
                         let rect = egui::Rect::from_min_size(pos, size);
-                        let response = ui.interact(rect, ui.id().with("abs_pos"), egui::Sense::click());
-                        (rect, response)
+                let response = ui.interact(rect, ui.id().with("abs_pos"), egui::Sense::click());
+                (rect, response)
                     } else {
                         // 解析失败，使用默认布局
                         ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click())
@@ -998,8 +1973,23 @@ impl LayoutRenderer {
                 ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click())
             }
         } else {
-            // 默认布局流
-            ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::click())
+            // 默认布局流（非绝对定位）
+            // NSIS 中 Button 的 padding 表示内容区域的内边距：
+            // 总宽度 = left + button_width + right
+            // 总高度 = top + button_height + bottom
+            let total_width = width + pad_left + pad_right;
+            let total_height = height + pad_top + pad_bottom;
+            let (outer_rect, response) = ui.allocate_exact_size(
+                egui::vec2(total_width, total_height),
+                egui::Sense::click()
+            );
+
+            let inner_rect = egui::Rect::from_min_size(
+                egui::pos2(outer_rect.min.x + pad_left, outer_rect.min.y + pad_top),
+                egui::vec2(width, height),
+            );
+
+            (inner_rect, response)
         };
 
         // 绘制按钮背景和文本
@@ -1114,7 +2104,9 @@ impl LayoutRenderer {
                     }
                 } else {
                     // 图片加载失败，使用纯色背景
+                    // 先获取圆角和边框配置，避免借用冲突
                     let corner_radius = self.get_corner_radius(element);
+                    let border_stroke = self.get_border_stroke(element);
                     let bg_color = if enabled {
                         if response.hovered() {
                             Color32::from_rgb(70, 70, 70)
@@ -1127,8 +2119,8 @@ impl LayoutRenderer {
                     ui.painter().rect_filled(rect, corner_radius, bg_color);
                     
                     // 绘制边框
-                    if let Some(stroke) = self.get_border_stroke(element) {
-                        ui.painter().rect_stroke(rect, corner_radius, stroke);
+                    if let Some(stroke) = border_stroke {
+                        ui.painter().rect_stroke(rect, corner_radius, stroke, egui::epaint::StrokeKind::Outside);
                     }
                 }
             } else {
@@ -1147,6 +2139,29 @@ impl LayoutRenderer {
                     }
                 })
                 .unwrap_or(0.0);
+            
+            // 根据按钮状态选择文本颜色（NSIS 格式：hottextcolor, pushedtextcolor, disabledtextcolor）
+            let text_color = if !enabled {
+                element.attributes.get_custom("disabledtextcolor")
+                    .and_then(|c| self.parse_color(c))
+                    .or_else(|| element.attributes.color.as_ref().and_then(|c| self.parse_color(c)))
+                    .unwrap_or(Color32::GRAY)
+            } else if response.is_pointer_button_down_on() {
+                element.attributes.get_custom("pushedtextcolor")
+                    .and_then(|c| self.parse_color(c))
+                    .or_else(|| element.attributes.get_custom("hottextcolor").and_then(|c| self.parse_color(c)))
+                    .or_else(|| element.attributes.color.as_ref().and_then(|c| self.parse_color(c)))
+                    .unwrap_or(Color32::WHITE)
+            } else if response.hovered() {
+                element.attributes.get_custom("hottextcolor")
+                    .and_then(|c| self.parse_color(c))
+                    .or_else(|| element.attributes.color.as_ref().and_then(|c| self.parse_color(c)))
+                    .unwrap_or(Color32::WHITE)
+            } else {
+                element.attributes.color.as_ref()
+                    .and_then(|c| self.parse_color(c))
+                    .unwrap_or(Color32::WHITE)
+            };
             
             // 如果有右侧 padding（如箭头图标），文本需要左对齐并留出右侧空间
             let text_pos = if text_padding_right > 0.0 {
@@ -1182,6 +2197,10 @@ impl LayoutRenderer {
 
         if response.clicked() && enabled {
             result.button_clicks.insert(id.clone(), true);
+            // Capture action attribute if present
+            if let Some(action) = element.attributes.get_custom("action") {
+                result.button_actions.insert(id.clone(), action.clone());
+            }
         }
 
         // 记录按钮响应
@@ -1327,17 +2346,52 @@ impl LayoutRenderer {
         None
     }
 
+    /// 颜色解析 (静态方法版本, 用于新渲染路径)
+    fn parse_color_static(color_str: &str) -> Option<egui::Color32> {
+        if color_str.starts_with('#') {
+            if color_str.len() == 7 {
+                let r = u8::from_str_radix(&color_str[1..3], 16).ok()?;
+                let g = u8::from_str_radix(&color_str[3..5], 16).ok()?;
+                let b = u8::from_str_radix(&color_str[5..7], 16).ok()?;
+                return Some(egui::Color32::from_rgb(r, g, b));
+            } else if color_str.len() == 9 {
+                let a = u8::from_str_radix(&color_str[1..3], 16).ok()?;
+                let r = u8::from_str_radix(&color_str[3..5], 16).ok()?;
+                let g = u8::from_str_radix(&color_str[5..7], 16).ok()?;
+                let b = u8::from_str_radix(&color_str[7..9], 16).ok()?;
+                return Some(egui::Color32::from_rgba_unmultiplied(r, g, b, a));
+            }
+        }
+        if color_str.starts_with("0x") || color_str.starts_with("0X") {
+            let hex_str = &color_str[2..];
+            if hex_str.len() == 6 {
+                let r = u8::from_str_radix(&hex_str[0..2], 16).ok()?;
+                let g = u8::from_str_radix(&hex_str[2..4], 16).ok()?;
+                let b = u8::from_str_radix(&hex_str[4..6], 16).ok()?;
+                return Some(egui::Color32::from_rgb(r, g, b));
+            } else if hex_str.len() == 8 {
+                let a = u8::from_str_radix(&hex_str[0..2], 16).ok()?;
+                let r = u8::from_str_radix(&hex_str[2..4], 16).ok()?;
+                let g = u8::from_str_radix(&hex_str[4..6], 16).ok()?;
+                let b = u8::from_str_radix(&hex_str[6..8], 16).ok()?;
+                return Some(egui::Color32::from_rgba_unmultiplied(r, g, b, a));
+            }
+        }
+        None
+    }
+
     /// 获取圆角半径（从 borderround 属性）
     fn get_corner_radius(&self, element: &LayoutElement) -> egui::CornerRadius {
         if let Some(borderround_str) = element.attributes.get_custom("borderround") {
             let parts: Vec<&str> = borderround_str.split(',').map(|s| s.trim()).collect();
             if parts.len() == 2 {
                 if let (Ok(x), Ok(y)) = (parts[0].parse::<f32>(), parts[1].parse::<f32>()) {
+                    // CornerRadius 字段是 u8 类型，需要转换
                     return egui::CornerRadius {
-                        nw: x,
-                        ne: x,
-                        sw: y,
-                        se: y,
+                        nw: x as u8,
+                        ne: x as u8,
+                        sw: y as u8,
+                        se: y as u8,
                     };
                 }
             }
@@ -1444,11 +2498,23 @@ impl LayoutRenderer {
                 egui::vec2(w, h),
                 egui::Sense::click()
             );
+            
+            // 添加调试日志
+            static CHECKBOX_RECT_LOGGED: Lazy<Mutex<std::collections::HashSet<String>>> = Lazy::new(|| Mutex::new(std::collections::HashSet::new()));
+            let mut logged = CHECKBOX_RECT_LOGGED.lock().unwrap();
+            if !logged.contains(&id) {
+                let is_visible = ui.is_rect_visible(rect);
+                eprintln!("[Checkbox渲染] Checkbox '{}' 矩形: {:?}, 可见={}", id, rect, is_visible);
+                logged.insert(id.clone());
+            }
+            drop(logged);
 
             if ui.is_rect_visible(rect) {
                 // 从 custom 属性读取图片配置
                 let normalimage = element.attributes.get_custom("normalimage");
+                let normalhotimage = element.attributes.get_custom("normalhotimage");
                 let selectedimage = element.attributes.get_custom("selectedimage");
+                let selectedhotimage = element.attributes.get_custom("selectedhotimage");
                 let disabledimage = element.attributes.get_custom("disabledimage");
 
                 // 从 custom 属性读取 textpadding（格式：left,top,right,bottom）
@@ -1459,19 +2525,32 @@ impl LayoutRenderer {
 
                 // 使用图片渲染复选框
                 // 根据 DPI 使用不同的复选框大小：1x = 16px, 2x = 32px
-                let checkbox_size = if self.dpi_config.use_2x { 32.0 } else { 16.0 };
+                let checkbox_size = 16.0;
                 let checkbox_rect = egui::Rect::from_min_size(
                     rect.min,
                     egui::Vec2::splat(checkbox_size)
                 );
 
-                // 根据状态选择图片
+                // 检查是否悬停
+                let is_hovered = response.hovered();
+
+                // 根据状态选择图片（优先级：悬停状态 > 选中状态 > 禁用状态 > 正常状态）
                 let checkbox_image = if !enabled {
                     disabledimage.or(normalimage)
                 } else if checkbox_state {
+                    // 选中状态：优先使用 selectedhotimage（悬停时），否则使用 selectedimage
+                    if is_hovered {
+                        selectedhotimage.or(selectedimage).or(normalhotimage).or(normalimage)
+                    } else {
                     selectedimage.or(normalimage)
+                    }
+                } else {
+                    // 未选中状态：优先使用 normalhotimage（悬停时），否则使用 normalimage
+                    if is_hovered {
+                        normalhotimage.or(normalimage)
                 } else {
                     normalimage
+                    }
                 };
 
                 // 渲染复选框图片
@@ -1621,23 +2700,39 @@ impl LayoutRenderer {
         let checkbox_changed = ui.horizontal(|ui| {
             // 如果有图片配置，使用图片渲染 checkbox
             let normalimage = element.attributes.get_custom("normalimage");
+            let normalhotimage = element.attributes.get_custom("normalhotimage");
             let selectedimage = element.attributes.get_custom("selectedimage");
+            let selectedhotimage = element.attributes.get_custom("selectedhotimage");
             
             // 使用图片渲染复选框
             let checkbox_size = if self.dpi_config.use_2x { 32.0 } else { 16.0 };
-            let checkbox_rect = egui::Rect::from_min_size(
-                ui.min_rect().min,
-                egui::Vec2::splat(checkbox_size)
-            );
             
-            // 根据状态选择图片
+            // 先分配区域以检测悬停状态
+            let (checkbox_rect, checkbox_response) = ui.allocate_exact_size(
+                egui::Vec2::splat(checkbox_size),
+                egui::Sense::click()
+            );
+            let is_hovered = checkbox_response.hovered();
+            
+            // 根据状态选择图片（优先级：悬停状态 > 选中状态 > 正常状态）
             let checkbox_image = if current_checked {
+                // 选中状态：优先使用 selectedhotimage（悬停时），否则使用 selectedimage
+                if is_hovered {
+                    selectedhotimage.or(selectedimage).or(normalhotimage).or(normalimage)
+                } else {
                 selectedimage.or(normalimage)
+                }
+            } else {
+                // 未选中状态：优先使用 normalhotimage（悬停时），否则使用 normalimage
+                if is_hovered {
+                    normalhotimage.or(normalimage)
             } else {
                 normalimage
+                }
             };
             
             // 渲染复选框图片
+            if ui.is_rect_visible(checkbox_rect) {
             if let Some(img_path_str) = checkbox_image {
                 let image_path = Self::parse_image_path(img_path_str);
                 if let Some(texture) = self.resource_cache.get_background(ui.ctx(), &self.dpi_config, &image_path.path) {
@@ -1661,12 +2756,9 @@ impl LayoutRenderer {
                         uv_rect,
                         egui::Color32::WHITE,
                     );
+                    }
                 }
             }
-            
-            // 可点击区域（包括整个 checkbox 区域，不仅仅是图片）
-            // 注意：需要先分配空间，然后再绘制图片
-            let checkbox_response = ui.allocate_rect(checkbox_rect, egui::Sense::click());
             
             // 处理点击事件
             if checkbox_response.clicked() {
@@ -1756,6 +2848,13 @@ impl LayoutRenderer {
         // 获取字体配置
         let font_id = self.get_font_id(element);
         
+        // 先获取背景颜色、圆角和边框配置，避免借用冲突
+        let bg_color = element.attributes.background.as_ref()
+            .and_then(|c| self.parse_color(c))
+            .or_else(|| Some(Color32::from_rgb(30, 30, 30)));
+        let corner_radius = self.get_corner_radius(element);
+        let border_stroke = self.get_border_stroke(element);
+        
         // 获取当前内容
         let text_input_value = self.interaction_state.text_inputs.entry(id.clone()).or_insert_with(String::new);
         
@@ -1784,13 +2883,6 @@ impl LayoutRenderer {
             }
         }
         
-        // 获取背景颜色和圆角
-        let bg_color = element.attributes.background.as_ref()
-            .and_then(|c| self.parse_color(c))
-            .or_else(|| Some(Color32::from_rgb(30, 30, 30)));
-        
-        let corner_radius = self.get_corner_radius(element);
-        
         // 渲染背景（如果有）
         if let Some(bg_color) = bg_color {
             let (rect, _) = ui.allocate_exact_size(
@@ -1803,8 +2895,8 @@ impl LayoutRenderer {
             ui.painter().rect_filled(rect, corner_radius, bg_color);
             
             // 绘制边框
-            if let Some(stroke) = self.get_border_stroke(element) {
-                ui.painter().rect_stroke(rect, corner_radius, stroke);
+            if let Some(stroke) = border_stroke {
+                ui.painter().rect_stroke(rect, corner_radius, stroke, egui::epaint::StrokeKind::Outside);
             }
         }
         
@@ -2157,6 +3249,8 @@ impl LayoutRenderer {
 pub struct RenderResult {
     /// 按钮点击事件
     pub button_clicks: HashMap<String, bool>,
+    /// 被点击按钮的 action 属性 (button_id → action string)
+    pub button_actions: HashMap<String, String>,
     /// 复选框状态变化
     pub checkbox_changes: HashMap<String, bool>,
     /// 文本输入变化
@@ -2221,17 +3315,29 @@ impl RenderResult {
 mod tests {
     use super::*;
     use crate::config::InstallerConfig;
+    use crate::layout::taffy_bridge::TaffyBridge;
+    use crate::layout::dimension::Dimension;
+    use crate::layout::style_props::{FlexStyle, FlexDirection};
 
-    #[test]
-    fn test_layout_renderer_creation() {
+    fn make_renderer() -> LayoutRenderer {
         let config = InstallerConfig::default();
         let dpi_config = DpiConfig::new(&config);
-        let i18n_strings = HashMap::new();
-        
-        let renderer = LayoutRenderer::new(dpi_config, i18n_strings);
-        assert!(renderer.interaction_state.button_clicks.is_empty());
-        assert!(renderer.interaction_state.checkbox_states.is_empty());
-        assert!(renderer.interaction_state.text_inputs.is_empty());
+        LayoutRenderer::new(dpi_config, HashMap::new())
+    }
+
+    fn make_renderer_with_config(width: u32, height: u32) -> LayoutRenderer {
+        let mut config = InstallerConfig::default();
+        config.ui.window_width = width;
+        config.ui.window_height = height;
+        let dpi_config = DpiConfig::new(&config);
+        LayoutRenderer::new(dpi_config, HashMap::new())
+    }
+
+    #[test]
+    fn test_layout_renderer_uses_config_size() {
+        let renderer = make_renderer_with_config(800, 600);
+        assert_eq!(renderer.dpi_config.window_width, 800.0);
+        assert_eq!(renderer.dpi_config.window_height, 600.0);
     }
 
     #[test]
@@ -2240,26 +3346,165 @@ mod tests {
         assert!(!result.is_button_clicked("test"));
         assert!(!result.is_checkbox_changed("test"));
         assert!(!result.is_text_input_changed("test"));
-        
+
         result.button_clicks.insert("test".to_string(), true);
         assert!(result.is_button_clicked("test"));
     }
 
     #[test]
-    fn test_display_text_resolution() {
+    fn test_display_text_i18n() {
         let config = InstallerConfig::default();
         let dpi_config = DpiConfig::new(&config);
-        let mut i18n_strings = HashMap::new();
-        i18n_strings.insert("welcome.title".to_string(), "欢迎".to_string());
-        
-        let renderer = LayoutRenderer::new(dpi_config, i18n_strings);
-        
-        let attrs = ElementAttributes::new().with_text("@welcome.title");
-        let text = renderer.get_display_text(&attrs);
-        assert_eq!(text, "欢迎");
-        
-        let attrs = ElementAttributes::new().with_text("Normal text");
-        let text = renderer.get_display_text(&attrs);
-        assert_eq!(text, "Normal text");
+        let mut i18n = HashMap::new();
+        i18n.insert("welcome.title".to_string(), "欢迎".to_string());
+
+        let renderer = LayoutRenderer::new(dpi_config, i18n);
+
+        assert_eq!(renderer.get_display_text(&ElementAttributes::new().with_text("@welcome.title")), "欢迎");
+        assert_eq!(renderer.get_display_text(&ElementAttributes::new().with_text("Normal text")), "Normal text");
+        assert_eq!(renderer.get_display_text(&ElementAttributes::new()), ""); // no text
+    }
+
+    #[test]
+    fn test_parse_color_hex_formats() {
+        let renderer = make_renderer();
+        assert_eq!(renderer.parse_color("#FF0000"), Some(Color32::from_rgb(255, 0, 0)));
+        assert_eq!(renderer.parse_color("#00FF00"), Some(Color32::from_rgb(0, 255, 0)));
+        assert_eq!(renderer.parse_color("#FF112233"), Some(Color32::from_rgba_unmultiplied(0x11, 0x22, 0x33, 0xFF)));
+        assert_eq!(renderer.parse_color("0xFF0000"), Some(Color32::from_rgb(255, 0, 0)));
+        assert_eq!(renderer.parse_color("invalid"), None);
+        assert_eq!(renderer.parse_color(""), None);
+    }
+
+    #[test]
+    fn test_parse_image_path_simple() {
+        let ip = LayoutRenderer::parse_image_path("assets/btn.png");
+        assert_eq!(ip.path, "assets/btn.png");
+        assert!(ip.dest.is_none());
+        assert!(ip.corner.is_none());
+        assert!(ip.fade.is_none());
+    }
+
+    #[test]
+    fn test_parse_image_path_with_dest_and_fade() {
+        let ip = LayoutRenderer::parse_image_path("file='assets/btn.png' dest='0,0,100,40' fade='128'");
+        assert_eq!(ip.path, "assets/btn.png");
+        assert_eq!(ip.dest, Some((0.0, 0.0, 100.0, 40.0)));
+        assert!((ip.fade.unwrap() - 128.0 / 255.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_taffy_layout_uses_config_dimensions() {
+        // 验证: render_with_taffy 使用 dpi_config.window_width/height 而非硬编码
+        let renderer = make_renderer_with_config(800, 600);
+
+        let mut page = LayoutElement::new(ElementType::Page);
+        page.flex_style = Some(FlexStyle {
+            width: Dimension::Percent(100.0),
+            height: Dimension::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            ..Default::default()
+        });
+        let mut child = LayoutElement::with_attributes(
+            ElementType::Label,
+            ElementAttributes::new().with_id("lbl").with_text("test"),
+        );
+        child.flex_style = Some(FlexStyle {
+            width: Dimension::Percent(100.0),
+            height: Dimension::Px(30.0),
+            ..Default::default()
+        });
+        page.children = vec![child];
+        let tree = LayoutTree::new(page);
+
+        // 直接调用 taffy_bridge 用 renderer 的配置尺寸
+        let mut bridge = TaffyBridge::new();
+        let layout = bridge.compute_layout(&tree, renderer.dpi_config.window_width, renderer.dpi_config.window_height);
+        let r = layout.get_rect("lbl").unwrap();
+        assert_eq!(r.width, 800.0); // 100% of config width, not hardcoded 574
+    }
+
+    #[test]
+    fn test_interaction_state_management() {
+        let mut renderer = make_renderer();
+
+        assert!(!renderer.get_checkbox_checked("cb1"));
+        assert_eq!(renderer.get_text_input_value("input1"), "");
+
+        renderer.set_text_input_value("input1", "hello".to_string());
+        assert_eq!(renderer.get_text_input_value("input1"), "hello");
+
+        renderer.interaction_state.checkbox_states.insert("cb1".to_string(), true);
+        assert!(renderer.get_checkbox_checked("cb1"));
+
+        renderer.clear_interaction_state();
+        assert!(!renderer.get_checkbox_checked("cb1"));
+        assert_eq!(renderer.get_text_input_value("input1"), "");
+    }
+
+    #[test]
+    fn test_get_font_id_from_attributes() {
+        let renderer = make_renderer();
+
+        // 无 font_size 属性 → 默认 12.0
+        let elem = LayoutElement::new(ElementType::Label);
+        let font = renderer.get_font_id(&elem);
+        assert_eq!(font.size, 12.0);
+
+        // 有 font_size 属性
+        let mut elem = LayoutElement::new(ElementType::Label);
+        elem.attributes.custom.insert("font_size".to_string(), "18.0".to_string());
+        let font = renderer.get_font_id(&elem);
+        assert_eq!(font.size, 18.0);
+    }
+
+    #[test]
+    fn test_get_corner_radius_from_borderround() {
+        let renderer = make_renderer();
+
+        // 无 borderround → ZERO
+        let elem = LayoutElement::new(ElementType::Button);
+        assert_eq!(renderer.get_corner_radius(&elem), CornerRadius::ZERO);
+
+        // 有 borderround
+        let mut elem = LayoutElement::new(ElementType::Button);
+        elem.attributes.custom.insert("borderround".to_string(), "8,8".to_string());
+        let cr = renderer.get_corner_radius(&elem);
+        assert_eq!(cr.nw, 8);
+        assert_eq!(cr.se, 8);
+    }
+
+    #[test]
+    fn test_get_border_stroke_from_attributes() {
+        let renderer = make_renderer();
+
+        // 无 bordersize → None
+        let elem = LayoutElement::new(ElementType::VBox);
+        assert!(renderer.get_border_stroke(&elem).is_none());
+
+        // bordersize=0 → None
+        let mut elem = LayoutElement::new(ElementType::VBox);
+        elem.attributes.custom.insert("bordersize".to_string(), "0".to_string());
+        assert!(renderer.get_border_stroke(&elem).is_none());
+
+        // bordersize=2, bordercolor=#FF0000 → Some
+        let mut elem = LayoutElement::new(ElementType::VBox);
+        elem.attributes.custom.insert("bordersize".to_string(), "2".to_string());
+        elem.attributes.custom.insert("bordercolor".to_string(), "#FF0000".to_string());
+        let stroke = renderer.get_border_stroke(&elem).unwrap();
+        assert_eq!(stroke.width, 2.0);
+        assert_eq!(stroke.color, Color32::from_rgb(255, 0, 0));
+    }
+
+    #[test]
+    fn test_parse_text_with_links() {
+        let renderer = make_renderer();
+
+        let segments = renderer.parse_text_with_links("同意[用户协议](terms)和[隐私政策](privacy)");
+        assert_eq!(segments.len(), 4);
+        assert!(matches!(&segments[0], TextSegment::Text(t) if t == "同意"));
+        assert!(matches!(&segments[1], TextSegment::Link { id, text } if id == "terms" && text == "用户协议"));
+        assert!(matches!(&segments[2], TextSegment::Text(t) if t == "和"));
+        assert!(matches!(&segments[3], TextSegment::Link { id, text } if id == "privacy" && text == "隐私政策"));
     }
 }

@@ -147,7 +147,7 @@ impl UninstallEngine {
 
     /// 获取当前卸载状态
     pub fn get_status(&self) -> String {
-        "正在卸载...".to_string()
+        "Uninstalling...".to_string()
     }
 }
 
@@ -165,7 +165,7 @@ impl UninstallTask {
         Self {
             engine: UninstallEngine::new(manifest),
             progress: 0.0,
-            status: "准备卸载...".to_string(),
+            status: "Preparing...".to_string(),
             is_completed: false,
             error: None,
         }
@@ -195,12 +195,12 @@ impl UninstallTask {
         match engine.uninstall() {
             Ok(_) => {
                 self.progress = 1.0;
-                self.status = "卸载完成".to_string();
+                self.status = "Uninstall complete".to_string();
                 self.is_completed = true;
             }
             Err(e) => {
                 self.error = Some(e);
-                self.status = "卸载失败".to_string();
+                self.status = "Uninstall failed".to_string();
             }
         }
 

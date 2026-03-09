@@ -1,7 +1,8 @@
-// 消息框系统
+// 消息框系统 — 支持 XML 布局渲染和代码渲染两种模式
 
 use eframe::egui;
 use std::collections::HashMap;
+use crate::layout::{LayoutTree, LayoutElement};
 
 /// 消息框类型
 #[derive(Debug, Clone, PartialEq)]
@@ -42,8 +43,10 @@ pub struct MessageBoxConfig {
     pub buttons: MessageBoxButton,
     pub width: Option<f32>,
     pub height: Option<f32>,
-    /// 是否使用 2x DPI（用于缩放字体、按钮、圆角等）
     pub use_2x: bool,
+    /// 按钮文本 (从 locale 读取)
+    pub ok_text: String,
+    pub cancel_text: String,
 }
 
 impl MessageBoxConfig {
@@ -56,43 +59,21 @@ impl MessageBoxConfig {
             width: None,
             height: None,
             use_2x: false,
+            ok_text: "OK".to_string(),
+            cancel_text: "Cancel".to_string(),
         }
     }
 
     pub fn error(title: String, message: String) -> Self {
-        Self {
-            title,
-            message,
-            message_type: MessageBoxType::Error,
-            buttons: MessageBoxButton::Ok,
-            width: None,
-            height: None,
-            use_2x: false,
-        }
+        Self { message_type: MessageBoxType::Error, ..Self::new(title, message) }
     }
 
     pub fn warning(title: String, message: String) -> Self {
-        Self {
-            title,
-            message,
-            message_type: MessageBoxType::Warning,
-            buttons: MessageBoxButton::Ok,
-            width: None,
-            height: None,
-            use_2x: false,
-        }
+        Self { message_type: MessageBoxType::Warning, ..Self::new(title, message) }
     }
 
     pub fn question(title: String, message: String) -> Self {
-        Self {
-            title,
-            message,
-            message_type: MessageBoxType::Question,
-            buttons: MessageBoxButton::YesNo,
-            width: None,
-            height: None,
-            use_2x: false,
-        }
+        Self { message_type: MessageBoxType::Question, buttons: MessageBoxButton::YesNo, ..Self::new(title, message) }
     }
 
     pub fn with_buttons(mut self, buttons: MessageBoxButton) -> Self {
@@ -115,26 +96,77 @@ impl MessageBoxConfig {
         self.use_2x = use_2x;
         self
     }
+
+    pub fn with_button_texts(mut self, ok: &str, cancel: &str) -> Self {
+        self.ok_text = ok.to_string();
+        self.cancel_text = cancel.to_string();
+        self
+    }
 }
 
 /// 消息框管理器
 pub struct MessageBoxManager {
     active_dialogs: HashMap<String, MessageBoxConfig>,
+    /// 每个对话框的 XML 布局（从 msgBox.xml 克隆并配置）
+    dialog_layouts: HashMap<String, LayoutTree>,
     next_id: u32,
+    /// 预加载的 msgBox.xml 模板
+    msgbox_template: Option<LayoutTree>,
 }
 
 impl MessageBoxManager {
     pub fn new() -> Self {
         Self {
             active_dialogs: HashMap::new(),
+            dialog_layouts: HashMap::new(),
             next_id: 0,
+            msgbox_template: None,
         }
+    }
+
+    /// 设置 msgBox.xml 模板（由 InstallerApp 在初始化时调用）
+    pub fn set_template(&mut self, template: LayoutTree) {
+        self.msgbox_template = Some(template);
     }
 
     /// 显示消息框
     pub fn show(&mut self, config: MessageBoxConfig) -> String {
         let id = format!("message_box_{}", self.next_id);
         self.next_id += 1;
+
+        // 如果有 XML 模板，克隆并配置布局
+        if let Some(ref template) = self.msgbox_template {
+            let mut layout = template.clone();
+            // 设置消息文本
+            Self::update_element_text(&mut layout.root, "lblMsg", &config.message);
+
+            // 配置按钮可见性和文本
+            match &config.buttons {
+                MessageBoxButton::OkCancel => {
+                    Self::update_element_visible(&mut layout.root, "btnCancel", true);
+                    Self::update_element_visible(&mut layout.root, "centerPadding", false);
+                    Self::update_element_text(&mut layout.root, "btnOK", &config.ok_text);
+                    Self::update_element_text(&mut layout.root, "btnCancel", &config.cancel_text);
+                }
+                MessageBoxButton::Ok => {
+                    Self::update_element_visible(&mut layout.root, "btnCancel", false);
+                    Self::update_element_visible(&mut layout.root, "centerPadding", false);
+                    Self::update_element_text(&mut layout.root, "btnOK", &config.ok_text);
+                }
+                MessageBoxButton::YesNo => {
+                    Self::update_element_visible(&mut layout.root, "btnCancel", true);
+                    Self::update_element_visible(&mut layout.root, "centerPadding", false);
+                    Self::update_element_text(&mut layout.root, "btnOK", &config.ok_text);
+                    Self::update_element_text(&mut layout.root, "btnCancel", &config.cancel_text);
+                }
+                _ => {
+                    Self::update_element_text(&mut layout.root, "btnOK", &config.ok_text);
+                }
+            }
+
+            self.dialog_layouts.insert(id.clone(), layout);
+        }
+
         self.active_dialogs.insert(id.clone(), config);
         id
     }
@@ -168,235 +200,227 @@ impl MessageBoxManager {
 
         for id in to_remove {
             self.active_dialogs.remove(&id);
+            self.dialog_layouts.remove(&id);
         }
 
         results
     }
 
     fn render_dialog(&self, ctx: &egui::Context, id: &str, config: &MessageBoxConfig, dpi_config: &crate::ui::dpi_handler::DpiConfig, resource_cache: &mut crate::ui::dpi_handler::ResourceCache) -> Option<MessageBoxResult> {
+        // 尝试使用 XML 渲染
+        if let Some(layout) = self.dialog_layouts.get(id) {
+            return self.render_dialog_xml(ctx, id, config, layout, dpi_config, resource_cache);
+        }
+
+        // 回退到代码渲染
+        self.render_dialog_code(ctx, id, config, dpi_config, resource_cache)
+    }
+
+    /// XML 布局渲染的对话框
+    fn render_dialog_xml(&self, ctx: &egui::Context, id: &str, config: &MessageBoxConfig, layout: &LayoutTree, dpi_config: &crate::ui::dpi_handler::DpiConfig, resource_cache: &mut crate::ui::dpi_handler::ResourceCache) -> Option<MessageBoxResult> {
         let mut result = None;
-        
-        // 根据 DPI 缩放所有尺寸（匹配 NSIS msgbox 布局）
-        let scale = if config.use_2x { 2.0 } else { 1.0 };
-        let rounding = 16.0 * scale;  // 1x: 16, 2x: 32（匹配 NSIS borderround）
-        let stroke_width = if config.use_2x { 2.0 } else { 1.0 };  // 1x: 1, 2x: 2（匹配 NSIS bordersize）
-        let message_font_size = if config.use_2x { 32.0 } else { 16.0 };  // 1x: 16, 2x: 32（匹配 NSIS font id="1"）
-        let button_font_size = if config.use_2x { 28.0 } else { 14.0 };  // 1x: 14, 2x: 28（匹配 NSIS font id="0"）
-        let button_width = if config.use_2x { 320.0 } else { 160.0 };  // 1x: 160, 2x: 320（匹配 NSIS）
-        let button_height = if config.use_2x { 80.0 } else { 40.0 };  // 1x: 40, 2x: 80（匹配 NSIS）
-        let button_rounding = if config.use_2x { 24.0 } else { 12.0 };  // 1x: 12, 2x: 24（匹配 NSIS borderround）
-        let top_spacing = if config.use_2x { 140.0 } else { 70.0 };  // 1x: 70, 2x: 140（匹配 NSIS Container height）
-        let message_height = if config.use_2x { 48.0 } else { 24.0 };  // 1x: 24, 2x: 48（匹配 NSIS HorizontalLayout height）
-        let middle_spacing = if config.use_2x { 128.0 } else { 64.0 };  // 1x: 64, 2x: 128（匹配 NSIS Container height）
-        let button_spacing = if config.use_2x { 144.0 } else { 72.0 };  // 1x: 72, 2x: 144（匹配 NSIS centerPadding width）
-        let side_margin = if config.use_2x { 64.0 } else { 32.0 };  // 1x: 32, 2x: 64（匹配 NSIS Container width）
-        
-        let width = config.width.unwrap_or(400.0);
-        let height = config.height.unwrap_or(200.0);
-        
-        // 使用 Area 替代 Window 以实现无边框对话框
-        // 注意：使用 viewport_rect 的中心点来居中对话框
-        let viewport_rect = ctx.viewport_rect();
-        let center = viewport_rect.center();
-        // 对话框位置：中心点减去对话框宽度和高度的一半
-        let dialog_pos = egui::pos2(center.x - width / 2.0, center.y - height / 2.0);
-        
-        // 将 rounding 转换为 CornerRadius（需要 u8，但我们可以使用 f32 并转换为合适的值）
-        let corner_radius = egui::CornerRadius::same(rounding as u8);
-        
+
+        let width = config.width.unwrap_or(
+            layout.root.attributes.width.unwrap_or(400.0)
+        );
+        let height = config.height.unwrap_or(
+            layout.root.attributes.height.unwrap_or(200.0)
+        );
+
+        // 基于主窗口基础尺寸居中
+        let base_w = dpi_config.window_width;
+        let base_h = dpi_config.window_height;
+        let dialog_pos = egui::pos2(
+            (base_w - width) / 2.0,
+            (base_h - height) / 2.0,
+        );
+
+        // 创建临时 LayoutRenderer — 用对话框自身尺寸做 Taffy 布局
+        let mut dialog_dpi = dpi_config.clone();
+        dialog_dpi.window_width = width;
+        dialog_dpi.window_height = height;
+        let mut renderer = crate::ui::layout_renderer::LayoutRenderer::new(
+            dialog_dpi,
+            HashMap::new(), // 对话框不需要 i18n (文本已经替换)
+        );
+
         egui::Area::new(egui::Id::new(id))
             .fixed_pos(dialog_pos)
             .movable(false)
             .show(ctx, |ui| {
-                // 设置 Area 的大小约束
                 ui.set_min_size(egui::vec2(width, height));
-                
-                // 绘制对话框背景（带圆角）
-                // 使用 ui.max_rect() 确保背景覆盖整个对话框区域
-                let dialog_rect = ui.max_rect();
+                ui.set_max_size(egui::vec2(width, height));
+
+                let render_result = renderer.render(ui, layout);
+
+                // 处理按钮点击
+                for (btn_id, clicked) in &render_result.button_clicks {
+                    if *clicked {
+                        let action = render_result.button_actions.get(btn_id)
+                            .map(|s| s.as_str())
+                            .unwrap_or(btn_id.as_str());
+                        match action {
+                            "dialog_ok" | "btnOK" => {
+                                result = Some(MessageBoxResult::Ok);
+                            }
+                            "dialog_cancel" | "btnCancel" => {
+                                result = Some(MessageBoxResult::Cancel);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            });
+
+        result
+    }
+
+    /// 代码渲染的对话框（回退方案）
+    fn render_dialog_code(&self, ctx: &egui::Context, id: &str, config: &MessageBoxConfig, dpi_config: &crate::ui::dpi_handler::DpiConfig, resource_cache: &mut crate::ui::dpi_handler::ResourceCache) -> Option<MessageBoxResult> {
+        let mut result = None;
+
+        let rounding = 16.0;
+        let stroke_width = 1.0;
+        let message_font_size = 16.0;
+        let button_font_size = 14.0;
+        let button_width = 160.0;
+        let button_height = 40.0;
+        let top_spacing = 70.0;
+        let message_height = 24.0;
+        let middle_spacing = 64.0;
+        let button_gap = 16.0;
+
+        let width = config.width.unwrap_or(400.0);
+        let height = config.height.unwrap_or(200.0);
+
+        let base_w = dpi_config.window_width;
+        let base_h = dpi_config.window_height;
+        let dialog_pos = egui::pos2(
+            (base_w - width) / 2.0,
+            (base_h - height) / 2.0,
+        );
+
+        let corner_radius = egui::CornerRadius::same(rounding as u8);
+
+        egui::Area::new(egui::Id::new(id))
+            .fixed_pos(dialog_pos)
+            .movable(false)
+            .show(ctx, |ui| {
+                ui.set_min_size(egui::vec2(width, height));
+                ui.set_max_size(egui::vec2(width, height));
+
+                let dialog_rect = egui::Rect::from_min_size(dialog_pos, egui::vec2(width, height));
                 ui.painter().rect_filled(dialog_rect, corner_radius, egui::Color32::from_rgb(42, 56, 68));
                 ui.painter().rect_stroke(
-                    dialog_rect, 
-                    corner_radius, 
+                    dialog_rect,
+                    corner_radius,
                     egui::Stroke::new(stroke_width, egui::Color32::from_rgb(71, 75, 89)),
                     egui::epaint::StrokeKind::Outside
                 );
-                
-                // 创建内容区域（匹配 NSIS 布局结构）
+
                 ui.allocate_ui(egui::vec2(width, height), |ui| {
                     ui.vertical(|ui| {
-                        // 顶部空白（匹配 NSIS Container height="140"/"70"）
                         ui.add_space(top_spacing);
-                        
-                        // 消息文本区域（匹配 NSIS HorizontalLayout height="48"/"24"）
+
                         ui.allocate_ui_with_layout(
                             egui::vec2(width, message_height),
                             egui::Layout::top_down(egui::Align::Center),
                             |ui| {
-                                // 消息文本（白色，居中，粗体，匹配 NSIS font id="1"）
                                 ui.label(
                                     egui::RichText::new(&config.message)
                                         .color(egui::Color32::WHITE)
                                         .size(message_font_size)
-                                        .strong()  // 粗体（匹配 NSIS bold="true"）
+                                        .strong()
                                 );
                             }
                         );
-                        
-                        // 中间空白（匹配 NSIS Container height="128"/"64"）
+
                         ui.add_space(middle_spacing);
-                        
-                        // 按钮区域（匹配 NSIS HorizontalLayout height="80"/"40"）
-                        ui.allocate_ui_with_layout(
-                            egui::vec2(width, button_height),
-                            egui::Layout::left_to_right(egui::Align::Center),
-                            |ui| {
-                                // 左侧边距（匹配 NSIS Container width="64"/"32"）
-                                ui.add_space(side_margin);
-                                
-                                // 按钮
-                                ui.horizontal(|ui| {
-                        match config.buttons {
-                            MessageBoxButton::Ok => {
-                                if ui.button("确定").clicked() {
-                                    result = Some(MessageBoxResult::Ok);
+
+                        {
+                            let total_buttons_width = button_width * 2.0 + button_gap;
+                            let buttons_x = dialog_pos.x + (width - total_buttons_width) / 2.0;
+                            let buttons_y = dialog_pos.y + top_spacing + message_height + middle_spacing;
+
+                            let cancel_rect = egui::Rect::from_min_size(
+                                egui::pos2(buttons_x, buttons_y),
+                                egui::vec2(button_width, button_height),
+                            );
+                            let ok_rect = egui::Rect::from_min_size(
+                                egui::pos2(buttons_x + button_width + button_gap, buttons_y),
+                                egui::vec2(button_width, button_height),
+                            );
+
+                            match config.buttons {
+                                MessageBoxButton::OkCancel => {
+                                    let cancel_response = ui.interact(cancel_rect, egui::Id::new(format!("{}_cancel", id)), egui::Sense::click());
+                                    if let Some(tex) = resource_cache.get_background(ctx, dpi_config, "assets/btn_dialog.png") {
+                                        ui.painter().image(tex.id(), cancel_rect, egui::Rect::from_min_max(egui::pos2(0.0,0.0), egui::pos2(1.0,1.0)), egui::Color32::WHITE);
+                                    }
+                                    ui.painter().text(cancel_rect.center(), egui::Align2::CENTER_CENTER, &config.cancel_text, egui::FontId::proportional(button_font_size), egui::Color32::WHITE);
+                                    if cancel_response.clicked() { result = Some(MessageBoxResult::Cancel); }
+                                    if cancel_response.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
+
+                                    let ok_response = ui.interact(ok_rect, egui::Id::new(format!("{}_ok", id)), egui::Sense::click());
+                                    if let Some(tex) = resource_cache.get_background(ctx, dpi_config, "assets/btn_dialog_primary.png") {
+                                        ui.painter().image(tex.id(), ok_rect, egui::Rect::from_min_max(egui::pos2(0.0,0.0), egui::pos2(1.0,1.0)), egui::Color32::WHITE);
+                                    }
+                                    ui.painter().text(ok_rect.center(), egui::Align2::CENTER_CENTER, &config.ok_text, egui::FontId::proportional(button_font_size), egui::Color32::WHITE);
+                                    if ok_response.clicked() { result = Some(MessageBoxResult::Ok); }
+                                    if ok_response.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
+                                }
+                                MessageBoxButton::Ok => {
+                                    let single_x = dialog_pos.x + (width - button_width) / 2.0;
+                                    let single_rect = egui::Rect::from_min_size(egui::pos2(single_x, buttons_y), egui::vec2(button_width, button_height));
+                                    let resp = ui.interact(single_rect, egui::Id::new(format!("{}_ok", id)), egui::Sense::click());
+                                    if let Some(tex) = resource_cache.get_background(ctx, dpi_config, "assets/btn_dialog_primary.png") {
+                                        ui.painter().image(tex.id(), single_rect, egui::Rect::from_min_max(egui::pos2(0.0,0.0), egui::pos2(1.0,1.0)), egui::Color32::WHITE);
+                                    }
+                                    ui.painter().text(single_rect.center(), egui::Align2::CENTER_CENTER, &config.ok_text, egui::FontId::proportional(button_font_size), egui::Color32::WHITE);
+                                    if resp.clicked() { result = Some(MessageBoxResult::Ok); }
+                                }
+                                _ => {
+                                    ui.horizontal(|ui| {
+                                        if ui.button(&config.ok_text).clicked() { result = Some(MessageBoxResult::Ok); }
+                                    });
                                 }
                             }
-                            MessageBoxButton::Cancel => {
-                                if ui.button("取消").clicked() {
-                                    result = Some(MessageBoxResult::Cancel);
-                                }
-                            }
-                            MessageBoxButton::Yes => {
-                                if ui.button("是").clicked() {
-                                    result = Some(MessageBoxResult::Yes);
-                                }
-                            }
-                            MessageBoxButton::No => {
-                                if ui.button("否").clicked() {
-                                    result = Some(MessageBoxResult::No);
-                                }
-                            }
-                            MessageBoxButton::YesNo => {
-                                if ui.button("是").clicked() {
-                                    result = Some(MessageBoxResult::Yes);
-                                }
-                                ui.add_space(10.0);
-                                if ui.button("否").clicked() {
-                                    result = Some(MessageBoxResult::No);
-                                }
-                            }
-                            MessageBoxButton::OkCancel => {
-                                // 取消按钮（使用 btn_dialog 图片，次要按钮，在左侧）
-                                // 匹配 NSIS btnCancel: width="320"/"160", height="80"/"40", borderround="24,24"/"12,12"
-                                let cancel_button_path = if config.use_2x { "assets/btn_dialog@2x.png" } else { "assets/btn_dialog.png" };
-                                let cancel_button_texture = resource_cache.get_background(ctx, dpi_config, cancel_button_path);
-                                
-                                // 分配按钮空间
-                                let (cancel_button_rect, cancel_response) = ui.allocate_exact_size(
-                                    egui::vec2(button_width, button_height),
-                                    egui::Sense::click()
-                                );
-                                
-                                // 绘制取消按钮背景图片
-                                if let Some(texture) = cancel_button_texture {
-                                    ui.painter().image(
-                                        texture.id(),
-                                        cancel_button_rect,
-                                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                                        egui::Color32::WHITE,
-                                    );
-                                } else {
-                                    // 回退：使用纯色背景
-                                    ui.painter().rect_filled(
-                                        cancel_button_rect,
-                                        egui::CornerRadius::same(button_rounding as u8),
-                                        egui::Color32::from_rgb(42, 56, 68)
-                                    );
-                                }
-                                
-                                // 绘制取消按钮文本
-                                ui.painter().text(
-                                    cancel_button_rect.center(),
-                                    egui::Align2::CENTER_CENTER,
-                                    "取消",
-                                    egui::FontId::proportional(button_font_size),
-                                    egui::Color32::WHITE,
-                                );
-                                
-                                if cancel_response.clicked() {
-                                    result = Some(MessageBoxResult::Cancel);
-                                }
-                                
-                                // 按钮间距（匹配 NSIS centerPadding width="144"/"72"）
-                                ui.add_space(button_spacing);
-                                
-                                // 确定按钮（使用 btn_dialog_primary 图片，主要按钮，在右侧）
-                                // 匹配 NSIS btnOK: width="320"/"160", height="80"/"40", borderround="24,24"/"12,12"
-                                let confirm_button_path = if config.use_2x { "assets/btn_dialog_primary@2x.png" } else { "assets/btn_dialog_primary.png" };
-                                let confirm_button_texture = resource_cache.get_background(ctx, dpi_config, confirm_button_path);
-                                
-                                // 分配按钮空间
-                                let (confirm_button_rect, confirm_response) = ui.allocate_exact_size(
-                                    egui::vec2(button_width, button_height),
-                                    egui::Sense::click()
-                                );
-                                
-                                // 绘制确定按钮背景图片
-                                if let Some(texture) = confirm_button_texture {
-                                    ui.painter().image(
-                                        texture.id(),
-                                        confirm_button_rect,
-                                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                                        egui::Color32::WHITE,
-                                    );
-                                } else {
-                                    // 回退：使用纯色背景
-                                    ui.painter().rect_filled(
-                                        confirm_button_rect,
-                                        egui::CornerRadius::same(button_rounding as u8),
-                                        egui::Color32::from_rgb(0, 196, 178)
-                                    );
-                                }
-                                
-                                // 绘制确定按钮文本
-                                ui.painter().text(
-                                    confirm_button_rect.center(),
-                                    egui::Align2::CENTER_CENTER,
-                                    "确定",
-                                    egui::FontId::proportional(button_font_size),
-                                    egui::Color32::WHITE,
-                                );
-                                
-                                if confirm_response.clicked() {
-                                    result = Some(MessageBoxResult::Ok);
-                                }
-                            }
-                            MessageBoxButton::YesNoCancel => {
-                                if ui.button("是").clicked() {
-                                    result = Some(MessageBoxResult::Yes);
-                                }
-                                ui.add_space(10.0);
-                                if ui.button("否").clicked() {
-                                    result = Some(MessageBoxResult::No);
-                                }
-                                ui.add_space(10.0);
-                                if ui.button("取消").clicked() {
-                                    result = Some(MessageBoxResult::Cancel);
-                                }
-                            }
+                            ui.allocate_space(egui::vec2(width, button_height));
                         }
-                                });
-                                
-                                // 右侧边距（匹配 NSIS Container width="64"/"32"）
-                                ui.add_space(side_margin);
-                            }
-                        );
                     });
                 });
             });
 
         result
+    }
+
+    /// 递归更新元素文本
+    fn update_element_text(element: &mut LayoutElement, target_id: &str, text: &str) {
+        if let Some(id) = &element.attributes.id {
+            if id == target_id {
+                element.attributes.text = Some(text.to_string());
+                return;
+            }
+        }
+        for child in &mut element.children {
+            Self::update_element_text(child, target_id, text);
+        }
+    }
+
+    /// 递归更新元素可见性
+    fn update_element_visible(element: &mut LayoutElement, target_id: &str, visible: bool) {
+        if let Some(id) = &element.attributes.id {
+            if id == target_id {
+                element.attributes.visible = Some(visible);
+                if let Some(vs) = &mut element.visual_style {
+                    vs.visible = visible;
+                }
+                return;
+            }
+        }
+        for child in &mut element.children {
+            Self::update_element_visible(child, target_id, visible);
+        }
     }
 
     /// 检查是否有活跃的消息框
@@ -407,6 +431,7 @@ impl MessageBoxManager {
     /// 关闭所有消息框
     pub fn close_all(&mut self) {
         self.active_dialogs.clear();
+        self.dialog_layouts.clear();
     }
 }
 

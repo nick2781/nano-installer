@@ -3,6 +3,7 @@
 pub mod engine;
 pub mod state;
 pub mod tasks;
+pub mod task_runner;
 pub mod registry;
 pub mod extractor;
 pub mod shortcuts;
@@ -20,3 +21,4 @@ pub use extractor::{SevenZipExtractor, ExtractionResult, ExtractionStatus};
 pub use shortcuts::ShortcutCreator;
 pub use channel::ChannelManager;
 pub use launcher::AppLauncher;
+pub use task_runner::{TaskRunner, TaskConfig};

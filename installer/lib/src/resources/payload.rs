@@ -79,10 +79,8 @@ impl PayloadExtractor {
         Ok(payload_data)
     }
 
-    /// 解压 7z 数据到目标目录
+    /// 解压 7z 数据到目标目录（先尝试系统 7z，回退到 sevenz-rust）
     pub fn extract_7z_to_dir(data: &[u8], dest_dir: &Path) -> Result<()> {
-        use std::io::Cursor;
-
         tracing::info!("Extracting 7z archive to {:?}", dest_dir);
 
         std::fs::create_dir_all(dest_dir)?;
@@ -96,27 +94,49 @@ impl PayloadExtractor {
             file.write_all(data)?;
         }
 
-        // 使用系统7z命令解压
-        let output = std::process::Command::new("7z")
-            .arg("x")
-            .arg(&temp_7z)
-            .arg(format!("-o{}", dest_dir.display()))
-            .arg("-y") // 自动确认
-            .output()
-            .map_err(|e| Error::Archive(format!("Failed to run 7z command: {}", e)))?;
+        // 先尝试系统 7z 命令
+        let system_7z_ok = ["7z", "7za", "7zr"].iter().any(|cmd| {
+            match std::process::Command::new(cmd)
+                .arg("x")
+                .arg(&temp_7z)
+                .arg(format!("-o{}", dest_dir.display()))
+                .arg("-y")
+                .output()
+            {
+                Ok(output) if output.status.success() => {
+                    tracing::info!("Extracted using system {}", cmd);
+                    true
+                }
+                _ => false,
+            }
+        });
 
-        if !output.status.success() {
-            return Err(Error::Archive(format!(
-                "7z extraction failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            )));
+        if !system_7z_ok {
+            // 检测文件格式: 7z 头 = [0x37, 0x7A], ZIP 头 = [0x50, 0x4B]
+            let is_zip = data.len() >= 2 && data[0] == 0x50 && data[1] == 0x4B;
+
+            if is_zip {
+                // ZIP 格式 — 使用 zip crate 解压
+                tracing::info!("Detected ZIP format, using zip crate");
+                let cursor = std::io::Cursor::new(data);
+                let mut archive = zip::ZipArchive::new(cursor)
+                    .map_err(|e| Error::Archive(format!("ZIP open failed: {}", e)))?;
+                archive.extract(dest_dir)
+                    .map_err(|e| Error::Archive(format!("ZIP extraction failed: {}", e)))?;
+                tracing::info!("Extracted using zip crate");
+            } else {
+                // 7z 格式 — 使用 sevenz-rust
+                tracing::info!("Using sevenz-rust library");
+                sevenz_rust::decompress_file(&temp_7z, dest_dir)
+                    .map_err(|e| Error::Archive(format!("7z extraction failed: {}", e)))?;
+                tracing::info!("Extracted using sevenz-rust");
+            }
         }
 
-        // 删除临时文件
+        // 清理临时文件
         let _ = std::fs::remove_file(&temp_7z);
 
         tracing::info!("Extraction completed");
-
         Ok(())
     }
 

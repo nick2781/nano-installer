@@ -66,7 +66,7 @@ impl RuntimeResources {
     pub fn get_layout(name: &str) -> Result<String> {
         let resources = RUNTIME_RESOURCES.get()
             .context("Runtime resources not initialized")?;
-        let mut resources = resources.write();
+        let resources = resources.write();
         
         // 确保 UI 资源已解压
         let ui_files = resources.ui_files.get_or_try_init(|| {
@@ -95,7 +95,7 @@ impl RuntimeResources {
     pub fn get_asset(name: &str) -> Result<Vec<u8>> {
         let resources = RUNTIME_RESOURCES.get()
             .context("Runtime resources not initialized")?;
-        let mut resources = resources.write();
+        let resources = resources.write();
         
         // 确保 UI 资源已解压
         let ui_files = resources.ui_files.get_or_try_init(|| {
@@ -115,7 +115,7 @@ impl RuntimeResources {
     pub fn get_locale(locale: &str) -> Result<Vec<u8>> {
         let resources = RUNTIME_RESOURCES.get()
             .context("Runtime resources not initialized")?;
-        let mut resources = resources.write();
+        let resources = resources.write();
         
         // 确保 locale 资源已解压
         let locale_files = resources.locale_files.get_or_try_init(|| {
@@ -155,7 +155,7 @@ impl RuntimeResources {
             Some(r) => r,
             None => return Vec::new(),
         };
-        let mut resources = resources.write();
+        let resources = resources.write();
         
         // 确保 UI 资源已解压
         let ui_files = match resources.ui_files.get_or_try_init(|| {
@@ -179,7 +179,7 @@ impl RuntimeResources {
             Some(r) => r,
             None => return Vec::new(),
         };
-        let mut resources = resources.write();
+        let resources = resources.write();
         
         // 确保 UI 资源已解压
         let ui_files = match resources.ui_files.get_or_try_init(|| {
@@ -203,7 +203,7 @@ impl RuntimeResources {
             Some(r) => r,
             None => return Vec::new(),
         };
-        let mut resources = resources.write();
+        let resources = resources.write();
         
         // 确保 locale 资源已解压
         let locale_files = match resources.locale_files.get_or_try_init(|| {

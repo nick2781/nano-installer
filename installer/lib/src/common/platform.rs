@@ -91,7 +91,8 @@ pub fn request_elevation(args: &[String]) -> Result<()> {
 
     let exe_path = std::env::current_exe()?;
     let exe_path_str = exe_path.to_string_lossy().to_string();
-    let args_str = args.join(" ");
+    // Skip args[0] (exe path) — ShellExecuteW takes file and params separately
+    let args_str = if args.len() > 1 { args[1..].join(" ") } else { String::new() };
 
     unsafe {
         let verb = w!("runas");

@@ -39,6 +39,9 @@ pub struct InstallerConfig {
     pub validation: ValidationConfig,
     /// 高级选项
     pub advanced: AdvancedConfig,
+    /// 可配置安装任务流水线 (可选, 不配置则用默认流水线)
+    #[serde(default)]
+    pub install_tasks: Option<Vec<crate::installer::task_runner::TaskConfig>>,
 }
 
 /// 项目信息配置
@@ -140,14 +143,8 @@ pub struct LocalizationConfig {
     pub show_language_selector: bool,
 }
 
-/// 外部链接配置
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LinksConfig {
-    /// 服务协议链接
-    pub terms_of_service: String,
-    /// 隐私政策链接
-    pub privacy_policy: String,
-}
+/// 外部链接配置 (通用 key→URL 映射)
+pub type LinksConfig = std::collections::HashMap<String, String>;
 
 /// 资源路径配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -175,17 +172,29 @@ pub struct UiConfig {
     pub window_height: u32,
     /// 展开自定义选项后的高度
     pub expanded_height: u32,
+    /// 对话框宽度 (消息框等)
+    #[serde(default = "default_dialog_width")]
+    pub dialog_width: u32,
+    /// 对话框高度
+    #[serde(default = "default_dialog_height")]
+    pub dialog_height: u32,
     /// DPI自适应
     pub dpi_aware: bool,
     /// DPI阈值（>=此值用2x资源）
     pub dpi_threshold: u32,
 }
 
+fn default_dialog_width() -> u32 { 400 }
+fn default_dialog_height() -> u32 { 230 }
+
 /// 向导流程配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WizardConfig {
     /// 安装页面列表
     pub pages: Vec<PageConfig>,
+    /// 更新模式页面列表 (跳过配置页, 直接 installing -> finish)
+    #[serde(default)]
+    pub update_pages: Vec<PageConfig>,
     /// 卸载页面列表
     pub uninstall_pages: Vec<PageConfig>,
 }
@@ -339,9 +348,11 @@ impl Default for InstallerConfig {
                 supported_locales: vec!["en-US".to_string()],
                 show_language_selector: false,
             },
-            links: LinksConfig {
-                terms_of_service: "https://www.myapp.com/terms".to_string(),
-                privacy_policy: "https://www.myapp.com/privacy".to_string(),
+            links: {
+                let mut m = std::collections::HashMap::new();
+                m.insert("terms_of_service".to_string(), "https://www.myapp.com/terms".to_string());
+                m.insert("privacy_policy".to_string(), "https://www.myapp.com/privacy".to_string());
+                m
             },
             resources: ResourcesConfig {
                 layouts_dir: "layouts".to_string(),
@@ -355,6 +366,8 @@ impl Default for InstallerConfig {
                 window_width: 574,
                 window_height: 358,
                 expanded_height: 518,
+                dialog_width: 400,
+                dialog_height: 230,
                 dpi_aware: true,
                 dpi_threshold: 144,
             },
@@ -363,34 +376,46 @@ impl Default for InstallerConfig {
                     PageConfig {
                         id: "config".to_string(),
                         layout: "configpage.xml".to_string(),
-                        title: "安装配置".to_string(),
+                        title: "Configuration".to_string(),
                     },
                     PageConfig {
                         id: "installing".to_string(),
                         layout: "installingpage.xml".to_string(),
-                        title: "正在安装".to_string(),
+                        title: "Installing".to_string(),
                     },
                     PageConfig {
                         id: "finish".to_string(),
                         layout: "finishpage.xml".to_string(),
-                        title: "安装完成".to_string(),
+                        title: "Complete".to_string(),
+                    },
+                ],
+                update_pages: vec![
+                    PageConfig {
+                        id: "installing".to_string(),
+                        layout: "installingpage.xml".to_string(),
+                        title: "Updating".to_string(),
+                    },
+                    PageConfig {
+                        id: "finish".to_string(),
+                        layout: "finishpage.xml".to_string(),
+                        title: "Update Complete".to_string(),
                     },
                 ],
                 uninstall_pages: vec![
                     PageConfig {
-                        id: "uninstall_config".to_string(),
+                        id: "uninstall_confirm".to_string(),
                         layout: "uninstallpage.xml".to_string(),
-                        title: "卸载确认".to_string(),
+                        title: "Confirm Uninstall".to_string(),
                     },
                     PageConfig {
-                        id: "uninstalling".to_string(),
+                        id: "uninstall_progress".to_string(),
                         layout: "uninstallingpage.xml".to_string(),
-                        title: "正在卸载".to_string(),
+                        title: "Uninstalling".to_string(),
                     },
                     PageConfig {
                         id: "uninstall_finish".to_string(),
                         layout: "uninstallfinishpage.xml".to_string(),
-                        title: "卸载完成".to_string(),
+                        title: "Uninstall Complete".to_string(),
                     },
                 ],
             },
@@ -420,6 +445,7 @@ impl Default for InstallerConfig {
                 uninstall_mode_support: true,
                 launch_app_after_install: true,
             },
+            install_tasks: None,
         }
     }
 }

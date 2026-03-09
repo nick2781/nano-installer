@@ -36,8 +36,12 @@ impl SevenZipExtractor {
         std::fs::create_dir_all(target_dir)
             .map_err(|e| Error::InstallationFailed(format!("Failed to create target directory: {}", e)))?;
 
-        // 创建临时文件
-        let temp_file = std::env::temp_dir().join("temp_archive.7z");
+        // 创建临时文件 (unique name to avoid conflicts)
+        let unique_id = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let temp_file = std::env::temp_dir().join(format!("nano_installer_{}.7z", unique_id));
         std::fs::write(&temp_file, archive_data)
             .map_err(|e| Error::InstallationFailed(format!("Failed to write temp file: {}", e)))?;
 
@@ -77,12 +81,24 @@ impl SevenZipExtractor {
     }
 
     /// 使用Rust库解压（备用方案）
-    fn extract_with_rust_library(&self, _archive_path: &Path, _target_dir: &Path) -> Result<(), Error> {
-        // 这里可以使用 sevenz-rust 或其他Rust解压库
-        // 目前先返回错误，提示用户安装7z
-        Err(Error::InstallationFailed(
-            "7z extraction failed. Please install 7-Zip or 7za command line tool.".to_string()
-        ))
+    fn extract_with_rust_library(&self, archive_path: &Path, target_dir: &Path) -> Result<(), Error> {
+        info!("Extracting 7z archive using sevenz-rust library: {:?}", archive_path);
+
+        // Report initial progress
+        if let Some(ref cb) = self.progress_callback {
+            cb(0.0);
+        }
+
+        sevenz_rust::decompress_file(archive_path, target_dir)
+            .map_err(|e| Error::InstallationFailed(format!("7z extraction failed: {}", e)))?;
+
+        // Report completion
+        if let Some(ref cb) = self.progress_callback {
+            cb(1.0);
+        }
+
+        info!("7z extraction completed successfully using sevenz-rust");
+        Ok(())
     }
 
     /// 异步解压（在后台线程中执行）
@@ -96,30 +112,33 @@ impl SevenZipExtractor {
         let progress_callback = self.progress_callback;
 
         thread::spawn(move || {
-            let mut extraction_result = result_clone.lock().unwrap();
-            extraction_result.status = ExtractionStatus::Running;
-
-            // 模拟解压过程
-            for i in 0..=100 {
-                if let Some(ref callback) = progress_callback {
-                    callback(i as f32 / 100.0);
-                }
-                
-                // 模拟解压延迟
-                std::thread::sleep(std::time::Duration::from_millis(50));
-                
-                extraction_result.progress = i as f32 / 100.0;
+            {
+                let mut extraction_result = result_clone.lock().unwrap();
+                extraction_result.status = ExtractionStatus::Running;
             }
 
-            // 实际解压
-            let extractor = SevenZipExtractor::new();
+            // Set up a real extractor with progress reporting that updates both
+            // the shared result and the user-provided callback
+            let result_for_progress = Arc::clone(&result_clone);
+            let mut extractor = SevenZipExtractor::new();
+            extractor.set_progress_callback(move |progress| {
+                if let Ok(mut r) = result_for_progress.lock() {
+                    r.progress = progress;
+                }
+                if let Some(ref callback) = progress_callback {
+                    callback(progress);
+                }
+            });
+
             match extractor.extract_7z_to_dir(&archive_data, &target_dir) {
                 Ok(_) => {
+                    let mut extraction_result = result_clone.lock().unwrap();
                     extraction_result.status = ExtractionStatus::Completed;
                     extraction_result.progress = 1.0;
                     info!("Extraction completed successfully");
                 }
                 Err(e) => {
+                    let mut extraction_result = result_clone.lock().unwrap();
                     extraction_result.status = ExtractionStatus::Failed;
                     extraction_result.error = Some(e.to_string());
                     error!("Extraction failed: {}", e);

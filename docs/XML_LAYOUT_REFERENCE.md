@@ -2,7 +2,7 @@
 
 > 本文档是 nano-installer XML 布局系统的完整参考手册，面向安装器界面开发者。
 
-**重要提示**：nano-installer **完全兼容 NSIS 布局格式**，可以直接使用 NSIS 的 XML 布局文件，同时也支持传统的布局格式（向后兼容）。
+**重要提示**：nano-installer 使用 **NSIS 布局格式**，可以直接使用 NSIS 的 XML 布局文件。
 
 ## 📑 目录
 
@@ -20,30 +20,7 @@
 
 ## 🚀 快速开始
 
-### 第一个布局文件（传统格式）
-
-创建 `layouts/welcome.xml`：
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<Layout name="Welcome" version="1.0.0">
-  <Page>
-    <VBox spacing="20" padding="30">
-      <Label text="欢迎安装" text_i18n="welcome.title" font_size="24" />
-      <Label text="点击下一步继续" text_i18n="welcome.message" />
-      
-      <Spacer flex="1" />
-      
-      <HBox spacing="10">
-        <Spacer flex="1" />
-        <Button text="下一步" text_i18n="button.next" min_width="100" />
-      </HBox>
-    </VBox>
-  </Page>
-</Layout>
-```
-
-### 第一个布局文件（NSIS 格式）
+### 第一个布局文件
 
 创建 `layouts/welcome.xml`：
 
@@ -65,18 +42,16 @@
 </Windows>
 ```
 
-## NSIS 格式支持
+## 布局格式
 
-nano-installer **完全兼容** NSIS 布局格式，这意味着：
+nano-installer 使用 **NSIS 布局格式**，这意味着：
 
 ✅ **可以直接使用 NSIS 的布局文件**，无需任何转换  
-✅ **保持向后兼容**，现有布局文件仍然可用  
-✅ **与 NSIS 完全一致**，便于参考和调试  
-✅ **无需维护两套布局文件**
+✅ **与 NSIS 完全一致**，便于参考和调试
 
-### 格式对比
+### 格式说明
 
-| 特性 | 传统格式 | NSIS 格式 |
+| 特性 | NSIS 格式 |
 |------|---------|-----------|
 | 根元素 | `<Layout><Page>` | `<Windows>` 或 `<Window>` |
 | 垂直布局 | `<VBox>` | `<VerticalLayout>` |

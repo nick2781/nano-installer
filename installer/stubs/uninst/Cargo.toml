@@ -4,21 +4,16 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
-description = "Lightweight uninstaller stub with pure Win32 API"
+description = "Uninstaller stub - same engine as installer, runs in uninstall mode"
 
 [[bin]]
 name = "uninst"
 path = "src/main.rs"
 
 [dependencies]
-serde.workspace = true
-serde_json.workspace = true
+nano-installer-lib = { path = "../../lib" }
 anyhow.workspace = true
-
-[target.'cfg(windows)'.dependencies]
-windows.workspace = true
+tracing.workspace = true
 
 [build-dependencies]
 winres.workspace = true
-
-

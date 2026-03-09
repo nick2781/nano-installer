@@ -1,5 +1,5 @@
 /// 安装器运行时模块
-/// 
+///
 /// 提供统一的安装器和卸载器入口点
 
 use anyhow::{Context, Result};
@@ -12,34 +12,35 @@ pub use mode::InstallerMode;
 use crate::config::InstallerConfig;
 use crate::resources::RuntimeResources;
 use crate::ui::InstallerApp;
+use crate::ui::WizardMode;
 
 /// 运行安装器
-/// 
+///
 /// 注意：调用者需要先初始化日志和运行时资源
 pub fn run_installer(mode: InstallerMode) -> Result<()> {
     // 1. 加载配置
     let config = RuntimeResources::get_config()
         .context("Failed to load installer config")?;
-    
-    tracing::info!("Starting {} v{} in {:?} mode", 
+
+    // 自动检测更新模式（仅当 CLI 未明确指定模式时）
+    // 注意：自动检测需要用户显式通过 --mode update 或在 config 中配置
+    // 不会自动跳过配置页，避免用户困惑
+
+    tracing::info!("Starting {} v{} in {:?} mode",
         config.project.name, config.project.version, mode);
-    
+
     // 2. 根据模式运行
     match mode {
-        InstallerMode::Install => run_install_mode(config),
+        InstallerMode::Install => run_install_mode(config, WizardMode::Install),
+        InstallerMode::Update => run_install_mode(config, WizardMode::Update),
+        InstallerMode::Silent => run_silent_mode(config),
         InstallerMode::Uninstall => run_uninstall_mode(config),
     }
 }
 
-/// 安装模式
-fn run_install_mode(config: InstallerConfig) -> Result<()> {
-    // 检查互斥锁
-    if !config.install.mutex_name.is_empty() {
-        crate::common::mutex::init_global_mutex(&config.install.mutex_name)
-            .map_err(|e| anyhow::anyhow!("Failed to init mutex: {}", e))?;
-    }
-    
-    // 检查管理员权限
+/// 安装/更新模式
+fn run_install_mode(config: InstallerConfig, wizard_mode: WizardMode) -> Result<()> {
+    // 先检查管理员权限 (必须在 mutex 之前, 否则提权后的新进程无法获取 mutex)
     #[cfg(windows)]
     if config.install.require_admin {
         if !crate::common::platform::is_elevated()
@@ -51,134 +52,174 @@ fn run_install_mode(config: InstallerConfig) -> Result<()> {
             return Ok(());
         }
     }
-    
-    // 启动 GUI
-    run_gui_install(config)
+
+    // 已提权, 再获取互斥锁
+    if !config.install.mutex_name.is_empty() {
+        crate::common::mutex::init_global_mutex(&config.install.mutex_name)
+            .map_err(|e| anyhow::anyhow!("Failed to init mutex: {}", e))?;
+    }
+
+    run_gui(config, wizard_mode)
 }
 
 /// 卸载模式
-fn run_uninstall_mode(_config: InstallerConfig) -> Result<()> {
-    // TODO: 实现卸载 GUI
-    tracing::info!("Uninstall mode not yet implemented");
-    println!("Uninstaller is not yet implemented");
+fn run_uninstall_mode(config: InstallerConfig) -> Result<()> {
+    // 先检查管理员权限
+    #[cfg(windows)]
+    if config.install.require_admin {
+        if !crate::common::platform::is_elevated()
+            .map_err(|e| anyhow::anyhow!("Failed to check elevation: {}", e))? {
+            tracing::warn!("Uninstaller requires admin privileges, attempting elevation...");
+            let args: Vec<String> = std::env::args().collect();
+            crate::common::platform::request_elevation(&args)
+                .map_err(|e| anyhow::anyhow!("Failed to request elevation: {}", e))?;
+            return Ok(());
+        }
+    }
+
+    // 已提权, 再获取互斥锁
+    if !config.install.mutex_name.is_empty() {
+        let mutex_name = format!("{}_Uninstall", config.install.mutex_name);
+        crate::common::mutex::init_global_mutex(&mutex_name)
+            .map_err(|e| anyhow::anyhow!("Failed to init uninstall mutex: {}", e))?;
+    }
+
+    run_gui(config, WizardMode::Uninstall)
+}
+
+/// 静默安装模式 (无 GUI)
+fn run_silent_mode(config: InstallerConfig) -> Result<()> {
+    use crate::installer::state::InstallState;
+    use crate::installer::task_runner::TaskRunner;
+
+    tracing::info!("Running silent installation");
+
+    // 检查互斥锁
+    if !config.install.mutex_name.is_empty() {
+        crate::common::mutex::init_global_mutex(&config.install.mutex_name)
+            .map_err(|e| anyhow::anyhow!("Failed to init mutex: {}", e))?;
+    }
+
+    // 检查管理员权限
+    #[cfg(windows)]
+    if config.install.require_admin {
+        if !crate::common::platform::is_elevated()
+            .map_err(|e| anyhow::anyhow!("Failed to check elevation: {}", e))? {
+            let args: Vec<String> = std::env::args().collect();
+            crate::common::platform::request_elevation(&args)
+                .map_err(|e| anyhow::anyhow!("Failed to request elevation: {}", e))?;
+            return Ok(());
+        }
+    }
+
+    // 确定安装路径
+    let install_path = InstallerMode::get_cli_install_path()
+        .unwrap_or_else(|| config.install.default_path.clone());
+
+    tracing::info!("Silent install path: {}", install_path);
+
+    // 创建安装目录
+    std::fs::create_dir_all(&install_path)
+        .map_err(|e| anyhow::anyhow!("Cannot create directory {}: {}", install_path, e))?;
+
+    // 创建安装状态
+    let state = InstallState::new(install_path.clone());
+    state.set_create_desktop_shortcut(config.shortcuts.desktop_default);
+    state.set_create_start_menu_shortcut(config.shortcuts.start_menu);
+
+    // 使用 TaskRunner 执行任务流水线
+    let mut runner = TaskRunner::new(&config);
+    runner.execute(&state, &config)
+        .map_err(|e| anyhow::anyhow!("Silent installation failed: {}", e))?;
+
+    tracing::info!("Silent installation completed successfully");
+
+    // 安装完成后启动应用
+    if config.advanced.launch_app_after_install {
+        let exe_path = format!("{}\\{}", install_path, config.install.exe_name);
+        tracing::info!("Launching app: {}", exe_path);
+        let _ = std::process::Command::new(&exe_path).spawn();
+    }
+
     Ok(())
 }
 
-/// 运行 GUI 安装
-fn run_gui_install(config: InstallerConfig) -> Result<()> {
-    // 加载图标
+/// 运行 GUI（安装/更新/卸载模式通用）
+fn run_gui(config: InstallerConfig, wizard_mode: WizardMode) -> Result<()> {
     let icon = load_icon_from_config(&config)?;
-    
-    // 注意：在窗口创建前，我们无法准确检测到真实的系统 DPI（因为 DPI 感知模式）
-    // 所以先使用一个合理的默认值，然后在窗口创建回调中根据 egui 检测到的真实 DPI 调整
-    // 默认使用 2x 大小（1148x716），因为大多数高 DPI 显示器都是 192 DPI
-    // 如果实际是 96 DPI，会在回调中调整为 1x（574x358）
-    eprintln!("[窗口] 开始创建窗口 - 调用位置: run_gui_install");
-    eprintln!("[窗口] 初始窗口大小: 1148x716 (2x，将在窗口创建后根据实际 DPI 调整)");
-    
+
+    let win_w = config.ui.window_width as f32;
+    let win_h = config.ui.window_height as f32;
+
+    let title_prefix = match wizard_mode {
+        WizardMode::Install => "Setup",
+        WizardMode::Update => "Update",
+        WizardMode::Uninstall => "Uninstall",
+    };
+
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title(format!("{} Setup", config.project.name))
-            .with_inner_size([1148.0, 716.0])  // 默认使用 2x 大小
+            .with_title(format!("{} {}", config.project.name, title_prefix))
+            .with_inner_size([win_w, win_h])
             .with_resizable(false)
-            .with_decorations(false)  // 无边框窗口
-            .with_transparent(true)  // 启用透明背景以支持圆角
+            .with_decorations(false)
+            .with_transparent(true)
             .with_icon(icon.unwrap_or_default()),
-        centered: true,  // 自动居中显示
+        centered: true,
         ..Default::default()
     };
-    
-    // 创建一个假的 config_base_path（因为资源都嵌入了）
+
     let config_base_path = PathBuf::from(".");
-    
+
     eframe::run_native(
-        &format!("{} Setup", config.project.name),
+        &format!("{} {}", config.project.name, title_prefix),
         native_options,
         Box::new(move |cc| {
-            // 注意：窗口圆角通过透明背景和背景图片的圆角边缘来实现视觉效果
-            // Windows 11+ 的系统级圆角需要在窗口完全创建后通过 DwmSetWindowAttribute 设置
-            // 这里先使用透明背景，圆角效果由背景图片提供
-            
-            // 在窗口创建后，此时线程应该已经是 AWARE 模式了
-            // 使用 GetDpiForSystem() 再次检测真实的系统 DPI
-            #[cfg(target_os = "windows")]
-            let window_dpi = {
-                use windows::Win32::UI::HiDpi::GetDpiForSystem;
-                
-                unsafe {
-                    let dpi = GetDpiForSystem() as u32;
-                    eprintln!("[窗口创建] 窗口创建后 GetDpiForSystem() = {} (此时应该是 AWARE 模式)", dpi);
-                    dpi
-                }
-            };
-            
-            #[cfg(not(target_os = "windows"))]
-            let window_dpi = 96;
-            
-            // 根据窗口 DPI 判断使用 1x 还是 2x（与 NSIS 一致：>= 144 使用 2x）
-            let actual_use_2x = window_dpi >= config.ui.dpi_threshold;
-            let (actual_window_width, actual_window_height) = if actual_use_2x {
-                (1148.0, 716.0)
-            } else {
-                (574.0, 358.0)
-            };
-            
-            let scale_factor = window_dpi as f32 / 96.0;
-            
-            eprintln!("[窗口创建] 根据窗口 DPI 计算: DPI={}, use_2x={}, 窗口大小: {}x{}", 
-                window_dpi, actual_use_2x, actual_window_width, actual_window_height);
-            
-            // 如果窗口大小需要调整，立即调整
-            let current_size = cc.egui_ctx.viewport_rect().size();
-            if (current_size.x - actual_window_width).abs() > 1.0 ||
-               (current_size.y - actual_window_height).abs() > 1.0 {
-                eprintln!("[窗口创建] 调整窗口大小: {}x{} -> {}x{}", 
-                    current_size.x, current_size.y, actual_window_width, actual_window_height);
-                cc.egui_ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
-                    actual_window_width,
-                    actual_window_height
-                )));
-                // 注意：窗口居中由 NativeOptions 的 centered: true 处理
-            }
-            
-            // 创建新的 DpiConfig，使用窗口的实际 DPI
-            use crate::ui::dpi_handler::DpiConfig;
-            let actual_dpi_config = DpiConfig {
-                scale_factor,
-                use_2x: actual_use_2x,
-                window_width: actual_window_width,
-                window_height: actual_window_height,
-                expanded_height: if actual_use_2x { 1036.0 } else { 518.0 },
-            };
-            
-            eprintln!("[窗口创建] 使用实际 DpiConfig: use_2x={}, 窗口: {}x{}", 
-                actual_dpi_config.use_2x, actual_dpi_config.window_width, actual_dpi_config.window_height);
-            
-            // 强制设置 pixels_per_point = 1.0，我们手动处理缩放
-            cc.egui_ctx.set_pixels_per_point(1.0);
-            eprintln!("[窗口创建] 强制设置 pixels_per_point = 1.0");
-
-            // 设置中文字体
+            let dpi_config = create_dpi_config(&config);
             setup_chinese_font(&cc.egui_ctx);
 
-            // 使用实际检测到的 dpi_config
-            Ok(Box::new(InstallerApp::new_with_dpi(config.clone(), config_base_path.clone(), actual_dpi_config)))
+            let app = InstallerApp::new_with_mode(
+                config.clone(),
+                config_base_path.clone(),
+                dpi_config,
+                wizard_mode,
+            );
+            Ok(Box::new(app))
         }),
     ).map_err(|e| anyhow::anyhow!("Failed to run GUI: {}", e))?;
-    
+
     Ok(())
+}
+
+/// 从 InstallerConfig 创建 DpiConfig，窗口尺寸从配置读取
+fn create_dpi_config(config: &InstallerConfig) -> crate::ui::dpi_handler::DpiConfig {
+    #[cfg(target_os = "windows")]
+    let window_dpi = unsafe {
+        use windows::Win32::UI::HiDpi::GetDpiForSystem;
+        GetDpiForSystem() as u32
+    };
+
+    #[cfg(not(target_os = "windows"))]
+    let window_dpi = 96u32;
+
+    crate::ui::dpi_handler::DpiConfig {
+        scale_factor: window_dpi as f32 / 96.0,
+        use_2x: window_dpi >= config.ui.dpi_threshold,
+        window_width: config.ui.window_width as f32,
+        window_height: config.ui.window_height as f32,
+        expanded_height: config.ui.expanded_height as f32,
+    }
 }
 
 /// 从配置加载图标
 fn load_icon_from_config(config: &InstallerConfig) -> Result<Option<egui::IconData>> {
-    // 使用配置中的完整路径（如 assets/logo.ico）
     let icon_path = &config.resources.installer_icon;
-    
+
     tracing::debug!("Loading installer icon: {}", icon_path);
-    
+
     let icon_data = RuntimeResources::get_asset(icon_path)
         .context("Failed to load installer icon")?;
-    
+
     load_icon_from_ico(&icon_data)
 }
 
@@ -207,17 +248,14 @@ fn setup_chinese_font(ctx: &egui::Context) {
 
     let mut fonts = FontDefinitions::default();
 
-    // 尝试从 Windows 系统加载中文字体
     let font_data = load_system_chinese_font();
 
     if let Some(data) = font_data {
-        // 添加中文字体
         fonts.font_data.insert(
             "chinese".to_owned(),
             Arc::new(egui::FontData::from_owned(data)),
         );
 
-        // 将中文字体设置为最高优先级
         fonts.families.entry(FontFamily::Proportional)
             .or_default()
             .insert(0, "chinese".to_owned());
@@ -237,13 +275,12 @@ fn setup_chinese_font(ctx: &egui::Context) {
 /// 从 Windows 系统加载中文字体
 #[cfg(windows)]
 fn load_system_chinese_font() -> Option<Vec<u8>> {
-    // 按优先级尝试不同的中文字体
     let font_paths = [
-        "C:\\Windows\\Fonts\\msyh.ttc",      // 微软雅黑
-        "C:\\Windows\\Fonts\\msyhbd.ttc",    // 微软雅黑 Bold
-        "C:\\Windows\\Fonts\\simhei.ttf",    // 黑体
-        "C:\\Windows\\Fonts\\simsun.ttc",    // 宋体
-        "C:\\Windows\\Fonts\\simkai.ttf",    // 楷体
+        "C:\\Windows\\Fonts\\msyh.ttc",
+        "C:\\Windows\\Fonts\\msyhbd.ttc",
+        "C:\\Windows\\Fonts\\simhei.ttf",
+        "C:\\Windows\\Fonts\\simsun.ttc",
+        "C:\\Windows\\Fonts\\simkai.ttf",
     ];
 
     for path in &font_paths {
@@ -260,7 +297,5 @@ fn load_system_chinese_font() -> Option<Vec<u8>> {
 
 #[cfg(not(windows))]
 fn load_system_chinese_font() -> Option<Vec<u8>> {
-    // 非 Windows 平台暂不支持
     None
 }
-

@@ -4,6 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use crate::layout::style_props::{FlexStyle, VisualStyle, WidgetProps};
 
 /// 布局元素类型
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -268,7 +269,12 @@ impl ElementAttributes {
                 }
             }
             ElementType::Label => {
-                if self.text.is_none() && self.icon.is_none() {
+                // Label 可以没有 text（空字符串），因为文本可能通过代码动态设置
+                // 只要设置了 text 属性（即使是空字符串）或 icon 属性即可
+                let has_text_attr = self.text.is_some();  // 即使为空字符串也算有属性
+                let has_icon = self.icon.is_some();
+                
+                if !has_text_attr && !has_icon {
                     errors.push(format!("{:?} 元素必须设置 text 或 icon 属性", element_type));
                 }
             }
@@ -283,9 +289,8 @@ impl ElementAttributes {
                 }
             }
             ElementType::ProgressBar => {
-                if self.progress.is_none() {
-                    errors.push("ProgressBar 元素必须设置 progress 属性".to_string());
-                }
+                // ProgressBar 的 progress 属性是可选的，因为进度值通常由代码动态设置
+                // 不需要验证
             }
             _ => {}
         }
@@ -338,10 +343,21 @@ impl ElementAttributes {
 pub struct LayoutElement {
     /// 元素类型
     pub element_type: ElementType,
-    /// 元素属性
+    /// 元素属性 (旧格式, 向后兼容)
     pub attributes: ElementAttributes,
     /// 子元素
     pub children: Vec<LayoutElement>,
+
+    // ── 新格式分层属性 (Phase 1) ──
+    /// Flex 布局属性 (映射到 Taffy)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub flex_style: Option<FlexStyle>,
+    /// 视觉属性 (仅渲染用)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub visual_style: Option<VisualStyle>,
+    /// 控件特有属性
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub widget_props: Option<WidgetProps>,
 }
 
 impl LayoutElement {
@@ -351,6 +367,9 @@ impl LayoutElement {
             element_type,
             attributes: ElementAttributes::new(),
             children: Vec::new(),
+            flex_style: None,
+            visual_style: None,
+            widget_props: None,
         }
     }
 
@@ -360,6 +379,9 @@ impl LayoutElement {
             element_type,
             attributes,
             children: Vec::new(),
+            flex_style: None,
+            visual_style: None,
+            widget_props: None,
         }
     }
 

@@ -1,15 +1,19 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Windows>
-	<!-- 进度 -->
-	<VerticalLayout>
-		<VerticalLayout bkcolor="#FF181B22" width="574" height="358" bkimage="assets/bg_installing.png">
-			<Control height="260" />
-			<Slider name="slrProgress" height="6" mouse="false" enabled="false" min="0" max="100" value="0" thumbsize="6,6" bkcolor="#FF181B22" foreimage="file='assets/bar_installing.png' corner='0,0,3,0'"  />
-			<HorizontalLayout height="20" padding="0,25,0,0">
-			<Control width="187" />
-				<Label font="2" name="progress_pos" width="200" align="center" textcolor="#FFFFFFFF" text="正在安装 ..." />
-			</HorizontalLayout>
+<?xml version="1.0" encoding="utf-8"?>
+<Page width="574" height="358" background="#FF181B22" background-image="assets/bg_installing.png">
+  <VBox width="100%" height="100%">
 
-		</VerticalLayout>
-	</VerticalLayout>
-</Windows>
+    <Spacer height="260" />
+
+    <!-- Progress Bar -->
+    <ProgressBar id="slrProgress" width="100%" height="6"
+                 progress="0" bar-image="assets/bar_installing.png"
+                 background="#FF181B22" enabled="false" />
+
+    <!-- Progress Text -->
+    <HBox height="20" padding="25 0 0 0" justify-content="center">
+      <Label id="progress_pos" width="200" text="@installing_text"
+             font-size="14" color="#FFFFFFFF" text-align="center" />
+    </HBox>
+
+  </VBox>
+</Page>

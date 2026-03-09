@@ -2,7 +2,7 @@
 
 本文档定义 nano-installer 的 XML 布局文件的完整规范，包括所有元素、属性的类型和约束。
 
-**重要提示**：nano-installer **完全兼容 NSIS 布局格式**，可以直接使用 NSIS 的 XML 布局文件，同时也支持传统的布局格式（向后兼容）。
+**重要提示**：nano-installer 使用 **NSIS 布局格式**，可以直接使用 NSIS 的 XML 布局文件。
 
 ## 📖 目录
 
@@ -18,17 +18,6 @@
 
 ### 基本格式
 
-**传统格式：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<Layout name="PageName" version="1.0.0">
-  <Page>
-    <!-- 页面内容 -->
-  </Page>
-</Layout>
-```
-
-**NSIS 格式：**
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <Windows>
@@ -47,31 +36,7 @@
 
 ## 根元素
 
-### `<Layout>`（传统格式）
-
-布局文件的根元素。
-
-**属性：**
-
-| 属性 | 类型 | 必需 | 约束 | 说明 |
-|------|------|------|------|------|
-| `name` | string | ✅ | 非空，字母开头 | 布局名称，如 "Welcome" |
-| `version` | string | ✅ | 符合语义化版本 | 版本号，如 "1.0.0" |
-
-**子元素：**
-- `<Page>` (必需，仅一个)
-
-**示例：**
-
-```xml
-<Layout name="Welcome" version="1.0.0">
-  <Page>
-    ...
-  </Page>
-</Layout>
-```
-
-### `<Windows>`（NSIS 格式）
+### `<Windows>`
 
 页面布局的根元素。
 
@@ -93,7 +58,7 @@
 </Windows>
 ```
 
-### `<Window>`（NSIS 格式，用于对话框）
+### `<Window>`（用于对话框）
 
 窗口定义，用于 msgbox 等对话框。
 

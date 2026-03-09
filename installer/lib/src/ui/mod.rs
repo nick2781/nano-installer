@@ -1,7 +1,7 @@
 // UI 模块（基于 egui + eframe）
 
 pub mod dpi_handler;
-pub mod egui_app;
+// pub mod egui_app;  // 旧的硬编码实现 (已废弃)
 pub mod egui_app_xml;  // 基于 XML 布局的新实现
 pub mod layout_renderer;
 pub mod message_box;
@@ -11,7 +11,7 @@ pub mod wizard;
 // 使用基于 XML 的新实现
 pub use egui_app_xml::InstallerApp;
 // pub use egui_app::InstallerApp;  // 旧的硬编码实现
-pub use wizard::{Wizard, WizardPage, WizardMode, WizardConfig, WizardPageConfig};
+pub use wizard::{Wizard, WizardMode};
 pub use dpi_handler::{DpiConfig, ResourceCache};
 pub use layout_renderer::{LayoutRenderer, RenderResult, InteractionState};
 pub use message_box::{MessageBoxManager, MessageBoxConfig, MessageBoxType, MessageBoxButton, MessageBoxResult};

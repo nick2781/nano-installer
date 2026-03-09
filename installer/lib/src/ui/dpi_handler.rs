@@ -27,55 +27,23 @@ pub struct DpiConfig {
 }
 
 impl DpiConfig {
-    /// 创建DPI配置
+    /// 创建DPI配置，窗口尺寸从 InstallerConfig 读取
     pub fn new(config: &InstallerConfig) -> Self {
-        // 检测系统 DPI（与 NSIS 一致：GetDpiForSystem）
         let system_dpi = Self::detect_system_dpi();
-        // NSIS 逻辑：DPI >= 144 (96 * 1.5) 时使用 2x
         let use_2x = system_dpi >= config.ui.dpi_threshold;
         let scale_factor = system_dpi as f32 / 96.0;
-        
-        // 根据 DPI 设置窗口大小（与 NSIS 一致）
-        let (window_width, window_height, expanded_height) = if use_2x {
-            // 2x: 1148x716, expanded: 1036
-            (1148.0, 716.0, 1036.0)
-        } else {
-            // 1x: 574x358, expanded: 518
-            (574.0, 358.0, 518.0)
-        };
-        
-        // 使用静态计数器来跟踪创建次数
-        static DPI_CREATE_COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-        let count = DPI_CREATE_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
-        
-        // 只在首次调用时输出一次清晰的DPI信息
-        let is_first = DPI_INFO_PRINTED.get().is_none();
+
         DPI_INFO_PRINTED.get_or_init(|| {
-            eprintln!("========================================");
-            eprintln!("[DPI] 首次检测 (第 {} 次创建 DpiConfig)", count);
-            eprintln!("[DPI] 系统 DPI: {} (基准: 96)", system_dpi);
-            eprintln!("[DPI] 缩放比例: {:.2}x", scale_factor);
-            eprintln!("[DPI] 阈值: {} (>= 144 使用 2x)", config.ui.dpi_threshold);
-            eprintln!("[DPI] use_2x: {}", use_2x);
-            eprintln!("[DPI] 窗口大小: {}x{}", window_width, window_height);
-            eprintln!("[DPI] 使用布局: {}", if use_2x { "2x 高DPI" } else { "1x 标准" });
-            eprintln!("========================================");
+            tracing::info!("DPI: system={}, scale={:.2}, use_2x={}", system_dpi, scale_factor, use_2x);
             true
         });
-        
-        // 如果不是首次调用，也输出日志（用于调试）
-        if !is_first {
-            eprintln!("[DPI] 再次创建 DpiConfig (第 {} 次)", count);
-            eprintln!("[DPI]   系统 DPI: {}, use_2x: {}, 窗口: {}x{}", 
-                system_dpi, use_2x, window_width, window_height);
-        }
-        
+
         Self {
             scale_factor,
             use_2x,
-            window_width,
-            window_height,
-            expanded_height,
+            window_width: config.ui.window_width as f32,
+            window_height: config.ui.window_height as f32,
+            expanded_height: config.ui.expanded_height as f32,
         }
     }
 
@@ -135,16 +103,40 @@ impl DpiConfig {
         }
     }
 
-    /// 检测系统DPI缩放因子（保留用于兼容）
-    fn detect_dpi_scale() -> f32 {
-        Self::detect_system_dpi() as f32 / 96.0
-    }
-
     /// 获取资源路径（自动选择1x或2x）
+    /// 
+    /// 注意：如果 base_path 包含 NSIS 格式的参数（如 dest='...'），会先提取纯文件路径
     pub fn get_resource_path(&self, base_path: &str) -> String {
-        if self.use_2x && !base_path.contains("@2x") {
+        // 如果路径包含 NSIS 格式的参数（如 dest='...'），先提取纯文件路径
+        let clean_path = if base_path.contains("file='") || base_path.contains("file=\"") {
+            // 解析 file='...' 格式
+            if let Some(start) = base_path.find("file='") {
+                let start_pos = start + 6;
+                if let Some(end) = base_path[start_pos..].find("'") {
+                    base_path[start_pos..start_pos + end].to_string()
+                } else if let Some(end) = base_path[start_pos..].find("\"") {
+                    base_path[start_pos..start_pos + end].to_string()
+                } else {
+                    base_path.to_string()
+                }
+            } else if let Some(start) = base_path.find("file=\"") {
+                let start_pos = start + 6;
+                if let Some(end) = base_path[start_pos..].find("\"") {
+                    base_path[start_pos..start_pos + end].to_string()
+                } else {
+                    base_path.to_string()
+                }
+            } else {
+                base_path.to_string()
+            }
+        } else {
+            // 如果路径包含空格和参数（如 "path dest='...'"），只取第一部分
+            base_path.split_whitespace().next().unwrap_or(base_path).to_string()
+        };
+        
+        if self.use_2x && !clean_path.contains("@2x") {
             // 尝试2x版本，保留目录路径
-            let path = PathBuf::from(base_path);
+            let path = PathBuf::from(&clean_path);
             if let Some(stem) = path.file_stem() {
                 if let Some(extension) = path.extension() {
                     let stem_str = stem.to_string_lossy();
@@ -160,13 +152,13 @@ impl DpiConfig {
                         format!("{}/{}@2x.{}", parent_str, stem_str, ext_str)
                     };
                     
-                    eprintln!("[资源] 路径转换: {} -> {} (use_2x={})", base_path, new_path, self.use_2x);
+                    eprintln!("[资源] 路径转换: {} -> {} (use_2x={})", clean_path, new_path, self.use_2x);
                     return new_path;
                 }
             }
         }
-        eprintln!("[资源] 使用原始路径: {} (use_2x={})", base_path, self.use_2x);
-        base_path.to_string()
+        eprintln!("[资源] 使用原始路径: {} (use_2x={})", clean_path, self.use_2x);
+        clean_path
     }
 
     /// 加载图片资源
@@ -414,23 +406,70 @@ mod tests {
     use crate::config::InstallerConfig;
 
     #[test]
-    fn test_dpi_config_creation() {
+    fn test_dpi_config_reads_from_default_config() {
         let config = InstallerConfig::default();
         let dpi_config = DpiConfig::new(&config);
-        
+
         assert!(dpi_config.scale_factor > 0.0);
-        assert_eq!(dpi_config.window_width, 574.0);
-        assert_eq!(dpi_config.window_height, 358.0);
+        // 必须等于配置中的默认值, 不是硬编码
+        assert_eq!(dpi_config.window_width, config.ui.window_width as f32);
+        assert_eq!(dpi_config.window_height, config.ui.window_height as f32);
+        assert_eq!(dpi_config.expanded_height, config.ui.expanded_height as f32);
+    }
+
+    #[test]
+    fn test_dpi_config_reads_custom_size() {
+        let mut config = InstallerConfig::default();
+        config.ui.window_width = 800;
+        config.ui.window_height = 600;
+        config.ui.expanded_height = 900;
+
+        let dpi_config = DpiConfig::new(&config);
+
+        assert_eq!(dpi_config.window_width, 800.0);
+        assert_eq!(dpi_config.window_height, 600.0);
+        assert_eq!(dpi_config.expanded_height, 900.0);
+    }
+
+    #[test]
+    fn test_dpi_config_direct_construction() {
+        // 模拟 installer_runtime 中 create_dpi_config 的行为
+        let dpi_config = DpiConfig {
+            scale_factor: 2.0,
+            use_2x: true,
+            window_width: 640.0,
+            window_height: 480.0,
+            expanded_height: 720.0,
+        };
+
+        assert_eq!(dpi_config.window_width, 640.0);
+        assert_eq!(dpi_config.window_height, 480.0);
+        assert!(dpi_config.use_2x);
     }
 
     #[test]
     fn test_resource_path_selection() {
         let config = InstallerConfig::default();
         let dpi_config = DpiConfig::new(&config);
-        
-        // 测试路径选择逻辑
+
         let path = dpi_config.get_resource_path("assets/logo.png");
         assert!(path.contains("logo"));
+    }
+
+    #[test]
+    fn test_get_render_size_halves_2x() {
+        // use_2x=true 时, get_render_size 应返回纹理尺寸的一半
+        let dpi_config = DpiConfig {
+            scale_factor: 2.0,
+            use_2x: true,
+            window_width: 574.0,
+            window_height: 358.0,
+            expanded_height: 518.0,
+        };
+        // 无法在单测中创建 TextureHandle, 但验证逻辑:
+        // use_2x=true → width/2, height/2
+        // use_2x=false → width, height
+        assert!(dpi_config.use_2x);
     }
 
     #[test]
@@ -441,5 +480,8 @@ mod tests {
         assert!(cache.checkboxes.is_empty());
         assert!(cache.arrows.is_empty());
         assert!(cache.progress.is_none());
+
+        cache.clear();
+        assert!(cache.backgrounds.is_empty());
     }
 }

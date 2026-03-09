@@ -27,14 +27,38 @@ pub fn init(log_dir: Option<&Path>, app_name: &str, is_installer: bool) -> Resul
         .with_thread_ids(false)
         .with_line_number(true);
 
-    // 默认日志级别为 warn，避免 debug/info 日志频繁输出
-    // 可以通过 RUST_LOG 环境变量覆盖（例如：RUST_LOG=debug）
-    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn"));
+    // 日志级别：
+    // - Debug 构建：默认 debug（可被 RUST_LOG 覆盖）
+    // - Release 构建：默认 warn（可被 RUST_LOG 覆盖）
+    let default_level = if cfg!(debug_assertions) { "debug" } else { "warn" };
+    let env_filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_level));
 
-    tracing_subscriber::registry()
-        .with(env_filter)
-        .with(file_layer)
-        .init();
+    #[cfg(debug_assertions)]
+    {
+        // Debug 模式下，既写文件又输出到控制台
+        let console_layer = fmt::layer()
+            .with_writer(std::io::stderr) // 控制台
+            .with_ansi(true)
+            .with_target(false)
+            .with_thread_ids(false)
+            .with_line_number(true);
+
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(file_layer)
+            .with(console_layer)
+            .init();
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
+        // Release：仅写文件（避免控制台污染）
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(file_layer)
+            .init();
+    }
 
     tracing::info!(
         "=== {} v{} {} Log Started ===",

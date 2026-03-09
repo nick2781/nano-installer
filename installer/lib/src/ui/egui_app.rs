@@ -1,7 +1,7 @@
 // egui 实现的安装程序界面 - 完全基于 XML 布局
 
 use eframe::egui;
-use crate::ui::wizard::{Wizard, WizardPage, WizardMode};
+use crate::ui::wizard::{Wizard, WizardMode};
 use crate::ui::message_box::MessageBoxManager;
 use crate::ui::layout_renderer::{LayoutRenderer, RenderResult};
 use crate::ui::dpi_handler::DpiConfig;

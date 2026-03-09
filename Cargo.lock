@@ -169,6 +169,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "arrayvec"
+version = "0.7.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
+
+[[package]]
 name = "ashpd"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1417,6 +1423,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "grid"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "36119f3a540b086b4e436bb2b588cf98a68863470e0e880f4d0842f112a3183a"
+
+[[package]]
 name = "half"
 version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1892,6 +1904,7 @@ dependencies = [
  "roxmltree",
  "serde",
  "serde_json",
+ "sevenz-rust",
  "sha2",
  "tempfile",
  "thiserror 1.0.69",
@@ -1917,10 +1930,8 @@ dependencies = [
  "crc32fast",
  "eframe",
  "egui",
- "egui_extras",
  "flate2",
  "image",
- "jsonc-parser",
  "lzma-rs",
  "once_cell",
  "parking_lot",
@@ -1931,8 +1942,8 @@ dependencies = [
  "serde_json",
  "sevenz-rust",
  "sha2",
+ "taffy",
  "thiserror 1.0.69",
- "tokio",
  "toml 0.8.23",
  "tracing",
  "tracing-appender",
@@ -3118,6 +3129,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "taffy"
+version = "0.7.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab4f4d046dd956a47a7e1a2947083d7ac3e6aa3cfaaead36173ceaa5ab11878c"
+dependencies = [
+ "arrayvec",
+ "grid",
+ "serde",
+ "slotmap",
+]
+
+[[package]]
 name = "tempfile"
 version = "3.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3462,9 +3485,8 @@ name = "uninst"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "serde",
- "serde_json",
- "windows",
+ "nano-installer-lib",
+ "tracing",
  "winres",
 ]
 

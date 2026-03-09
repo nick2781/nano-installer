@@ -64,6 +64,7 @@ toml.workspace = true
 # 压缩库
 flate2.workspace = true
 zip.workspace = true
+sevenz-rust.workspace = true
 
 # 文件遍历库
 walkdir.workspace = true

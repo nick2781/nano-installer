@@ -26,14 +26,10 @@ tracing-appender.workspace = true
 # GUI 库
 eframe.workspace = true
 egui.workspace = true
-egui_extras.workspace = true
 image.workspace = true
 
 # 文件对话框
 rfd.workspace = true
-
-# 异步运行时
-tokio.workspace = true
 
 # 工具库
 uuid.workspace = true
@@ -50,11 +46,11 @@ roxmltree.workspace = true
 # 正则表达式库
 regex.workspace = true
 
-# JSON with comments 解析库
-jsonc-parser.workspace = true
-
 # TOML 解析库
 toml.workspace = true
+
+# 布局引擎
+taffy.workspace = true
 
 # 压缩库
 flate2.workspace = true

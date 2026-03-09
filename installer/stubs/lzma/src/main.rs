@@ -21,8 +21,13 @@ fn main() -> Result<()> {
     #[cfg(debug_assertions)]
     eprintln!("Console output enabled for debugging");
     
-    // 初始化日志
-    let _ = nano_installer::logger::init(None, "installer", true);
+    // 初始化日志：优先写到当前 exe 所在目录，便于调试时查找
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()));
+    let log_dir = exe_dir.as_deref();
+
+    let _ = nano_installer::logger::init(log_dir, "installer", true);
     
     #[cfg(debug_assertions)]
     eprintln!("Logger initialized");
@@ -50,43 +55,14 @@ fn main() -> Result<()> {
         }
     };
     
-    // 判断运行模式
-    let mode = determine_mode(&config);
-    
-    tracing::info!("Starting in {:?} mode", mode);
-    
-    // 运行安装器
-    nano_installer::installer_runtime::run_installer(mode)?;
-    
-    Ok(())
-}
+    // 使用统一的模式检测
+    let mode = nano_installer::installer_runtime::mode::InstallerMode::detect();
 
-/// 判断运行模式（安装或卸载）
-fn determine_mode(config: &nano_installer::config::InstallerConfig) -> nano_installer::installer_runtime::mode::InstallerMode {
-    use nano_installer::installer_runtime::mode::InstallerMode;
-    
-    // 检查 exe 文件名
-    if let Ok(exe_path) = std::env::current_exe() {
-        if let Some(file_name) = exe_path.file_name() {
-            let name = file_name.to_string_lossy().to_lowercase();
-            
-            // 如果文件名包含 "uninst"，则为卸载模式
-            if name.contains("uninst") {
-                return InstallerMode::Uninstall;
-            }
-        }
-    }
-    
-    // 检查命令行参数
-    let args: Vec<String> = std::env::args().collect();
-    for arg in &args {
-        let arg_lower = arg.to_lowercase();
-        if arg_lower == "/uninstall" || arg_lower == "--uninstall" || arg_lower == "-u" {
-            return InstallerMode::Uninstall;
-        }
-    }
-    
-    // 默认为安装模式
-    InstallerMode::Install
+    tracing::info!("Starting in {:?} mode", mode);
+
+    // 运行安装器（内部处理 install/update/silent/uninstall）
+    nano_installer::installer_runtime::run_installer(mode)?;
+
+    Ok(())
 }
 

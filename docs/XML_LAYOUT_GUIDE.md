@@ -2,7 +2,7 @@
 
 nano-installer 使用 XML 来定义安装程序的用户界面。这份指南将教你如何创建和自定义界面布局。
 
-**重要提示**：nano-installer 完全兼容 NSIS 布局格式，可以直接使用 NSIS 的 XML 布局文件，同时也支持传统的布局格式（向后兼容）。
+**重要提示**：nano-installer 使用 NSIS 布局格式，可以直接使用 NSIS 的 XML 布局文件。
 
 ## 📖 目录
 
@@ -16,20 +16,7 @@ nano-installer 使用 XML 来定义安装程序的用户界面。这份指南将
 
 ## 基本结构
 
-nano-installer 支持两种布局格式：
-
-### 传统格式（向后兼容）
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<Layout name="PageName" version="1.0.0">
-  <Page>
-    <!-- 页面内容 -->
-  </Page>
-</Layout>
-```
-
-### NSIS 格式（推荐）
+nano-installer 使用 NSIS 布局格式：
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -41,16 +28,31 @@ nano-installer 支持两种布局格式：
 </Windows>
 ```
 
+### 根元素
+
+nano-installer 支持两种根元素：
+
+**`<Windows>`**：用于主安装程序界面
+
+```xml
+<Windows>
+  <VerticalLayout>
+    <!-- 页面内容 -->
+  </VerticalLayout>
+</Windows>
+```
+
+**`<Window>`**：用于对话框（如消息框）
+
+```xml
+<Window name="msgbox" size="800,460">
+  <VerticalLayout>
+    <!-- 对话框内容 -->
+  </VerticalLayout>
+</Window>
+```
+
 ### 根元素属性
-
-**传统格式 (`<Layout>`)**：
-
-| 属性 | 必需 | 说明 | 示例 |
-|------|------|------|------|
-| `name` | 是 | 布局名称 | `"Welcome"` |
-| `version` | 是 | 布局版本 | `"1.0.0"` |
-
-**NSIS 格式 (`<Windows>` 或 `<Window>`)**：
 
 | 属性 | 必需 | 说明 | 示例 |
 |------|------|------|------|
@@ -58,46 +60,39 @@ nano-installer 支持两种布局格式：
 | `name` | 否 | 窗口名称（仅 `<Window>`） | `"msgbox"` |
 | `size` | 否 | 窗口大小（仅 `<Window>`） | `"800,460"` |
 
-## NSIS 格式支持
+## 支持的元素
 
-nano-installer **完全兼容** NSIS 布局格式，这意味着：
+| 元素 | 说明 |
+|------|------|
+| `<Windows>` | 页面布局根元素 |
+| `<Window>` | 窗口定义（用于对话框） |
+| `<VerticalLayout>` | 垂直布局容器 |
+| `<HorizontalLayout>` | 水平布局容器 |
+| `<Container>` | 空白占位符 |
+| `<Control>` | 控制元素（可显示图片） |
+| `<Button>` | 按钮 |
+| `<CheckBox>` | 复选框 |
+| `<Label>` | 文本标签 |
+| `<RichEdit>` | 富文本编辑框 |
+| `<Slider>` | 滑块/进度条 |
+| `<TabLayout>` | 标签页容器（暂未完全实现） |
+| `<Include>` | 包含其他布局文件（暂未完全实现） |
 
-✅ **可以直接使用 NSIS 的布局文件**，无需任何转换  
-✅ **保持向后兼容**，现有布局文件仍然可用  
-✅ **与 NSIS 完全一致**，便于参考和调试  
-✅ **无需维护两套布局文件**
+## 支持的属性
 
-### 支持的 NSIS 元素
-
-| NSIS 元素 | 说明 | 映射 |
-|-----------|------|------|
-| `<Windows>` | 页面布局根元素 | 等同于 `<Layout><Page>` |
-| `<Window>` | 窗口定义（用于对话框） | 等同于 `<Layout><Page>` |
-| `<VerticalLayout>` | 垂直布局容器 | 等同于 `<VBox>` |
-| `<HorizontalLayout>` | 水平布局容器 | 等同于 `<HBox>` |
-| `<Container>` | 空白占位符 | 等同于 `<Spacer>` |
-| `<Control>` | 控制元素（可显示图片） | 等同于 `<Spacer>` |
-| `<Button>` | 按钮 | 直接支持 |
-| `<CheckBox>` | 复选框 | 等同于 `<Checkbox>` |
-| `<Label>` | 文本标签 | 直接支持 |
-| `<RichEdit>` | 富文本编辑框 | 等同于 `<TextInput>` |
-| `<Slider>` | 滑块/进度条 | 等同于 `<ProgressBar>` |
-
-### 支持的 NSIS 属性
-
-| NSIS 属性 | 说明 | 映射 |
-|-----------|------|------|
-| `name` | 元素名称 | 映射到 `id` |
-| `bkcolor` | 背景颜色 | 映射到 `background` |
-| `bkimage` | 背景图片 | 映射到 `background` |
-| `textcolor` | 文本颜色 | 映射到 `color` |
-| `inset` | 内边距（left,top,right,bottom） | 转换为 `padding`（top,right,bottom,left） |
-| `padding` | 内边距（left,top,right,bottom） | 转换为 `padding`（top,right,bottom,left） |
-| `margin` | 外边距（left,top,right,bottom） | 存储到 `custom` |
-| `textpadding` | 文本内边距（left,top,right,bottom） | 存储到 `custom` |
-| `align` | 水平对齐 | 直接支持 |
-| `valign` | 垂直对齐 | 存储到 `custom` |
-| `textalign` | 文本对齐（Label 专用） | 存储到 `custom` |
+| 属性 | 说明 |
+|------|------|
+| `name` | 元素名称（映射到内部 `id`） |
+| `bkcolor` | 背景颜色（映射到内部 `background`） |
+| `bkimage` | 背景图片（映射到内部 `background`） |
+| `textcolor` | 文本颜色（映射到内部 `color`） |
+| `inset` | 内边距（left,top,right,bottom，转换为内部格式 top,right,bottom,left） |
+| `padding` | 内边距（left,top,right,bottom，转换为内部格式 top,right,bottom,left） |
+| `margin` | 外边距（left,top,right,bottom） |
+| `textpadding` | 文本内边距（left,top,right,bottom） |
+| `align` | 水平对齐 |
+| `valign` | 垂直对齐 |
+| `textalign` | 文本对齐（Label 专用） |
 | `font` | 字体 ID（引用 `<Font>` 元素） | 转换为字体配置 |
 | `borderround` | 圆角（x,y） | 存储到 `custom` |
 | `bordercolor` | 边框颜色 | 存储到 `custom` |
@@ -368,6 +363,133 @@ NSIS 使用 `<Font>` 元素定义字体，然后在其他元素中通过 `font="
 | `install` | 开始安装按钮 |
 | `finish` | 完成按钮 |
 | `browse` | 浏览文件夹按钮 |
+
+### `action` 属性（按钮行为）
+
+Button 元素支持 `action` 属性，用于声明式地定义按钮点击后的行为。使用 `action` 属性可以避免在代码中硬编码按钮 ID 与行为的映射关系，使 UI 逻辑完全由 XML 驱动。
+
+```xml
+<Button name="install_btn" text="立即安装" action="install" />
+```
+
+运行时，`dispatch_action`（位于 `egui_app_xml.rs`）负责解析 `action` 字符串并执行对应逻辑。
+
+#### 可用的 action 值
+
+| action | 说明 | 示例 |
+|--------|------|------|
+| `install` | 开始安装流程 | `action="install"` |
+| `uninstall` | 开始卸载流程 | `action="uninstall"` |
+| `launch_app` | 启动已安装的应用程序 | `action="launch_app"` |
+| `close` | 直接关闭安装程序窗口 | `action="close"` |
+| `close_confirm` | 显示确认对话框后关闭 | `action="close_confirm"` |
+| `open_url:KEY` | 打开 `links` 配置中对应 KEY 的 URL | `action="open_url:homepage"` |
+| `toggle_panel:ID:show` | 显示指定 ID 的面板 | `action="toggle_panel:options:show"` |
+| `toggle_panel:ID:hide` | 隐藏指定 ID 的面板 | `action="toggle_panel:options:hide"` |
+| `browse_folder` | 打开文件夹选择对话框，更新安装路径 | `action="browse_folder"` |
+| `next_page` | 导航到向导的下一页 | `action="next_page"` |
+| `prev_page` | 导航到向导的上一页 | `action="prev_page"` |
+| `cancel` | 取消安装（等同于 `close_confirm`） | `action="cancel"` |
+| `dialog_ok` | 确认对话框（关闭消息框，返回 OK） | `action="dialog_ok"` |
+| `dialog_cancel` | 取消对话框（关闭消息框，返回 Cancel） | `action="dialog_cancel"` |
+
+#### action 使用示例
+
+**安装流程按钮：**
+
+```xml
+<!-- 配置页：展开更多选项 -->
+<Button name="show_more" text="{show_more}" action="toggle_panel:options_panel:show" />
+
+<!-- 配置页：开始安装 -->
+<Button name="install_btn" text="{install_button}" action="install" />
+
+<!-- 配置页：浏览安装路径 -->
+<Button name="browse_btn" text="{browse}" action="browse_folder" />
+```
+
+**完成页按钮：**
+
+```xml
+<!-- 启动应用 -->
+<Button name="launch_btn" text="{launch_button}" action="launch_app" />
+
+<!-- 关闭安装程序 -->
+<Button name="close_btn" text="{close}" action="close" />
+```
+
+**卸载流程按钮：**
+
+```xml
+<!-- 确认卸载 -->
+<Button name="uninstall_btn" text="{uninstall_button}" action="uninstall" />
+
+<!-- 取消卸载 -->
+<Button name="cancel_btn" text="{not_now}" action="close" />
+```
+
+**打开外部链接：**
+
+```xml
+<!-- 打开官网（URL 在 installer_config.json 的 links 字段中定义） -->
+<Button name="homepage_btn" text="官方网站" action="open_url:homepage" />
+
+<!-- 打开用户协议 -->
+<Button name="agreement_btn" text="{agreement_link}" action="open_url:agreement" />
+```
+
+对应的 `installer_config.json` 配置：
+
+```json
+{
+  "links": {
+    "homepage": "https://www.taptap.cn",
+    "agreement": "https://www.taptap.cn/agreement"
+  }
+}
+```
+
+**对话框按钮：**
+
+```xml
+<!-- 消息框确认 -->
+<Button name="ok_btn" text="{ok}" action="dialog_ok" />
+
+<!-- 消息框取消 -->
+<Button name="cancel_btn" text="{cancel}" action="dialog_cancel" />
+```
+
+**面板切换：**
+
+```xml
+<!-- 展开高级选项面板 -->
+<Button name="expand_btn" text="{show_more}" action="toggle_panel:advanced_options:show" />
+
+<!-- 收起高级选项面板 -->
+<Button name="collapse_btn" text="{hide_more}" action="toggle_panel:advanced_options:hide" />
+
+<!-- 被控制的面板 -->
+<VerticalLayout name="advanced_options" visible="false">
+  <CheckBox name="desktop_shortcut" text="{shortcut_checkbox}" selected="true" />
+  <CheckBox name="autorun_checkbox" text="{autorun_checkbox}" selected="false" />
+</VerticalLayout>
+```
+
+#### action 分发机制
+
+当用户点击带有 `action` 属性的按钮时，`dispatch_action`（`egui_app_xml.rs`）按以下流程处理：
+
+1. 从被点击按钮的 `action` 属性中读取 action 字符串
+2. 解析 action 字符串（处理带参数的格式如 `open_url:KEY`、`toggle_panel:ID:show`）
+3. 执行对应的操作：
+   - **导航类**（`next_page`、`prev_page`）：修改向导当前页面索引
+   - **流程类**（`install`、`uninstall`）：启动后台安装/卸载任务
+   - **UI 类**（`toggle_panel`、`browse_folder`）：修改 UI 状态
+   - **窗口类**（`close`、`close_confirm`、`launch_app`）：控制窗口生命周期
+   - **对话框类**（`dialog_ok`、`dialog_cancel`）：关闭消息框并设置返回值
+   - **外部类**（`open_url`）：调用系统浏览器打开 URL
+
+如果按钮没有 `action` 属性，系统会回退到基于按钮 `name`/`id` 的传统行为映射（见上方"按钮 ID 约定"表格）。
 
 #### `<Image>` - 图片
 

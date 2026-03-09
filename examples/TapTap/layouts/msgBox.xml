@@ -1,31 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Window size="400,230" sizebox="0,0,0,0" caption="0,0,0,0" roundcorner="16,16" showshadow="true" shadowsharpness="128" shadowsize="4" shadowpositon="0,8" shadowcolor="#000000" shadowdarkness="100" >
-  <Font id="0" name="微软雅黑" size="14" bold="true" default="true" />
-	<Font id="1" name="微软雅黑" size="16" bold="true" />
+<Page width="400" height="230" background="#FF2A3844"
+      border-radius="16" border-color="#FF474B59" border-width="1">
+  <VBox width="100%" height="100%" padding="1">
 
-  <VerticalLayout width="400" height="230" inset="1,1,1,1" bkcolor="#FF2A3844" bordercolor="#FF474B59" bordersize="1" borderround="16,16" >
+    <Spacer height="70" />
 
-  	<Container height="70" />
+    <!-- Message -->
+    <HBox height="24" justify-content="center">
+      <Label id="lblMsg" text="" color="#FFFFFFFF" font-size="16" font-weight="bold"
+             text-align="center" />
+    </HBox>
 
-  	<HorizontalLayout height="24">
-			<Label name="lblMsg" valign="vcenter" align="center" textcolor="0xFFFFFFFF" showhtml="true" font="1" />
-  	</HorizontalLayout>
+    <Spacer height="64" />
 
-  	<Container height="64" />
+    <!-- Buttons -->
+    <HBox height="40" padding="0 32" justify-content="center" gap="16">
+      <Button id="btnCancel" action="dialog_cancel" visible="false" text="@cancel" width="160" height="40"
+              font-size="14" font-weight="bold" color="#FFFFFFFF"
+              border-radius="12" text-align="center"
+              normal-image="assets/btn_dialog.png" cursor="hand" />
+      <Spacer id="centerPadding" width="72" />
+      <Button id="btnOK" action="dialog_ok" text="@ok" width="160" height="40"
+              font-size="14" font-weight="bold" color="#FFFFFFFF"
+              border-radius="12" text-align="center"
+              normal-image="assets/btn_dialog_primary.png" cursor="hand" />
+    </HBox>
 
-    <HorizontalLayout height="40">
-    	<Container width="32" />
-
-	  	<Button name="btnCancel" visible="false" font="0" text="取消" textcolor="#FFFFFFFF" width="160" height="40" align="center" borderround="12,12"
-	  	normalimage="file='assets/btn_dialog.png'" hotimage="file='assets/btn_dialog.png' fade='230'" pushedimage="file='assets/btn_dialog.png' fade='230'" focusedimage="file='assets/btn_dialog.png' fade='230'" cursor="hand" />
-    	<Container name="centerPadding" width="72" visible="true" />
-
-    	<Container width="16" />
-      <Button name="btnOK" font="0" text="确定" textcolor="#FFFFFFFF" width="160" height="40" align="center" borderround="12,12"
-	  	normalimage="file='assets/btn_dialog_primary.png'" hotimage="file='assets/btn_dialog_primary.png' fade='230'" pushedimage="file='assets/btn_dialog_primary.png' fade='230'" focusedimage="file='assets/btn_dialog_primary.png' fade='230'" cursor="hand" />
-
-    	<Container width="32" />
-     </HorizontalLayout>
-
-  </VerticalLayout>
-</Window>
+  </VBox>
+</Page>
