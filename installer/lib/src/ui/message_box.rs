@@ -290,10 +290,12 @@ impl MessageBoxManager {
         let middle_spacing = 40.0;
         let button_gap = 16.0;
 
-        // Auto-widen for long text
-        let text_len = config.message.len();
-        let auto_width = if text_len > 30 { 480.0 } else { 400.0 };
-        let width = config.width.unwrap_or(auto_width);
+        // Auto-widen based on text pixel width estimation
+        let estimated_text_width = config.message.chars().fold(0.0f32, |w, ch| {
+            w + if ch as u32 > 0x2E80 { message_font_size } else { message_font_size * 0.55 }
+        });
+        let min_width = (estimated_text_width + 80.0).max(400.0).min(560.0); // 80px padding, cap at 560
+        let width = config.width.unwrap_or(min_width);
         let height = config.height.unwrap_or(200.0);
 
         let base_w = dpi_config.window_width;
