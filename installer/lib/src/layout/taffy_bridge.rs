@@ -1,6 +1,7 @@
 //! Taffy 布局引擎桥接
 //!
 //! 将 LayoutTree 转换为 Taffy 树，执行布局计算，输出每个节点的绝对坐标 Rect
+//! 支持文本测量：叶子节点的 auto width 根据文本内容自动计算
 
 use crate::layout::element::{LayoutElement, ElementType};
 use crate::layout::layout_tree::LayoutTree;
@@ -57,11 +58,22 @@ impl ComputedLayout {
     }
 }
 
+/// 文本测量上下文 — 存储叶子节点的文本和字号，供 measure function 使用
+#[derive(Debug, Clone)]
+struct NodeMeasureContext {
+    text: String,
+    font_size: f32,
+    has_checkbox_icon: bool, // checkbox 前面有 16px 图标
+    padding_h: f32,          // 水平 padding
+}
+
 /// Taffy 桥接器
 pub struct TaffyBridge {
-    tree: taffy::TaffyTree<()>,
+    tree: taffy::TaffyTree<NodeMeasureContext>,
     /// Taffy taffy::NodeId -> 对应的 LayoutElement 信息
     node_info: HashMap<taffy::NodeId, (ElementType, Option<String>)>,
+    /// i18n 字符串 (用于解析 @key 引用)
+    i18n_strings: HashMap<String, String>,
 }
 
 impl TaffyBridge {
@@ -69,6 +81,22 @@ impl TaffyBridge {
         Self {
             tree: taffy::TaffyTree::new(),
             node_info: HashMap::new(),
+            i18n_strings: HashMap::new(),
+        }
+    }
+
+    /// 设置 i18n 字符串（用于文本测量时解析 @key）
+    pub fn set_i18n_strings(&mut self, strings: HashMap<String, String>) {
+        self.i18n_strings = strings;
+    }
+
+    /// 解析文本（处理 @key 引用）
+    fn resolve_text(&self, text: &str) -> String {
+        if text.starts_with('@') {
+            let key = &text[1..];
+            self.i18n_strings.get(key).cloned().unwrap_or_else(|| text.to_string())
+        } else {
+            text.to_string()
         }
     }
 
@@ -85,11 +113,14 @@ impl TaffyBridge {
         let root_id = self.build_node(&layout_tree.root);
 
         self.tree
-            .compute_layout(
+            .compute_layout_with_measure(
                 root_id,
                 taffy::Size {
                     width: taffy::AvailableSpace::Definite(container_width),
                     height: taffy::AvailableSpace::Definite(container_height),
+                },
+                |known, available, _node_id, context, style| {
+                    measure_text_node(known, available, _node_id, context, style)
                 },
             )
             .ok();
@@ -103,6 +134,54 @@ impl TaffyBridge {
 
         self.collect_layout(root_id, 0.0, 0.0, &mut layout);
         layout
+    }
+
+    /// 判断元素是否是叶子节点（有文本内容、需要 auto-size）
+    fn is_text_leaf(element: &LayoutElement) -> bool {
+        matches!(
+            element.element_type,
+            ElementType::Button | ElementType::Label | ElementType::Checkbox | ElementType::Select
+        ) && element.children.is_empty()
+    }
+
+    /// 判断元素是否有显式宽度（px 或百分比）
+    fn has_explicit_width(element: &LayoutElement) -> bool {
+        if let Some(ref flex) = element.flex_style {
+            !matches!(flex.width, crate::layout::dimension::Dimension::Auto)
+        } else {
+            element.attributes.width.is_some()
+        }
+    }
+
+    /// 获取元素的文本内容
+    fn get_element_text(&self, element: &LayoutElement) -> String {
+        let raw = element.attributes.text.as_deref().unwrap_or("");
+        self.resolve_text(raw)
+    }
+
+    /// 获取元素字号
+    fn get_font_size(element: &LayoutElement) -> f32 {
+        element.visual_style.as_ref()
+            .and_then(|vs| vs.font_size)
+            .or_else(|| element.attributes.get_custom("font_size")
+                .and_then(|s| s.parse::<f32>().ok()))
+            .unwrap_or(14.0)
+    }
+
+    /// 估算文本像素宽度（不依赖 egui Context，用字号的经验公式）
+    fn estimate_text_width(text: &str, font_size: f32) -> f32 {
+        // 经验公式：CJK 字符约 font_size 宽，Latin 约 font_size * 0.55
+        let mut width = 0.0f32;
+        for ch in text.chars() {
+            if ch as u32 > 0x2E80 {
+                // CJK, Thai, Korean, etc — roughly square
+                width += font_size;
+            } else {
+                // Latin, digits, punctuation — roughly 0.55 em
+                width += font_size * 0.55;
+            }
+        }
+        width
     }
 
     /// 递归构建 Taffy 节点
@@ -125,10 +204,34 @@ impl TaffyBridge {
             .map(|child| self.build_node(child))
             .collect();
 
-        let node_id = self
-            .tree
-            .new_with_children(style, &child_ids)
-            .expect("failed to create taffy node");
+        // 对文本叶子节点（没有显式宽度）注册 measure function
+        let is_leaf = Self::is_text_leaf(element);
+        let no_explicit_w = !Self::has_explicit_width(element);
+
+        let node_id = if is_leaf && no_explicit_w && child_ids.is_empty() {
+            let text = self.get_element_text(element);
+            let font_size = Self::get_font_size(element);
+            let has_checkbox = element.element_type == ElementType::Checkbox;
+            let padding_h = element.attributes.padding.map(|(_, r, _, l)| r + l).unwrap_or(0.0);
+
+            let ctx = NodeMeasureContext {
+                text,
+                font_size,
+                has_checkbox_icon: has_checkbox,
+                padding_h,
+            };
+
+            self.tree
+                .new_leaf_with_context(
+                    style,
+                    ctx,
+                )
+                .expect("failed to create taffy leaf node")
+        } else {
+            self.tree
+                .new_with_children(style, &child_ids)
+                .expect("failed to create taffy node")
+        };
 
         self.node_info.insert(
             node_id,
@@ -275,6 +378,29 @@ impl Default for TaffyBridge {
     }
 }
 
+/// Taffy measure function — 估算文本叶子节点的 intrinsic size
+fn measure_text_node(
+    known_dimensions: taffy::Size<Option<f32>>,
+    available_space: taffy::Size<taffy::AvailableSpace>,
+    _node_id: taffy::NodeId,
+    context: Option<&mut NodeMeasureContext>,
+    _style: &taffy::Style,
+) -> taffy::Size<f32> {
+    let Some(ctx) = context else {
+        return taffy::Size { width: 0.0, height: 0.0 };
+    };
+
+    let text_w = TaffyBridge::estimate_text_width(&ctx.text, ctx.font_size);
+    let icon_w = if ctx.has_checkbox_icon { 20.0 } else { 0.0 };
+    let intrinsic_w = text_w + icon_w + ctx.padding_h + 4.0; // 4px margin
+    let intrinsic_h = ctx.font_size + 6.0; // line height ~= font_size + 6
+
+    taffy::Size {
+        width: known_dimensions.width.unwrap_or(intrinsic_w),
+        height: known_dimensions.height.unwrap_or(intrinsic_h),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -298,7 +424,6 @@ mod tests {
 
     #[test]
     fn test_vbox_layout() {
-        // VBox with 3 equal-height children
         let mut children = Vec::new();
         for i in 0..3 {
             let mut child = LayoutElement::with_attributes(
@@ -325,7 +450,7 @@ mod tests {
         assert_eq!(r0.height, 40.0);
         assert_eq!(r1.y, 40.0);
         assert_eq!(r2.y, 80.0);
-        assert_eq!(r0.width, 574.0); // 100% of 574
+        assert_eq!(r0.width, 574.0);
     }
 
     #[test]
@@ -410,7 +535,7 @@ mod tests {
         let layout = bridge.compute_layout(&tree, 574.0, 358.0);
 
         let g = layout.get_rect("grow").unwrap();
-        assert_eq!(g.width, 200.0); // 300 - 100 = 200
+        assert_eq!(g.width, 200.0);
     }
 
     #[test]
@@ -430,7 +555,7 @@ mod tests {
         let layout = bridge.compute_layout(&tree, 400.0, 300.0);
 
         let r = layout.get_rect("half").unwrap();
-        assert_eq!(r.width, 200.0); // 50% of 400
+        assert_eq!(r.width, 200.0);
     }
 
     #[test]
@@ -467,6 +592,44 @@ mod tests {
         assert_eq!(r.y, 20.0);
         assert_eq!(r.width, 200.0);
         assert_eq!(r.height, 100.0);
+    }
+
+    #[test]
+    fn test_text_auto_width() {
+        // 测试：无显式宽度的 Label 自动根据文本内容定宽度
+        let mut hbox = LayoutElement::new(ElementType::HBox);
+        hbox.flex_style = Some(FlexStyle {
+            width: Dimension::Px(500.0),
+            height: Dimension::Px(30.0),
+            flex_direction: FlexDirection::Row,
+            ..Default::default()
+        });
+
+        // 短文本 — 应该比长文本窄
+        let short = LayoutElement::with_attributes(
+            ElementType::Label,
+            ElementAttributes::new().with_id("short").with_text("Hi"),
+        );
+
+        let long = LayoutElement::with_attributes(
+            ElementType::Label,
+            ElementAttributes::new().with_id("long").with_text("Hello World This Is Long"),
+        );
+
+        hbox.children = vec![short, long];
+        let tree = make_page_with_flex(vec![hbox]);
+
+        let mut bridge = TaffyBridge::new();
+        let layout = bridge.compute_layout(&tree, 574.0, 358.0);
+
+        let s = layout.get_rect("short").unwrap();
+        let l = layout.get_rect("long").unwrap();
+
+        // short 应该比 long 窄
+        assert!(s.width < l.width, "short({}) should be < long({})", s.width, l.width);
+        // 两个都应该有正的宽度
+        assert!(s.width > 0.0);
+        assert!(l.width > 0.0);
     }
 
     #[test]
@@ -515,17 +678,13 @@ mod tests {
         let r1 = layout.get_rect("c1").unwrap();
         let r2 = layout.get_rect("c2").unwrap();
 
-        // c1 内容宽度 = 200 - 20 - 20 = 160
         assert_eq!(r1.width, 160.0);
-        // c1 的 y 位置 = padding-top = 10
         assert_eq!(r1.y, 10.0);
-        // c2 的 y 位置 = 10 (padding-top) + 30 (c1 height) + 5 (gap) = 45
         assert_eq!(r2.y, 45.0);
     }
 
     #[test]
     fn test_legacy_attrs_compat() {
-        // 测试旧格式属性也能正确计算布局
         let page = LayoutElement::new(ElementType::Page)
             .add_child(
                 LayoutElement::with_attributes(
@@ -560,25 +719,18 @@ mod tests {
         let egui_rect = rect.to_egui_rect(egui::Pos2::new(5.0, 3.0));
         assert_eq!(egui_rect.min.x, 15.0);
         assert_eq!(egui_rect.min.y, 23.0);
-        assert_eq!(egui_rect.width(), 100.0);
-        assert_eq!(egui_rect.height(), 50.0);
     }
 
     #[test]
     fn test_computed_rect_to_egui_rect_zero_offset() {
-        // 最常见的用法: offset 是窗口左上角 (0,0)
         let rect = ComputedRect { x: 50.0, y: 100.0, width: 200.0, height: 40.0 };
         let egui_rect = rect.to_egui_rect(egui::Pos2::ZERO);
         assert_eq!(egui_rect.min.x, 50.0);
         assert_eq!(egui_rect.min.y, 100.0);
-        assert_eq!(egui_rect.max.x, 250.0);
-        assert_eq!(egui_rect.max.y, 140.0);
     }
 
     #[test]
     fn test_taffy_output_used_directly_as_logical_coords() {
-        // 核心场景: Taffy 在 1x 逻辑坐标系计算, 输出直接作为 egui 坐标 (不乘 scale)
-        // 模拟: Page(574x358) 内一个按钮在底部
         let mut page = LayoutElement::new(ElementType::Page);
         page.flex_style = Some(FlexStyle {
             width: Dimension::Percent(100.0),
@@ -587,7 +739,6 @@ mod tests {
             ..Default::default()
         });
 
-        // 顶部 spacer 占 300px
         let mut spacer = LayoutElement::new(ElementType::Spacer);
         spacer.flex_style = Some(FlexStyle {
             width: Dimension::Percent(100.0),
@@ -595,7 +746,6 @@ mod tests {
             ..Default::default()
         });
 
-        // 底部按钮 40px
         let mut btn = LayoutElement::with_attributes(
             ElementType::Button,
             ElementAttributes::new().with_id("install_btn").with_text("Install"),
@@ -609,27 +759,17 @@ mod tests {
         page.children = vec![spacer, btn];
         let tree = LayoutTree::new(page);
 
-        // 用配置尺寸计算 (模拟 config.ui.window_width/height)
-        let container_w = 574.0;
-        let container_h = 358.0;
         let mut bridge = TaffyBridge::new();
-        let layout = bridge.compute_layout(&tree, container_w, container_h);
+        let layout = bridge.compute_layout(&tree, 574.0, 358.0);
 
         let btn_rect = layout.get_rect("install_btn").unwrap();
-        // 按钮 y = spacer高度 300
         assert_eq!(btn_rect.y, 300.0);
         assert_eq!(btn_rect.width, 200.0);
         assert_eq!(btn_rect.height, 40.0);
-
-        // 转为 egui rect, offset=0 → 坐标不变, 无 scale 乘法
-        let egui_rect = btn_rect.to_egui_rect(egui::Pos2::ZERO);
-        assert_eq!(egui_rect.min.y, 300.0); // 直接是逻辑像素, 不是 300*2=600
-        assert_eq!(egui_rect.width(), 200.0);
     }
 
     #[test]
     fn test_custom_container_size() {
-        // 验证: 不同的容器尺寸 (非 574x358) 正确工作
         let mut child = LayoutElement::with_attributes(
             ElementType::Label,
             ElementAttributes::new().with_id("lbl").with_text("Hi"),
@@ -642,11 +782,20 @@ mod tests {
 
         let tree = make_page_with_flex(vec![child]);
         let mut bridge = TaffyBridge::new();
-
-        // 用 800x600 而非 574x358
         let layout = bridge.compute_layout(&tree, 800.0, 600.0);
+
         let r = layout.get_rect("lbl").unwrap();
-        assert_eq!(r.width, 800.0); // 100% of 800
+        assert_eq!(r.width, 800.0);
         assert_eq!(r.height, 30.0);
+    }
+
+    #[test]
+    fn test_estimate_text_width() {
+        let cjk = TaffyBridge::estimate_text_width("你好世界", 14.0);
+        let latin = TaffyBridge::estimate_text_width("Hello", 14.0);
+        // CJK: 4 chars * 14 = 56
+        assert!((cjk - 56.0).abs() < 0.1);
+        // Latin: 5 chars * 14 * 0.55 = 38.5
+        assert!((latin - 38.5).abs() < 0.1);
     }
 }

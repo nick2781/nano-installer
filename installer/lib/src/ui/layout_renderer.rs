@@ -178,6 +178,9 @@ impl LayoutRenderer {
     /// 使用 Taffy 布局引擎渲染 (新格式)
     /// Taffy 在 1x 逻辑像素坐标系中计算布局，输出直接作为 egui 逻辑坐标
     fn render_with_taffy(&mut self, ui: &mut Ui, layout_tree: &LayoutTree, result: &mut RenderResult) {
+        // Pass i18n strings to taffy bridge for text measurement
+        self.taffy_bridge.set_i18n_strings(self.i18n_strings.clone());
+
         // 计算布局 (逻辑像素，尺寸来自配置，直接匹配 egui 逻辑空间)
         let computed = self.taffy_bridge.compute_layout(
             layout_tree,

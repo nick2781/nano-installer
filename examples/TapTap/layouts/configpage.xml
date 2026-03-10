@@ -41,20 +41,20 @@
     <!-- Bottom row: Agreement checkbox with inline links + Custom Settings -->
     <HBox width="100%" height="40" padding="0 24" align-items="center">
 
-      <!-- Single checkbox with inline [link](id) syntax — auto-sizes to content -->
-      <Checkbox id="chkAgree" width="75%" height="20" font-size="11"
+      <!-- Single checkbox with inline [link](id) syntax — auto-sizes to text content -->
+      <Checkbox id="chkAgree" height="20" font-size="11"
                 text="@agree_full" color="#FF9CA3AF" checked="false"
                 unchecked-image="file='assets/checkbox-0.png' dest='0,1,16,17'"
                 checked-image="file='assets/checkbox-2.png' dest='0,1,16,17'" />
 
       <Spacer flex-grow="1" />
 
-      <Button id="btnShowMore" action="toggle_panel:moreconfiginfo:show" width="100" height="20" text="@show_more" font-size="11"
+      <Button id="btnShowMore" action="toggle_panel:moreconfiginfo:show" height="20" text="@show_more" font-size="11"
               color="#FF9CA3AF" hover-color="#FFFFFFFF" cursor="hand" textpadding="0,0,16,0"
               normal-image="file='assets/arrow-down.png' dest='88,2,100,15'"
               hover-image="file='assets/arrow-down.png' dest='88,2,100,15'"
               pressed-image="file='assets/arrow-down.png' dest='88,2,100,15'" />
-      <Button id="btnHideMore" action="toggle_panel:moreconfiginfo:hide" width="100" height="20" text="@hide_more" font-size="11"
+      <Button id="btnHideMore" action="toggle_panel:moreconfiginfo:hide" height="20" text="@hide_more" font-size="11"
               color="#FF9CA3AF" hover-color="#FFFFFFFF" cursor="hand" visible="false" textpadding="0,0,16,0"
               normal-image="file='assets/arrow-up.png' dest='88,3,100,16'"
               hover-image="file='assets/arrow-up.png' dest='88,3,100,16'"
