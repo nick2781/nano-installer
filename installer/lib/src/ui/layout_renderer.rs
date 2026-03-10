@@ -625,32 +625,54 @@ impl LayoutRenderer {
 
             // 解析带链接的文本
             let segments = self.parse_text_with_links(&text);
+            let link_color = element.attributes.get_custom("linkcolor")
+                .and_then(|c| self.parse_color(c))
+                .unwrap_or(Color32::from_rgb(0, 196, 178)); // TapTap green default
+
             if segments.iter().any(|s| matches!(s, TextSegment::Link { .. })) {
-                // 有链接时，用 child_ui 渲染
-                let text_rect = Rect::from_min_max(
-                    Pos2::new(rect.min.x + text_padding_left, rect.min.y),
-                    rect.max,
-                );
-                let mut child_ui = ui.new_child(egui::UiBuilder::new().max_rect(text_rect));
-                child_ui.horizontal(|ui| {
-                    for segment in &segments {
-                        match segment {
-                            TextSegment::Text(t) => {
-                                ui.add(egui::Label::new(egui::RichText::new(t).size(font_size).color(text_color)));
+                // 有链接时：用 painter 直接绘制，无间距，紧凑排列
+                let font_id = egui::FontId::proportional(font_size);
+                let mut cursor_x = rect.min.x + text_padding_left;
+                let center_y = rect.center().y;
+
+                for segment in &segments {
+                    match segment {
+                        TextSegment::Text(t) => {
+                            let galley = ui.painter().layout_no_wrap(t.clone(), font_id.clone(), text_color);
+                            let text_width = galley.size().x;
+                            let pos = Pos2::new(cursor_x, center_y);
+                            ui.painter().galley(pos - egui::vec2(0.0, galley.size().y / 2.0), galley, text_color);
+                            cursor_x += text_width;
+                        }
+                        TextSegment::Link { id: link_id, text: link_text } => {
+                            let galley = ui.painter().layout_no_wrap(link_text.clone(), font_id.clone(), link_color);
+                            let text_width = galley.size().x;
+                            let text_height = galley.size().y;
+                            let link_rect = Rect::from_min_size(
+                                Pos2::new(cursor_x, center_y - text_height / 2.0),
+                                egui::vec2(text_width, text_height),
+                            );
+
+                            // Draw link text
+                            ui.painter().galley(link_rect.min, galley, link_color);
+
+                            // Underline on hover
+                            let link_resp = ui.interact(link_rect, egui::Id::new(format!("link_{}", link_id)), egui::Sense::click());
+                            if link_resp.hovered() {
+                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                ui.painter().line_segment(
+                                    [Pos2::new(link_rect.min.x, link_rect.max.y), link_rect.max],
+                                    egui::Stroke::new(1.0, link_color),
+                                );
                             }
-                            TextSegment::Link { id: link_id, text: link_text } => {
-                                let link_color = element.attributes.get_custom("linkcolor")
-                                    .and_then(|c| self.parse_color(c))
-                                    .unwrap_or(text_color);
-                                let btn = egui::Button::new(egui::RichText::new(link_text).size(font_size).color(link_color))
-                                    .frame(false).fill(Color32::TRANSPARENT);
-                                let link_resp = ui.add(btn);
-                                if link_resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                                if link_resp.clicked() { result.link_clicks.insert(link_id.clone(), true); }
+                            if link_resp.clicked() {
+                                result.link_clicks.insert(link_id.clone(), true);
                             }
+
+                            cursor_x += text_width;
                         }
                     }
-                });
+                }
             } else {
                 let text_pos = Pos2::new(rect.min.x + text_padding_left, rect.center().y);
                 ui.painter().text(text_pos, egui::Align2::LEFT_CENTER, &text, egui::FontId::proportional(font_size), text_color);
