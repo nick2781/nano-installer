@@ -1,17 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Page width="574" height="358" background="#FF181B22" background-image="assets/bg_main.png">
 
-  <!-- Close Button (absolute positioned, matching NSIS: pos 526,16, size 32x32) -->
-  <Button id="close" action="close_confirm" position="absolute" left="526" top="16" width="32" height="32"
+  <!-- Top-right: Language | Minimize | Close — flush to corner -->
+  <Select id="langSelect" action="switch_language" selected="zh-CN"
+          position="absolute" left="420" top="8" width="85" height="24"
+          font-size="12" color="#FFCCCCCC">
+    <Option value="zh-CN" text="简体中文" />
+    <Option value="zh-TW" text="繁體中文" />
+    <Option value="en-US" text="English" />
+    <Option value="ja" text="日本語" />
+    <Option value="ko" text="한국어" />
+    <Option value="th" text="ไทย" />
+    <Option value="vi" text="Tiếng Việt" />
+    <Option value="id" text="Indonesia" />
+    <Option value="es" text="Español" />
+    <Option value="pt" text="Português" />
+    <Option value="ru" text="Русский" />
+  </Select>
+  <Button id="btnMinimize" action="minimize" position="absolute" left="512" top="8" width="24" height="24"
+          font-size="14" color="#80FFFFFF" hover-color="#FFFFFFFF" text="—" cursor="hand" />
+  <Button id="close" action="close_confirm" position="absolute" left="540" top="8" width="24" height="24"
           normal-image="file='assets/btn_close.png' dest='0,0,32,32' fade='160'"
           hover-image="file='assets/btn_close.png' dest='0,0,32,32'"
           pressed-image="file='assets/btn_close.png' dest='0,0,32,32'" cursor="hand" />
 
-  <VBox width="100%" height="100%">
+  <VBox width="100%" height="100%" align-items="center">
 
     <!-- Logo -->
-    <Spacer height="96" />
-    <Image id="logo" src="assets/logo.png" width="148" height="80" align-self="center" />
+    <Spacer height="70" />
+    <Image id="logo" src="assets/logo.png" width="148" height="80" />
 
     <!-- Install Button -->
     <Button id="btnInstall" action="install" width="240" height="40" margin-top="55" align-self="center"
@@ -19,46 +36,43 @@
             pressed-image="assets/btn_hover.png" disabled-image="assets/btn_disabled.png"
             font-size="14" font-weight="bold" color="#FFFFFFFF" text="@install_button" cursor="hand" />
 
-    <!-- Agree & ShowMore -->
-    <HBox width="100%" height="87" padding="35 40" align-items="center">
+    <Spacer flex-grow="1" />
 
-      <Checkbox id="chkAgree" width="110" height="20" font-size="12"
-                text="@agree_prefix" color="#FFE4E8EC" checked="false"
+    <!-- Bottom row: Agreement checkbox with inline links + Custom Settings -->
+    <HBox width="100%" height="40" padding="0 24" align-items="center">
+
+      <!-- Single checkbox with inline [link](id) syntax — auto-sizes to content -->
+      <Checkbox id="chkAgree" width="75%" height="20" font-size="11"
+                text="@agree_full" color="#FF9CA3AF" checked="false"
                 unchecked-image="file='assets/checkbox-0.png' dest='0,1,16,17'"
                 checked-image="file='assets/checkbox-2.png' dest='0,1,16,17'" />
-      <Button id="btnAgreement" action="open_url:terms_of_service" text="@agreement_link" height="20" width="72"
-              font-size="12" color="#FFFFFFFF" hover-color="#FF00FFE8" cursor="hand" />
-      <Label id="lblAnd" text="@lbl_and" color="#FFE4E8EC" height="20" width="16"
-             font-size="12" text-align="center" valign="center" />
-      <Button id="btnPolicy" action="open_url:privacy_policy" text="@policy_link" height="20" width="72"
-              font-size="12" color="#FFFFFFFF" hover-color="#FF00FFE8" cursor="hand" />
 
       <Spacer flex-grow="1" />
 
-      <Button id="btnShowMore" action="toggle_panel:moreconfiginfo:show" width="80" height="20" text="@show_more" font-size="12"
-              color="#FFFFFFFF" cursor="hand" textpadding="0,0,16,0"
-              normal-image="file='assets/arrow-down.png' dest='68,2,80,15'"
-              hover-image="file='assets/arrow-down.png' dest='68,2,80,15'"
-              pressed-image="file='assets/arrow-down.png' dest='68,2,80,15'" />
-      <Button id="btnHideMore" action="toggle_panel:moreconfiginfo:hide" width="80" height="20" text="@hide_more" font-size="12"
-              color="#FFFFFFFF" cursor="hand" visible="false" textpadding="0,0,16,0"
-              normal-image="file='assets/arrow-up.png' dest='68,3,80,16'"
-              hover-image="file='assets/arrow-up.png' dest='68,3,80,16'"
-              pressed-image="file='assets/arrow-up.png' dest='68,3,80,16'" />
+      <Button id="btnShowMore" action="toggle_panel:moreconfiginfo:show" width="100" height="20" text="@show_more" font-size="11"
+              color="#FF9CA3AF" hover-color="#FFFFFFFF" cursor="hand" textpadding="0,0,16,0"
+              normal-image="file='assets/arrow-down.png' dest='88,2,100,15'"
+              hover-image="file='assets/arrow-down.png' dest='88,2,100,15'"
+              pressed-image="file='assets/arrow-down.png' dest='88,2,100,15'" />
+      <Button id="btnHideMore" action="toggle_panel:moreconfiginfo:hide" width="100" height="20" text="@hide_more" font-size="11"
+              color="#FF9CA3AF" hover-color="#FFFFFFFF" cursor="hand" visible="false" textpadding="0,0,16,0"
+              normal-image="file='assets/arrow-up.png' dest='88,3,100,16'"
+              hover-image="file='assets/arrow-up.png' dest='88,3,100,16'"
+              pressed-image="file='assets/arrow-up.png' dest='88,3,100,16'" />
 
     </HBox>
 
+    <Spacer height="12" />
+
   </VBox>
 
-  <!-- Expandable Config Panel (absolute positioned) -->
+  <!-- Expandable Config Panel -->
   <Overlay id="moreconfiginfo" visible="false"
            position="absolute" left="0" top="358" width="574" height="160"
            background="#FF181B22" background-image="assets/bg_color.png">
     <VBox width="100%" height="100%">
       <Divider width="100%" height="1" background="#3300C4B2" padding="0 16" />
       <Spacer height="24" />
-
-      <!-- Install Path -->
       <HBox height="32" padding="0 40" align-items="center">
         <TextInput id="editDir" width="410" height="32" readonly="true"
                    color="#CCFFFFFF" background="#1AFFFFFF"
@@ -67,15 +81,11 @@
         <Button id="btnSelectDir" action="browse_folder" width="60" height="32" text="@browse"
                 font-size="14" color="#FF00C4B2" hover-color="#FF00FFE8" cursor="hand" />
       </HBox>
-
-      <!-- Space Info -->
       <HBox height="24" padding="5 40 0 40">
         <Label id="lblRequiredSpace" width="160" text="@required_space" color="#FF96A1A9" font-size="12" />
         <Label id="local_space" width="200" text="@available_space" color="#FF96A1A9" font-size="12" />
         <Spacer flex-grow="1" />
       </HBox>
-
-      <!-- Checkboxes -->
       <HBox height="24" padding="20 40 0 40" align-items="center">
         <Checkbox id="chkShotcut" width="150" height="24" text="@shortcut_checkbox"
                   font-size="14" color="#FFFFFFFF" checked="true"

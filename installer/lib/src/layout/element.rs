@@ -33,6 +33,8 @@ pub enum ElementType {
     ProgressBar,
     /// 分隔线
     Divider,
+    /// 下拉选择框
+    Select,
     /// 浮动层
     Overlay,
 }
@@ -244,11 +246,12 @@ impl ElementAttributes {
 
     /// 检查是否支持子元素
     pub fn supports_children(&self, element_type: &ElementType) -> bool {
-        matches!(element_type, 
-            ElementType::Page | 
-            ElementType::VBox | 
-            ElementType::HBox | 
-            ElementType::Overlay
+        matches!(element_type,
+            ElementType::Page |
+            ElementType::VBox |
+            ElementType::HBox |
+            ElementType::Overlay |
+            ElementType::Select
         )
     }
 

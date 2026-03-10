@@ -85,6 +85,9 @@ pub struct InstallerApp {
 
     // 待处理的窗口大小调整
     pending_resize: Option<egui::Vec2>,
+    // 首帧标志 (用于关闭 always_on_top)
+    first_frame_done: bool,
+    disable_always_on_top: bool,
 }
 
 impl InstallerApp {
@@ -177,6 +180,8 @@ impl InstallerApp {
             uninstall_finished: Arc::new(AtomicBool::new(false)),
             uninstall_error: Arc::new(RwLock::new(None)),
             pending_resize: None,
+            first_frame_done: false,
+            disable_always_on_top: false,
         }
     }
 
@@ -402,6 +407,11 @@ impl InstallerApp {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
 
+            // ── 最小化 ──
+            "minimize" => {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+            }
+
             // ── 关闭 ──
             "close" => {
                 // 卸载模式退出时启动自删除批处理
@@ -420,6 +430,31 @@ impl InstallerApp {
                     self.open_url_in_browser(url);
                 } else {
                     tracing::warn!("Unknown link key: {}", arg);
+                }
+            }
+
+            // ── 切换元素可见性 (action="toggle_element:ID") ──
+            "toggle_element" => {
+                let current_page_id = self.wizard.current_page_id().to_string();
+                if let Some(layout) = self.layout_cache.get_mut(&current_page_id) {
+                    // 读取当前状态，取反
+                    let is_visible = layout.root.find_by_id(arg)
+                        .and_then(|el| el.attributes.visible)
+                        .unwrap_or(false);
+                    Self::update_element_visible_recursive(&mut layout.root, arg, !is_visible);
+                }
+            }
+            // ── 显示/隐藏元素 (action="show_element:ID" / "hide_element:ID") ──
+            "show_element" => {
+                let current_page_id = self.wizard.current_page_id().to_string();
+                if let Some(layout) = self.layout_cache.get_mut(&current_page_id) {
+                    Self::update_element_visible_recursive(&mut layout.root, arg, true);
+                }
+            }
+            "hide_element" => {
+                let current_page_id = self.wizard.current_page_id().to_string();
+                if let Some(layout) = self.layout_cache.get_mut(&current_page_id) {
+                    Self::update_element_visible_recursive(&mut layout.root, arg, false);
                 }
             }
 
@@ -1151,7 +1186,12 @@ impl InstallerApp {
     fn update_progress_bar_recursive(element: &mut LayoutElement, target_id: &str, progress: f32) {
         if let Some(id) = &element.attributes.id {
             if id == target_id {
-                element.attributes.progress = Some(progress.clamp(0.0, 1.0));
+                let clamped = progress.clamp(0.0, 1.0);
+                // Dual-format sync: update both attributes and widget_props
+                element.attributes.progress = Some(clamped);
+                if let Some(ref mut wp) = element.widget_props {
+                    wp.progress = Some(clamped);
+                }
                 return;
             }
         }
@@ -1164,6 +1204,18 @@ impl InstallerApp {
 impl eframe::App for InstallerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         tracing::trace!("update() called");
+
+        // Disable always_on_top after first frame (used to bring window to front after UAC)
+        if self.first_frame_done {
+            // Only send once on second frame
+            if self.disable_always_on_top {
+                ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(egui::WindowLevel::Normal));
+                self.disable_always_on_top = false;
+            }
+        } else {
+            self.first_frame_done = true;
+            self.disable_always_on_top = true;
+        }
 
         // Poll installation / uninstall progress before rendering
         self.poll_install_progress(ctx);
@@ -1291,29 +1343,34 @@ impl InstallerApp {
         }
         tracing::info!("Switching language to: {}", locale);
 
-        // 1. 重新加载 i18n 字符串
+        // 1. Load new locale strings, merge with current (fallback to current for missing keys)
         let mut config_clone = self.config.clone();
         config_clone.localization.default_locale = locale.to_string();
         let new_strings = Self::load_i18n_strings(&config_clone, &self.config_base_path);
 
-        if new_strings.len() <= 2 {
-            tracing::warn!("Failed to load locale {}, only got {} keys", locale, new_strings.len());
-            return;
+        // Merge: keep existing strings as fallback, overwrite with new locale
+        let mut merged = self.i18n_strings.clone();
+        for (k, v) in new_strings {
+            merged.insert(k, v);
         }
-
-        self.i18n_strings = new_strings;
+        self.i18n_strings = merged;
         self.current_language = locale.to_string();
 
-        // 2. 清除布局缓存（强制重加载 XML 以应用新 i18n）
+        // 2. Clear layout cache (force re-parse XML to apply new i18n)
         self.layout_cache.clear();
 
-        // 3. 重建 LayoutRenderer（使用新的 i18n 字符串）
+        // 3. Rebuild LayoutRenderer with merged i18n strings
         let style_engine = StyleEngine::new();
         self.layout_renderer = Some(LayoutRenderer::with_style_engine(
             self.dpi_config.clone(),
             style_engine,
             self.i18n_strings.clone(),
         ));
+
+        // 4. Update Select control's selected value
+        if let Some(ref mut renderer) = self.layout_renderer {
+            renderer.set_text_input_value("langSelect", locale.to_string());
+        }
 
         // 4. 重新加载 msgBox 模板
         let mut parser = XmlParser::new();

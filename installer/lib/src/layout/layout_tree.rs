@@ -252,6 +252,7 @@ impl LayoutTree {
             ElementType::Overlay => stats.overlays += 1,
             ElementType::Spacer => stats.spacers += 1,
             ElementType::Flex => stats.flexes += 1,
+            ElementType::Select => stats.buttons += 1, // count as button for stats
         }
 
         if element.attributes.is_i18n_text() {

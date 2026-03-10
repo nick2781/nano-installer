@@ -281,16 +281,19 @@ impl MessageBoxManager {
 
         let rounding = 16.0;
         let stroke_width = 1.0;
-        let message_font_size = 16.0;
+        let message_font_size = 14.0;
         let button_font_size = 14.0;
         let button_width = 160.0;
         let button_height = 40.0;
-        let top_spacing = 70.0;
-        let message_height = 24.0;
-        let middle_spacing = 64.0;
+        let top_spacing = 50.0;
+        let message_height = 48.0;
+        let middle_spacing = 40.0;
         let button_gap = 16.0;
 
-        let width = config.width.unwrap_or(400.0);
+        // Auto-widen for long text
+        let text_len = config.message.len();
+        let auto_width = if text_len > 30 { 480.0 } else { 400.0 };
+        let width = config.width.unwrap_or(auto_width);
         let height = config.height.unwrap_or(200.0);
 
         let base_w = dpi_config.window_width;

@@ -173,6 +173,7 @@ fn run_gui(config: InstallerConfig, wizard_mode: WizardMode) -> Result<()> {
             .with_decorations(false)
             .with_transparent(true)
             .with_active(true)
+            .with_window_level(egui::WindowLevel::AlwaysOnTop)
             .with_icon(icon.unwrap_or_default()),
         centered: true,
         ..Default::default()
@@ -257,54 +258,63 @@ fn setup_chinese_font(ctx: &egui::Context) {
 
     let mut fonts = FontDefinitions::default();
 
-    let font_data = load_system_chinese_font();
-
-    if let Some(data) = font_data {
-        fonts.font_data.insert(
-            "chinese".to_owned(),
-            Arc::new(egui::FontData::from_owned(data)),
-        );
-
-        fonts.families.entry(FontFamily::Proportional)
-            .or_default()
-            .insert(0, "chinese".to_owned());
-
-        fonts.families.entry(FontFamily::Monospace)
-            .or_default()
-            .insert(0, "chinese".to_owned());
-
-        tracing::info!("Chinese font loaded successfully");
-    } else {
-        tracing::warn!("Failed to load Chinese font, text may not display correctly");
-    }
-
-    ctx.set_fonts(fonts);
-}
-
-/// 从 Windows 系统加载中文字体
-#[cfg(windows)]
-fn load_system_chinese_font() -> Option<Vec<u8>> {
-    let font_paths = [
-        "C:\\Windows\\Fonts\\msyh.ttc",
-        "C:\\Windows\\Fonts\\msyhbd.ttc",
-        "C:\\Windows\\Fonts\\simhei.ttf",
-        "C:\\Windows\\Fonts\\simsun.ttc",
-        "C:\\Windows\\Fonts\\simkai.ttf",
+    // Load multiple system fonts for multi-language support
+    // Each font covers different Unicode ranges
+    let font_configs: &[(&str, &[&str])] = &[
+        // CJK Chinese + Japanese (primary)
+        ("cjk", &[
+            "C:\\Windows\\Fonts\\msyh.ttc",       // 微软雅黑 (Chinese + Japanese)
+            "C:\\Windows\\Fonts\\simhei.ttf",      // 黑体
+        ]),
+        // Korean
+        ("korean", &[
+            "C:\\Windows\\Fonts\\malgun.ttf",      // Malgun Gothic
+            "C:\\Windows\\Fonts\\malgunsl.ttf",     // Malgun Gothic Semilight
+            "C:\\Windows\\Fonts\\gulim.ttc",        // Gulim
+        ]),
+        // Thai
+        ("thai", &[
+            "C:\\Windows\\Fonts\\leelawad.ttf",    // Leelawadee
+            "C:\\Windows\\Fonts\\LeelUIsl.ttf",     // Leelawadee UI Semilight
+            "C:\\Windows\\Fonts\\cordia.ttc",       // Cordia New
+        ]),
+        // Vietnamese / Latin Extended (covers Portuguese, Spanish, etc.)
+        ("latin_ext", &[
+            "C:\\Windows\\Fonts\\segoeui.ttf",     // Segoe UI (broad Latin coverage)
+            "C:\\Windows\\Fonts\\arial.ttf",        // Arial
+        ]),
     ];
 
-    for path in &font_paths {
-        tracing::debug!("Trying to load font: {}", path);
-        if let Ok(data) = std::fs::read(path) {
-            tracing::info!("Successfully loaded font: {}", path);
-            return Some(data);
+    let mut loaded_count = 0;
+    for (name, paths) in font_configs {
+        for path in *paths {
+            if let Ok(data) = std::fs::read(path) {
+                tracing::info!("Loaded font '{}': {}", name, path);
+                fonts.font_data.insert(
+                    name.to_string(),
+                    Arc::new(egui::FontData::from_owned(data)),
+                );
+
+                // Insert into font families (CJK first, then others as fallback)
+                let priority = if *name == "cjk" { 0 } else { loaded_count + 1 };
+                fonts.families.entry(FontFamily::Proportional)
+                    .or_default()
+                    .insert(priority, name.to_string());
+                fonts.families.entry(FontFamily::Monospace)
+                    .or_default()
+                    .insert(priority, name.to_string());
+
+                loaded_count += 1;
+                break; // Only need one font per category
+            }
         }
     }
 
-    tracing::error!("Could not load any Chinese font from system");
-    None
-}
+    if loaded_count == 0 {
+        tracing::warn!("No system fonts loaded, text may not display correctly");
+    } else {
+        tracing::info!("Loaded {} font families for multi-language support", loaded_count);
+    }
 
-#[cfg(not(windows))]
-fn load_system_chinese_font() -> Option<Vec<u8>> {
-    None
+    ctx.set_fonts(fonts);
 }

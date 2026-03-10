@@ -216,9 +216,11 @@ impl LayoutRenderer {
         // 渲染控件内容 (按钮文字/图片、标签文字等)
         self.render_widget_at_rect(ui, element, egui_rect, result);
 
-        // 递归渲染子元素
-        for child in &element.children {
-            self.render_taffy_node(ui, child, computed, window_rect, result);
+        // 递归渲染子元素（Select 的子元素由 ComboBox 内部渲染，不递归）
+        if element.element_type != ElementType::Select {
+            for child in &element.children {
+                self.render_taffy_node(ui, child, computed, window_rect, result);
+            }
         }
     }
 
@@ -330,6 +332,7 @@ impl LayoutRenderer {
             ElementType::TextInput => self.render_text_input_at_rect(ui, element, rect, result),
             ElementType::ProgressBar => self.render_progress_at_rect(ui, element, rect),
             ElementType::Divider => self.render_divider_at_rect(ui, element, rect),
+            ElementType::Select => self.render_select_at_rect(ui, element, rect, result),
         }
     }
 
@@ -376,15 +379,64 @@ impl LayoutRenderer {
                     };
 
                     if let Some((x1, y1, x2, y2)) = image_path.dest {
-                        // NSIS dest = 在控件 rect 内的目标绘制子区域 (1x 逻辑像素)
                         let dest_rect = Rect::from_min_max(
                             Pos2::new(rect.min.x + x1, rect.min.y + y1),
                             Pos2::new(rect.min.x + x2, rect.min.y + y2),
                         );
                         ui.painter().image(texture.id(), dest_rect, full_uv, image_color);
                     } else {
-                        // 无 dest: 铺满整个按钮
                         ui.painter().image(texture.id(), rect, full_uv, image_color);
+                    }
+                }
+            } else {
+                // No image: draw CSS border button (outline style)
+                let border_radius = element.visual_style.as_ref()
+                    .and_then(|vs| vs.border_radius)
+                    .or_else(|| element.attributes.get_custom("borderround")
+                        .and_then(|s| s.split(',').next()?.trim().parse::<f32>().ok()))
+                    .unwrap_or(0.0);
+                let border_color_str = element.visual_style.as_ref()
+                    .and_then(|vs| vs.border_color.clone())
+                    .or_else(|| element.attributes.get_custom("border-color").cloned());
+                let border_width = element.visual_style.as_ref()
+                    .and_then(|vs| vs.border_width)
+                    .unwrap_or(1.0);
+                let bg_color = element.visual_style.as_ref()
+                    .and_then(|vs| vs.background.as_ref())
+                    .or_else(|| element.attributes.background.as_ref());
+
+                // Background fill (if specified)
+                if let Some(bg) = bg_color {
+                    if let Some(color) = Self::parse_color_static(bg) {
+                        let rounding = CornerRadius::same(border_radius as u8);
+                        ui.painter().rect_filled(rect, rounding, color);
+                    }
+                }
+
+                // Hover effect: lighten border/background
+                if response.hovered() && enabled {
+                    let hover_bg = element.attributes.get_custom("hover-background");
+                    if let Some(hbg) = hover_bg {
+                        if let Some(color) = Self::parse_color_static(hbg) {
+                            let rounding = CornerRadius::same(border_radius as u8);
+                            ui.painter().rect_filled(rect, rounding, color);
+                        }
+                    }
+                }
+
+                // Border stroke
+                if let Some(bc_str) = &border_color_str {
+                    if let Some(bc) = Self::parse_color_static(bc_str) {
+                        let rounding = CornerRadius::same(border_radius as u8);
+                        let stroke_color = if response.hovered() && enabled {
+                            // Brighter on hover
+                            element.attributes.get_custom("hover-border-color")
+                                .and_then(|c| Self::parse_color_static(c))
+                                .unwrap_or(bc)
+                        } else {
+                            bc
+                        };
+                        ui.painter().rect_stroke(rect, rounding, egui::Stroke::new(border_width, stroke_color), egui::epaint::StrokeKind::Inside);
                     }
                 }
             }
@@ -401,7 +453,8 @@ impl LayoutRenderer {
                     .or_else(|| element.attributes.color.as_ref().and_then(|c| self.parse_color(c)))
                     .unwrap_or(Color32::WHITE)
             } else if response.hovered() {
-                element.attributes.get_custom("hottextcolor")
+                element.attributes.get_custom("hover-color")
+                    .or_else(|| element.attributes.get_custom("hottextcolor"))
                     .and_then(|c| self.parse_color(c))
                     .or_else(|| element.attributes.color.as_ref().and_then(|c| self.parse_color(c)))
                     .unwrap_or(Color32::WHITE)
@@ -734,6 +787,87 @@ impl LayoutRenderer {
         }
     }
 
+    /// Render a Select/Dropdown control at the given rect
+    /// XML: <Select id="langSelect" action="switch_language" selected="zh-CN">
+    ///        <Option value="zh-CN" text="简体中文" />
+    ///        <Option value="en-US" text="English" />
+    ///      </Select>
+    fn render_select_at_rect(&mut self, ui: &mut Ui, element: &LayoutElement, rect: Rect, result: &mut RenderResult) {
+        let id = element.attributes.id.as_ref().map(|s| s.as_str()).unwrap_or("select");
+        let action = element.attributes.get_custom("action").cloned().unwrap_or_default();
+
+        // Get current selected value from interaction state or attribute
+        let selected = self.interaction_state.text_inputs
+            .get(id)
+            .cloned()
+            .or_else(|| element.attributes.get_custom("selected").cloned())
+            .unwrap_or_default();
+
+        // Build options from children: <Option value="xx" text="Display" />
+        let mut options: Vec<(String, String)> = Vec::new();
+        for child in &element.children {
+            let value = child.attributes.get_custom("value")
+                .cloned()
+                .unwrap_or_default();
+            let text = self.get_display_text(&child.attributes);
+            if !value.is_empty() {
+                options.push((value, text));
+            }
+        }
+
+        // Find display text for current selection
+        let display_text = options.iter()
+            .find(|(v, _)| v == &selected)
+            .map(|(_, t)| t.clone())
+            .unwrap_or(selected.clone());
+
+        // Style
+        let font_size = element.attributes.get_custom("font_size")
+            .and_then(|s| s.parse::<f32>().ok())
+            .unwrap_or(13.0);
+        let text_color = element.attributes.color.as_ref()
+            .and_then(|c| Self::parse_color_static(c))
+            .unwrap_or(Color32::WHITE);
+
+        // Render using egui ComboBox at the specified rect
+        let combo_id = egui::Id::new(format!("select_{}", id));
+
+        // Position the combo box at rect
+        let mut child_ui = ui.child_ui(rect, egui::Layout::left_to_right(Align::Center), None);
+        child_ui.style_mut().visuals.widgets.inactive.bg_fill = Color32::TRANSPARENT;
+        child_ui.style_mut().visuals.widgets.inactive.bg_stroke = egui::Stroke::NONE;
+        child_ui.style_mut().visuals.widgets.hovered.bg_fill = Color32::from_white_alpha(10);
+        child_ui.style_mut().visuals.widgets.active.bg_fill = Color32::from_white_alpha(15);
+
+        let mut new_selected = selected.clone();
+        egui::ComboBox::from_id_salt(combo_id)
+            .selected_text(egui::RichText::new(&display_text).color(text_color).size(font_size))
+            .width(rect.width() - 16.0)
+            .show_ui(&mut child_ui, |ui| {
+                for (value, text) in &options {
+                    let is_selected = value == &selected;
+                    if ui.selectable_label(is_selected,
+                        egui::RichText::new(text).size(font_size)
+                    ).clicked() {
+                        new_selected = value.clone();
+                    }
+                }
+            });
+
+        // If selection changed, record it
+        if new_selected != selected {
+            self.interaction_state.text_inputs.insert(id.to_string(), new_selected.clone());
+            result.select_changes.insert(id.to_string(), new_selected.clone());
+
+            // Also record as button action if action attribute is set
+            if !action.is_empty() {
+                let full_action = format!("{}:{}", action, new_selected);
+                result.button_clicks.insert(id.to_string(), true);
+                result.button_actions.insert(id.to_string(), full_action);
+            }
+        }
+    }
+
     /// 渲染单个元素
     fn render_element(&mut self, ui: &mut Ui, element: &LayoutElement, result: &mut RenderResult) {
         use std::sync::Mutex;
@@ -774,6 +908,7 @@ impl LayoutRenderer {
             ElementType::Image => self.render_image(ui, element, result),
             ElementType::ProgressBar => self.render_progress_bar(ui, element, result),
             ElementType::Divider => self.render_divider(ui, element, result),
+            ElementType::Select => {} // Select only rendered in Taffy path
             ElementType::Overlay => self.render_overlay(ui, element, result),
         }
     }
@@ -2153,7 +2288,8 @@ impl LayoutRenderer {
                     .or_else(|| element.attributes.color.as_ref().and_then(|c| self.parse_color(c)))
                     .unwrap_or(Color32::WHITE)
             } else if response.hovered() {
-                element.attributes.get_custom("hottextcolor")
+                element.attributes.get_custom("hover-color")
+                    .or_else(|| element.attributes.get_custom("hottextcolor"))
                     .and_then(|c| self.parse_color(c))
                     .or_else(|| element.attributes.color.as_ref().and_then(|c| self.parse_color(c)))
                     .unwrap_or(Color32::WHITE)
@@ -3263,6 +3399,8 @@ pub struct RenderResult {
     pub text_input_responses: HashMap<String, Response>,
     /// 链接点击事件（用于 checkbox 内联链接）
     pub link_clicks: HashMap<String, bool>,
+    /// 下拉选择变更 (select_id → selected_value)
+    pub select_changes: HashMap<String, String>,
 }
 
 /// 文本片段类型

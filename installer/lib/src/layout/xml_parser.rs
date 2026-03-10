@@ -469,6 +469,8 @@ impl XmlParser {
             "ProgressBar" => Ok(ElementType::ProgressBar),
             "Spacer" => Ok(ElementType::Spacer),
             "Divider" => Ok(ElementType::Divider),
+            "Select" | "Dropdown" => Ok(ElementType::Select),
+            "Option" => Ok(ElementType::Label), // Option items rendered as Label in Select context
             _ => Err(ParseError::InvalidElementType(name.to_string())),
         }
     }
