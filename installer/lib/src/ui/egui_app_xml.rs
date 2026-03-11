@@ -142,10 +142,8 @@ impl InstallerApp {
         tracing::info!("InstallerApp created successfully");
 
         let mut message_box_manager = MessageBoxManager::new();
-        // TODO: XML dialog rendering has positioning issues, use code fallback for now
-        // if let Some(ref template) = msgbox_layout {
-        //     message_box_manager.set_template(template.clone());
-        // }
+        // NOTE: XML dialog rendering has positioning issues with Taffy coordinate offset
+        // Use code fallback for now; wrapping is handled in render_dialog_code
 
         Self {
             wizard,

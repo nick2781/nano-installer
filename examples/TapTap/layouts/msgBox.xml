@@ -6,12 +6,12 @@
     <Spacer height="70" />
 
     <!-- Message -->
-    <HBox height="24" justify-content="center">
+    <HBox width="100%" padding="0 32" justify-content="center">
       <Label id="lblMsg" text="" color="#FFFFFFFF" font-size="16" font-weight="bold"
-             text-align="center" />
+             text-align="center" width="100%" />
     </HBox>
 
-    <Spacer height="64" />
+    <Spacer flex-grow="1" />
 
     <!-- Buttons -->
     <HBox height="40" padding="0 32" justify-content="center" gap="16">

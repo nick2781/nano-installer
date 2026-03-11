@@ -129,6 +129,12 @@ impl MessageBoxManager {
         self.msgbox_template = Some(template);
     }
 
+    /// 强制使用代码回退渲染，避免已知的 XML 对话框偏移问题。
+    pub fn use_code_fallback(&mut self) {
+        self.msgbox_template = None;
+        self.dialog_layouts.clear();
+    }
+
     /// 显示消息框
     pub fn show(&mut self, config: MessageBoxConfig) -> String {
         let id = format!("message_box_{}", self.next_id);
@@ -286,7 +292,6 @@ impl MessageBoxManager {
         let button_width = 160.0;
         let button_height = 40.0;
         let top_spacing = 50.0;
-        let message_height = 48.0;
         let middle_spacing = 40.0;
         let button_gap = 16.0;
 
@@ -297,6 +302,7 @@ impl MessageBoxManager {
         let min_width = (estimated_text_width + 80.0).max(400.0).min(560.0); // 80px padding, cap at 560
         let width = config.width.unwrap_or(min_width);
         let height = config.height.unwrap_or(200.0);
+        let message_height = (height - top_spacing - middle_spacing - button_height - 24.0).max(48.0);
 
         let base_w = dpi_config.window_width;
         let base_h = dpi_config.window_height;
@@ -327,18 +333,28 @@ impl MessageBoxManager {
                     ui.vertical(|ui| {
                         ui.add_space(top_spacing);
 
-                        ui.allocate_ui_with_layout(
-                            egui::vec2(width, message_height),
-                            egui::Layout::top_down(egui::Align::Center),
-                            |ui| {
-                                ui.label(
-                                    egui::RichText::new(&config.message)
-                                        .color(egui::Color32::WHITE)
-                                        .size(message_font_size)
-                                        .strong()
-                                );
-                            }
+                        let message_rect = egui::Rect::from_min_size(
+                            egui::pos2(dialog_pos.x + 32.0, dialog_pos.y + top_spacing),
+                            egui::vec2(width - 64.0, message_height),
                         );
+                        let mut job = egui::text::LayoutJob::single_section(
+                            config.message.clone(),
+                            egui::TextFormat {
+                                font_id: egui::FontId::proportional(message_font_size),
+                                color: egui::Color32::WHITE,
+                                ..Default::default()
+                            },
+                        );
+                        job.halign = egui::Align::Center;
+                        job.wrap = egui::text::TextWrapping {
+                            max_width: message_rect.width(),
+                            ..Default::default()
+                        };
+                        let galley = ui.painter().layout_job(job);
+                        let galley_size = galley.size();
+                        let text_x = message_rect.min.x + ((message_rect.width() - galley_size.x) / 2.0).max(0.0);
+                        let text_y = message_rect.min.y + ((message_rect.height() - galley_size.y) / 2.0).max(0.0);
+                        ui.painter().galley(egui::pos2(text_x, text_y), galley, egui::Color32::WHITE);
 
                         ui.add_space(middle_spacing);
 

@@ -17,3 +17,4 @@
 11. **三层架构** — config.json (声明式) > TaskRunner (默认) > scripts/*.rhai (脚本覆盖)
 12. **原子化 API** — 脚本 API 提供原子能力（文件/注册表/进程等），业务逻辑在脚本中组合
 13. **配置是数据，脚本是逻辑** — 配置描述"是什么"，脚本描述"做什么"，不在配置中表达逻辑流程
+14. **Stub 必须重编译** — 修改 Rust 代码后必须 `touch` 源文件再 `cargo build --release --bin lzma-x64-unicode`（确认有 `Compiling` 输出），然后重新 build installer。仅修改 XML/locale/config 不需要重编译 stub，但需要重新 build installer

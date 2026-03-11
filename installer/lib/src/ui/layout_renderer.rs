@@ -165,7 +165,8 @@ impl LayoutRenderer {
         self.style_engine.apply_global_style(ui.style_mut());
 
         // 检测是否使用新格式 (根元素有 flex_style)
-        if layout_tree.root.flex_style.is_some() {
+        let has_flex = layout_tree.root.flex_style.is_some();
+        if has_flex {
             self.render_with_taffy(ui, layout_tree, &mut result);
         } else {
             // 旧格式: 使用原有渲染路径
@@ -331,7 +332,7 @@ impl LayoutRenderer {
             ElementType::Button => self.render_button_at_rect(ui, element, rect, result),
             ElementType::Label => self.render_label_at_rect(ui, element, rect),
             ElementType::Checkbox => self.render_checkbox_at_rect(ui, element, rect, result),
-            ElementType::Image => self.render_image_at_rect(ui, element, rect),
+            ElementType::Image => self.render_image_at_rect(ui, element, rect, result),
             ElementType::TextInput => self.render_text_input_at_rect(ui, element, rect, result),
             ElementType::ProgressBar => self.render_progress_at_rect(ui, element, rect),
             ElementType::Divider => self.render_divider_at_rect(ui, element, rect),
@@ -486,7 +487,30 @@ impl LayoutRenderer {
                 Pos2::new(rect.min.x + tp.0, rect.min.y + tp.1),
                 Pos2::new(rect.max.x - tp.2, rect.max.y - tp.3),
             );
-            ui.painter().text(text_rect.center(), egui::Align2::CENTER_CENTER, &text, font_id, text_color);
+            // 仅当元素设置了 max-width 时启用文本换行
+            let has_max_width = element.flex_style.as_ref()
+                .map(|fs| !matches!(fs.max_width, crate::layout::dimension::Dimension::Auto))
+                .unwrap_or(false);
+
+            if has_max_width {
+                let mut job = egui::text::LayoutJob::single_section(text.clone(), egui::TextFormat {
+                    font_id,
+                    color: text_color,
+                    ..Default::default()
+                });
+                job.halign = egui::Align::Center;
+                job.wrap = egui::text::TextWrapping {
+                    max_width: text_rect.width(),
+                    ..Default::default()
+                };
+                let galley = ui.painter().layout_job(job);
+                let galley_size = galley.size();
+                let x = text_rect.min.x + (text_rect.width() - galley_size.x) / 2.0;
+                let y = text_rect.min.y + (text_rect.height() - galley_size.y) / 2.0;
+                ui.painter().galley(Pos2::new(x, y), galley, text_color);
+            } else {
+                ui.painter().text(text_rect.center(), egui::Align2::CENTER_CENTER, &text, font_id, text_color);
+            }
         }
 
         // hover 光标
@@ -524,19 +548,60 @@ impl LayoutRenderer {
             .map(|s| s.as_str())
             .unwrap_or("top");
 
-        let (text_pos, align2) = match (text_align_str, valign) {
-            ("left", "center") | ("left", "vcenter") => (Pos2::new(rect.min.x, rect.center().y), egui::Align2::LEFT_CENTER),
-            ("left", "bottom") => (Pos2::new(rect.min.x, rect.max.y), egui::Align2::LEFT_BOTTOM),
-            ("center", "top") => (Pos2::new(rect.center().x, rect.min.y), egui::Align2::CENTER_TOP),
-            ("center", "center") | ("center", "vcenter") => (rect.center(), egui::Align2::CENTER_CENTER),
-            ("center", "bottom") => (Pos2::new(rect.center().x, rect.max.y), egui::Align2::CENTER_BOTTOM),
-            ("right", "top") => (Pos2::new(rect.max.x, rect.min.y), egui::Align2::RIGHT_TOP),
-            ("right", "center") | ("right", "vcenter") => (Pos2::new(rect.max.x, rect.center().y), egui::Align2::RIGHT_CENTER),
-            ("right", "bottom") => (rect.max, egui::Align2::RIGHT_BOTTOM),
-            _ => (rect.min, egui::Align2::LEFT_TOP), // left,top default
-        };
+        // 当元素有宽度约束（max-width 或显式 width）且文本超过 rect 宽度时启用换行
+        let has_width_constraint = element.flex_style.as_ref()
+            .map(|fs| {
+                !matches!(fs.max_width, crate::layout::dimension::Dimension::Auto)
+                || !matches!(fs.width, crate::layout::dimension::Dimension::Auto)
+            })
+            .unwrap_or(false);
 
-        ui.painter().text(text_pos, align2, &text, font_id, text_color);
+        if has_width_constraint {
+            // 有 max-width 约束：使用 LayoutJob 按 rect 宽度换行
+            let mut job = egui::text::LayoutJob::single_section(text.clone(), egui::TextFormat {
+                font_id: font_id.clone(),
+                color: text_color,
+                ..Default::default()
+            });
+            let halign = match text_align_str {
+                "center" => egui::Align::Center,
+                "right" => egui::Align::Max,
+                _ => egui::Align::Min,
+            };
+            job.halign = halign;
+            job.wrap = egui::text::TextWrapping {
+                max_width: rect.width(),
+                ..Default::default()
+            };
+
+            let galley = ui.painter().layout_job(job);
+            let galley_size = galley.size();
+
+            let y = match valign {
+                "center" | "vcenter" => rect.min.y + (rect.height() - galley_size.y) / 2.0,
+                "bottom" => rect.max.y - galley_size.y,
+                _ => rect.min.y,
+            };
+            // halign 已在 LayoutJob 中处理文字对齐，galley 位置固定在 rect 左边
+            let x = match text_align_str {
+                _ => rect.min.x,
+            };
+            ui.painter().galley(Pos2::new(x, y), galley, text_color);
+        } else {
+            // 无约束：原始不换行渲染
+            let (text_pos, align2) = match (text_align_str, valign) {
+                ("left", "center") | ("left", "vcenter") => (Pos2::new(rect.min.x, rect.center().y), egui::Align2::LEFT_CENTER),
+                ("left", "bottom") => (Pos2::new(rect.min.x, rect.max.y), egui::Align2::LEFT_BOTTOM),
+                ("center", "top") => (Pos2::new(rect.center().x, rect.min.y), egui::Align2::CENTER_TOP),
+                ("center", "center") | ("center", "vcenter") => (rect.center(), egui::Align2::CENTER_CENTER),
+                ("center", "bottom") => (Pos2::new(rect.center().x, rect.max.y), egui::Align2::CENTER_BOTTOM),
+                ("right", "top") => (Pos2::new(rect.max.x, rect.min.y), egui::Align2::RIGHT_TOP),
+                ("right", "center") | ("right", "vcenter") => (Pos2::new(rect.max.x, rect.center().y), egui::Align2::RIGHT_CENTER),
+                ("right", "bottom") => (rect.max, egui::Align2::RIGHT_BOTTOM),
+                _ => (rect.min, egui::Align2::LEFT_TOP),
+            };
+            ui.painter().text(text_pos, align2, &text, font_id, text_color);
+        }
     }
 
     /// 在指定 rect 内渲染复选框
@@ -629,53 +694,100 @@ impl LayoutRenderer {
                 .and_then(|c| self.parse_color(c))
                 .unwrap_or(Color32::from_rgb(0, 196, 178)); // TapTap green default
 
+            // 文本区域：checkbox 图标右侧到 rect 右边
+            let text_left = rect.min.x + text_padding_left;
+            let text_max_width = (rect.max.x - text_left).max(0.0);
+
             if segments.iter().any(|s| matches!(s, TextSegment::Link { .. })) {
-                // 有链接时：用 painter 直接绘制，无间距，紧凑排列
+                // 有链接时：用 LayoutJob 支持换行 + 多色段
                 let font_id = egui::FontId::proportional(font_size);
-                let mut cursor_x = rect.min.x + text_padding_left;
-                let center_y = rect.center().y;
+
+                // 记录每个 link 在 job.text 中的 char offset 范围
+                let mut link_char_ranges: Vec<(std::ops::Range<usize>, String)> = Vec::new();
+                let mut job = egui::text::LayoutJob::default();
+                job.wrap = egui::text::TextWrapping {
+                    max_width: text_max_width,
+                    ..Default::default()
+                };
 
                 for segment in &segments {
                     match segment {
                         TextSegment::Text(t) => {
-                            let galley = ui.painter().layout_no_wrap(t.clone(), font_id.clone(), text_color);
-                            let text_width = galley.size().x;
-                            let pos = Pos2::new(cursor_x, center_y);
-                            ui.painter().galley(pos - egui::vec2(0.0, galley.size().y / 2.0), galley, text_color);
-                            cursor_x += text_width;
+                            job.append(t, 0.0, egui::TextFormat {
+                                font_id: font_id.clone(),
+                                color: text_color,
+                                ..Default::default()
+                            });
                         }
                         TextSegment::Link { id: link_id, text: link_text } => {
-                            let galley = ui.painter().layout_no_wrap(link_text.clone(), font_id.clone(), link_color);
-                            let text_width = galley.size().x;
-                            let text_height = galley.size().y;
-                            let link_rect = Rect::from_min_size(
-                                Pos2::new(cursor_x, center_y - text_height / 2.0),
-                                egui::vec2(text_width, text_height),
-                            );
-
-                            // Draw link text
-                            ui.painter().galley(link_rect.min, galley, link_color);
-
-                            // Underline on hover
-                            let link_resp = ui.interact(link_rect, egui::Id::new(format!("link_{}", link_id)), egui::Sense::click());
-                            if link_resp.hovered() {
-                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                                ui.painter().line_segment(
-                                    [Pos2::new(link_rect.min.x, link_rect.max.y), link_rect.max],
-                                    egui::Stroke::new(1.0, link_color),
-                                );
-                            }
-                            if link_resp.clicked() {
-                                result.link_clicks.insert(link_id.clone(), true);
-                            }
-
-                            cursor_x += text_width;
+                            let char_start = job.text.chars().count();
+                            job.append(link_text, 0.0, egui::TextFormat {
+                                font_id: font_id.clone(),
+                                color: link_color,
+                                underline: egui::Stroke::NONE,
+                                ..Default::default()
+                            });
+                            let char_end = job.text.chars().count();
+                            link_char_ranges.push((char_start..char_end, link_id.clone()));
                         }
                     }
                 }
+
+                let galley = ui.painter().layout_job(job);
+                let galley_height = galley.size().y;
+                // 垂直居中
+                let text_y = rect.min.y + (rect.height() - galley_height) / 2.0;
+                let text_origin = Pos2::new(text_left, text_y);
+
+                // 绘制文本
+                ui.painter().galley(text_origin, galley.clone(), text_color);
+
+                // 链接点击检测：用 CCursor + pos_from_cursor 获取链接区域
+                for (char_range, link_id) in &link_char_ranges {
+                    let start_rect = galley.pos_from_cursor(egui::epaint::text::cursor::CCursor {
+                        index: char_range.start,
+                        prefer_next_row: false,
+                    });
+                    let end_rect = galley.pos_from_cursor(egui::epaint::text::cursor::CCursor {
+                        index: char_range.end,
+                        prefer_next_row: true,
+                    });
+
+                    // 链接区域 (可能跨多行，用整体边界框)
+                    let link_rect = Rect::from_min_max(
+                        Pos2::new(text_origin.x + start_rect.min.x, text_origin.y + start_rect.min.y),
+                        Pos2::new(text_origin.x + end_rect.max.x, text_origin.y + end_rect.max.y),
+                    );
+
+                    let link_resp = ui.interact(link_rect, egui::Id::new(format!("link_{}", link_id)), egui::Sense::click());
+                    if link_resp.hovered() {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                        // 下划线 (最后一行底部)
+                        ui.painter().line_segment(
+                            [Pos2::new(link_rect.min.x, link_rect.max.y), link_rect.max],
+                            egui::Stroke::new(1.0, link_color),
+                        );
+                    }
+                    if link_resp.clicked() {
+                        result.link_clicks.insert(link_id.clone(), true);
+                    }
+                }
             } else {
-                let text_pos = Pos2::new(rect.min.x + text_padding_left, rect.center().y);
-                ui.painter().text(text_pos, egui::Align2::LEFT_CENTER, &text, egui::FontId::proportional(font_size), text_color);
+                // 纯文本也使用 LayoutJob 支持换行
+                let font_id = egui::FontId::proportional(font_size);
+                let mut job = egui::text::LayoutJob::single_section(text.clone(), egui::TextFormat {
+                    font_id,
+                    color: text_color,
+                    ..Default::default()
+                });
+                job.wrap = egui::text::TextWrapping {
+                    max_width: text_max_width,
+                    ..Default::default()
+                };
+                let galley = ui.painter().layout_job(job);
+                let galley_height = galley.size().y;
+                let text_y = rect.min.y + (rect.height() - galley_height) / 2.0;
+                ui.painter().galley(Pos2::new(text_left, text_y), galley, text_color);
             }
         }
 
@@ -688,7 +800,7 @@ impl LayoutRenderer {
     }
 
     /// 在指定 rect 内渲染图片
-    fn render_image_at_rect(&mut self, ui: &mut Ui, element: &LayoutElement, rect: Rect) {
+    fn render_image_at_rect(&mut self, ui: &mut Ui, element: &LayoutElement, rect: Rect, result: &mut RenderResult) {
         if !ui.is_rect_visible(rect) {
             return;
         }
@@ -700,6 +812,18 @@ impl LayoutRenderer {
                     Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
                     Color32::WHITE,
                 );
+            }
+        }
+        // Image 支持 action 属性点击（如箭头图标）
+        if let Some(action) = element.attributes.get_custom("action") {
+            let id = element.attributes.id.as_ref().map(|s| s.as_str()).unwrap_or("img");
+            let response = ui.interact(rect, egui::Id::new(id), egui::Sense::click());
+            if response.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+            if response.clicked() {
+                result.button_clicks.insert(id.to_string(), true);
+                result.button_actions.insert(id.to_string(), action.clone());
             }
         }
     }

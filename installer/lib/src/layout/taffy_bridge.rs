@@ -379,12 +379,13 @@ impl Default for TaffyBridge {
 }
 
 /// Taffy measure function — 估算文本叶子节点的 intrinsic size
+/// 支持文本换行：当 max_size 或 available_space 限制宽度时，计算换行后的多行高度
 fn measure_text_node(
     known_dimensions: taffy::Size<Option<f32>>,
     available_space: taffy::Size<taffy::AvailableSpace>,
     _node_id: taffy::NodeId,
     context: Option<&mut NodeMeasureContext>,
-    _style: &taffy::Style,
+    style: &taffy::Style,
 ) -> taffy::Size<f32> {
     let Some(ctx) = context else {
         return taffy::Size { width: 0.0, height: 0.0 };
@@ -393,10 +394,44 @@ fn measure_text_node(
     let text_w = TaffyBridge::estimate_text_width(&ctx.text, ctx.font_size);
     let icon_w = if ctx.has_checkbox_icon { 20.0 } else { 0.0 };
     let intrinsic_w = text_w + icon_w + ctx.padding_h + 4.0; // 4px margin
-    let intrinsic_h = ctx.font_size + 6.0; // line height ~= font_size + 6
+    let line_h = ctx.font_size + 6.0; // line height ~= font_size + 6
+
+    // 从 style.max_size.width 获取 max-width 约束
+    let max_w_from_style = match style.max_size.width {
+        taffy::Dimension::Length(v) => Some(v),
+        _ => None,
+    };
+
+    // 确定实际可用宽度（用于计算换行）
+    // 优先级: known_dimensions > max_size > available_space > intrinsic
+    let actual_w = known_dimensions.width.unwrap_or_else(|| {
+        let from_space = match available_space.width {
+            taffy::AvailableSpace::Definite(w) => w,
+            _ => intrinsic_w,
+        };
+        // 考虑 max-width 约束
+        let constrained = match max_w_from_style {
+            Some(max_w) => from_space.min(max_w),
+            None => from_space,
+        };
+        constrained.min(intrinsic_w)
+    });
+
+    // 计算文本区域可用宽度 (减去图标和 padding)
+    // 用 max_width 约束来计算换行宽度（即使 actual_w == intrinsic_w）
+    let wrap_w = max_w_from_style.unwrap_or(actual_w);
+    let text_area_w = (wrap_w - icon_w - ctx.padding_h - 4.0).max(1.0);
+
+    // 计算需要多少行
+    let num_lines = if text_w > text_area_w {
+        (text_w / text_area_w).ceil() as usize
+    } else {
+        1
+    };
+    let intrinsic_h = line_h * num_lines as f32;
 
     taffy::Size {
-        width: known_dimensions.width.unwrap_or(intrinsic_w),
+        width: known_dimensions.width.unwrap_or(wrap_w.min(intrinsic_w)),
         height: known_dimensions.height.unwrap_or(intrinsic_h),
     }
 }
