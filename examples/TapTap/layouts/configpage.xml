@@ -41,18 +41,24 @@
     <!-- Bottom row: Agreement checkbox with inline links + Custom Settings -->
     <HBox width="100%" height="40" padding="0 24" align-items="center">
 
-      <!-- Single checkbox with inline [link](id) syntax — auto-sizes to text content -->
-      <Checkbox id="chkAgree" height="20" font-size="11"
+      <!-- Single checkbox with inline [link](id) syntax — auto-sizes, max 75% to leave room for show_more -->
+      <Checkbox id="chkAgree" height="20" max-width="395" font-size="11"
                 text="@agree_full" color="#FF9CA3AF" checked="false"
                 unchecked-image="file='assets/checkbox-0.png' dest='0,1,16,17'"
                 checked-image="file='assets/checkbox-2.png' dest='0,1,16,17'" />
 
       <Spacer flex-grow="1" />
 
-      <Button id="btnShowMore" action="toggle_panel:moreconfiginfo:show" height="20" text="@show_more_arrow" font-size="11"
-              color="#FF9CA3AF" hover-color="#FFFFFFFF" cursor="hand" />
-      <Button id="btnHideMore" action="toggle_panel:moreconfiginfo:hide" height="20" text="@hide_more_arrow" font-size="11"
-              color="#FF9CA3AF" hover-color="#FFFFFFFF" cursor="hand" visible="false" />
+      <HBox id="btnShowMore_wrap" height="20" align-items="center">
+        <Button id="btnShowMore" action="toggle_panel:moreconfiginfo:show" height="20" text="@show_more" font-size="11"
+                color="#FF9CA3AF" hover-color="#FFFFFFFF" cursor="hand" />
+        <Image id="arrowDown" src="assets/arrow-down.png" width="12" height="12" />
+      </HBox>
+      <HBox id="btnHideMore_wrap" height="20" align-items="center" visible="false">
+        <Button id="btnHideMore" action="toggle_panel:moreconfiginfo:hide" height="20" text="@hide_more" font-size="11"
+                color="#FF9CA3AF" hover-color="#FFFFFFFF" cursor="hand" />
+        <Image id="arrowUp" src="assets/arrow-up.png" width="12" height="12" />
+      </HBox>
 
     </HBox>
 
@@ -68,26 +74,27 @@
       <Divider width="100%" height="1" background="#3300C4B2" padding="0 16" />
       <Spacer height="24" />
       <HBox height="32" padding="0 40" align-items="center">
-        <TextInput id="editDir" width="410" height="32" readonly="true"
+        <TextInput id="editDir" flex-grow="1" height="32" readonly="true"
                    color="#CCFFFFFF" background="#1AFFFFFF"
                    border-radius="8" padding="0 16" />
-        <Spacer flex-grow="1" />
-        <Button id="btnSelectDir" action="browse_folder" width="60" height="32" text="@browse"
-                font-size="14" color="#FF00C4B2" hover-color="#FF00FFE8" cursor="hand" />
+        <Spacer width="8" />
+        <Button id="btnSelectDir" action="browse_folder" height="32" text="@browse"
+                font-size="13" color="#FF00C4B2" hover-color="#FF00FFE8" cursor="hand" />
       </HBox>
       <HBox height="24" padding="5 40 0 40">
-        <Label id="lblRequiredSpace" width="160" text="@required_space" color="#FF96A1A9" font-size="12" />
-        <Label id="local_space" width="200" text="@available_space" color="#FF96A1A9" font-size="12" />
+        <Label id="lblRequiredSpace" text="@required_space" color="#FF96A1A9" font-size="12" />
+        <Spacer width="16" />
+        <Label id="local_space" text="@available_space" color="#FF96A1A9" font-size="12" />
         <Spacer flex-grow="1" />
       </HBox>
       <HBox height="24" padding="20 40 0 40" align-items="center">
-        <Checkbox id="chkShotcut" width="150" height="24" text="@shortcut_checkbox"
-                  font-size="14" color="#FFFFFFFF" checked="true"
+        <Checkbox id="chkShotcut" height="24" text="@shortcut_checkbox"
+                  font-size="13" color="#FFFFFFFF" checked="true"
                   unchecked-image="file='assets/checkbox-0.png' dest='0,3,16,19'"
                   checked-image="file='assets/checkbox-2.png' dest='0,3,16,19'" />
-        <Spacer width="24" />
-        <Checkbox id="chkAutoRun" width="120" height="24" text="@autorun_checkbox"
-                  font-size="14" color="#FFFFFF" checked="true"
+        <Spacer width="20" />
+        <Checkbox id="chkAutoRun" height="24" text="@autorun_checkbox"
+                  font-size="13" color="#FFFFFF" checked="true"
                   unchecked-image="file='assets/checkbox-0.png' dest='0,3,16,19'"
                   checked-image="file='assets/checkbox-2.png' dest='0,3,16,19'" />
         <Spacer flex-grow="1" />

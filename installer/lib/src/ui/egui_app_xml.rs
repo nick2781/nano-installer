@@ -844,8 +844,8 @@ impl InstallerApp {
         let current_page_id = self.wizard.current_page_id().to_string();
         if let Some(layout) = self.layout_cache.get_mut(&current_page_id) {
             Self::update_element_visible_recursive(&mut layout.root, "moreconfiginfo", show);
-            Self::update_element_visible_recursive(&mut layout.root, "btnShowMore", !show);
-            Self::update_element_visible_recursive(&mut layout.root, "btnHideMore", show);
+            Self::update_element_visible_recursive(&mut layout.root, "btnShowMore_wrap", !show);
+            Self::update_element_visible_recursive(&mut layout.root, "btnHideMore_wrap", show);
         }
 
         // 调整窗口高度
@@ -1356,7 +1356,16 @@ impl InstallerApp {
         self.i18n_strings = merged;
         self.current_language = locale.to_string();
 
-        // 2. Clear layout cache (force re-parse XML to apply new i18n)
+        // 2. Check if expand panel is currently open (before clearing cache)
+        let expand_open = {
+            let current_page = self.wizard.current_page_id().to_string();
+            self.layout_cache.get(&current_page)
+                .and_then(|layout| layout.root.find_by_id("moreconfiginfo"))
+                .and_then(|el| el.attributes.visible)
+                .unwrap_or(false)
+        };
+
+        // Clear layout cache (force re-parse XML to apply new i18n)
         self.layout_cache.clear();
 
         // 3. Rebuild LayoutRenderer with merged i18n strings
@@ -1380,8 +1389,16 @@ impl InstallerApp {
             }
         }
 
-        // 5. 重置路径校验标志（重新用新语言填充标签）
+        // 6. 重置路径校验标志（重新用新语言填充标签）
         self.path_validation_initialized = false;
+
+        // 7. 如果 expand 面板之前是展开的，重载后恢复
+        if expand_open {
+            // Force load current page layout first
+            let current_page = self.wizard.current_page_id().to_string();
+            self.get_page_layout(&current_page);
+            self.toggle_more_config(true);
+        }
 
         ctx.request_repaint();
         tracing::info!("Language switched to: {}", locale);
