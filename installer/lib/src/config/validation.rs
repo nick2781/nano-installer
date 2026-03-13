@@ -1,9 +1,9 @@
 //! 配置验证
-//! 
+//!
 //! 验证配置文件的完整性和正确性
 
-use std::path::{Path, PathBuf};
 use crate::config::InstallerConfig;
+use std::path::{Path, PathBuf};
 
 /// 配置验证器
 pub struct ConfigValidator {
@@ -58,6 +58,11 @@ impl ConfigValidator {
         if config.install.mutex_name.is_empty() {
             errors.push("互斥锁名称不能为空".to_string());
         }
+        for target in &config.install.close_targets {
+            if target.name.trim().is_empty() {
+                errors.push("关闭目标名称不能为空".to_string());
+            }
+        }
         if config.registry.install_path_key.is_empty() {
             errors.push("安装路径注册表键不能为空".to_string());
         }
@@ -106,7 +111,8 @@ impl ConfigValidator {
     fn validate_resources(&self, config: &InstallerConfig, errors: &mut Vec<String>) {
         // 验证布局文件
         for page in &config.wizard.pages {
-            let layout_file = self.base_path
+            let layout_file = self
+                .base_path
                 .join(&config.resources.layouts_dir)
                 .join(&page.layout);
             if !layout_file.exists() {
@@ -115,7 +121,8 @@ impl ConfigValidator {
         }
 
         for page in &config.wizard.uninstall_pages {
-            let layout_file = self.base_path
+            let layout_file = self
+                .base_path
                 .join(&config.resources.layouts_dir)
                 .join(&page.layout);
             if !layout_file.exists() {
@@ -125,7 +132,8 @@ impl ConfigValidator {
 
         // 验证语言文件
         for locale in &config.localization.supported_locales {
-            let locale_file = self.base_path
+            let locale_file = self
+                .base_path
                 .join(&config.resources.locales_dir)
                 .join(format!("{}.json", locale));
             if !locale_file.exists() {
@@ -134,11 +142,15 @@ impl ConfigValidator {
         }
 
         // 验证默认语言文件
-        let default_locale_file = self.base_path
+        let default_locale_file = self
+            .base_path
             .join(&config.resources.locales_dir)
             .join(format!("{}.json", config.localization.default_locale));
         if !default_locale_file.exists() {
-            errors.push(format!("默认语言文件不存在: {}", default_locale_file.display()));
+            errors.push(format!(
+                "默认语言文件不存在: {}",
+                default_locale_file.display()
+            ));
         }
     }
 
@@ -194,13 +206,13 @@ impl ConfigValidator {
         if parts.len() != 3 {
             return false;
         }
-        
+
         for part in parts {
             if part.parse::<u32>().is_err() {
                 return false;
             }
         }
-        
+
         true
     }
 
@@ -227,7 +239,7 @@ mod tests {
         let config = InstallerConfig::default();
         let validator = ConfigValidator::new(".");
         let mut errors = Vec::new();
-        
+
         validator.validate_required_fields(&config, &mut errors);
         assert!(errors.is_empty());
     }
@@ -235,7 +247,7 @@ mod tests {
     #[test]
     fn test_validate_version() {
         let validator = ConfigValidator::new(".");
-        
+
         assert!(validator.is_valid_version("1.0.0"));
         assert!(validator.is_valid_version("1.2.3"));
         assert!(!validator.is_valid_version("1.0"));
@@ -246,7 +258,7 @@ mod tests {
     #[test]
     fn test_validate_mutex_name() {
         let validator = ConfigValidator::new(".");
-        
+
         assert!(validator.is_valid_mutex_name("my-app-mutex"));
         assert!(validator.is_valid_mutex_name("MyApp_Installer_Mutex"));
         assert!(!validator.is_valid_mutex_name("my<app>mutex"));
@@ -256,7 +268,7 @@ mod tests {
     #[test]
     fn test_validate_registry_key() {
         let validator = ConfigValidator::new(".");
-        
+
         assert!(validator.is_valid_registry_key("HKLM\\Software\\MyApp"));
         assert!(validator.is_valid_registry_key("HKCU\\Software\\MyApp"));
         assert!(!validator.is_valid_registry_key("Software\\MyApp"));

@@ -4,3 +4,6 @@ target/*
 .claude
 .idea
 examples/TapTap/.build
+tmp/
+examples/TapTap/dist/*.log
+screenshot*.png

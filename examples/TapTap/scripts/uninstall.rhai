@@ -59,75 +59,17 @@ if !keep_data {
 }
 
 // ═══════════════════════════════════════════
-// Step 4: Delete desktop shortcuts
-// (NSIS: un.DeleteDesktopShortcuts — scans for .url files with taptap://)
+// Step 4: Manifest-driven core uninstall
+// Shortcuts + registry + installed files now follow tracked install artifacts
 // ═══════════════════════════════════════════
-set_status("Removing shortcuts...");
-set_progress(55.0);
-delete_desktop_shortcut(app_name);
-
-// ═══════════════════════════════════════════
-// Step 5: Delete start menu
-// (NSIS: un.DeleteStartMenuShortcuts + un.DeleteShortcutAndInstallInfo)
-// ═══════════════════════════════════════════
-delete_start_menu_folder(app_name);
-set_progress(60.0);
-
-// ═══════════════════════════════════════════
-// Step 6: Clean registry
-// (NSIS: un.DeleteShortcutAndInstallInfo)
-// ═══════════════════════════════════════════
-set_status("Cleaning registry...");
-set_progress(65.0);
-
-// Uninstall registry key (always delete)
-reg_delete_key("HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\" + app_name);
-reg_delete_key("HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\" + app_name);
-
-// App registry key
-if !keep_data {
-    // Delete entire key
-    reg_delete_key("HKLM\\Software\\" + app_name);
-    reg_delete_key("HKCU\\Software\\" + app_name);
-} else {
-    // Only remove InstallPath, keep other data
-    reg_delete_value("HKLM\\Software\\" + app_name, "InstallPath");
-    reg_delete_value("HKCU\\Software\\" + app_name, "InstallPath");
+set_status("Removing installed files...");
+if !run_tracked_uninstall(55.0, 95.0) {
+    show_error("Uninstall Error", "Failed to remove tracked installation artifacts");
+    return;
 }
 
-// AutoStart registry (NSIS: DeleteRegValue HKCU Run)
-reg_delete_value("HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", app_name);
-reg_delete_value("HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", app_name);
-
-// URI scheme (NSIS: DeleteRegKey HKCR taptap)
-// delete_uri_scheme("taptap");
-
-set_progress(75.0);
-
 // ═══════════════════════════════════════════
-// Step 7: Delete installation files
-// (NSIS: un.RemoveFiles → ${Locate} $INSTDIR)
-// Skip uninst.exe (it's running) and log files
-// ═══════════════════════════════════════════
-set_status("Removing files...");
-set_progress(80.0);
-
-let entries = list_dir(install_path);
-for entry in entries {
-    let name = path_filename(entry);
-    // Skip the running uninstaller
-    if name == "uninst.exe" { continue; }
-    // Delete files and subdirectories
-    if is_dir(entry) {
-        delete_dir(entry);
-    } else {
-        delete_file(entry);
-    }
-}
-set_progress(92.0);
-
-// ═══════════════════════════════════════════
-// Step 8: Shell notification (NSIS: SHChangeNotify)
+// Step 5: Shell notification (NSIS: SHChangeNotify)
 // ═══════════════════════════════════════════
 shell_notify();
 

@@ -39,12 +39,13 @@ impl RegistryOps {
         {
             let hklm = RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
             let key_path = format!("Software\\{}", self.product_name);
-            let (key, _) = hklm.create_subkey(&key_path)
+            let (key, _) = hklm
+                .create_subkey(&key_path)
                 .map_err(|e| Error::Registry(format!("Failed to create key: {}", e)))?;
-            
+
             key.set_value("InstallPath", &self.install_path)
                 .map_err(|e| Error::Registry(format!("Failed to write install path: {}", e)))?;
-            
+
             info!("Written install path to registry: {}", self.install_path);
         }
         #[cfg(not(windows))]
@@ -59,28 +60,35 @@ impl RegistryOps {
         #[cfg(windows)]
         {
             let hklm = RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
-            let key_path = format!("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{}", self.product_name);
-            let (key, _) = hklm.create_subkey(&key_path)
+            let key_path = format!(
+                "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{}",
+                self.product_name
+            );
+            let (key, _) = hklm
+                .create_subkey(&key_path)
                 .map_err(|e| Error::Registry(format!("Failed to create uninstall key: {}", e)))?;
-            
+
             key.set_value("DisplayName", &self.product_name)?;
             key.set_value("DisplayVersion", &self.version)?;
             key.set_value("Publisher", &self.publisher)?;
             key.set_value("InstallLocation", &self.install_path)?;
-            
+
             let uninstall_string = format!("\"{}\\uninst.exe\"", self.install_path);
             key.set_value("UninstallString", &uninstall_string)?;
-            
+
             let display_icon = format!("\"{}\\{}.exe\"", self.install_path, self.exe_name);
             key.set_value("DisplayIcon", &display_icon)?;
-            
+
             if let Some(help_link) = &self.help_link {
                 key.set_value("HelpLink", help_link)?;
             }
-            
+
             key.set_value("EstimatedSize", &100u32)?;
-            
-            info!("Written uninstall info to registry for: {}", self.product_name);
+
+            info!(
+                "Written uninstall info to registry for: {}",
+                self.product_name
+            );
         }
         #[cfg(not(windows))]
         {
@@ -94,9 +102,10 @@ impl RegistryOps {
         #[cfg(windows)]
         {
             let hkcu = RegKey::predef(winreg::enums::HKEY_CURRENT_USER);
-            let (key, _) = hkcu.create_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Run")
+            let (key, _) = hkcu
+                .create_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Run")
                 .map_err(|e| Error::Registry(format!("Failed to open Run key: {}", e)))?;
-            
+
             if enabled {
                 let exe_path = format!("\"{}\\{}.exe\"", self.install_path, self.exe_name);
                 key.set_value(&self.product_name, &exe_path)
@@ -120,14 +129,12 @@ impl RegistryOps {
         {
             let hklm = RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
             let key_path = format!("Software\\{}", self.product_name);
-            
+
             match hklm.open_subkey(&key_path) {
-                Ok(key) => {
-                    match key.get_value::<String, _>("InstallPath") {
-                        Ok(path) => Ok(Some(path)),
-                        Err(_) => Ok(None),
-                    }
-                }
+                Ok(key) => match key.get_value::<String, _>("InstallPath") {
+                    Ok(path) => Ok(Some(path)),
+                    Err(_) => Ok(None),
+                },
                 Err(_) => Ok(None),
             }
         }
@@ -158,7 +165,10 @@ impl RegistryOps {
         #[cfg(windows)]
         {
             let hklm = RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
-            let key_path = format!("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{}", self.product_name);
+            let key_path = format!(
+                "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{}",
+                self.product_name
+            );
             let _ = hklm.delete_subkey_all(&key_path);
             info!("Deleted uninstall info key: {}", key_path);
         }
@@ -174,7 +184,9 @@ impl RegistryOps {
         #[cfg(windows)]
         {
             let hkcu = RegKey::predef(winreg::enums::HKEY_CURRENT_USER);
-            if let Ok((key, _)) = hkcu.create_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Run") {
+            if let Ok((key, _)) =
+                hkcu.create_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Run")
+            {
                 let _ = key.delete_value(&self.product_name);
                 info!("Deleted autostart for: {}", self.product_name);
             }

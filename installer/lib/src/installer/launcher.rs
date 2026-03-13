@@ -1,7 +1,7 @@
 use crate::common::error::Error;
 use std::path::Path;
 use std::process::Command;
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 
 /// 应用启动器
 pub struct AppLauncher {
@@ -53,20 +53,20 @@ impl AppLauncher {
         match command.spawn() {
             Ok(child) => {
                 info!("Successfully launched application with PID: {}", child.id());
-                
+
                 // 在Windows上，我们可以选择是否等待进程
                 #[cfg(windows)]
                 {
                     // 不等待进程，让它在后台运行
                     std::mem::forget(child);
                 }
-                
+
                 #[cfg(not(windows))]
                 {
                     // 在非Windows系统上，可以选择等待或分离
                     std::mem::forget(child);
                 }
-                
+
                 Ok(())
             }
             Err(e) => {
@@ -117,7 +117,10 @@ impl AppLauncher {
             std::thread::sleep(Duration::from_millis(100));
         }
 
-        warn!("Application did not start within {} seconds", timeout_seconds);
+        warn!(
+            "Application did not start within {} seconds",
+            timeout_seconds
+        );
         Ok(false)
     }
 

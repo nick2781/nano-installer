@@ -1,9 +1,9 @@
-use std::path::Path;
+use crate::config::InstallerConfig;
+use crate::resources::types::ResourceType;
+use crate::resources::{EmbeddedResources, ResourceCache, ResourceInfo};
 use anyhow::Result;
 use egui::{Context, TextureHandle};
-use crate::resources::{EmbeddedResources, ResourceInfo, ResourceCache};
-use crate::resources::types::ResourceType;
-use crate::config::InstallerConfig;
+use std::path::Path;
 
 /// 资源加载器
 pub struct ResourceLoader {
@@ -68,8 +68,11 @@ impl ResourceLoader {
 
         // 从内嵌资源加载
         if let Some(resource) = self.embedded_resources.get_resource(name) {
-            if resource.resource_type == ResourceType::Archive || resource.resource_type == ResourceType::Binary {
-                self.cache.cache_binary(name.to_string(), resource.data.clone());
+            if resource.resource_type == ResourceType::Archive
+                || resource.resource_type == ResourceType::Binary
+            {
+                self.cache
+                    .cache_binary(name.to_string(), resource.data.clone());
                 return Ok(Some(resource.data.clone()));
             }
         }
@@ -87,7 +90,12 @@ impl ResourceLoader {
     }
 
     /// 从文件系统加载资源（开发模式）
-    pub fn load_from_filesystem(&mut self, ctx: &Context, base_path: &Path, name: &str) -> Result<Option<TextureHandle>> {
+    pub fn load_from_filesystem(
+        &mut self,
+        ctx: &Context,
+        base_path: &Path,
+        name: &str,
+    ) -> Result<Option<TextureHandle>> {
         // 先检查缓存
         if let Some(texture) = self.cache.get_image(name) {
             return Ok(Some(texture.clone()));
@@ -97,16 +105,16 @@ impl ResourceLoader {
         let extensions = ["png", "jpg", "jpeg", "bmp", "gif"];
         for ext in &extensions {
             let file_path = base_path.join(format!("{}.{}", name, ext));
-        if file_path.exists() {
-            let image = image::open(&file_path)?;
-            let size = [image.width() as usize, image.height() as usize];
-            let image_buffer = image.to_rgba8();
-            let pixels = image_buffer.into_raw();
-            let color_image = egui::ColorImage::from_rgba_unmultiplied(size, &pixels);
-            let texture = ctx.load_texture(name, color_image, Default::default());
-            self.cache.cache_image(name.to_string(), texture.clone());
-            return Ok(Some(texture));
-        }
+            if file_path.exists() {
+                let image = image::open(&file_path)?;
+                let size = [image.width() as usize, image.height() as usize];
+                let image_buffer = image.to_rgba8();
+                let pixels = image_buffer.into_raw();
+                let color_image = egui::ColorImage::from_rgba_unmultiplied(size, &pixels);
+                let texture = ctx.load_texture(name, color_image, Default::default());
+                self.cache.cache_image(name.to_string(), texture.clone());
+                return Ok(Some(texture));
+            }
         }
 
         Ok(None)

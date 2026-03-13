@@ -1,64 +1,78 @@
 //! Registry API — read, write, delete registry keys and values
 
-use rhai::Engine;
 use super::context::ScriptContext;
+use rhai::Engine;
 
-pub fn register(engine: &mut Engine, _ctx: ScriptContext) {
+pub fn register(engine: &mut Engine, ctx: ScriptContext) {
     // reg_write_string("HKCU\\Software\\MyApp", "InstallPath", "C:\\...")
-    engine.register_fn("reg_write_string", |key: &str, name: &str, value: &str| -> bool {
-        #[cfg(windows)]
-        {
-            let (hive, subkey) = match parse_reg_key(key) {
-                Some(v) => v,
-                None => return false,
-            };
-            match hive.create_subkey(subkey) {
-                Ok((reg_key, _)) => {
-                    match reg_key.set_value(name, &value) {
-                        Ok(()) => true,
+    let c = ctx.clone();
+    engine.register_fn(
+        "reg_write_string",
+        move |key: &str, name: &str, value: &str| -> bool {
+            #[cfg(windows)]
+            {
+                let (hive, subkey) = match parse_reg_key(key) {
+                    Some(v) => v,
+                    None => return false,
+                };
+                match hive.create_subkey(subkey) {
+                    Ok((reg_key, _)) => match reg_key.set_value(name, &value) {
+                        Ok(()) => {
+                            c.record_registry_write(key, name);
+                            true
+                        }
                         Err(e) => {
                             tracing::error!("[script] reg_write_string failed: {}", e);
                             false
                         }
+                    },
+                    Err(e) => {
+                        tracing::error!("[script] reg_write_string create key failed: {}", e);
+                        false
                     }
                 }
-                Err(e) => {
-                    tracing::error!("[script] reg_write_string create key failed: {}", e);
-                    false
-                }
             }
-        }
-        #[cfg(not(windows))]
-        { true }
-    });
+            #[cfg(not(windows))]
+            {
+                true
+            }
+        },
+    );
 
     // reg_write_dword("HKLM\\...", "NoModify", 1)
-    engine.register_fn("reg_write_dword", |key: &str, name: &str, value: i64| -> bool {
-        #[cfg(windows)]
-        {
-            let (hive, subkey) = match parse_reg_key(key) {
-                Some(v) => v,
-                None => return false,
-            };
-            match hive.create_subkey(subkey) {
-                Ok((reg_key, _)) => {
-                    match reg_key.set_value(name, &(value as u32)) {
-                        Ok(()) => true,
+    let c = ctx.clone();
+    engine.register_fn(
+        "reg_write_dword",
+        move |key: &str, name: &str, value: i64| -> bool {
+            #[cfg(windows)]
+            {
+                let (hive, subkey) = match parse_reg_key(key) {
+                    Some(v) => v,
+                    None => return false,
+                };
+                match hive.create_subkey(subkey) {
+                    Ok((reg_key, _)) => match reg_key.set_value(name, &(value as u32)) {
+                        Ok(()) => {
+                            c.record_registry_write(key, name);
+                            true
+                        }
                         Err(e) => {
                             tracing::error!("[script] reg_write_dword failed: {}", e);
                             false
                         }
+                    },
+                    Err(e) => {
+                        tracing::error!("[script] reg_write_dword create key failed: {}", e);
+                        false
                     }
                 }
-                Err(e) => {
-                    tracing::error!("[script] reg_write_dword create key failed: {}", e);
-                    false
-                }
             }
-        }
-        #[cfg(not(windows))]
-        { true }
-    });
+            #[cfg(not(windows))]
+            {
+                true
+            }
+        },
+    );
 
     // reg_read("HKCU\\Software\\MyApp", "InstallPath") -> String
     engine.register_fn("reg_read", |key: &str, name: &str| -> String {
@@ -74,7 +88,9 @@ pub fn register(engine: &mut Engine, _ctx: ScriptContext) {
             }
         }
         #[cfg(not(windows))]
-        { String::new() }
+        {
+            String::new()
+        }
     });
 
     // reg_delete_key("HKCU\\Software\\MyApp")
@@ -88,7 +104,9 @@ pub fn register(engine: &mut Engine, _ctx: ScriptContext) {
             hive.delete_subkey_all(subkey).is_ok()
         }
         #[cfg(not(windows))]
-        { true }
+        {
+            true
+        }
     });
 
     // reg_delete_value("HKCU\\Software\\MyApp", "SomeValue")
@@ -105,7 +123,9 @@ pub fn register(engine: &mut Engine, _ctx: ScriptContext) {
             }
         }
         #[cfg(not(windows))]
-        { true }
+        {
+            true
+        }
     });
 
     // reg_key_exists("HKCU\\Software\\MyApp") -> bool
@@ -119,7 +139,9 @@ pub fn register(engine: &mut Engine, _ctx: ScriptContext) {
             hive.open_subkey(subkey).is_ok()
         }
         #[cfg(not(windows))]
-        { false }
+        {
+            false
+        }
     });
 }
 

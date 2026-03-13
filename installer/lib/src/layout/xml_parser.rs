@@ -1,11 +1,11 @@
 //! XML布局解析器
-//! 
+//!
 //! 解析简化的XML布局格式并生成内部布局树
 
-use crate::layout::{LayoutTree, LayoutElement, ElementType, ElementAttributes};
-use crate::layout::layout_tree::LayoutMetadata;
 use crate::layout::dimension::{Dimension, Edges};
+use crate::layout::layout_tree::LayoutMetadata;
 use crate::layout::style_props::*;
+use crate::layout::{ElementAttributes, ElementType, LayoutElement, LayoutTree};
 use roxmltree::Document;
 use std::collections::HashMap;
 
@@ -49,9 +49,9 @@ impl FontConfig {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ImagePath {
     pub file: String,
-    pub dest: Option<(u32, u32, u32, u32)>,  // x1, y1, x2, y2
+    pub dest: Option<(u32, u32, u32, u32)>,   // x1, y1, x2, y2
     pub corner: Option<(u32, u32, u32, u32)>, // x1, y1, x2, y2
-    pub fade: Option<u8>,  // 0-255
+    pub fade: Option<u8>,                     // 0-255
 }
 
 /// XML解析器
@@ -88,22 +88,22 @@ impl Default for ParserOptions {
 pub enum ParseError {
     #[error("XML解析错误: {0}")]
     XmlError(String),
-    
+
     #[error("IO错误: {0}")]
     IoError(#[from] std::io::Error),
-    
+
     #[error("无效的元素类型: {0}")]
     InvalidElementType(String),
-    
+
     #[error("无效的属性值: {0}")]
     InvalidAttributeValue(String),
-    
+
     #[error("缺少必需属性: {0}")]
     MissingRequiredAttribute(String),
-    
+
     #[error("验证失败: {0:?}")]
     ValidationFailed(Vec<String>),
-    
+
     #[error("不支持的嵌套: {0} 不能包含 {1}")]
     UnsupportedNesting(String, String),
 }
@@ -119,16 +119,16 @@ impl XmlParser {
 
     /// 创建带选项的解析器
     pub fn with_options(options: ParserOptions) -> Self {
-        Self { 
+        Self {
             options,
             font_map: HashMap::new(),
         }
     }
-    
+
     /// 根据 DPI 选择合适的布局文件
     pub fn select_layout_file(base_path: &str, dpi: f32) -> String {
         let dpi_threshold = 144.0; // 2x DPI 阈值
-        
+
         if dpi >= dpi_threshold {
             // 尝试 @2x 版本
             if let Some(dot_pos) = base_path.rfind('.') {
@@ -141,34 +141,39 @@ impl XmlParser {
             base_path.to_string()
         }
     }
-    
+
     /// 检测系统 DPI
     pub fn detect_system_dpi() -> f32 {
-        #[cfg(target_os = "windows")] {
+        #[cfg(target_os = "windows")]
+        {
             // 暂时返回默认 DPI，稍后实现真正的 DPI 检测
             96.0
         }
-        #[cfg(not(target_os = "windows"))] {
+        #[cfg(not(target_os = "windows"))]
+        {
             96.0 // 默认 DPI
         }
     }
 
     /// 解析XML文件
-    pub fn parse_file<P: AsRef<std::path::Path>>(&mut self, path: P) -> Result<LayoutTree, ParseError> {
+    pub fn parse_file<P: AsRef<std::path::Path>>(
+        &mut self,
+        path: P,
+    ) -> Result<LayoutTree, ParseError> {
         let path = path.as_ref();
         let path_str = path.to_string_lossy();
-        
+
         // 检测系统 DPI 并选择合适的布局文件
         let dpi = Self::detect_system_dpi();
         let selected_path = Self::select_layout_file(&path_str, dpi);
-        
+
         // 如果 @2x 文件不存在，回退到原始文件
         let final_path = if std::path::Path::new(&selected_path).exists() {
             selected_path
         } else {
             path_str.to_string()
         };
-        
+
         let content = std::fs::read_to_string(&final_path)?;
         self.parse_string(&content)
     }
@@ -202,13 +207,13 @@ impl XmlParser {
             }
             ParseError::XmlError(error_msg)
         })?;
-        
+
         let root = doc.root_element();
         let root_name = root.tag_name().name();
-        
+
         // 清空字体映射表（每次解析新文件时重置）
         self.font_map.clear();
-        
+
         // 新格式: <Page> 作为根元素
         if root_name == "Page" {
             return self.parse_new_format(&root);
@@ -221,14 +226,14 @@ impl XmlParser {
                 root_name
             )));
         }
-        
+
         let mut metadata = LayoutMetadata::default();
-        
+
         // 如果是 <Window>，解析窗口属性
         if root_name == "Window" {
             self.parse_window_metadata(&root, &mut metadata)?;
         }
-        
+
         // 解析 <Font> 元素（在 <Window> 或 <Windows> 下）
         for child in root.children() {
             if child.is_element() && child.tag_name().name() == "Font" {
@@ -236,23 +241,25 @@ impl XmlParser {
                 self.font_map.insert(font_config.id, font_config);
             }
         }
-        
+
         // 创建一个虚拟的 Page 元素来包装布局
         // 查找第一个布局容器（VerticalLayout 或 HorizontalLayout）
         // 或者查找 TabLayout（包含 Include）
-        let layout_node = root.children()
+        let layout_node = root
+            .children()
             .find(|n| {
-                n.is_element() && matches!(
-                    n.tag_name().name(),
-                    "VerticalLayout" | "HorizontalLayout" | "TabLayout"
-                )
+                n.is_element()
+                    && matches!(
+                        n.tag_name().name(),
+                        "VerticalLayout" | "HorizontalLayout" | "TabLayout"
+                    )
             })
             .ok_or_else(|| ParseError::ValidationFailed(vec!["缺少布局容器元素".to_string()]))?;
-        
+
         // 递归查找第一个有 width 和 height 的布局容器（用于设置 Page 元素的尺寸）
         // 如果第一个布局容器没有 width/height，查找其子元素中第一个有 width/height 的
         let mut page_attributes = ElementAttributes::new();
-        
+
         // 先检查第一个布局容器是否有 width/height
         let mut has_size = false;
         for attr in layout_node.attributes() {
@@ -272,15 +279,17 @@ impl XmlParser {
                 _ => {}
             }
         }
-        
+
         // 如果第一个布局容器没有 width/height，递归查找子元素中第一个有 width/height 的
         if !has_size {
             fn find_layout_with_size_attrs(node: &roxmltree::Node) -> Option<(f32, f32)> {
                 for child in node.children() {
-                    if child.is_element() && matches!(
-                        child.tag_name().name(),
-                        "VerticalLayout" | "HorizontalLayout"
-                    ) {
+                    if child.is_element()
+                        && matches!(
+                            child.tag_name().name(),
+                            "VerticalLayout" | "HorizontalLayout"
+                        )
+                    {
                         // 检查这个子元素是否有 width 和 height
                         let mut width_opt = None;
                         let mut height_opt = None;
@@ -310,23 +319,21 @@ impl XmlParser {
                 }
                 None
             }
-            
+
             if let Some((w, h)) = find_layout_with_size_attrs(&layout_node) {
                 page_attributes.width = Some(w);
                 page_attributes.height = Some(h);
             }
         }
-        
+
         // 解析布局容器元素
         let layout_element = self.parse_element(&layout_node)?;
-        
+
         // 创建一个 Page 元素来包装布局容器（用于验证和兼容性）
         // 将布局容器的 width 和 height 设置到 Page 元素上
-        let page_element = LayoutElement::with_attributes(
-            ElementType::Page,
-            page_attributes,
-        ).add_child(layout_element);
-        
+        let page_element = LayoutElement::with_attributes(ElementType::Page, page_attributes)
+            .add_child(layout_element);
+
         let tree = LayoutTree::with_metadata(page_element, metadata);
 
         // 验证布局树
@@ -343,14 +350,20 @@ impl XmlParser {
     fn parse_element(&self, node: &roxmltree::Node) -> Result<LayoutElement, ParseError> {
         let element_type = self.parse_element_type(node.tag_name().name())?;
         let attributes = self.parse_attributes(node)?;
-        
+
         // 调试日志：检查 moreconfiginfo2x 的解析
         if let Some(id) = &attributes.id {
             if id == "moreconfiginfo2x" {
                 let has_float = attributes.get_custom("float").is_some();
                 let has_pos = attributes.get_custom("pos").is_some();
-                let is_absolute = attributes.get_custom("is_absolute").map(|s| s == "true").unwrap_or(false);
-                eprintln!("[解析] moreconfiginfo2x 解析: float={}, pos={}, is_absolute={}", has_float, has_pos, is_absolute);
+                let is_absolute = attributes
+                    .get_custom("is_absolute")
+                    .map(|s| s == "true")
+                    .unwrap_or(false);
+                eprintln!(
+                    "[解析] moreconfiginfo2x 解析: float={}, pos={}, is_absolute={}",
+                    has_float, has_pos, is_absolute
+                );
                 if has_pos {
                     if let Some(pos_str) = attributes.get_custom("pos") {
                         eprintln!("[解析] moreconfiginfo2x pos 值: {}", pos_str);
@@ -359,14 +372,17 @@ impl XmlParser {
                 // 检查父元素
                 if let Some(parent) = node.parent() {
                     if parent.is_element() {
-                        eprintln!("[解析] moreconfiginfo2x 的父元素: {}", parent.tag_name().name());
+                        eprintln!(
+                            "[解析] moreconfiginfo2x 的父元素: {}",
+                            parent.tag_name().name()
+                        );
                     }
                 }
             }
         }
-        
+
         let mut element = LayoutElement::with_attributes(element_type.clone(), attributes);
-        
+
         // 递归解析子元素
         let mut child_count = 0;
         for child in node.children() {
@@ -378,7 +394,12 @@ impl XmlParser {
                 if let Some(child_id) = &child_element.attributes.id {
                     if child_id == "moreconfiginfo2x" {
                         let element_type_str = format!("{:?}", element_type);
-                        let element_id = element.attributes.id.as_ref().map(|s| s.as_str()).unwrap_or("unnamed");
+                        let element_id = element
+                            .attributes
+                            .id
+                            .as_ref()
+                            .map(|s| s.as_str())
+                            .unwrap_or("unnamed");
                         eprintln!("[解析] moreconfiginfo2x 被解析为 {} (id: {}, XML标签: {}) 的第 {} 个子元素", 
                             element_type_str, element_id, child_tag, child_count);
                     }
@@ -393,7 +414,7 @@ impl XmlParser {
             }
             // 忽略注释等其他节点类型
         }
-        
+
         Ok(element)
     }
 
@@ -403,7 +424,7 @@ impl XmlParser {
 
     /// 解析新格式 XML (<Page> 根元素)
     fn parse_new_format(&self, root: &roxmltree::Node) -> Result<LayoutTree, ParseError> {
-        let element = self.parse_new_element(root)?;
+        let element = self.parse_new_element(root, None, None)?;
         let tree = LayoutTree::new(element);
 
         if self.options.strict_validation {
@@ -416,25 +437,64 @@ impl XmlParser {
     }
 
     /// 解析新格式元素节点
-    fn parse_new_element(&self, node: &roxmltree::Node) -> Result<LayoutElement, ParseError> {
+    fn parse_new_element(
+        &self,
+        node: &roxmltree::Node,
+        parent_type: Option<&ElementType>,
+        parent_visual: Option<&VisualStyle>,
+    ) -> Result<LayoutElement, ParseError> {
         let tag = node.tag_name().name();
         let element_type = self.parse_new_element_type(tag)?;
 
         // 解析 CSS-style 属性
-        let (flex_style, visual_style, widget_props) = self.parse_new_attributes(node, &element_type)?;
+        let (flex_style, mut visual_style, widget_props) =
+            self.parse_new_attributes(node, &element_type)?;
+        self.apply_inherited_text_visuals(&mut visual_style, parent_visual);
 
         // 同时生成旧格式 attributes (用于渲染器向后兼容, Phase 3 前需要)
-        let legacy_attrs = self.new_to_legacy_attrs(&flex_style, &visual_style, &widget_props, &element_type);
+        let legacy_attrs =
+            self.new_to_legacy_attrs(&flex_style, &visual_style, &widget_props, &element_type);
 
         let mut element = LayoutElement::with_attributes(element_type, legacy_attrs);
         element.flex_style = Some(flex_style);
         element.visual_style = Some(visual_style);
         element.widget_props = Some(widget_props);
 
+        if element.attributes.id.is_none() {
+            let auto_id = format!("__auto_{}_{}", tag.to_lowercase(), node.range().start);
+            element.attributes.id = Some(auto_id.clone());
+            if let Some(widget) = &mut element.widget_props {
+                widget.id = Some(auto_id.clone());
+            }
+            element
+                .attributes
+                .custom
+                .insert("__auto_id".to_string(), auto_id);
+        }
+
+        if tag == "Content"
+            && matches!(parent_type, Some(ElementType::Button))
+            && element.flex_style.is_some()
+        {
+            let flex_style = element.flex_style.as_mut().unwrap();
+            if matches!(flex_style.width, Dimension::Auto) {
+                flex_style.width = Dimension::Percent(100.0);
+            }
+            if matches!(flex_style.height, Dimension::Auto) {
+                flex_style.height = Dimension::Percent(100.0);
+            }
+        }
+
+        let parent_element_type = element.element_type.clone();
+
         // 递归解析子元素
         for child in node.children() {
             if child.is_element() {
-                element.children.push(self.parse_new_element(&child)?);
+                element.children.push(self.parse_new_element(
+                    &child,
+                    Some(&parent_element_type),
+                    element.visual_style.as_ref(),
+                )?);
             } else if child.is_text() {
                 let text = child.text().unwrap_or("").trim();
                 if !text.is_empty() {
@@ -451,7 +511,42 @@ impl XmlParser {
             }
         }
 
+        if !element.children.is_empty() {
+            element
+                .attributes
+                .custom
+                .insert("__has_children".to_string(), "true".to_string());
+        } else {
+            element
+                .attributes
+                .custom
+                .insert("__button_content_empty".to_string(), "true".to_string());
+        }
+
         Ok(element)
+    }
+
+    fn apply_inherited_text_visuals(
+        &self,
+        visual: &mut VisualStyle,
+        parent_visual: Option<&VisualStyle>,
+    ) {
+        let Some(parent_visual) = parent_visual else {
+            return;
+        };
+
+        if visual.color.is_none() {
+            visual.color = parent_visual.color.clone();
+        }
+        if visual.font_size.is_none() {
+            visual.font_size = parent_visual.font_size;
+        }
+        if visual.font_weight.is_none() {
+            visual.font_weight = parent_visual.font_weight;
+        }
+        if visual.font_family.is_none() {
+            visual.font_family = parent_visual.font_family.clone();
+        }
     }
 
     /// 新格式元素类型映射
@@ -460,12 +555,13 @@ impl XmlParser {
             "Page" => Ok(ElementType::Page),
             "Box" | "VBox" => Ok(ElementType::VBox),
             "HBox" => Ok(ElementType::HBox),
+            "Content" => Ok(ElementType::HBox),
             "Overlay" => Ok(ElementType::Overlay),
             "Button" => Ok(ElementType::Button),
-            "Label" => Ok(ElementType::Label),
+            "Label" | "Text" => Ok(ElementType::Label),
             "Checkbox" => Ok(ElementType::Checkbox),
             "TextInput" => Ok(ElementType::TextInput),
-            "Image" => Ok(ElementType::Image),
+            "Image" | "Icon" => Ok(ElementType::Image),
             "ProgressBar" => Ok(ElementType::ProgressBar),
             "Spacer" => Ok(ElementType::Spacer),
             "Divider" => Ok(ElementType::Divider),
@@ -484,6 +580,10 @@ impl XmlParser {
         let mut flex = FlexStyle::default();
         let mut visual = VisualStyle::default();
         let mut widget = WidgetProps::default();
+        let tag = node.tag_name().name();
+        let mut declared_layout: Option<String> = None;
+        let mut horizontal_align: Option<String> = None;
+        let mut vertical_align: Option<String> = None;
 
         // VBox/Page 默认 flex-direction: column
         match element_type {
@@ -513,7 +613,8 @@ impl XmlParser {
                     flex.flex_wrap = FlexWrap::parse(val).unwrap_or(FlexWrap::NoWrap);
                 }
                 "justify-content" => {
-                    flex.justify_content = JustifyContent::parse(val).unwrap_or(JustifyContent::FlexStart);
+                    flex.justify_content =
+                        JustifyContent::parse(val).unwrap_or(JustifyContent::FlexStart);
                 }
                 "align-items" => {
                     flex.align_items = AlignItems::parse(val).unwrap_or(AlignItems::Stretch);
@@ -588,6 +689,18 @@ impl XmlParser {
                 "spacing" => {
                     flex.gap = val.parse::<f32>().unwrap_or(0.0);
                 }
+                "item-spacing" => {
+                    flex.gap = val.parse::<f32>().unwrap_or(0.0);
+                }
+                "layout" => {
+                    declared_layout = Some(val.to_string());
+                }
+                "horizontal-align" => {
+                    horizontal_align = Some(val.to_string());
+                }
+                "vertical-align" => {
+                    vertical_align = Some(val.to_string());
+                }
 
                 // ── 视觉属性 ──
                 "background" => visual.background = Some(val.to_string()),
@@ -611,6 +724,13 @@ impl XmlParser {
                 // ── 控件属性 ──
                 "id" => widget.id = Some(val.to_string()),
                 "text" => widget.text = Some(val.to_string()),
+                "value" => {
+                    if tag == "Option" {
+                        widget.value = Some(val.to_string());
+                    } else {
+                        widget.text = Some(val.to_string());
+                    }
+                }
 
                 // Button images
                 "normal-image" => widget.normal_image = Some(val.to_string()),
@@ -644,15 +764,61 @@ impl XmlParser {
                 "wrap" => widget.wrap = self.parse_bool(val).ok(),
 
                 // 兼容旧格式属性名 (无 hyphen)
-                "normalimage" | "hotimage" | "pushedimage" | "disabledimage" |
-                "selectedimage" | "foreimage" | "normalhotimage" | "selectedhotimage" |
-                "focusedimage" => {
+                "normalimage" | "hotimage" | "pushedimage" | "disabledimage" | "selectedimage"
+                | "foreimage" | "normalhotimage" | "selectedhotimage" | "focusedimage" => {
                     widget.custom.insert(key.to_string(), val.to_string());
                 }
 
                 // 其他自定义属性
                 _ => {
                     widget.custom.insert(key.to_string(), val.to_string());
+                }
+            }
+        }
+
+        if let Some(layout) = declared_layout.as_deref() {
+            flex.flex_direction = match layout {
+                "vertical" => FlexDirection::Column,
+                _ => FlexDirection::Row,
+            };
+        } else if tag == "Content" {
+            flex.flex_direction = FlexDirection::Row;
+        }
+
+        if let Some(align) = horizontal_align.as_deref() {
+            match flex.flex_direction {
+                FlexDirection::Row => {
+                    flex.justify_content = match align {
+                        "center" => JustifyContent::Center,
+                        "right" => JustifyContent::FlexEnd,
+                        _ => JustifyContent::FlexStart,
+                    };
+                }
+                FlexDirection::Column => {
+                    flex.align_items = match align {
+                        "center" => AlignItems::Center,
+                        "right" => AlignItems::FlexEnd,
+                        _ => AlignItems::FlexStart,
+                    };
+                }
+            }
+        }
+
+        if let Some(align) = vertical_align.as_deref() {
+            match flex.flex_direction {
+                FlexDirection::Row => {
+                    flex.align_items = match align {
+                        "center" => AlignItems::Center,
+                        "bottom" => AlignItems::FlexEnd,
+                        _ => AlignItems::FlexStart,
+                    };
+                }
+                FlexDirection::Column => {
+                    flex.justify_content = match align {
+                        "center" => JustifyContent::Center,
+                        "bottom" => JustifyContent::FlexEnd,
+                        _ => JustifyContent::FlexStart,
+                    };
                 }
             }
         }
@@ -672,16 +838,35 @@ impl XmlParser {
 
         attrs.id = widget.id.clone();
         attrs.text = widget.text.clone();
+        attrs.wrap = widget.wrap;
+        attrs.max_lines = widget.max_lines;
+        if let Some(value) = &widget.value {
+            attrs.custom.insert("value".to_string(), value.clone());
+        }
 
         // 尺寸 (只转换 Px 值)
-        if let Dimension::Px(w) = flex.width { attrs.width = Some(w); }
-        if let Dimension::Px(h) = flex.height { attrs.height = Some(h); }
-        if let Dimension::Px(w) = flex.min_width { attrs.min_width = Some(w); }
-        if let Dimension::Px(w) = flex.max_width { attrs.max_width = Some(w); }
+        if let Dimension::Px(w) = flex.width {
+            attrs.width = Some(w);
+        }
+        if let Dimension::Px(h) = flex.height {
+            attrs.height = Some(h);
+        }
+        if let Dimension::Px(w) = flex.min_width {
+            attrs.min_width = Some(w);
+        }
+        if let Dimension::Px(w) = flex.max_width {
+            attrs.max_width = Some(w);
+        }
 
         // padding
         let p = &flex.padding;
-        let to_px = |d: Dimension| -> f32 { if let Dimension::Px(v) = d { v } else { 0.0 } };
+        let to_px = |d: Dimension| -> f32 {
+            if let Dimension::Px(v) = d {
+                v
+            } else {
+                0.0
+            }
+        };
         let pt = to_px(p.top);
         let pr = to_px(p.right);
         let pb = to_px(p.bottom);
@@ -690,8 +875,16 @@ impl XmlParser {
             attrs.padding = Some((pt, pr, pb, pl));
         }
 
-        attrs.spacing = if flex.gap != 0.0 { Some(flex.gap) } else { None };
-        attrs.flex = if flex.flex_grow != 0.0 { Some(flex.flex_grow) } else { None };
+        attrs.spacing = if flex.gap != 0.0 {
+            Some(flex.gap)
+        } else {
+            None
+        };
+        attrs.flex = if flex.flex_grow != 0.0 {
+            Some(flex.flex_grow)
+        } else {
+            None
+        };
 
         attrs.visible = Some(visual.visible);
         attrs.enabled = Some(visual.enabled);
@@ -719,7 +912,9 @@ impl XmlParser {
 
         // 绝对定位
         if flex.position == Position::Absolute {
-            attrs.custom.insert("is_absolute".to_string(), "true".to_string());
+            attrs
+                .custom
+                .insert("is_absolute".to_string(), "true".to_string());
             if let Dimension::Px(x) = flex.left {
                 if let Dimension::Px(y) = flex.top {
                     attrs.position = Some((x, y));
@@ -743,7 +938,9 @@ impl XmlParser {
             attrs.custom.insert("pushedimage".to_string(), img.clone());
         }
         if let Some(img) = &widget.disabled_image {
-            attrs.custom.insert("disabledimage".to_string(), img.clone());
+            attrs
+                .custom
+                .insert("disabledimage".to_string(), img.clone());
         }
 
         // Checkbox images -> custom
@@ -751,20 +948,28 @@ impl XmlParser {
             attrs.custom.insert("normalimage".to_string(), img.clone());
         }
         if let Some(img) = &widget.checked_image {
-            attrs.custom.insert("selectedimage".to_string(), img.clone());
+            attrs
+                .custom
+                .insert("selectedimage".to_string(), img.clone());
         }
 
         // Font size/weight -> custom
         if let Some(size) = visual.font_size {
-            attrs.custom.insert("font_size".to_string(), size.to_string());
+            attrs
+                .custom
+                .insert("font_size".to_string(), size.to_string());
         }
         if let Some(FontWeight::Bold) = visual.font_weight {
-            attrs.custom.insert("font_bold".to_string(), "true".to_string());
+            attrs
+                .custom
+                .insert("font_bold".to_string(), "true".to_string());
         }
 
         // border
         if let Some(r) = visual.border_radius {
-            attrs.custom.insert("borderround".to_string(), format!("{},{}", r, r));
+            attrs
+                .custom
+                .insert("borderround".to_string(), format!("{},{}", r, r));
         }
         if let Some(c) = &visual.border_color {
             attrs.custom.insert("bordercolor".to_string(), c.clone());
@@ -775,10 +980,14 @@ impl XmlParser {
 
         // TextInput
         if let Some(readonly) = widget.readonly {
-            attrs.custom.insert("readonly".to_string(), readonly.to_string());
+            attrs
+                .custom
+                .insert("readonly".to_string(), readonly.to_string());
         }
         if let Some(multiline) = widget.multiline {
-            attrs.custom.insert("multiline".to_string(), multiline.to_string());
+            attrs
+                .custom
+                .insert("multiline".to_string(), multiline.to_string());
         }
 
         // text-align -> custom
@@ -789,7 +998,9 @@ impl XmlParser {
                 TextAlign::Right => "right",
             };
             attrs.align = Some(align_str.to_string());
-            attrs.custom.insert("textalign".to_string(), align_str.to_string());
+            attrs
+                .custom
+                .insert("textalign".to_string(), align_str.to_string());
         }
 
         // valign from align-items (简单映射)
@@ -809,8 +1020,8 @@ impl XmlParser {
     fn parse_element_type(&self, name: &str) -> Result<ElementType, ParseError> {
         match name {
             // NSIS 格式元素
-            "Windows" => Ok(ElementType::Page),  // 根元素，映射为 Page
-            "Window" => Ok(ElementType::Page),   // 窗口元素，映射为 Page
+            "Windows" => Ok(ElementType::Page), // 根元素，映射为 Page
+            "Window" => Ok(ElementType::Page),  // 窗口元素，映射为 Page
             "VerticalLayout" => Ok(ElementType::VBox),
             "HorizontalLayout" => Ok(ElementType::HBox),
             "Container" => Ok(ElementType::Spacer),
@@ -820,9 +1031,11 @@ impl XmlParser {
             "CheckBox" => Ok(ElementType::Checkbox),
             "RichEdit" => Ok(ElementType::TextInput),
             "Slider" => Ok(ElementType::ProgressBar),
-            "TabLayout" => Ok(ElementType::VBox),  // 暂时映射为 VBox
-            "Include" => Ok(ElementType::Spacer),  // Include 暂时映射为空白占位符（后续可扩展为文件包含）
-            "Font" => Err(ParseError::InvalidElementType("Font 需要特殊处理".to_string())),
+            "TabLayout" => Ok(ElementType::VBox), // 暂时映射为 VBox
+            "Include" => Ok(ElementType::Spacer), // Include 暂时映射为空白占位符（后续可扩展为文件包含）
+            "Font" => Err(ParseError::InvalidElementType(
+                "Font 需要特殊处理".to_string(),
+            )),
             _ => Err(ParseError::InvalidElementType(name.to_string())),
         }
     }
@@ -849,7 +1062,7 @@ impl XmlParser {
                 "max_width" => attributes.max_width = Some(self.parse_f32(value)?),
                 "padding" => {
                     // NSIS 格式：padding="left,top,right,bottom"，需要转换为 top,right,bottom,left
-                    let padding = self.parse_inset(value)?;  // left,top,right,bottom
+                    let padding = self.parse_inset(value)?; // left,top,right,bottom
                     attributes.padding = Some((padding.1, padding.2, padding.3, padding.0));
                 }
                 "spacing" => attributes.spacing = Some(self.parse_f32(value)?),
@@ -883,38 +1096,63 @@ impl XmlParser {
                 "margin" => {
                     // margin 存储到 custom
                     let margin = self.parse_inset(value)?;
-                    attributes.custom.insert("margin".to_string(), format!("{},{},{},{}", margin.0, margin.1, margin.2, margin.3));
+                    attributes.custom.insert(
+                        "margin".to_string(),
+                        format!("{},{},{},{}", margin.0, margin.1, margin.2, margin.3),
+                    );
                 }
                 "textpadding" => {
                     // textpadding="left,top,right,bottom" 存储到 custom
                     let textpadding = self.parse_inset(value)?;
-                    attributes.custom.insert("textpadding".to_string(), format!("{},{},{},{}", textpadding.0, textpadding.1, textpadding.2, textpadding.3));
+                    attributes.custom.insert(
+                        "textpadding".to_string(),
+                        format!(
+                            "{},{},{},{}",
+                            textpadding.0, textpadding.1, textpadding.2, textpadding.3
+                        ),
+                    );
                 }
                 "valign" => {
                     // 垂直对齐
-                    attributes.custom.insert("valign".to_string(), value.to_string());
+                    attributes
+                        .custom
+                        .insert("valign".to_string(), value.to_string());
                 }
                 "textalign" => {
                     // 文本对齐（Label 专用）
-                    attributes.custom.insert("textalign".to_string(), value.to_string());
+                    attributes
+                        .custom
+                        .insert("textalign".to_string(), value.to_string());
                 }
                 "font" => {
                     // 字体 ID，需要查找字体映射表
                     if let Ok(font_id) = value.parse::<u32>() {
                         // 优先使用当前文件中声明的 <Font> 配置
-                        let font_config = self.font_map.get(&font_id)
+                        let font_config = self
+                            .font_map
+                            .get(&font_id)
                             .cloned()
                             // 如果当前文件没有声明 <Font>，尝试使用全局默认表（例如 TapTap 的 install.xml）
                             .or_else(|| FontConfig::from_default_table(font_id));
 
                         if let Some(font_config) = font_config {
-                            attributes.custom.insert("font_id".to_string(), font_config.id.to_string());
-                            attributes.custom.insert("font_name".to_string(), font_config.name.clone());
-                            attributes.custom.insert("font_size".to_string(), font_config.size.to_string());
-                            attributes.custom.insert("font_bold".to_string(), font_config.bold.to_string());
+                            attributes
+                                .custom
+                                .insert("font_id".to_string(), font_config.id.to_string());
+                            attributes
+                                .custom
+                                .insert("font_name".to_string(), font_config.name.clone());
+                            attributes
+                                .custom
+                                .insert("font_size".to_string(), font_config.size.to_string());
+                            attributes
+                                .custom
+                                .insert("font_bold".to_string(), font_config.bold.to_string());
                         } else {
                             // 找不到任何配置时，至少存储字体 ID，渲染时回退到默认字体
-                            attributes.custom.insert("font_id".to_string(), font_id.to_string());
+                            attributes
+                                .custom
+                                .insert("font_id".to_string(), font_id.to_string());
                         }
                     }
                 }
@@ -923,48 +1161,69 @@ impl XmlParser {
                     let parts: Vec<&str> = value.split(',').map(|s| s.trim()).collect();
                     if parts.len() == 2 {
                         if let (Ok(x), Ok(y)) = (parts[0].parse::<f32>(), parts[1].parse::<f32>()) {
-                            attributes.custom.insert("borderround".to_string(), format!("{},{}", x, y));
+                            attributes
+                                .custom
+                                .insert("borderround".to_string(), format!("{},{}", x, y));
                         }
                     }
                 }
                 "bordercolor" => {
-                    attributes.custom.insert("bordercolor".to_string(), value.to_string());
+                    attributes
+                        .custom
+                        .insert("bordercolor".to_string(), value.to_string());
                 }
                 "bordersize" => {
-                    attributes.custom.insert("bordersize".to_string(), value.to_string());
+                    attributes
+                        .custom
+                        .insert("bordersize".to_string(), value.to_string());
                 }
                 "float" => {
                     // float="true" 启用绝对定位
                     let is_float = self.parse_bool(value).unwrap_or(false);
-                    attributes.custom.insert("float".to_string(), value.to_string());
+                    attributes
+                        .custom
+                        .insert("float".to_string(), value.to_string());
                     if is_float {
                         // 如果 float=true，标记为绝对定位
-                        attributes.custom.insert("is_absolute".to_string(), "true".to_string());
+                        attributes
+                            .custom
+                            .insert("is_absolute".to_string(), "true".to_string());
                     }
                 }
                 "pos" => {
                     // pos="x1,y1,x2,y2" 存储到 custom
                     if let Ok(pos) = self.parse_pos_rect(value) {
-                        attributes.custom.insert("pos".to_string(), format!("{},{},{},{}", pos.0, pos.1, pos.2, pos.3));
+                        attributes.custom.insert(
+                            "pos".to_string(),
+                            format!("{},{},{},{}", pos.0, pos.1, pos.2, pos.3),
+                        );
                         // 同时计算 position 和尺寸（用于绝对定位）
                         attributes.position = Some((pos.0, pos.1));
                         attributes.width = Some(pos.2 - pos.0);
                         attributes.height = Some(pos.3 - pos.1);
                         // 标记为绝对定位
-                        attributes.custom.insert("is_absolute".to_string(), "true".to_string());
+                        attributes
+                            .custom
+                            .insert("is_absolute".to_string(), "true".to_string());
                     }
                 }
                 // 图片属性（需要解析 file, dest, corner, fade）
-                "normalimage" | "hotimage" | "pushedimage" | "disabledimage" | "focusedimage" |
-                "normalhotimage" | "selectedimage" | "selectedhotimage" | "foreimage" => {
+                "normalimage" | "hotimage" | "pushedimage" | "disabledimage" | "focusedimage"
+                | "normalhotimage" | "selectedimage" | "selectedhotimage" | "foreimage" => {
                     let image_path = self.parse_image_path(value);
                     // 将 ImagePath 序列化为字符串存储到 custom
                     let mut image_str = image_path.file.clone();
                     if let Some(dest) = image_path.dest {
-                        image_str.push_str(&format!(" dest='{},{},{},{}'", dest.0, dest.1, dest.2, dest.3));
+                        image_str.push_str(&format!(
+                            " dest='{},{},{},{}'",
+                            dest.0, dest.1, dest.2, dest.3
+                        ));
                     }
                     if let Some(corner) = image_path.corner {
-                        image_str.push_str(&format!(" corner='{},{},{},{}'", corner.0, corner.1, corner.2, corner.3));
+                        image_str.push_str(&format!(
+                            " corner='{},{},{},{}'",
+                            corner.0, corner.1, corner.2, corner.3
+                        ));
                     }
                     if let Some(fade) = image_path.fade {
                         image_str.push_str(&format!(" fade='{}'", fade));
@@ -998,7 +1257,11 @@ impl XmlParser {
     }
 
     /// 解析元数据
-    fn parse_metadata(&self, node: &roxmltree::Node, metadata: &mut LayoutMetadata) -> Result<(), ParseError> {
+    fn parse_metadata(
+        &self,
+        node: &roxmltree::Node,
+        metadata: &mut LayoutMetadata,
+    ) -> Result<(), ParseError> {
         for attr in node.attributes() {
             let key = attr.name();
             let value = attr.value();
@@ -1019,7 +1282,8 @@ impl XmlParser {
 
     /// 解析f32值
     fn parse_f32(&self, value: &str) -> Result<f32, ParseError> {
-        value.parse::<f32>()
+        value
+            .parse::<f32>()
             .map_err(|_| ParseError::InvalidAttributeValue(format!("无效的浮点数: {}", value)))
     }
 
@@ -1028,18 +1292,23 @@ impl XmlParser {
         match value.to_lowercase().as_str() {
             "true" | "1" | "yes" | "on" => Ok(true),
             "false" | "0" | "no" | "off" => Ok(false),
-            _ => Err(ParseError::InvalidAttributeValue(format!("无效的布尔值: {}", value))),
+            _ => Err(ParseError::InvalidAttributeValue(format!(
+                "无效的布尔值: {}",
+                value
+            ))),
         }
     }
-
 
     /// 解析位置值
     fn parse_position(&self, value: &str) -> Result<(f32, f32), ParseError> {
         let parts: Vec<&str> = value.split(',').map(|s| s.trim()).collect();
         if parts.len() != 2 {
-            return Err(ParseError::InvalidAttributeValue(format!("无效的位置格式: {}", value)));
+            return Err(ParseError::InvalidAttributeValue(format!(
+                "无效的位置格式: {}",
+                value
+            )));
         }
-        
+
         let x = self.parse_f32(parts[0])?;
         let y = self.parse_f32(parts[1])?;
         Ok((x, y))
@@ -1056,8 +1325,12 @@ impl XmlParser {
         for attr in node.attributes() {
             match attr.name() {
                 "id" => {
-                    id = Some(attr.value().parse::<u32>()
-                        .map_err(|_| ParseError::InvalidAttributeValue(format!("无效的字体 ID: {}", attr.value())))?);
+                    id = Some(attr.value().parse::<u32>().map_err(|_| {
+                        ParseError::InvalidAttributeValue(format!(
+                            "无效的字体 ID: {}",
+                            attr.value()
+                        ))
+                    })?);
                 }
                 "name" => name = Some(attr.value().to_string()),
                 "size" => {
@@ -1074,16 +1347,24 @@ impl XmlParser {
         }
 
         Ok(FontConfig {
-            id: id.ok_or_else(|| ParseError::MissingRequiredAttribute("Font 元素缺少 id 属性".to_string()))?,
+            id: id.ok_or_else(|| {
+                ParseError::MissingRequiredAttribute("Font 元素缺少 id 属性".to_string())
+            })?,
             name: name.unwrap_or_else(|| "微软雅黑".to_string()),
-            size: size.ok_or_else(|| ParseError::MissingRequiredAttribute("Font 元素缺少 size 属性".to_string()))?,
+            size: size.ok_or_else(|| {
+                ParseError::MissingRequiredAttribute("Font 元素缺少 size 属性".to_string())
+            })?,
             bold,
             default,
         })
     }
 
     /// 解析窗口元数据（Window 元素）
-    fn parse_window_metadata(&self, node: &roxmltree::Node, metadata: &mut LayoutMetadata) -> Result<(), ParseError> {
+    fn parse_window_metadata(
+        &self,
+        node: &roxmltree::Node,
+        metadata: &mut LayoutMetadata,
+    ) -> Result<(), ParseError> {
         for attr in node.attributes() {
             match attr.name() {
                 "name" => metadata.name = attr.value().to_string(),
@@ -1196,7 +1477,10 @@ impl XmlParser {
                 let bottom = self.parse_f32(parts[3])?;
                 Ok((left, top, right, bottom))
             }
-            _ => Err(ParseError::InvalidAttributeValue(format!("无效的 inset 格式: {}", value))),
+            _ => Err(ParseError::InvalidAttributeValue(format!(
+                "无效的 inset 格式: {}",
+                value
+            ))),
         }
     }
 
@@ -1204,9 +1488,12 @@ impl XmlParser {
     fn parse_pos_rect(&self, value: &str) -> Result<(f32, f32, f32, f32), ParseError> {
         let parts: Vec<&str> = value.split(',').map(|s| s.trim()).collect();
         if parts.len() != 4 {
-            return Err(ParseError::InvalidAttributeValue(format!("无效的 pos 格式: {}", value)));
+            return Err(ParseError::InvalidAttributeValue(format!(
+                "无效的 pos 格式: {}",
+                value
+            )));
         }
-        
+
         let x1 = self.parse_f32(parts[0])?;
         let y1 = self.parse_f32(parts[1])?;
         let x2 = self.parse_f32(parts[2])?;
@@ -1401,7 +1688,10 @@ mod tests {
         assert_eq!(vs.background_image, Some("assets/bg_color.png".to_string()));
 
         // Legacy compat
-        assert_eq!(overlay.attributes.custom.get("is_absolute"), Some(&"true".to_string()));
+        assert_eq!(
+            overlay.attributes.custom.get("is_absolute"),
+            Some(&"true".to_string())
+        );
     }
 
     #[test]
@@ -1435,7 +1725,10 @@ mod tests {
         // Checkbox should have unchecked/checked images
         let chk = tree.find_by_id("chk").unwrap();
         let wp = chk.widget_props.as_ref().unwrap();
-        assert_eq!(wp.unchecked_image, Some("assets/checkbox-0.png".to_string()));
+        assert_eq!(
+            wp.unchecked_image,
+            Some("assets/checkbox-0.png".to_string())
+        );
         assert_eq!(wp.checked_image, Some("assets/checkbox-2.png".to_string()));
     }
 
@@ -1481,5 +1774,67 @@ mod tests {
         let spacer = spacers[0];
         let fs = spacer.flex_style.as_ref().unwrap();
         assert_eq!(fs.flex_grow, 1.0);
+    }
+
+    #[test]
+    fn test_parse_button_content_dsl() {
+        let xml = r#"
+        <Page width="574" height="358">
+            <Button id="btnShowMore" min-width="80" max-width="164">
+                <Content layout="horizontal" horizontal-align="right" vertical-align="center" item-spacing="4">
+                    <Text value="@show_more" wrap="true" />
+                    <Icon src="assets/arrow-down.png" width="12" height="12" />
+                </Content>
+            </Button>
+        </Page>
+        "#;
+
+        let mut parser = XmlParser::new();
+        let tree = parser.parse_string(xml).unwrap();
+
+        let button = tree.find_by_id("btnShowMore").unwrap();
+        assert_eq!(button.children.len(), 1);
+
+        let content = &button.children[0];
+        let content_fs = content.flex_style.as_ref().unwrap();
+        assert_eq!(content_fs.width, Dimension::Percent(100.0));
+        assert_eq!(content_fs.height, Dimension::Percent(100.0));
+        assert_eq!(content_fs.flex_direction, FlexDirection::Row);
+        assert_eq!(content_fs.justify_content, JustifyContent::FlexEnd);
+        assert_eq!(content_fs.align_items, AlignItems::Center);
+        assert_eq!(content_fs.gap, 4.0);
+
+        let text = &content.children[0];
+        assert_eq!(text.element_type, ElementType::Label);
+        assert_eq!(text.attributes.text.as_deref(), Some("@show_more"));
+        assert_eq!(text.attributes.wrap, Some(true));
+
+        let icon = &content.children[1];
+        assert_eq!(icon.element_type, ElementType::Image);
+        assert_eq!(
+            icon.attributes.icon.as_deref(),
+            Some("assets/arrow-down.png")
+        );
+        assert_eq!(icon.attributes.width, Some(12.0));
+        assert_eq!(icon.attributes.height, Some(12.0));
+    }
+
+    #[test]
+    fn test_parse_real_configpage_xml() {
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/TapTap/layouts/configpage.xml");
+        let xml = std::fs::read_to_string(&root)
+            .unwrap_or_else(|e| panic!("failed to read {}: {}", root.display(), e));
+
+        let mut parser = XmlParser::new();
+        let tree = parser
+            .parse_string(&xml)
+            .unwrap_or_else(|e| panic!("failed to parse {}: {}", root.display(), e));
+
+        let button = tree.find_by_id("btnShowMore_wrap").unwrap();
+        assert_eq!(button.children.len(), 1);
+        let content = &button.children[0];
+        assert_eq!(content.element_type, ElementType::HBox);
+        assert_eq!(content.children.len(), 2);
     }
 }

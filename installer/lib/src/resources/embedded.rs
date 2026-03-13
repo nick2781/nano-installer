@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-use crate::resources::ResourceInfo;
 use crate::resources::types::ResourceType;
+use crate::resources::ResourceInfo;
+use std::collections::HashMap;
 
 /// 内嵌资源管理器
 pub struct EmbeddedResources {
@@ -53,7 +53,7 @@ impl EmbeddedResources {
 /// 这个模块会在 build.rs 中自动生成
 pub mod generated {
     use super::*;
-    
+
     /// 获取所有内嵌资源
     pub fn get_embedded_resources() -> EmbeddedResources {
         // 在开发模式下，返回空的资源管理器

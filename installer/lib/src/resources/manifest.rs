@@ -1,3 +1,4 @@
+use crate::common::close_targets::CloseTarget;
 use serde::{Deserialize, Serialize};
 
 /// 安装清单
@@ -86,20 +87,42 @@ pub enum RegistryValueType {
 pub struct UninstallManifest {
     pub version: String,
     pub product_name: String,
+    #[serde(default)]
+    pub publisher: String,
     pub install_path: String,
     pub locale: String,
+    #[serde(default)]
     pub files_to_remove: Vec<String>,
+    #[serde(default)]
     pub directories_to_remove: Vec<String>,
+    #[serde(default)]
     pub registry_keys_to_remove: Vec<String>,
+    #[serde(default)]
+    pub registry_values_to_remove: Vec<RegistryValueRemoval>,
+    #[serde(default)]
     pub shortcuts_to_remove: Vec<String>,
+    #[serde(default)]
+    pub close_targets: Vec<CloseTarget>,
 }
 
 impl UninstallManifest {
+    pub fn save(&self, path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+        let content = serde_json::to_string_pretty(self)?;
+        std::fs::write(path, content)?;
+        Ok(())
+    }
+
     pub fn load(path: &std::path::Path) -> Result<Self, Box<dyn std::error::Error>> {
         let content = std::fs::read_to_string(path)?;
         let manifest: UninstallManifest = serde_json::from_str(&content)?;
         Ok(manifest)
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RegistryValueRemoval {
+    pub key_path: String,
+    pub value_name: String,
 }
 
 /// 载荷提取器
@@ -123,7 +146,10 @@ impl PayloadExtractor {
     }
 
     /// 提取文件到指定目录
-    pub fn extract_to(&self, _target_dir: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn extract_to(
+        &self,
+        _target_dir: &std::path::Path,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         // 这里实现文件提取逻辑
         // 目前是占位符
         Ok(())

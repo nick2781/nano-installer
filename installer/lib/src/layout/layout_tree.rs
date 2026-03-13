@@ -1,8 +1,8 @@
 //! 布局树定义
-//! 
+//!
 //! 定义内部布局树结构和操作
 
-use crate::layout::element::{LayoutElement, ElementType};
+use crate::layout::element::{ElementType, LayoutElement};
 use std::collections::HashMap;
 
 /// 布局树根节点
@@ -103,8 +103,8 @@ impl LayoutTree {
 
     /// 检查是否包含页面元素
     pub fn has_page_element(&self) -> bool {
-        self.root.element_type == ElementType::Page || 
-        !self.root.find_by_type(&ElementType::Page).is_empty()
+        self.root.element_type == ElementType::Page
+            || !self.root.find_by_type(&ElementType::Page).is_empty()
     }
 
     /// 获取所有页面元素
@@ -178,7 +178,10 @@ impl LayoutTree {
 
         // 收集背景图片
         if let Some(background) = &element.attributes.background {
-            if background.starts_with("assets/") || background.ends_with(".png") || background.ends_with(".jpg") {
+            if background.starts_with("assets/")
+                || background.ends_with(".png")
+                || background.ends_with(".jpg")
+            {
                 resources.push(background.clone());
             }
         }
@@ -208,9 +211,22 @@ impl LayoutTree {
         F: FnMut(&LayoutNode),
     {
         let current_path = if path.is_empty() {
-            element.attributes.id.as_ref().map_or("root", |id| id.as_str()).to_string()
+            element
+                .attributes
+                .id
+                .as_ref()
+                .map_or("root", |id| id.as_str())
+                .to_string()
         } else {
-            format!("{}/{}", path, element.attributes.id.as_ref().map_or("unnamed", |id| id.as_str()))
+            format!(
+                "{}/{}",
+                path,
+                element
+                    .attributes
+                    .id
+                    .as_ref()
+                    .map_or("unnamed", |id| id.as_str())
+            )
         };
 
         let node = LayoutNode {
@@ -357,25 +373,22 @@ mod tests {
 
     #[test]
     fn test_layout_tree_find_elements() {
-        let root = LayoutElement::new(ElementType::Page)
-            .add_child(
-                LayoutElement::with_attributes(
-                    ElementType::VBox,
-                    ElementAttributes::new().with_id("main-container"),
-                )
-                .add_child(
-                    LayoutElement::with_attributes(
-                        ElementType::Button,
-                        ElementAttributes::new().with_id("submit-button").with_text("Submit"),
-                    ),
-                )
-                .add_child(
-                    LayoutElement::with_attributes(
-                        ElementType::Label,
-                        ElementAttributes::new().with_text("@welcome.title"),
-                    ),
-                ),
-            );
+        let root = LayoutElement::new(ElementType::Page).add_child(
+            LayoutElement::with_attributes(
+                ElementType::VBox,
+                ElementAttributes::new().with_id("main-container"),
+            )
+            .add_child(LayoutElement::with_attributes(
+                ElementType::Button,
+                ElementAttributes::new()
+                    .with_id("submit-button")
+                    .with_text("Submit"),
+            ))
+            .add_child(LayoutElement::with_attributes(
+                ElementType::Label,
+                ElementAttributes::new().with_text("@welcome.title"),
+            )),
+        );
 
         let tree = LayoutTree::new(root);
 
@@ -393,22 +406,18 @@ mod tests {
     #[test]
     fn test_i18n_keys_collection() {
         let root = LayoutElement::new(ElementType::Page)
-            .add_child(
-                LayoutElement::with_attributes(
-                    ElementType::Label,
-                    ElementAttributes::new().with_text("@welcome.title"),
-                ),
-            )
-            .add_child(
-                LayoutElement::with_attributes(
-                    ElementType::Button,
-                    ElementAttributes::new().with_text("@button.submit"),
-                ),
-            );
+            .add_child(LayoutElement::with_attributes(
+                ElementType::Label,
+                ElementAttributes::new().with_text("@welcome.title"),
+            ))
+            .add_child(LayoutElement::with_attributes(
+                ElementType::Button,
+                ElementAttributes::new().with_text("@button.submit"),
+            ));
 
         let tree = LayoutTree::new(root);
         let keys = tree.get_i18n_keys();
-        
+
         assert!(keys.contains(&"welcome.title".to_string()));
         assert!(keys.contains(&"button.submit".to_string()));
         assert_eq!(keys.len(), 2);
@@ -417,24 +426,20 @@ mod tests {
     #[test]
     fn test_resource_dependencies() {
         let root = LayoutElement::new(ElementType::Page)
-            .add_child(
-                LayoutElement::with_attributes(
-                    ElementType::Image,
-                    ElementAttributes::new().with_icon("assets/logo.png"),
-                ),
-            )
-            .add_child(
-                LayoutElement::with_attributes(
-                    ElementType::Button,
-                    ElementAttributes::new()
-                        .with_text("Click Me")
-                        .with_background("assets/btn_primary.png"),
-                ),
-            );
+            .add_child(LayoutElement::with_attributes(
+                ElementType::Image,
+                ElementAttributes::new().with_icon("assets/logo.png"),
+            ))
+            .add_child(LayoutElement::with_attributes(
+                ElementType::Button,
+                ElementAttributes::new()
+                    .with_text("Click Me")
+                    .with_background("assets/btn_primary.png"),
+            ));
 
         let tree = LayoutTree::new(root);
         let resources = tree.get_resource_dependencies();
-        
+
         assert!(resources.contains(&"assets/logo.png".to_string()));
         assert!(resources.contains(&"assets/btn_primary.png".to_string()));
     }

@@ -30,7 +30,11 @@ pub fn init(log_dir: Option<&Path>, app_name: &str, is_installer: bool) -> Resul
     // 日志级别：
     // - Debug 构建：默认 debug（可被 RUST_LOG 覆盖）
     // - Release 构建：默认 warn（可被 RUST_LOG 覆盖）
-    let default_level = if cfg!(debug_assertions) { "debug" } else { "warn" };
+    let default_level = if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "warn"
+    };
     let env_filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_level));
 

@@ -59,6 +59,7 @@ impl InstallTask for ExtractFilesTask {
 /// 创建快捷方式任务
 pub struct CreateShortcutsTask {
     pub app_name: String,
+    pub start_menu_folder: String,
     pub exe_path: String,
 }
 
@@ -81,11 +82,19 @@ impl InstallTask for CreateShortcutsTask {
             });
 
             if state.create_desktop_shortcut() {
-                shortcuts::create_desktop_shortcut(&self.app_name, &self.exe_path)?;
+                if let Err(e) = shortcuts::create_desktop_shortcut(&self.app_name, &self.exe_path) {
+                    tracing::warn!("Failed to create desktop shortcut: {}", e);
+                }
             }
 
             if state.create_start_menu_shortcut() {
-                shortcuts::create_start_menu_shortcut(&self.app_name, &self.exe_path)?;
+                if let Err(e) = shortcuts::create_start_menu_shortcut(
+                    &self.app_name,
+                    &self.start_menu_folder,
+                    &self.exe_path,
+                ) {
+                    tracing::warn!("Failed to create start menu shortcut: {}", e);
+                }
             }
 
             state.update_progress(crate::installer::state::InstallProgress {
@@ -106,6 +115,11 @@ pub struct WriteRegistryTask {
     pub install_path: String,
     pub publisher: String,
     pub uninstaller_path: String,
+    pub install_path_key: String,
+    pub uninstall_key: String,
+    pub autostart_key: Option<String>,
+    pub autostart_value_name: Option<String>,
+    pub exe_name: String,
 }
 
 impl InstallTask for WriteRegistryTask {
@@ -126,13 +140,23 @@ impl InstallTask for WriteRegistryTask {
                 ..Default::default()
             });
 
+            registry::set_string_value(&self.install_path_key, "InstallPath", &self.install_path)?;
+
             registry::write_uninstall_entry(
+                &self.uninstall_key,
                 &self.app_name,
                 &self.app_version,
                 &self.install_path,
                 &self.publisher,
                 &self.uninstaller_path,
             )?;
+
+            if let (Some(key_path), Some(value_name)) =
+                (&self.autostart_key, &self.autostart_value_name)
+            {
+                let exe_path = format!("{}\\{}", self.install_path, self.exe_name);
+                registry::set_string_value(key_path, value_name, &exe_path)?;
+            }
 
             state.update_progress(crate::installer::state::InstallProgress {
                 current_step: "Registry updated".to_string(),
@@ -159,22 +183,21 @@ impl InstallTask for CopyUninstallerTask {
     fn execute(&self, state: &InstallState) -> Result<()> {
         let install_path = state.install_path();
         let uninst_path = std::path::Path::new(&install_path).join(&self.uninstaller_name);
-        
+
         tracing::info!("Copying uninstaller to: {}", uninst_path.display());
-        
+
         state.update_progress(crate::installer::state::InstallProgress {
             current_step: "Installing uninstaller...".to_string(),
             percentage: 75.0,
             ..Default::default()
         });
-        
-        std::fs::write(&uninst_path, &self.uninstaller_data)
-            .map_err(|e| crate::common::Error::InstallationFailed(
-                format!("Failed to write uninstaller: {}", e)
-            ))?;
-        
+
+        std::fs::write(&uninst_path, &self.uninstaller_data).map_err(|e| {
+            crate::common::Error::InstallationFailed(format!("Failed to write uninstaller: {}", e))
+        })?;
+
         tracing::info!("Uninstaller copied successfully");
-        
+
         Ok(())
     }
 }

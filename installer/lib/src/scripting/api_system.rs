@@ -1,7 +1,7 @@
 //! System API — drives, env, shell notify, URI scheme, config access
 
-use rhai::{Engine, Dynamic};
 use super::context::ScriptContext;
+use rhai::{Dynamic, Engine};
 
 pub fn register(engine: &mut Engine, ctx: ScriptContext) {
     // get_env("APPDATA") -> String
@@ -18,9 +18,9 @@ pub fn register(engine: &mut Engine, ctx: ScriptContext) {
                 let drive = format!("{}:\\", letter as char);
                 let wide: Vec<u16> = drive.encode_utf16().chain(std::iter::once(0)).collect();
                 let drive_type = unsafe {
-                    windows::Win32::Storage::FileSystem::GetDriveTypeW(
-                        windows::core::PCWSTR(wide.as_ptr())
-                    )
+                    windows::Win32::Storage::FileSystem::GetDriveTypeW(windows::core::PCWSTR(
+                        wide.as_ptr(),
+                    ))
                 };
                 // 3 = DRIVE_FIXED (HDD/SSD)
                 if drive_type == 3 {
@@ -43,32 +43,52 @@ pub fn register(engine: &mut Engine, ctx: ScriptContext) {
         }
     });
 
-    // register_uri_scheme("taptap", "C:\\path\\to\\app.exe")
-    engine.register_fn("register_uri_scheme", |scheme: &str, exe_path: &str| -> bool {
-        #[cfg(windows)]
-        {
-            use winreg::enums::*;
-            use winreg::RegKey;
-            let hkcr = RegKey::predef(HKEY_CLASSES_ROOT);
-            match hkcr.create_subkey(scheme) {
-                Ok((key, _)) => {
-                    let _ = key.set_value("", &format!("URL:{} Protocol", scheme));
-                    let _ = key.set_value("URL Protocol", &"");
-                    if let Ok((cmd_key, _)) = key.create_subkey("shell\\open\\command") {
-                        let _ = cmd_key.set_value("", &format!("\"{}\" \"%1\"", exe_path));
-                    }
-                    tracing::info!("[script] Registered URI scheme: {}://", scheme);
-                    true
-                }
+    // run_tracked_uninstall(55.0, 95.0) — execute manifest-driven core uninstall within a script
+    let c = ctx.clone();
+    engine.register_fn(
+        "run_tracked_uninstall",
+        move |start_pct: f64, end_pct: f64| -> bool {
+            match c.run_manifest_uninstall(start_pct as f32, end_pct as f32) {
+                Ok(result) => result,
                 Err(e) => {
-                    tracing::error!("[script] register_uri_scheme failed: {}", e);
+                    tracing::error!("[script] run_tracked_uninstall failed: {}", e);
                     false
                 }
             }
-        }
-        #[cfg(not(windows))]
-        { true }
-    });
+        },
+    );
+
+    // register_uri_scheme("taptap", "C:\\path\\to\\app.exe")
+    engine.register_fn(
+        "register_uri_scheme",
+        |scheme: &str, exe_path: &str| -> bool {
+            #[cfg(windows)]
+            {
+                use winreg::enums::*;
+                use winreg::RegKey;
+                let hkcr = RegKey::predef(HKEY_CLASSES_ROOT);
+                match hkcr.create_subkey(scheme) {
+                    Ok((key, _)) => {
+                        let _ = key.set_value("", &format!("URL:{} Protocol", scheme));
+                        let _ = key.set_value("URL Protocol", &"");
+                        if let Ok((cmd_key, _)) = key.create_subkey("shell\\open\\command") {
+                            let _ = cmd_key.set_value("", &format!("\"{}\" \"%1\"", exe_path));
+                        }
+                        tracing::info!("[script] Registered URI scheme: {}://", scheme);
+                        true
+                    }
+                    Err(e) => {
+                        tracing::error!("[script] register_uri_scheme failed: {}", e);
+                        false
+                    }
+                }
+            }
+            #[cfg(not(windows))]
+            {
+                true
+            }
+        },
+    );
 
     // delete_uri_scheme("taptap")
     engine.register_fn("delete_uri_scheme", |scheme: &str| -> bool {
@@ -82,7 +102,9 @@ pub fn register(engine: &mut Engine, ctx: ScriptContext) {
             true
         }
         #[cfg(not(windows))]
-        { true }
+        {
+            true
+        }
     });
 
     // get_config_value("project.name") -> Dynamic
@@ -105,7 +127,10 @@ pub fn register(engine: &mut Engine, ctx: ScriptContext) {
         {
             use std::ffi::OsStr;
             use std::os::windows::ffi::OsStrExt;
-            let wide: Vec<u16> = OsStr::new(drive).encode_wide().chain(std::iter::once(0)).collect();
+            let wide: Vec<u16> = OsStr::new(drive)
+                .encode_wide()
+                .chain(std::iter::once(0))
+                .collect();
             let mut free: u64 = 0;
             let mut total: u64 = 0;
             unsafe {
@@ -142,7 +167,7 @@ pub fn register(engine: &mut Engine, ctx: ScriptContext) {
         #[cfg(windows)]
         {
             use windows::core::HSTRING;
-            use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_OK, MB_ICONINFORMATION};
+            use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONINFORMATION, MB_OK};
             unsafe {
                 MessageBoxW(
                     None,
@@ -159,7 +184,7 @@ pub fn register(engine: &mut Engine, ctx: ScriptContext) {
         #[cfg(windows)]
         {
             use windows::core::HSTRING;
-            use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_OK, MB_ICONERROR};
+            use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
             unsafe {
                 MessageBoxW(
                     None,
@@ -188,7 +213,9 @@ pub fn register(engine: &mut Engine, ctx: ScriptContext) {
             return result == IDYES;
         }
         #[cfg(not(windows))]
-        { true }
+        {
+            true
+        }
     });
 
     // is_elevated() -> bool
@@ -198,7 +225,9 @@ pub fn register(engine: &mut Engine, ctx: ScriptContext) {
             crate::common::platform::is_elevated().unwrap_or(false)
         }
         #[cfg(not(windows))]
-        { false }
+        {
+            false
+        }
     });
 }
 

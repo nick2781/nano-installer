@@ -1,7 +1,7 @@
 //! UI bridge API — progress, status, cancel, checkbox values
 
-use rhai::Engine;
 use super::context::ScriptContext;
+use rhai::Engine;
 
 pub fn register(engine: &mut Engine, ctx: ScriptContext) {
     let c = ctx.clone();
@@ -15,9 +15,7 @@ pub fn register(engine: &mut Engine, ctx: ScriptContext) {
     });
 
     let c = ctx.clone();
-    engine.register_fn("is_cancelled", move || -> bool {
-        c.is_cancelled()
-    });
+    engine.register_fn("is_cancelled", move || -> bool { c.is_cancelled() });
 
     let c = ctx.clone();
     engine.register_fn("get_install_path", move || -> String {

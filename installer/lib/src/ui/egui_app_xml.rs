@@ -3,25 +3,27 @@
 //! 所有 UI 元素（背景、按钮、文本等）完全由 XML 布局文件定义
 //! 按钮行为由 XML action 属性声明，代码通过 dispatch_action 通用分发
 
-use eframe::egui;
-use crate::config::InstallerConfig;
-use crate::installer::state::{InstallState, InstallProgress};
-use crate::installer::task_runner::TaskRunner;
-use crate::ui::wizard::{Wizard, WizardMode};
-use crate::ui::message_box::{MessageBoxManager, MessageBoxResult as MsgBoxResult};
-use crate::ui::layout_renderer::LayoutRenderer;
-use crate::ui::style_engine::StyleEngine;
-use crate::ui::dpi_handler::DpiConfig;
-use crate::layout::{LayoutTree, LayoutElement, XmlParser};
+use crate::common::close_targets::{close_uninstall_targets, prepare_install_close_targets};
 use crate::common::path_validation::PathValidator;
-use crate::common::process::ProcessDetector;
-use crate::resources::RuntimeResources;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use crate::config::InstallerConfig;
+use crate::installer::state::InstallState;
+use crate::installer::task_runner::TaskRunner;
+use crate::layout::{LayoutElement, LayoutTree, XmlParser};
+use crate::ui::dpi_handler::DpiConfig;
+use crate::ui::layout_renderer::LayoutRenderer;
+use crate::ui::message_box::{MessageBoxManager, MessageBoxResult as MsgBoxResult};
+use crate::ui::resource_provider::{
+    RuntimeUiResourceProvider, SharedUiResourceProvider, UiResourceProvider,
+};
+use crate::ui::style_engine::StyleEngine;
+use crate::ui::wizard::{Wizard, WizardMode};
+use eframe::egui;
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 /// 安装程序应用
 pub struct InstallerApp {
@@ -29,8 +31,6 @@ pub struct InstallerApp {
     wizard: Wizard,
     /// 配置
     config: InstallerConfig,
-    /// 配置文件基础路径
-    config_base_path: PathBuf,
     /// 安装状态 (shared with background install thread via internal Arc<RwLock>)
     install_state: Option<InstallState>,
     /// 安装路径
@@ -50,13 +50,11 @@ pub struct InstallerApp {
     // 待处理的关闭确认对话框 ID
     pending_close_confirm_id: Option<String>,
 
-    // 消息框 XML 布局缓存
-    msgbox_layout: Option<LayoutTree>,
-
     // XML 布局系统
     layout_renderer: Option<LayoutRenderer>,
     layout_cache: HashMap<String, LayoutTree>,
     layout_parser: XmlParser,
+    resource_provider: SharedUiResourceProvider,
 
     // 国际化字符串
     i18n_strings: HashMap<String, String>,
@@ -88,30 +86,54 @@ pub struct InstallerApp {
     // 首帧标志 (用于关闭 always_on_top)
     first_frame_done: bool,
     disable_always_on_top: bool,
+    test_hook_applied: bool,
 }
 
 impl InstallerApp {
     /// 创建 InstallerApp（接受已检测的 DpiConfig，避免重复检测导致不一致）
-    pub fn new_with_dpi(config: InstallerConfig, config_base_path: PathBuf, dpi_config: DpiConfig) -> Self {
-        Self::new_with_mode(config, config_base_path, dpi_config, WizardMode::Install)
+    pub fn new_with_dpi(config: InstallerConfig, dpi_config: DpiConfig) -> Self {
+        Self::new_with_mode(config, dpi_config, WizardMode::Install)
     }
 
     /// 创建 InstallerApp（指定模式：安装或卸载）
-    pub fn new_with_mode(config: InstallerConfig, config_base_path: PathBuf, dpi_config: DpiConfig, mode: WizardMode) -> Self {
+    pub fn new_with_mode(config: InstallerConfig, dpi_config: DpiConfig, mode: WizardMode) -> Self {
+        Self::new_with_provider(
+            config,
+            dpi_config,
+            mode,
+            Arc::new(RuntimeUiResourceProvider),
+        )
+    }
+
+    /// 创建 InstallerApp，并注入 UI 资源提供器供运行时或 harness 使用。
+    pub fn new_with_provider(
+        config: InstallerConfig,
+        dpi_config: DpiConfig,
+        mode: WizardMode,
+        resource_provider: SharedUiResourceProvider,
+    ) -> Self {
         // 卸载模式: 安装路径 = uninst.exe 所在目录 (而非 config 中的 default_path)
         let install_path = if mode == WizardMode::Uninstall {
             std::env::current_exe()
                 .ok()
                 .and_then(|p| p.parent().map(|p| p.to_string_lossy().to_string()))
                 .unwrap_or_else(|| config.install.default_path.clone())
+        } else if mode == WizardMode::Update {
+            crate::installer_runtime::resolve_existing_install_path(&config)
+                .unwrap_or_else(|| config.install.default_path.clone())
         } else {
             config.install.default_path.clone()
         };
-        tracing::info!("Creating InstallerApp with DPI: use_2x={}, window: {}x{}, mode: {:?}",
-            dpi_config.use_2x, dpi_config.window_width, dpi_config.window_height, mode);
+        tracing::info!(
+            "Creating InstallerApp with DPI: use_2x={}, window: {}x{}, mode: {:?}",
+            dpi_config.use_2x,
+            dpi_config.window_width,
+            dpi_config.window_height,
+            mode
+        );
 
         // 加载国际化字符串
-        let i18n_strings = Self::load_i18n_strings(&config, &config_base_path);
+        let i18n_strings = Self::load_i18n_strings(&config, resource_provider.as_ref());
         tracing::debug!("Loaded {} i18n strings", i18n_strings.len());
 
         // 创建布局渲染器
@@ -121,47 +143,46 @@ impl InstallerApp {
             style_engine,
             i18n_strings.clone(),
         );
+        let current_language = config.localization.default_locale.clone();
         tracing::debug!("LayoutRenderer created");
 
         // 创建配置驱动的向导
-        let wizard = Wizard::new(mode, &config.wizard.pages, &config.wizard.update_pages, &config.wizard.uninstall_pages);
+        let wizard = Wizard::new(
+            mode,
+            &config.wizard.pages,
+            &config.wizard.update_pages,
+            &config.wizard.uninstall_pages,
+        );
 
         let create_desktop_shortcut = config.shortcuts.desktop_default;
         let autorun_preference = config.autostart.default;
         let reserve_data_preference = config.uninstall.keep_data_default;
 
-        // 预加载 msgBox.xml 布局
-        let mut parser = XmlParser::new();
-        let msgbox_layout = RuntimeResources::get_layout("layouts/msgBox.xml")
-            .ok()
-            .and_then(|content| parser.parse_string(&content).ok());
-        if msgbox_layout.is_some() {
-            tracing::debug!("msgBox.xml layout loaded");
-        }
+        let parser = XmlParser::new();
 
         tracing::info!("InstallerApp created successfully");
 
         let mut message_box_manager = MessageBoxManager::new();
+        message_box_manager.use_code_fallback();
         // NOTE: XML dialog rendering has positioning issues with Taffy coordinate offset
         // Use code fallback for now; wrapping is handled in render_dialog_code
 
         Self {
             wizard,
             config,
-            config_base_path,
             install_state: None,
             install_path,
             create_desktop_shortcut,
             create_start_menu_shortcut: true,
             agree_to_terms: false,
-            current_language: "zh-CN".to_string(),
+            current_language,
 
             message_box_manager,
             pending_close_confirm_id: None,
-            msgbox_layout,
             layout_renderer: Some(layout_renderer),
             layout_cache: HashMap::new(),
             layout_parser: parser,
+            resource_provider,
             i18n_strings,
             dpi_config,
             path_validation_initialized: false,
@@ -180,11 +201,15 @@ impl InstallerApp {
             pending_resize: None,
             first_frame_done: false,
             disable_always_on_top: false,
+            test_hook_applied: false,
         }
     }
 
     /// 加载国际化字符串
-    fn load_i18n_strings(config: &InstallerConfig, _base_path: &PathBuf) -> HashMap<String, String> {
+    fn load_i18n_strings(
+        config: &InstallerConfig,
+        resource_provider: &dyn UiResourceProvider,
+    ) -> HashMap<String, String> {
         let mut strings = HashMap::new();
 
         // 从配置加载基本字符串
@@ -194,26 +219,24 @@ impl InstallerApp {
         let locale = &config.localization.default_locale;
 
         // 从嵌入的 .pak 语言包加载 (Locales 段)
-        match RuntimeResources::get_locale(locale) {
-            Ok(pak_data) => {
-                match crate::i18n::langpack::LanguagePack::from_bytes(&pak_data) {
-                    Ok(pack) => {
-                        tracing::info!("Loaded language pack: {} ({} keys)", locale, pack.translations.len());
-                        for (key, value) in &pack.translations {
-                            strings.insert(key.clone(), value.clone());
-                        }
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to parse language pack {}: {}", locale, e);
-                    }
+        match resource_provider.load_locale_strings(locale) {
+            Ok(locale_strings) => {
+                tracing::info!(
+                    "Loaded language pack: {} ({} keys)",
+                    locale,
+                    locale_strings.len()
+                );
+                for (key, value) in locale_strings {
+                    strings.insert(key, value);
                 }
             }
             Err(e) => {
                 tracing::warn!("Failed to load locale {}: {}", locale, e);
                 // 回退: 尝试从 UI Resources 段加载 JSON 格式
                 let locale_file = format!("locales/{}.json", locale);
-                if let Ok(json_content) = RuntimeResources::get_layout(&locale_file) {
-                    if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(&json_content) {
+                if let Ok(json_content) = resource_provider.load_layout(&locale_file) {
+                    if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(&json_content)
+                    {
                         if let Some(obj) = json_value.as_object() {
                             for (key, value) in obj {
                                 if let Some(text) = value.as_str() {
@@ -233,8 +256,18 @@ impl InstallerApp {
     fn get_page_layout(&mut self, page_id: &str) -> Option<&LayoutTree> {
         // 如果已经缓存，直接返回
         if self.layout_cache.contains_key(page_id) {
+            tracing::debug!(
+                "layout cache hit: page_id={}, cache_size={}",
+                page_id,
+                self.layout_cache.len()
+            );
             return self.layout_cache.get(page_id);
         }
+        tracing::warn!(
+            "layout cache miss: page_id={}, cache_keys={:?}",
+            page_id,
+            self.layout_cache.keys().collect::<Vec<_>>()
+        );
 
         // 从配置中查找布局文件
         let layout_file = self.find_layout_file_for_page(page_id)?;
@@ -243,12 +276,11 @@ impl InstallerApp {
         let selected_file = if self.dpi_config.use_2x {
             let path = std::path::Path::new(&layout_file);
             let parent = path.parent().and_then(|p| p.to_str()).unwrap_or("");
-            let stem = path.file_stem()
+            let stem = path
+                .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or_else(|| path.to_str().unwrap_or(&layout_file));
-            let ext = path.extension()
-                .and_then(|s| s.to_str())
-                .unwrap_or("xml");
+            let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("xml");
 
             if parent.is_empty() {
                 format!("{}@2x.{}", stem, ext)
@@ -261,10 +293,12 @@ impl InstallerApp {
         };
 
         // 加载布局文件: 先尝试直接加载 1x 文件 (新格式不需要 2x)
-        let layout_content = RuntimeResources::get_layout(&layout_file)
+        let layout_content = self
+            .resource_provider
+            .load_layout(&layout_file)
             .or_else(|_| {
                 if self.dpi_config.use_2x {
-                    RuntimeResources::get_layout(&selected_file)
+                    self.resource_provider.load_layout(&selected_file)
                 } else {
                     Err(anyhow::anyhow!("Layout not found"))
                 }
@@ -277,27 +311,48 @@ impl InstallerApp {
                 let layout_width = layout_tree.root.attributes.width.unwrap_or(0.0);
                 let layout_height = layout_tree.root.attributes.height.unwrap_or(0.0);
 
-                eprintln!("[layout] Loaded: {} -> {} ({}x{}, window: {}x{})",
-                    page_id, selected_file,
-                    layout_width, layout_height,
-                    self.dpi_config.window_width, self.dpi_config.window_height);
+                eprintln!(
+                    "[layout] Loaded: {} -> {} ({}x{}, window: {}x{})",
+                    page_id,
+                    selected_file,
+                    layout_width,
+                    layout_height,
+                    self.dpi_config.window_width,
+                    self.dpi_config.window_height
+                );
 
                 // 检查尺寸是否匹配
                 if layout_width > 0.0 && layout_height > 0.0 {
                     let width_match = (layout_width - self.dpi_config.window_width).abs() < 1.0;
                     let height_match = (layout_height - self.dpi_config.window_height).abs() < 1.0;
                     if !width_match || !height_match {
-                        eprintln!("[layout] Warning: layout size mismatch! layout: {}x{}, window: {}x{}",
-                            layout_width, layout_height,
-                            self.dpi_config.window_width, self.dpi_config.window_height);
+                        eprintln!(
+                            "[layout] Warning: layout size mismatch! layout: {}x{}, window: {}x{}",
+                            layout_width,
+                            layout_height,
+                            self.dpi_config.window_width,
+                            self.dpi_config.window_height
+                        );
                     }
                 }
 
                 self.layout_cache.insert(page_id.to_string(), layout_tree);
+                tracing::warn!(
+                    "layout inserted: page_id={}, cache_size={}, has_key={}",
+                    page_id,
+                    self.layout_cache.len(),
+                    self.layout_cache.contains_key(page_id)
+                );
                 self.layout_cache.get(page_id)
             }
             Err(e) => {
                 eprintln!("[layout] Parse failed: {} - {}", selected_file, e);
+                tracing::error!(
+                    "layout parse failed: page_id={}, file={}, error={}",
+                    page_id,
+                    selected_file,
+                    e
+                );
                 None
             }
         }
@@ -319,7 +374,11 @@ impl InstallerApp {
     }
 
     /// 处理布局渲染结果
-    fn handle_layout_result(&mut self, ctx: &egui::Context, result: crate::ui::layout_renderer::RenderResult) {
+    fn handle_layout_result(
+        &mut self,
+        ctx: &egui::Context,
+        result: crate::ui::layout_renderer::RenderResult,
+    ) {
         // 处理按钮点击 — 优先使用 action 属性
         for (button_id, clicked) in &result.button_clicks {
             if *clicked {
@@ -436,7 +495,9 @@ impl InstallerApp {
                 let current_page_id = self.wizard.current_page_id().to_string();
                 if let Some(layout) = self.layout_cache.get_mut(&current_page_id) {
                     // 读取当前状态，取反
-                    let is_visible = layout.root.find_by_id(arg)
+                    let is_visible = layout
+                        .root
+                        .find_by_id(arg)
                         .and_then(|el| el.attributes.visible)
                         .unwrap_or(false);
                     Self::update_element_visible_recursive(&mut layout.root, arg, !is_visible);
@@ -521,28 +582,25 @@ impl InstallerApp {
     // =========================================================================
 
     fn start_installation(&mut self, ctx: &egui::Context) {
-        // a) Check and kill running target processes
-        if self.config.install.detect_running_process {
-            let target = vec![self.config.install.exe_name.clone()];
-            let detector = ProcessDetector::new(target);
-            if let Ok(true) = detector.is_target_running() {
-                tracing::warn!("Target process is running");
-                if self.config.install.kill_process_on_install {
-                    tracing::info!("Attempting to terminate target process");
-                    if let Err(e) = detector.terminate_target_processes() {
-                        tracing::error!("Failed to terminate process: {}", e);
-                        self.install_error = Some(format!("Failed to terminate running process: {}", e));
-                        self.show_install_error_dialog();
-                        return;
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(500));
-                } else {
-                    self.install_error = Some(
-                        "Target application is running. Please close it first.".to_string()
-                    );
+        match prepare_install_close_targets(&self.config.install.effective_close_targets()) {
+            Ok(report) => {
+                if let Some(message) = report.blocking_message() {
+                    self.install_error = Some(message);
                     self.show_install_error_dialog();
                     return;
                 }
+                if !report.closed_targets.is_empty() {
+                    tracing::info!(
+                        "Closed install targets before GUI install: {}",
+                        report.closed_targets.join(", ")
+                    );
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to close running targets: {}", e);
+                self.install_error = Some(format!("Failed to close running targets: {}", e));
+                self.show_install_error_dialog();
+                return;
             }
         }
 
@@ -582,6 +640,7 @@ impl InstallerApp {
         let state = InstallState::new(install_path.clone());
         state.set_create_desktop_shortcut(self.create_desktop_shortcut);
         state.set_create_start_menu_shortcut(self.create_start_menu_shortcut);
+        state.set_autostart_enabled(self.autorun_preference);
         self.install_state = Some(state.clone());
 
         // e) Run installation — script mode or config mode
@@ -592,18 +651,35 @@ impl InstallerApp {
 
         let handle = std::thread::spawn(move || {
             // Check if scripts/install.rhai exists in embedded resources
-            if let Ok(script_source) = crate::resources::RuntimeResources::get_script("scripts/install.rhai") {
+            if let Ok(script_source) =
+                crate::resources::RuntimeResources::get_script("scripts/install.rhai")
+            {
                 tracing::info!("Running install script (scripts/install.rhai)");
-                let mut script_ctx = crate::scripting::ScriptContext::for_install(state, config_clone);
+                let script_ctx =
+                    crate::scripting::ScriptContext::for_install(state.clone(), config_clone);
                 // Populate checkbox values from UI state
-                script_ctx.checkbox_values.write().insert("desktop_shortcut".to_string(), create_desktop_shortcut);
-                script_ctx.checkbox_values.write().insert("autorun".to_string(), autorun_pref);
+                script_ctx
+                    .checkbox_values
+                    .write()
+                    .insert("desktop_shortcut".to_string(), create_desktop_shortcut);
+                script_ctx
+                    .checkbox_values
+                    .write()
+                    .insert("autorun".to_string(), autorun_pref);
                 let mut engine = crate::scripting::ScriptEngine::new(script_ctx);
-                engine.run_script(&script_source)?;
+                if let Err(e) = engine.run_script(&script_source) {
+                    let _ = engine.context().rollback_install();
+                    return Err(e);
+                }
+                engine
+                    .context()
+                    .finalize_install()
+                    .map_err(|e| format!("Failed to finalize script installation: {}", e))?;
             } else {
                 // Config mode: existing TaskRunner behavior
                 let mut runner = TaskRunner::new(&config_clone);
-                runner.execute(&state, &config_clone)
+                runner
+                    .execute(&state, &config_clone)
                     .map_err(|e| format!("{}", e))?;
             }
 
@@ -655,147 +731,151 @@ impl InstallerApp {
             tracing::info!("Uninstall background thread started");
 
             // Check if scripts/uninstall.rhai exists
-            if let Ok(script_source) = crate::resources::RuntimeResources::get_script("scripts/uninstall.rhai") {
+            if let Ok(script_source) =
+                crate::resources::RuntimeResources::get_script("scripts/uninstall.rhai")
+            {
                 tracing::info!("Running uninstall script (scripts/uninstall.rhai)");
                 let script_ctx = crate::scripting::ScriptContext::for_uninstall(
-                    config.clone(), install_path, progress, status, finished, reserve_data,
+                    config.clone(),
+                    install_path,
+                    progress,
+                    status,
+                    finished,
+                    reserve_data,
                 );
                 let mut engine = crate::scripting::ScriptEngine::new(script_ctx);
                 if let Err(e) = engine.run_script(&script_source) {
                     tracing::error!("Uninstall script failed: {}", e);
+                } else if !engine.context().tracked_uninstall_invoked() {
+                    let start_pct =
+                        (*engine.context().uninstall_progress.read() * 100.0).clamp(10.0, 90.0);
+                    if let Err(e) = engine.context().run_manifest_uninstall(start_pct, 95.0) {
+                        tracing::error!("Implicit tracked uninstall failed: {}", e);
+                    }
                 }
                 ctx_clone.request_repaint();
                 return;
             }
 
-            // Step 1: Kill running process
-            *status.write() = status_closing;
-            *progress.write() = 0.05;
-            if config.install.kill_process_on_uninstall {
-                let exe_name = &config.install.exe_name;
-                tracing::info!("Attempting to kill process: {}", exe_name);
-                let detector = ProcessDetector::new(vec![exe_name.clone()]);
-                if let Ok(true) = detector.is_target_running() {
-                    let _ = detector.terminate_target_processes();
-                }
-                std::thread::sleep(std::time::Duration::from_millis(500));
-            }
-
-            // Step 2: Remove shortcuts
-            *status.write() = status_shortcuts;
-            *progress.write() = 0.15;
-            #[cfg(windows)]
-            {
-                if let Ok(userprofile) = std::env::var("USERPROFILE") {
-                    let desktop = PathBuf::from(userprofile).join("Desktop");
-                    let shortcut_path = desktop.join(format!("{}.lnk", config.project.name));
-                    if shortcut_path.exists() {
-                        let _ = std::fs::remove_file(&shortcut_path);
-                        tracing::info!("Removed desktop shortcut: {:?}", shortcut_path);
-                    }
-                }
-                if let Ok(appdata) = std::env::var("APPDATA") {
-                    let start_menu_folder = config.shortcuts.start_menu_folder.as_str();
-                    let start_menu_path = PathBuf::from(appdata)
-                        .join("Microsoft\\Windows\\Start Menu\\Programs")
-                        .join(start_menu_folder);
-                    if start_menu_path.exists() {
-                        let _ = std::fs::remove_dir_all(&start_menu_path);
-                        tracing::info!("Removed start menu folder: {:?}", start_menu_path);
-                    }
-                }
-            }
-
-            // Step 3: Clean registry
-            *status.write() = status_registry;
-            *progress.write() = 0.30;
-            #[cfg(windows)]
-            {
-                use winreg::enums::*;
-                use winreg::RegKey;
-
-                // Clean both HKLM and HKCU (config may use either)
-                let hives = [
-                    RegKey::predef(HKEY_LOCAL_MACHINE),
-                    RegKey::predef(HKEY_CURRENT_USER),
-                ];
-                let uninstall_key = format!(
-                    "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{}",
-                    config.project.name
-                );
-                let app_key = format!("Software\\{}", config.project.name);
-
-                for hive in &hives {
-                    if let Ok(key) = hive.open_subkey(&uninstall_key) {
-                        drop(key);
-                        let _ = hive.delete_subkey_all(&uninstall_key);
-                        tracing::info!("Removed uninstall registry key: {}", uninstall_key);
-                    }
-                    if let Ok(key) = hive.open_subkey(&app_key) {
-                        drop(key);
-                        let _ = hive.delete_subkey_all(&app_key);
-                        tracing::info!("Removed app registry key: {}", app_key);
-                    }
-                }
-
-                if config.autostart.enabled {
-                    for hive in &hives {
-                        if let Ok(run_key) = hive.open_subkey_with_flags(
-                            "Software\\Microsoft\\Windows\\CurrentVersion\\Run",
-                            winreg::enums::KEY_WRITE
-                        ) {
-                            let _ = run_key.delete_value(&config.autostart.registry_value_name);
-                        }
-                    }
-                }
-
-                if config.uninstall.cleanup_game_registry {
-                    let game_key = &config.uninstall.game_registry_path;
-                    for hive in &hives {
-                        if let Ok(key) = hive.open_subkey(game_key) {
-                            drop(key);
-                            let _ = hive.delete_subkey_all(game_key);
-                        }
-                    }
-                }
-            }
-
-            // Step 4: Remove user data (if not reserved)
-            *status.write() = status_user_data;
-            *progress.write() = 0.45;
-            if !reserve_data {
-                for data_path_template in &config.uninstall.data_paths {
-                    let expanded = Self::expand_env_vars(data_path_template);
-                    let data_path = PathBuf::from(&expanded);
-                    if data_path.exists() {
-                        tracing::info!("Removing user data: {:?}", data_path);
-                        let _ = std::fs::remove_dir_all(&data_path);
-                    }
-                }
-            }
-
-            // Step 5: Remove install files
-            *status.write() = status_files;
-            *progress.write() = 0.60;
             let install_dir = PathBuf::from(&install_path);
-            if install_dir.exists() {
-                let exe_path = std::env::current_exe().unwrap_or_default();
-                if let Ok(entries) = std::fs::read_dir(&install_dir) {
-                    for entry in entries.flatten() {
-                        let path = entry.path();
-                        if path == exe_path {
-                            continue;
+            let uninstall_result =
+                crate::uninstaller::UninstallEngine::from_install_path(&install_dir, reserve_data)
+                    .and_then(|mut engine| {
+                        engine.uninstall_with_progress(|pct, step| {
+                            *status.write() = match step {
+                                crate::uninstaller::UninstallStep::CloseProcesses => {
+                                    status_closing.clone()
+                                }
+                                crate::uninstaller::UninstallStep::RemoveShortcuts => {
+                                    status_shortcuts.clone()
+                                }
+                                crate::uninstaller::UninstallStep::CleanRegistry => {
+                                    status_registry.clone()
+                                }
+                                crate::uninstaller::UninstallStep::RemoveUserData => {
+                                    status_user_data.clone()
+                                }
+                                crate::uninstaller::UninstallStep::RemoveFiles => {
+                                    status_files.clone()
+                                }
+                                crate::uninstaller::UninstallStep::Finish => {
+                                    status_finishing.clone()
+                                }
+                            };
+                            *progress.write() = pct;
+                        })
+                    });
+
+            if let Err(e) = uninstall_result {
+                tracing::warn!(
+                    "Manifest-driven uninstall unavailable, using legacy fallback: {}",
+                    e
+                );
+
+                // Legacy fallback for old installs without uninstall.json
+                *status.write() = status_closing;
+                *progress.write() = 0.05;
+                match close_uninstall_targets(&config.install.effective_close_targets()) {
+                    Ok(report) => {
+                        if !report.closed_targets.is_empty() {
+                            tracing::info!(
+                                "Closed legacy uninstall targets: {}",
+                                report.closed_targets.join(", ")
+                            );
                         }
-                        if path.is_dir() {
-                            let _ = std::fs::remove_dir_all(&path);
-                        } else {
-                            let _ = std::fs::remove_file(&path);
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to close legacy uninstall targets: {}", e);
+                    }
+                }
+
+                *status.write() = status_shortcuts;
+                *progress.write() = 0.15;
+                #[cfg(windows)]
+                {
+                    if let Ok(userprofile) = std::env::var("USERPROFILE") {
+                        let desktop = PathBuf::from(userprofile).join("Desktop");
+                        let shortcut_path = desktop.join(format!("{}.lnk", config.project.name));
+                        let _ = std::fs::remove_file(&shortcut_path);
+                    }
+                    if let Ok(appdata) = std::env::var("APPDATA") {
+                        let start_menu_path = PathBuf::from(appdata)
+                            .join("Microsoft\\Windows\\Start Menu\\Programs")
+                            .join(config.shortcuts.start_menu_folder.as_str());
+                        let _ = std::fs::remove_dir_all(&start_menu_path);
+                    }
+                }
+
+                *status.write() = status_registry;
+                *progress.write() = 0.30;
+                #[cfg(windows)]
+                {
+                    let _ = crate::installer::windows::registry::delete_key(
+                        &config.registry.uninstall_key,
+                    );
+                    let _ = crate::installer::windows::registry::delete_key(
+                        &config.registry.install_path_key,
+                    );
+                    if config.autostart.enabled {
+                        let _ = crate::installer::windows::registry::delete_value(
+                            &config.autostart.registry_key,
+                            &config.autostart.registry_value_name,
+                        );
+                    }
+                }
+
+                *status.write() = status_user_data;
+                *progress.write() = 0.45;
+                if !reserve_data {
+                    for data_path_template in &config.uninstall.data_paths {
+                        let expanded = Self::expand_env_vars(data_path_template);
+                        let data_path = PathBuf::from(&expanded);
+                        if data_path.exists() {
+                            let _ = std::fs::remove_dir_all(&data_path);
                         }
                     }
                 }
-                tracing::info!("Removed installation files from: {:?}", install_dir);
+
+                *status.write() = status_files;
+                *progress.write() = 0.60;
+                if install_dir.exists() {
+                    let exe_path = std::env::current_exe().unwrap_or_default();
+                    if let Ok(entries) = std::fs::read_dir(&install_dir) {
+                        for entry in entries.flatten() {
+                            let path = entry.path();
+                            if path == exe_path {
+                                continue;
+                            }
+                            if path.is_dir() {
+                                let _ = std::fs::remove_dir_all(&path);
+                            } else {
+                                let _ = std::fs::remove_file(&path);
+                            }
+                        }
+                    }
+                }
+                *progress.write() = 0.85;
             }
-            *progress.write() = 0.85;
 
             // Step 6: Prepare self-deletion script (will be launched on process exit)
             *status.write() = status_finishing;
@@ -817,7 +897,8 @@ impl InstallerApp {
                         dir = install_dir.display()
                     );
                     let temp_dir = std::env::temp_dir();
-                    let batch_path = temp_dir.join(format!("{}_uninstall_cleanup.bat", config.project.name));
+                    let batch_path =
+                        temp_dir.join(format!("{}_uninstall_cleanup.bat", config.project.name));
                     if let Ok(()) = std::fs::write(&batch_path, &batch_content) {
                         // 不在这里启动，而是保存路径，在进程退出时启动
                         tracing::info!("Self-deletion script prepared: {:?}", batch_path);
@@ -933,7 +1014,10 @@ impl InstallerApp {
         }
 
         // Check if the install thread has finished
-        let thread_finished = self.install_thread.as_ref().map_or(false, |h| h.is_finished());
+        let thread_finished = self
+            .install_thread
+            .as_ref()
+            .map_or(false, |h| h.is_finished());
         if thread_finished {
             if let Some(handle) = self.install_thread.take() {
                 match handle.join() {
@@ -952,7 +1036,8 @@ impl InstallerApp {
                     }
                     Err(_) => {
                         tracing::error!("Installation thread panicked");
-                        self.install_error = Some("Installation thread panicked unexpectedly".to_string());
+                        self.install_error =
+                            Some("Installation thread panicked unexpectedly".to_string());
                         let complete = self.i18n("status.install_complete");
                         self.wizard.finish_installation(&complete);
                         self.show_install_error_dialog();
@@ -963,13 +1048,18 @@ impl InstallerApp {
 
         // Poll uninstall progress
         if self.wizard.is_installing() {
-            let is_uninstall_page = self.config.wizard.uninstall_pages.iter()
+            let is_uninstall_page = self
+                .config
+                .wizard
+                .uninstall_pages
+                .iter()
                 .any(|p| p.id == current_page_id);
             if is_uninstall_page {
                 let progress_val = *self.uninstall_progress.read();
                 let status_val = self.uninstall_status.read().clone();
 
-                self.wizard.update_install_progress(progress_val, status_val.clone());
+                self.wizard
+                    .update_install_progress(progress_val, status_val.clone());
 
                 if let Some(layout) = self.layout_cache.get_mut(&current_page_id) {
                     Self::update_progress_bar_recursive(
@@ -1003,7 +1093,10 @@ impl InstallerApp {
     // =========================================================================
 
     fn show_install_error_dialog(&mut self) {
-        let error_msg = self.install_error.clone().unwrap_or_else(|| "Unknown error".to_string());
+        let error_msg = self
+            .install_error
+            .clone()
+            .unwrap_or_else(|| "Unknown error".to_string());
         let dialog_width = if self.dpi_config.use_2x { 800.0 } else { 400.0 };
         let dialog_height = if self.dpi_config.use_2x { 460.0 } else { 230.0 };
 
@@ -1015,7 +1108,7 @@ impl InstallerApp {
             .with_type(crate::ui::message_box::MessageBoxType::Error)
             .with_buttons(crate::ui::message_box::MessageBoxButton::Ok)
             .with_size(dialog_width, dialog_height)
-            .with_dpi(self.dpi_config.use_2x)
+            .with_dpi(self.dpi_config.use_2x),
         );
     }
 
@@ -1088,13 +1181,21 @@ impl InstallerApp {
 
         let required_label = self.i18n("required_space");
         let available_label = self.i18n("available_space");
-        let required_text = format!("{}{}", required_label, Self::format_size_bytes(required_space_bytes));
+        let required_text = format!(
+            "{}{}",
+            required_label,
+            Self::format_size_bytes(required_space_bytes)
+        );
 
         let current_page_id = self.wizard.current_page_id().to_string();
 
         match validator.validate_path(path) {
             Ok(result) => {
-                let available_text = format!("{}{}", available_label, Self::format_size_bytes(result.free_space_bytes));
+                let available_text = format!(
+                    "{}{}",
+                    available_label,
+                    Self::format_size_bytes(result.free_space_bytes)
+                );
 
                 if let Some(layout) = self.layout_cache.get_mut(&current_page_id) {
                     Self::update_label_text(&mut layout.root, "lblRequiredSpace", &required_text);
@@ -1149,7 +1250,11 @@ impl InstallerApp {
     }
 
     /// 递归更新按钮的 enabled 状态
-    fn update_button_enabled_recursive(element: &mut LayoutElement, button_id: &str, enabled: bool) {
+    fn update_button_enabled_recursive(
+        element: &mut LayoutElement,
+        button_id: &str,
+        enabled: bool,
+    ) {
         if let Some(id) = &element.attributes.id {
             if id == button_id {
                 element.attributes.enabled = Some(enabled);
@@ -1165,7 +1270,11 @@ impl InstallerApp {
     }
 
     /// 递归更新元素的 visible 状态
-    fn update_element_visible_recursive(element: &mut LayoutElement, target_id: &str, visible: bool) {
+    fn update_element_visible_recursive(
+        element: &mut LayoutElement,
+        target_id: &str,
+        visible: bool,
+    ) {
         if let Some(id) = &element.attributes.id {
             if id == target_id {
                 element.attributes.visible = Some(visible);
@@ -1207,7 +1316,9 @@ impl eframe::App for InstallerApp {
         if self.first_frame_done {
             // Only send once on second frame
             if self.disable_always_on_top {
-                ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(egui::WindowLevel::Normal));
+                ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
+                    egui::WindowLevel::Normal,
+                ));
                 self.disable_always_on_top = false;
             }
         } else {
@@ -1225,6 +1336,7 @@ impl eframe::App for InstallerApp {
 
         // 设置暗色主题
         ctx.set_visuals(egui::Visuals::dark());
+        self.apply_test_hooks(ctx);
 
         // 无边框窗口拖动区域（整个窗口上半部分可拖动）
         let title_bar_height = 200.0;
@@ -1234,7 +1346,10 @@ impl eframe::App for InstallerApp {
         );
 
         let is_dragging = ctx.input(|i| {
-            i.pointer.primary_down() && i.pointer.hover_pos().map_or(false, |pos| title_bar_rect.contains(pos))
+            i.pointer.primary_down()
+                && i.pointer
+                    .hover_pos()
+                    .map_or(false, |pos| title_bar_rect.contains(pos))
         });
 
         if is_dragging {
@@ -1246,7 +1361,7 @@ impl eframe::App for InstallerApp {
         let message_results = self.message_box_manager.render(
             ctx,
             &self.dpi_config,
-            layout_renderer.get_resource_cache_mut()
+            layout_renderer.get_resource_cache_mut(),
         );
         for (id, result) in message_results {
             if id.starts_with("message_box_") {
@@ -1280,13 +1395,23 @@ impl eframe::App for InstallerApp {
                 let is_config_page = current_page_id == "config" || current_page_id == "welcome";
                 if is_config_page {
                     if let Some(layout) = self.layout_cache.get_mut(&current_page_id) {
-                        Self::update_button_enabled_recursive(&mut layout.root, "install", self.agree_to_terms);
-                        Self::update_button_enabled_recursive(&mut layout.root, "btnInstall", self.agree_to_terms);
+                        Self::update_button_enabled_recursive(
+                            &mut layout.root,
+                            "install",
+                            self.agree_to_terms,
+                        );
+                        Self::update_button_enabled_recursive(
+                            &mut layout.root,
+                            "btnInstall",
+                            self.agree_to_terms,
+                        );
                     }
                 }
 
                 // 首次加载配置页时，用默认安装路径初始化磁盘空间信息
-                if !self.path_validation_initialized && self.layout_cache.contains_key(&current_page_id) {
+                if !self.path_validation_initialized
+                    && self.layout_cache.contains_key(&current_page_id)
+                {
                     if current_page_id == "config" {
                         let default_path = self.install_path.clone();
                         self.validate_and_update_path_info(&default_path);
@@ -1296,16 +1421,29 @@ impl eframe::App for InstallerApp {
 
                 let layout_opt = self.layout_cache.get(&current_page_id);
                 if let Some(layout) = layout_opt {
+                    tracing::debug!(
+                        "rendering layout: page_id={}, cache_size={}",
+                        current_page_id,
+                        self.layout_cache.len()
+                    );
                     if let Some(ref mut renderer) = self.layout_renderer {
                         let render_result = renderer.render(ui, layout);
                         self.handle_layout_result(ctx, render_result);
                     }
                 } else {
+                    tracing::error!(
+                        "render fallback triggered: page_id={}, cache_keys={:?}",
+                        current_page_id,
+                        self.layout_cache.keys().collect::<Vec<_>>()
+                    );
                     ui.centered_and_justified(|ui| {
                         ui.label(
-                            egui::RichText::new(format!("Failed to load layout: {}", current_page_id))
-                                .size(16.0)
-                                .color(egui::Color32::RED)
+                            egui::RichText::new(format!(
+                                "Failed to load layout: {}",
+                                current_page_id
+                            ))
+                            .size(16.0)
+                            .color(egui::Color32::RED),
                         );
                     });
                 }
@@ -1316,7 +1454,10 @@ impl eframe::App for InstallerApp {
 impl InstallerApp {
     /// 从 i18n 获取文本，回退到 key 本身
     fn i18n(&self, key: &str) -> String {
-        self.i18n_strings.get(key).cloned().unwrap_or_else(|| key.to_string())
+        self.i18n_strings
+            .get(key)
+            .cloned()
+            .unwrap_or_else(|| key.to_string())
     }
 
     fn show_close_confirmation(&mut self) {
@@ -1327,9 +1468,12 @@ impl InstallerApp {
             crate::ui::message_box::MessageBoxConfig::new("".to_string(), msg)
                 .with_type(crate::ui::message_box::MessageBoxType::Question)
                 .with_buttons(crate::ui::message_box::MessageBoxButton::OkCancel)
-                .with_size(self.config.ui.dialog_width as f32, self.config.ui.dialog_height as f32)
+                .with_size(
+                    self.config.ui.dialog_width as f32,
+                    self.config.ui.dialog_height as f32,
+                )
                 .with_dpi(false)
-                .with_button_texts(&ok, &cancel)
+                .with_button_texts(&ok, &cancel),
         );
         self.pending_close_confirm_id = Some(dialog_id);
     }
@@ -1344,7 +1488,7 @@ impl InstallerApp {
         // 1. Load new locale strings, merge with current (fallback to current for missing keys)
         let mut config_clone = self.config.clone();
         config_clone.localization.default_locale = locale.to_string();
-        let new_strings = Self::load_i18n_strings(&config_clone, &self.config_base_path);
+        let new_strings = Self::load_i18n_strings(&config_clone, self.resource_provider.as_ref());
 
         // Merge: keep existing strings as fallback, overwrite with new locale
         let mut merged = self.i18n_strings.clone();
@@ -1357,7 +1501,8 @@ impl InstallerApp {
         // 2. Check if expand panel is currently open (before clearing cache)
         let expand_open = {
             let current_page = self.wizard.current_page_id().to_string();
-            self.layout_cache.get(&current_page)
+            self.layout_cache
+                .get(&current_page)
                 .and_then(|layout| layout.root.find_by_id("moreconfiginfo"))
                 .and_then(|el| el.attributes.visible)
                 .unwrap_or(false)
@@ -1379,13 +1524,8 @@ impl InstallerApp {
             renderer.set_text_input_value("langSelect", locale.to_string());
         }
 
-        // 4. 重新加载 msgBox 模板
-        let mut parser = XmlParser::new();
-        if let Ok(content) = RuntimeResources::get_layout("layouts/msgBox.xml") {
-            if let Ok(layout) = parser.parse_string(&content) {
-                self.message_box_manager.set_template(layout);
-            }
-        }
+        // 保持消息框始终走代码回退路径；XML 模板在运行时切语言后会重新引入已知偏移问题。
+        self.message_box_manager.use_code_fallback();
 
         // 6. 重置路径校验标志（重新用新语言填充标签）
         self.path_validation_initialized = false;
@@ -1402,13 +1542,69 @@ impl InstallerApp {
         tracing::info!("Language switched to: {}", locale);
     }
 
+    pub(crate) fn harness_current_page_id(&self) -> &str {
+        self.wizard.current_page_id()
+    }
+
+    pub(crate) fn harness_load_page_layout(&mut self, page_id: &str) -> Option<&LayoutTree> {
+        self.get_page_layout(page_id)
+    }
+
+    pub(crate) fn harness_dispatch_action(&mut self, action: &str, ctx: &egui::Context) {
+        self.dispatch_action(action, ctx);
+    }
+
+    pub(crate) fn harness_switch_language(&mut self, locale: &str, ctx: &egui::Context) {
+        self.switch_language(locale, ctx);
+    }
+
+    pub(crate) fn harness_layout_renderer(&self) -> Option<&LayoutRenderer> {
+        self.layout_renderer.as_ref()
+    }
+
+    pub(crate) fn harness_layout_renderer_mut(&mut self) -> Option<&mut LayoutRenderer> {
+        self.layout_renderer.as_mut()
+    }
+
+    pub(crate) fn harness_has_pending_close_confirmation(&self) -> bool {
+        self.pending_close_confirm_id.is_some()
+    }
+
+    pub(crate) fn harness_i18n(&self, key: &str) -> String {
+        self.i18n(key)
+    }
+
+    fn apply_test_hooks(&mut self, ctx: &egui::Context) {
+        if self.test_hook_applied {
+            return;
+        }
+
+        let test_locale = std::env::var("NANO_INSTALLER_TEST_LOCALE").ok();
+        let test_action = std::env::var("NANO_INSTALLER_TEST_ACTION").ok();
+        if test_locale.is_none() && test_action.is_none() {
+            return;
+        }
+
+        if let Some(locale) = test_locale.as_deref() {
+            self.switch_language(locale, ctx);
+        }
+
+        if let Some(action) = test_action.as_deref() {
+            match action {
+                "close_confirm" => self.show_close_confirmation(),
+                other => tracing::warn!("Unknown test action: {}", other),
+            }
+        }
+
+        self.test_hook_applied = true;
+        ctx.request_repaint();
+    }
+
     /// 在默认浏览器中打开 URL
     fn open_url_in_browser(&self, url: &str) {
         #[cfg(windows)]
         {
-            let _ = Command::new("cmd")
-                .args(["/C", "start", "", url])
-                .spawn();
+            let _ = Command::new("cmd").args(["/C", "start", "", url]).spawn();
         }
 
         #[cfg(not(windows))]
@@ -1434,8 +1630,10 @@ impl InstallerApp {
             use std::os::windows::process::CommandExt;
             const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-            let batch_path = std::env::temp_dir()
-                .join(format!("{}_uninstall_cleanup.bat", self.config.project.name));
+            let batch_path = std::env::temp_dir().join(format!(
+                "{}_uninstall_cleanup.bat",
+                self.config.project.name
+            ));
             if batch_path.exists() {
                 let _ = Command::new("cmd")
                     .args(["/C", &batch_path.to_string_lossy().to_string()])
@@ -1454,7 +1652,12 @@ impl InstallerApp {
             if let Some(end) = result[start + 1..].find('%') {
                 let var_name = &result[start + 1..start + 1 + end];
                 if let Ok(value) = std::env::var(var_name) {
-                    result = format!("{}{}{}", &result[..start], value, &result[start + 2 + end..]);
+                    result = format!(
+                        "{}{}{}",
+                        &result[..start],
+                        value,
+                        &result[start + 2 + end..]
+                    );
                 } else {
                     break;
                 }

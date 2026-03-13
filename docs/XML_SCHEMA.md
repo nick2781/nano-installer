@@ -284,6 +284,8 @@
 
 可点击的按钮控件。两种格式都支持。
 
+新的推荐写法允许 `Button` 承载一个内容树，用于描述按钮内部的文字和图标布局。NSIS 的 `textpadding`、`dest` 等像素级属性仍然兼容，但它们属于迁移层，不是新增能力的首选。
+
 **属性：**
 
 **传统格式：**
@@ -340,7 +342,7 @@
 | `browse` | 浏览 | 打开文件夹选择对话框 |
 
 **子元素：**
-- 无
+- 可选：一个 `<Content>` 子元素
 
 **示例：**
 
@@ -348,6 +350,58 @@
 <Button id="next" text="{next_button}" width="120" height="44" style="primary" />
 <Button id="cancel" text="{cancel_button}" width="120" />
 ```
+
+```xml
+<Button min-width="80" max-width="164">
+  <Content
+    layout="horizontal"
+    horizontal-align="right"
+    vertical-align="center"
+    item-spacing="4">
+    <Text value="@show_more" wrap="true" />
+    <Icon src="assets/arrow-down.png" width="12" height="12" />
+  </Content>
+</Button>
+```
+
+### `<Content>` - 控件内容容器
+
+`Content` 用于声明控件内部的盒模型，当前主要用于 `Button`。
+
+| 属性 | 类型 | 必需 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `layout` | string | ❌ | `"horizontal"` | 子项排列方向：`horizontal` \| `vertical` |
+| `horizontal-align` | string | ❌ | `"left"` | 水平方向对齐：`left` \| `center` \| `right` |
+| `vertical-align` | string | ❌ | `"top"` | 垂直方向对齐：`top` \| `center` \| `bottom` |
+| `item-spacing` | number | ❌ | `0` | 子项之间的间距 |
+| `padding` | padding | ❌ | - | 内容容器内边距 |
+
+**子元素：**
+- `<Text>`
+- `<Icon>`
+
+### `<Text>` - 内容文本
+
+| 属性 | 类型 | 必需 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `value` | string | ✅ | - | 文本内容，支持 `@key` 语法 |
+| `wrap` | boolean | ❌ | `false` | 是否自动换行 |
+| `color` | color | ❌ | 继承父元素 | 文本颜色 |
+| `font-size` | number | ❌ | 继承父元素 | 字体大小 |
+
+**子元素：**
+- 无
+
+### `<Icon>` - 内容图标
+
+| 属性 | 类型 | 必需 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `src` | path | ✅ | - | 图片路径 |
+| `width` | number | ❌ | 原始宽度 | 图标宽度 |
+| `height` | number | ❌ | 原始高度 | 图标高度 |
+
+**子元素：**
+- 无
 
 ### `<Label>` - 文本标签
 
@@ -754,7 +808,8 @@ icon="assets/icons/button.png"
 
 ### 嵌套规则
 
-- `<Spacer>`, `<Button>`, `<Label>`, `<Image>`, `<Checkbox>`, `<TextInput>`, `<ProgressBar>`, `<Divider>` 不能包含子元素
+- `<Spacer>`, `<Label>`, `<Image>`, `<Checkbox>`, `<TextInput>`, `<ProgressBar>`, `<Divider>` 不能包含子元素
+- `<Button>` 默认是叶子节点，但允许包含一个 `<Content>` 子元素来声明按钮内部布局
 - `<VBox>` 和 `<HBox>` 可以包含任意元素
 - `<Page>` 可以包含任意元素
 

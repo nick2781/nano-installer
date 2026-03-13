@@ -1,7 +1,7 @@
 //! File operation API — extract, copy, delete, write, lock detection
 
-use rhai::Engine;
 use super::context::ScriptContext;
+use rhai::Engine;
 use std::path::Path;
 
 pub fn register(engine: &mut Engine, ctx: ScriptContext) {
@@ -12,8 +12,16 @@ pub fn register(engine: &mut Engine, ctx: ScriptContext) {
         tracing::info!("[script] extract_payload to {}", install_path);
         match crate::resources::RuntimeResources::get_payload() {
             Some(data) => {
-                match crate::resources::PayloadExt::extract_7z_to_dir(&data, Path::new(&install_path)) {
-                    Ok(()) => true,
+                match crate::resources::PayloadExt::extract_7z_to_dir(
+                    &data,
+                    Path::new(&install_path),
+                ) {
+                    Ok(()) => {
+                        if let Err(e) = c.record_install_tree_delta() {
+                            tracing::warn!("[script] failed to record extracted files: {}", e);
+                        }
+                        true
+                    }
                     Err(e) => {
                         tracing::error!("[script] extract_payload failed: {}", e);
                         false
@@ -37,6 +45,7 @@ pub fn register(engine: &mut Engine, ctx: ScriptContext) {
                 let dest = Path::new(&install_path).join(uninst_name);
                 match std::fs::write(&dest, &data) {
                     Ok(()) => {
+                        c.record_file(dest.clone());
                         tracing::info!("[script] Copied uninstaller to {}", dest.display());
                         true
                     }
@@ -54,9 +63,19 @@ pub fn register(engine: &mut Engine, ctx: ScriptContext) {
     });
 
     // Write text file
-    engine.register_fn("write_file", |path: &str, content: &str| -> bool {
+    let c = ctx.clone();
+    engine.register_fn("write_file", move |path: &str, content: &str| -> bool {
         match std::fs::write(path, content) {
-            Ok(()) => true,
+            Ok(()) => {
+                let path_buf = Path::new(path).to_path_buf();
+                c.record_file(path_buf.clone());
+                if let Some(parent) = path_buf.parent() {
+                    if c.should_track_install_path(parent) {
+                        c.record_directory(parent.to_path_buf());
+                    }
+                }
+                true
+            }
             Err(e) => {
                 tracing::error!("[script] write_file {} failed: {}", path, e);
                 false
@@ -106,7 +125,9 @@ pub fn register(engine: &mut Engine, ctx: ScriptContext) {
             }
         }
         #[cfg(not(windows))]
-        { false }
+        {
+            false
+        }
     });
 
     // Read text file
@@ -119,7 +140,9 @@ pub fn register(engine: &mut Engine, ctx: ScriptContext) {
         let mut result = rhai::Array::new();
         if let Ok(entries) = std::fs::read_dir(path) {
             for entry in entries.flatten() {
-                result.push(rhai::Dynamic::from(entry.path().to_string_lossy().to_string()));
+                result.push(rhai::Dynamic::from(
+                    entry.path().to_string_lossy().to_string(),
+                ));
             }
         }
         result
@@ -128,66 +151,87 @@ pub fn register(engine: &mut Engine, ctx: ScriptContext) {
     // Extract payload with smooth progress animation
     // extract_payload_with_progress(start_pct, end_pct) — animates progress during extraction
     let c = ctx.clone();
-    engine.register_fn("extract_payload_with_progress", move |start_pct: f64, end_pct: f64| -> bool {
-        let install_path = c.get_install_path();
-        tracing::info!("[script] extract_payload_with_progress {}% → {}%", start_pct, end_pct);
+    engine.register_fn(
+        "extract_payload_with_progress",
+        move |start_pct: f64, end_pct: f64| -> bool {
+            let install_path = c.get_install_path();
+            tracing::info!(
+                "[script] extract_payload_with_progress {}% → {}%",
+                start_pct,
+                end_pct
+            );
 
-        let payload = match crate::resources::RuntimeResources::get_payload() {
-            Some(data) => data,
-            None => {
-                tracing::error!("[script] No payload found");
+            let payload = match crate::resources::RuntimeResources::get_payload() {
+                Some(data) => data,
+                None => {
+                    tracing::error!("[script] No payload found");
+                    return false;
+                }
+            };
+
+            // Run extraction in background thread
+            let install_path_clone = install_path.clone();
+            let payload_clone = payload;
+            let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let failed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let done2 = done.clone();
+            let failed2 = failed.clone();
+
+            std::thread::spawn(move || {
+                match crate::resources::PayloadExt::extract_7z_to_dir(
+                    &payload_clone,
+                    std::path::Path::new(&install_path_clone),
+                ) {
+                    Ok(()) => {}
+                    Err(e) => {
+                        tracing::error!("[script] extract failed: {}", e);
+                        failed2.store(true, std::sync::atomic::Ordering::SeqCst);
+                    }
+                }
+                done2.store(true, std::sync::atomic::Ordering::SeqCst);
+            });
+
+            // Animate progress while waiting
+            let range = end_pct - start_pct;
+            let mut elapsed_ms: u64 = 0;
+            let poll_interval = 100u64; // ms
+
+            while !done.load(std::sync::atomic::Ordering::SeqCst) {
+                elapsed_ms += poll_interval;
+                // Non-linear progress: fast start, slow finish (asymptotic to 95% of range)
+                let t = (elapsed_ms as f64 / 1000.0).min(120.0); // cap at 120s
+                let ratio = 1.0 - (-t / 15.0f64).exp(); // ~95% after 45s
+                let pct = start_pct + range * ratio * 0.95; // never reach end_pct until done
+                c.set_progress(pct as f32);
+                std::thread::sleep(std::time::Duration::from_millis(poll_interval));
+            }
+
+            if failed.load(std::sync::atomic::Ordering::SeqCst) {
                 return false;
             }
-        };
 
-        // Run extraction in background thread
-        let install_path_clone = install_path.clone();
-        let payload_clone = payload;
-        let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let failed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let done2 = done.clone();
-        let failed2 = failed.clone();
-
-        std::thread::spawn(move || {
-            match crate::resources::PayloadExt::extract_7z_to_dir(
-                &payload_clone, std::path::Path::new(&install_path_clone)
-            ) {
-                Ok(()) => {}
-                Err(e) => {
-                    tracing::error!("[script] extract failed: {}", e);
-                    failed2.store(true, std::sync::atomic::Ordering::SeqCst);
-                }
+            c.set_progress(end_pct as f32);
+            if let Err(e) = c.record_install_tree_delta() {
+                tracing::warn!("[script] failed to record extracted files: {}", e);
             }
-            done2.store(true, std::sync::atomic::Ordering::SeqCst);
-        });
-
-        // Animate progress while waiting
-        let range = end_pct - start_pct;
-        let mut elapsed_ms: u64 = 0;
-        let poll_interval = 100u64; // ms
-
-        while !done.load(std::sync::atomic::Ordering::SeqCst) {
-            elapsed_ms += poll_interval;
-            // Non-linear progress: fast start, slow finish (asymptotic to 95% of range)
-            let t = (elapsed_ms as f64 / 1000.0).min(120.0); // cap at 120s
-            let ratio = 1.0 - (-t / 15.0f64).exp(); // ~95% after 45s
-            let pct = start_pct + range * ratio * 0.95; // never reach end_pct until done
-            c.set_progress(pct as f32);
-            std::thread::sleep(std::time::Duration::from_millis(poll_interval));
-        }
-
-        if failed.load(std::sync::atomic::Ordering::SeqCst) {
-            return false;
-        }
-
-        c.set_progress(end_pct as f32);
-        true
-    });
+            true
+        },
+    );
 
     // Copy file
-    engine.register_fn("copy_file", |src: &str, dst: &str| -> bool {
+    let c = ctx.clone();
+    engine.register_fn("copy_file", move |src: &str, dst: &str| -> bool {
         match std::fs::copy(src, dst) {
-            Ok(_) => true,
+            Ok(_) => {
+                let dst_path = Path::new(dst).to_path_buf();
+                c.record_file(dst_path.clone());
+                if let Some(parent) = dst_path.parent() {
+                    if c.should_track_install_path(parent) {
+                        c.record_directory(parent.to_path_buf());
+                    }
+                }
+                true
+            }
             Err(e) => {
                 tracing::error!("[script] copy_file {} -> {} failed: {}", src, dst, e);
                 false
@@ -196,9 +240,18 @@ pub fn register(engine: &mut Engine, ctx: ScriptContext) {
     });
 
     // Rename / move file or directory
-    engine.register_fn("rename", |src: &str, dst: &str| -> bool {
+    let c = ctx.clone();
+    engine.register_fn("rename", move |src: &str, dst: &str| -> bool {
         match std::fs::rename(src, dst) {
-            Ok(()) => true,
+            Ok(()) => {
+                let dst_path = Path::new(dst);
+                if dst_path.is_dir() {
+                    c.record_directory(dst_path.to_path_buf());
+                } else {
+                    c.record_file(dst_path.to_path_buf());
+                }
+                true
+            }
             Err(e) => {
                 tracing::error!("[script] rename {} -> {} failed: {}", src, dst, e);
                 false
@@ -207,9 +260,16 @@ pub fn register(engine: &mut Engine, ctx: ScriptContext) {
     });
 
     // Create directory (recursive)
-    engine.register_fn("create_dir", |path: &str| -> bool {
+    let c = ctx.clone();
+    engine.register_fn("create_dir", move |path: &str| -> bool {
         match std::fs::create_dir_all(path) {
-            Ok(()) => true,
+            Ok(()) => {
+                let dir_path = Path::new(path);
+                if c.should_track_install_path(dir_path) {
+                    c.record_directory(dir_path.to_path_buf());
+                }
+                true
+            }
             Err(e) => {
                 tracing::error!("[script] create_dir {} failed: {}", path, e);
                 false
@@ -218,13 +278,13 @@ pub fn register(engine: &mut Engine, ctx: ScriptContext) {
     });
 
     // Is directory
-    engine.register_fn("is_dir", |path: &str| -> bool {
-        Path::new(path).is_dir()
-    });
+    engine.register_fn("is_dir", |path: &str| -> bool { Path::new(path).is_dir() });
 
     // Get file size in bytes
     engine.register_fn("get_file_size", |path: &str| -> i64 {
-        std::fs::metadata(path).map(|m| m.len() as i64).unwrap_or(-1)
+        std::fs::metadata(path)
+            .map(|m| m.len() as i64)
+            .unwrap_or(-1)
     });
 
     // Get temp directory path
@@ -239,14 +299,16 @@ pub fn register(engine: &mut Engine, ctx: ScriptContext) {
 
     // Get parent directory
     engine.register_fn("path_parent", |path: &str| -> String {
-        Path::new(path).parent()
+        Path::new(path)
+            .parent()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_default()
     });
 
     // Get file name from path
     engine.register_fn("path_filename", |path: &str| -> String {
-        Path::new(path).file_name()
+        Path::new(path)
+            .file_name()
             .map(|f| f.to_string_lossy().to_string())
             .unwrap_or_default()
     });

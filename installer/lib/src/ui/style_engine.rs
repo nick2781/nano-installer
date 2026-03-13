@@ -1,9 +1,9 @@
 //! 样式引擎
-//! 
+//!
 //! 处理UI元素的样式和主题
 
-use egui::{Color32, Stroke, Style};
 use crate::layout::element::ElementAttributes;
+use egui::{Color32, Stroke, Style};
 
 /// 样式类型
 #[derive(Debug, Clone, PartialEq)]
@@ -94,11 +94,23 @@ impl StyleEngine {
     /// 获取按钮样式
     pub fn get_button_style(&self, style_type: &StyleType, enabled: bool) -> ButtonStyle {
         let base_config = self.get_style_config(style_type);
-        
+
         ButtonStyle {
-            background_color: if enabled { base_config.primary_color } else { base_config.disabled_color },
-            hover_color: if enabled { base_config.hover_color } else { base_config.disabled_color },
-            text_color: if enabled { base_config.text_color } else { base_config.disabled_color },
+            background_color: if enabled {
+                base_config.primary_color
+            } else {
+                base_config.disabled_color
+            },
+            hover_color: if enabled {
+                base_config.hover_color
+            } else {
+                base_config.disabled_color
+            },
+            text_color: if enabled {
+                base_config.text_color
+            } else {
+                base_config.disabled_color
+            },
             border_color: base_config.border_color,
             corner_radius: base_config.corner_radius,
             stroke_width: base_config.stroke_width,
@@ -109,7 +121,7 @@ impl StyleEngine {
     /// 获取标签样式
     pub fn get_label_style(&self, style_type: &StyleType) -> LabelStyle {
         let base_config = self.get_style_config(style_type);
-        
+
         LabelStyle {
             text_color: base_config.text_color,
             background_color: None,
@@ -120,14 +132,18 @@ impl StyleEngine {
     /// 获取输入框样式
     pub fn get_input_style(&self, style_type: &StyleType, enabled: bool) -> InputStyle {
         let base_config = self.get_style_config(style_type);
-        
+
         InputStyle {
-            background_color: if enabled { 
+            background_color: if enabled {
                 Color32::from_rgba_unmultiplied(255, 255, 255, 26) // 10% 透明度
-            } else { 
-                base_config.disabled_color 
+            } else {
+                base_config.disabled_color
             },
-            text_color: if enabled { base_config.text_color } else { base_config.disabled_color },
+            text_color: if enabled {
+                base_config.text_color
+            } else {
+                base_config.disabled_color
+            },
             border_color: base_config.border_color,
             corner_radius: base_config.corner_radius,
             stroke_width: base_config.stroke_width,
@@ -136,13 +152,26 @@ impl StyleEngine {
     }
 
     /// 获取复选框样式
-    pub fn get_checkbox_style(&self, style_type: &StyleType, checked: bool, enabled: bool) -> CheckboxStyle {
+    pub fn get_checkbox_style(
+        &self,
+        style_type: &StyleType,
+        checked: bool,
+        enabled: bool,
+    ) -> CheckboxStyle {
         let base_config = self.get_style_config(style_type);
-        
+
         CheckboxStyle {
-            background_color: if checked { base_config.primary_color } else { Color32::TRANSPARENT },
+            background_color: if checked {
+                base_config.primary_color
+            } else {
+                Color32::TRANSPARENT
+            },
             border_color: base_config.border_color,
-            check_color: if checked { base_config.text_color } else { Color32::TRANSPARENT },
+            check_color: if checked {
+                base_config.text_color
+            } else {
+                Color32::TRANSPARENT
+            },
             corner_radius: base_config.corner_radius,
             stroke_width: base_config.stroke_width,
             checked,
@@ -153,7 +182,7 @@ impl StyleEngine {
     /// 获取进度条样式
     pub fn get_progress_style(&self, style_type: &StyleType) -> ProgressStyle {
         let base_config = self.get_style_config(style_type);
-        
+
         ProgressStyle {
             track_color: base_config.background_color,
             fill_color: base_config.primary_color,
@@ -164,7 +193,7 @@ impl StyleEngine {
     /// 获取分隔线样式
     pub fn get_divider_style(&self, style_type: &StyleType) -> DividerStyle {
         let base_config = self.get_style_config(style_type);
-        
+
         DividerStyle {
             color: Color32::from_rgba_unmultiplied(0, 196, 178, 51), // 20% 透明度
             thickness: 1.0,
@@ -182,21 +211,21 @@ impl StyleEngine {
     /// 应用全局样式到egui
     pub fn apply_global_style(&self, style: &mut Style) {
         let visuals = &mut style.visuals;
-        
+
         // 设置基础颜色
         visuals.window_fill = self.config.background_color;
         visuals.panel_fill = self.config.background_color;
         visuals.window_stroke = Stroke::new(self.config.stroke_width, self.config.border_color);
-        
+
         // 设置交互颜色
         visuals.hyperlink_color = self.config.primary_color;
         visuals.selection.bg_fill = self.config.primary_color;
         visuals.selection.stroke = Stroke::new(1.0, self.config.primary_color);
-        
+
         // 设置文本颜色（通过覆盖文本样式）
         // 注意：egui 的 Visuals 不直接支持设置 text_color 和 weak_text_color
         // 这些需要通过其他方式实现
-        
+
         // 设置按钮样式
         visuals.button_frame = true;
         // 在 egui 0.33 中，window_rounding 字段可能不存在，使用其他方式设置
@@ -210,7 +239,7 @@ impl StyleEngine {
         if color_str.starts_with('#') {
             Self::parse_hex_color(&color_str[1..])
         } else if color_str.starts_with("rgba(") && color_str.ends_with(')') {
-            Self::parse_rgba_color(&color_str[5..color_str.len()-1])
+            Self::parse_rgba_color(&color_str[5..color_str.len() - 1])
         } else {
             None
         }
@@ -316,7 +345,9 @@ pub struct DividerStyle {
 /// 从元素属性创建样式类型
 impl From<&ElementAttributes> for StyleType {
     fn from(attrs: &ElementAttributes) -> Self {
-        attrs.style.as_ref()
+        attrs
+            .style
+            .as_ref()
             .map(|s| StyleType::from(s.as_str()))
             .unwrap_or(StyleType::Primary)
     }
@@ -331,7 +362,10 @@ mod tests {
         assert_eq!(StyleType::from("primary"), StyleType::Primary);
         assert_eq!(StyleType::from("link"), StyleType::Link);
         assert_eq!(StyleType::from("text"), StyleType::Text);
-        assert_eq!(StyleType::from("custom"), StyleType::Custom("custom".to_string()));
+        assert_eq!(
+            StyleType::from("custom"),
+            StyleType::Custom("custom".to_string())
+        );
     }
 
     #[test]
@@ -366,7 +400,7 @@ mod tests {
             ..Default::default()
         };
         engine.add_custom_style("red".to_string(), custom_config);
-        
+
         let button_style = engine.get_button_style(&StyleType::Custom("red".to_string()), true);
         assert_eq!(button_style.background_color, Color32::from_rgb(255, 0, 0));
     }

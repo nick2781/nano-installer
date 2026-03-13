@@ -1,9 +1,9 @@
 //! DPI处理器
-//! 
+//!
 //! 处理DPI自适应和资源加载
 
-use std::path::PathBuf;
 use egui::TextureHandle;
+use std::path::PathBuf;
 // use image::DynamicImage;
 use crate::config::InstallerConfig;
 use once_cell::sync::OnceCell;
@@ -34,7 +34,12 @@ impl DpiConfig {
         let scale_factor = system_dpi as f32 / 96.0;
 
         DPI_INFO_PRINTED.get_or_init(|| {
-            tracing::info!("DPI: system={}, scale={:.2}, use_2x={}", system_dpi, scale_factor, use_2x);
+            tracing::info!(
+                "DPI: system={}, scale={:.2}, use_2x={}",
+                system_dpi,
+                scale_factor,
+                use_2x
+            );
             true
         });
 
@@ -48,52 +53,66 @@ impl DpiConfig {
     }
 
     /// 检测系统DPI（与 NSIS 的 GetDpiForSystem 一致）
-    /// 
+    ///
     /// 注意：GetDpiForSystem() 的返回值可能受到以下因素影响：
     /// 1. 线程的 DPI 感知上下文（SetThreadDpiAwarenessContext）
     /// 2. 进程的 DPI 感知模式（SetProcessDpiAwareness）
     /// 3. 窗口创建前后的上下文变化
-    /// 
+    ///
     /// 这就是为什么在窗口创建前和窗口创建后调用可能返回不同值的原因。
     /// 解决方案：在应用启动时统一检测一次，然后传递结果，避免重复检测。
-    /// 
+    ///
     /// 检测系统DPI（与 NSIS 一致：在 UNAWARE 模式下检测）
     /// NSIS 也是在 UNAWARE 模式下检测，返回 96 DPI，这是正确的行为。
     fn detect_system_dpi() -> u32 {
         #[cfg(target_os = "windows")]
         {
+            use windows::Win32::UI::HiDpi::AreDpiAwarenessContextsEqual;
             use windows::Win32::UI::HiDpi::GetDpiForSystem;
             use windows::Win32::UI::HiDpi::GetThreadDpiAwarenessContext;
-            use windows::Win32::UI::HiDpi::AreDpiAwarenessContextsEqual;
             use windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT_UNAWARE;
-            
+
             unsafe {
                 let dpi = GetDpiForSystem() as u32;
-                
+
                 // 检测当前线程的 DPI 感知上下文（用于调试）
                 let current_context = GetThreadDpiAwarenessContext();
-                let is_unaware = AreDpiAwarenessContextsEqual(
-                    current_context,
-                    DPI_AWARENESS_CONTEXT_UNAWARE
-                ).as_bool();
-                
+                let is_unaware =
+                    AreDpiAwarenessContextsEqual(current_context, DPI_AWARENESS_CONTEXT_UNAWARE)
+                        .as_bool();
+
                 // 每次检测都输出
-                static DPI_DETECT_COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+                static DPI_DETECT_COUNT: std::sync::atomic::AtomicU32 =
+                    std::sync::atomic::AtomicU32::new(0);
                 let count = DPI_DETECT_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
-                
-                eprintln!("[DPI检测 #{}] GetDpiForSystem() = {} (与 NSIS 一致，在 UNAWARE 模式下)", count, dpi);
-                eprintln!("[DPI检测 #{}] 当前线程 DPI 感知模式: {}", 
-                    count, 
-                    if is_unaware { "UNAWARE (未感知，程序认为所有显示器都是96DPI，与 NSIS 一致)" } 
-                    else { "AWARE (已感知)" });
-                
+
+                eprintln!(
+                    "[DPI检测 #{}] GetDpiForSystem() = {} (与 NSIS 一致，在 UNAWARE 模式下)",
+                    count, dpi
+                );
+                eprintln!(
+                    "[DPI检测 #{}] 当前线程 DPI 感知模式: {}",
+                    count,
+                    if is_unaware {
+                        "UNAWARE (未感知，程序认为所有显示器都是96DPI，与 NSIS 一致)"
+                    } else {
+                        "AWARE (已感知)"
+                    }
+                );
+
                 // 解释为什么同一个函数会返回不同的值
                 if count == 1 {
-                    eprintln!("[DPI检测 #{}] 说明: NSIS 也是在 UNAWARE 模式下检测，返回 96 DPI", count);
-                    eprintln!("[DPI检测 #{}]        - 这是正确的行为，与 NSIS 保持一致", count);
+                    eprintln!(
+                        "[DPI检测 #{}] 说明: NSIS 也是在 UNAWARE 模式下检测，返回 96 DPI",
+                        count
+                    );
+                    eprintln!(
+                        "[DPI检测 #{}]        - 这是正确的行为，与 NSIS 保持一致",
+                        count
+                    );
                     eprintln!("[DPI检测 #{}]        - 问题在于 egui 在窗口创建后可能自动调整了 pixels_per_point", count);
                 }
-                
+
                 dpi
             }
         }
@@ -104,7 +123,7 @@ impl DpiConfig {
     }
 
     /// 获取资源路径（自动选择1x或2x）
-    /// 
+    ///
     /// 注意：如果 base_path 包含 NSIS 格式的参数（如 dest='...'），会先提取纯文件路径
     pub fn get_resource_path(&self, base_path: &str) -> String {
         // 如果路径包含 NSIS 格式的参数（如 dest='...'），先提取纯文件路径
@@ -131,9 +150,13 @@ impl DpiConfig {
             }
         } else {
             // 如果路径包含空格和参数（如 "path dest='...'"），只取第一部分
-            base_path.split_whitespace().next().unwrap_or(base_path).to_string()
+            base_path
+                .split_whitespace()
+                .next()
+                .unwrap_or(base_path)
+                .to_string()
         };
-        
+
         if self.use_2x && !clean_path.contains("@2x") {
             // 尝试2x版本，保留目录路径
             let path = PathBuf::from(&clean_path);
@@ -142,7 +165,7 @@ impl DpiConfig {
                     let stem_str = stem.to_string_lossy();
                     let ext_str = extension.to_string_lossy();
                     let parent = path.parent().unwrap_or(std::path::Path::new(""));
-                    
+
                     // 构建 2x 路径，使用正斜杠（与嵌入资源的路径格式一致）
                     let new_path = if parent.as_os_str().is_empty() {
                         format!("{}@2x.{}", stem_str, ext_str)
@@ -151,13 +174,19 @@ impl DpiConfig {
                         let parent_str = parent.to_string_lossy().replace('\\', "/");
                         format!("{}/{}@2x.{}", parent_str, stem_str, ext_str)
                     };
-                    
-                    eprintln!("[资源] 路径转换: {} -> {} (use_2x={})", clean_path, new_path, self.use_2x);
+
+                    eprintln!(
+                        "[资源] 路径转换: {} -> {} (use_2x={})",
+                        clean_path, new_path, self.use_2x
+                    );
                     return new_path;
                 }
             }
         }
-        eprintln!("[资源] 使用原始路径: {} (use_2x={})", clean_path, self.use_2x);
+        eprintln!(
+            "[资源] 使用原始路径: {} (use_2x={})",
+            clean_path, self.use_2x
+        );
         clean_path
     }
 
@@ -175,17 +204,23 @@ impl DpiConfig {
                 // 使用默认纹理选项
                 let options = egui::TextureOptions::LINEAR;
 
-                eprintln!("[资源] ✓ 从嵌入资源加载成功: {} ({}x{})", resource_path, size[0], size[1]);
+                eprintln!(
+                    "[资源] ✓ 从嵌入资源加载成功: {} ({}x{})",
+                    resource_path, size[0], size[1]
+                );
                 return Some(ctx.load_texture(
                     &resource_path,
                     egui::ColorImage::from_rgba_unmultiplied(size, &pixels),
-                    options
+                    options,
                 ));
             } else {
                 eprintln!("[资源] ✗ 图片解析失败: {}", resource_path);
             }
         } else {
-            eprintln!("[资源] ✗ 嵌入资源未找到: {}, 尝试回退到原始路径", resource_path);
+            eprintln!(
+                "[资源] ✗ 嵌入资源未找到: {}, 尝试回退到原始路径",
+                resource_path
+            );
         }
 
         // 回退：如果 2x 版本加载失败，尝试原始路径
@@ -201,14 +236,17 @@ impl DpiConfig {
                     return Some(ctx.load_texture(
                         path,
                         egui::ColorImage::from_rgba_unmultiplied(size, &pixels),
-                        options
+                        options,
                     ));
                 }
             }
         }
 
         // 回退：开发模式下从文件系统读取
-        tracing::warn!("Failed to load image from embedded resources, trying filesystem: {}", resource_path);
+        tracing::warn!(
+            "Failed to load image from embedded resources, trying filesystem: {}",
+            resource_path
+        );
         if let Ok(image_data) = std::fs::read(&resource_path) {
             if let Ok(image) = image::load_from_memory(&image_data) {
                 let rgba_image = image.to_rgba8();
@@ -217,11 +255,14 @@ impl DpiConfig {
 
                 let options = egui::TextureOptions::LINEAR;
 
-                eprintln!("[资源] ✓ 从文件系统加载成功: {} ({}x{})", resource_path, size[0], size[1]);
+                eprintln!(
+                    "[资源] ✓ 从文件系统加载成功: {} ({}x{})",
+                    resource_path, size[0], size[1]
+                );
                 return Some(ctx.load_texture(
                     &resource_path,
                     egui::ColorImage::from_rgba_unmultiplied(size, &pixels),
-                    options
+                    options,
                 ));
             }
         }
@@ -235,24 +276,90 @@ impl DpiConfig {
         self.load_image(ctx, path)
     }
 
+    /// 读取图片可见像素区域，并转换为 UV。
+    pub fn load_image_visible_uv(&self, path: &str) -> Option<egui::Rect> {
+        let resource_path = self.get_resource_path(path);
+        let image_data = crate::resources::RuntimeResources::get_asset(&resource_path)
+            .ok()
+            .or_else(|| {
+                if resource_path != path && resource_path.contains("@2x") {
+                    crate::resources::RuntimeResources::get_asset(path).ok()
+                } else {
+                    None
+                }
+            })
+            .or_else(|| std::fs::read(&resource_path).ok())
+            .or_else(|| {
+                if resource_path != path && resource_path.contains("@2x") {
+                    std::fs::read(path).ok()
+                } else {
+                    None
+                }
+            })?;
+
+        let image = image::load_from_memory(&image_data).ok()?.to_rgba8();
+        let width = image.width();
+        let height = image.height();
+        if width == 0 || height == 0 {
+            return None;
+        }
+
+        let mut min_x = width;
+        let mut min_y = height;
+        let mut max_x = 0;
+        let mut max_y = 0;
+        let mut has_visible_pixel = false;
+
+        for (x, y, pixel) in image.enumerate_pixels() {
+            if pixel.0[3] > 0 {
+                has_visible_pixel = true;
+                min_x = min_x.min(x);
+                min_y = min_y.min(y);
+                max_x = max_x.max(x);
+                max_y = max_y.max(y);
+            }
+        }
+
+        if !has_visible_pixel {
+            return Some(egui::Rect::from_min_max(
+                egui::Pos2::new(0.0, 0.0),
+                egui::Pos2::new(1.0, 1.0),
+            ));
+        }
+
+        Some(egui::Rect::from_min_max(
+            egui::Pos2::new(min_x as f32 / width as f32, min_y as f32 / height as f32),
+            egui::Pos2::new((max_x + 1) as f32 / width as f32, (max_y + 1) as f32 / height as f32),
+        ))
+    }
+
     /// 加载按钮图片
-    pub fn load_button_image(&self, ctx: &egui::Context, style: &str, state: &str) -> Option<TextureHandle> {
+    pub fn load_button_image(
+        &self,
+        ctx: &egui::Context,
+        style: &str,
+        state: &str,
+    ) -> Option<TextureHandle> {
         let filename = match (style, state) {
             ("primary", "normal") => "btn_primary.png",
-            ("primary", "hover") => "btn_hover.png", 
+            ("primary", "hover") => "btn_hover.png",
             ("primary", "disabled") => "btn_disabled.png",
             ("link", "normal") => "btn_dialog.png",
             ("link", "hover") => "btn_dialog_primary.png",
             ("text", _) => return None,
             _ => return None,
         };
-        
+
         self.load_image(ctx, &format!("assets/{}", filename))
     }
 
     /// 加载复选框图片
     pub fn load_checkbox_image(&self, ctx: &egui::Context, checked: bool) -> Option<TextureHandle> {
-        let filename = if checked { "checkbox-2.png" } else { "checkbox-0.png" };
+        let filename = if checked {
+            "checkbox-2.png"
+        } else {
+            "checkbox-0.png"
+        };
         self.load_image(ctx, &format!("assets/{}", filename))
     }
 
@@ -263,7 +370,7 @@ impl DpiConfig {
             "down" => "arrow-down.png",
             _ => return None,
         };
-        
+
         self.load_image(ctx, &format!("assets/{}", filename))
     }
 
@@ -291,13 +398,13 @@ impl DpiConfig {
     pub fn get_scale_factor(&self) -> f32 {
         self.scale_factor
     }
-    
+
     /// 获取实际渲染尺寸（如果是2x资源，返回一半的尺寸）
     pub fn get_render_size(&self, texture: &TextureHandle) -> egui::Vec2 {
         let size = texture.size();
         let width = size[0] as f32;
         let height = size[1] as f32;
-        
+
         // 如果使用了 2x 资源，实际渲染时应该是一半的尺寸
         if self.use_2x {
             egui::Vec2::new(width / 2.0, height / 2.0)
@@ -311,6 +418,8 @@ impl DpiConfig {
 pub struct ResourceCache {
     /// 背景图片缓存
     backgrounds: std::collections::HashMap<String, TextureHandle>,
+    /// 图片可见区域 UV 缓存
+    background_visible_uvs: std::collections::HashMap<String, egui::Rect>,
     /// 按钮图片缓存
     buttons: std::collections::HashMap<String, TextureHandle>,
     /// 复选框图片缓存
@@ -326,6 +435,7 @@ impl ResourceCache {
     pub fn new() -> Self {
         Self {
             backgrounds: std::collections::HashMap::new(),
+            background_visible_uvs: std::collections::HashMap::new(),
             buttons: std::collections::HashMap::new(),
             checkboxes: std::collections::HashMap::new(),
             arrows: std::collections::HashMap::new(),
@@ -334,7 +444,12 @@ impl ResourceCache {
     }
 
     /// 获取或加载背景图片
-    pub fn get_background(&mut self, ctx: &egui::Context, dpi_config: &DpiConfig, path: &str) -> Option<&TextureHandle> {
+    pub fn get_background(
+        &mut self,
+        ctx: &egui::Context,
+        dpi_config: &DpiConfig,
+        path: &str,
+    ) -> Option<&TextureHandle> {
         if !self.backgrounds.contains_key(path) {
             if let Some(texture) = dpi_config.load_background(ctx, path) {
                 self.backgrounds.insert(path.to_string(), texture);
@@ -343,8 +458,29 @@ impl ResourceCache {
         self.backgrounds.get(path)
     }
 
+    /// 获取背景图片按 alpha 裁切后的可见 UV 区域。
+    pub fn get_background_visible_uv(
+        &mut self,
+        dpi_config: &DpiConfig,
+        path: &str,
+    ) -> Option<egui::Rect> {
+        if let Some(cached) = self.background_visible_uvs.get(path) {
+            return Some(*cached);
+        }
+
+        let uv = dpi_config.load_image_visible_uv(path)?;
+        self.background_visible_uvs.insert(path.to_string(), uv);
+        Some(uv)
+    }
+
     /// 获取或加载按钮图片
-    pub fn get_button(&mut self, ctx: &egui::Context, dpi_config: &DpiConfig, style: &str, state: &str) -> Option<&TextureHandle> {
+    pub fn get_button(
+        &mut self,
+        ctx: &egui::Context,
+        dpi_config: &DpiConfig,
+        style: &str,
+        state: &str,
+    ) -> Option<&TextureHandle> {
         let key = format!("{}_{}", style, state);
         if !self.buttons.contains_key(&key) {
             if let Some(texture) = dpi_config.load_button_image(ctx, style, state) {
@@ -355,7 +491,12 @@ impl ResourceCache {
     }
 
     /// 获取或加载复选框图片
-    pub fn get_checkbox(&mut self, ctx: &egui::Context, dpi_config: &DpiConfig, checked: bool) -> Option<&TextureHandle> {
+    pub fn get_checkbox(
+        &mut self,
+        ctx: &egui::Context,
+        dpi_config: &DpiConfig,
+        checked: bool,
+    ) -> Option<&TextureHandle> {
         if !self.checkboxes.contains_key(&checked) {
             if let Some(texture) = dpi_config.load_checkbox_image(ctx, checked) {
                 self.checkboxes.insert(checked, texture);
@@ -365,7 +506,12 @@ impl ResourceCache {
     }
 
     /// 获取或加载箭头图片
-    pub fn get_arrow(&mut self, ctx: &egui::Context, dpi_config: &DpiConfig, direction: &str) -> Option<&TextureHandle> {
+    pub fn get_arrow(
+        &mut self,
+        ctx: &egui::Context,
+        dpi_config: &DpiConfig,
+        direction: &str,
+    ) -> Option<&TextureHandle> {
         if !self.arrows.contains_key(direction) {
             if let Some(texture) = dpi_config.load_arrow_image(ctx, direction) {
                 self.arrows.insert(direction.to_string(), texture);
@@ -375,7 +521,11 @@ impl ResourceCache {
     }
 
     /// 获取或加载进度条图片
-    pub fn get_progress(&mut self, ctx: &egui::Context, dpi_config: &DpiConfig) -> Option<&TextureHandle> {
+    pub fn get_progress(
+        &mut self,
+        ctx: &egui::Context,
+        dpi_config: &DpiConfig,
+    ) -> Option<&TextureHandle> {
         if self.progress.is_none() {
             if let Some(texture) = dpi_config.load_progress_image(ctx) {
                 self.progress = Some(texture);
@@ -387,6 +537,7 @@ impl ResourceCache {
     /// 清理缓存
     pub fn clear(&mut self) {
         self.backgrounds.clear();
+        self.background_visible_uvs.clear();
         self.buttons.clear();
         self.checkboxes.clear();
         self.arrows.clear();

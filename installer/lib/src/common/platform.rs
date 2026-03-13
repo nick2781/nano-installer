@@ -83,8 +83,8 @@ pub fn is_elevated() -> Result<bool> {
 /// 请求管理员权限重启
 #[cfg(windows)]
 pub fn request_elevation(args: &[String]) -> Result<()> {
-    use windows::core::PWSTR;
     use windows::core::w;
+    use windows::core::PWSTR;
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::Shell::ShellExecuteW;
     use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
@@ -92,7 +92,11 @@ pub fn request_elevation(args: &[String]) -> Result<()> {
     let exe_path = std::env::current_exe()?;
     let exe_path_str = exe_path.to_string_lossy().to_string();
     // Skip args[0] (exe path) — ShellExecuteW takes file and params separately
-    let args_str = if args.len() > 1 { args[1..].join(" ") } else { String::new() };
+    let args_str = if args.len() > 1 {
+        args[1..].join(" ")
+    } else {
+        String::new()
+    };
 
     unsafe {
         let verb = w!("runas");

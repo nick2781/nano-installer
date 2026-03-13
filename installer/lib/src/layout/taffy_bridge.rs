@@ -3,13 +3,14 @@
 //! 将 LayoutTree 转换为 Taffy 树，执行布局计算，输出每个节点的绝对坐标 Rect
 //! 支持文本测量：叶子节点的 auto width 根据文本内容自动计算
 
-use crate::layout::element::{LayoutElement, ElementType};
+use crate::layout::element::{ElementType, LayoutElement};
 use crate::layout::layout_tree::LayoutTree;
 use egui;
+use serde::Serialize;
 use std::collections::HashMap;
 
 /// 计算后的布局结果 — 每个节点的绝对坐标矩形
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct ComputedRect {
     pub x: f32,
     pub y: f32,
@@ -19,7 +20,12 @@ pub struct ComputedRect {
 
 impl ComputedRect {
     pub fn zero() -> Self {
-        Self { x: 0.0, y: 0.0, width: 0.0, height: 0.0 }
+        Self {
+            x: 0.0,
+            y: 0.0,
+            width: 0.0,
+            height: 0.0,
+        }
     }
 
     /// 转换为 egui::Rect (相对于给定的 offset)
@@ -32,7 +38,7 @@ impl ComputedRect {
 }
 
 /// 节点在 computed layout 中的信息
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ComputedNode {
     pub rect: ComputedRect,
     pub element_type: ElementType,
@@ -40,7 +46,7 @@ pub struct ComputedNode {
 }
 
 /// 计算后的完整布局
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ComputedLayout {
     /// 按节点 ID 索引的布局 (只包含有 id 的节点)
     pub by_id: HashMap<String, ComputedRect>,
@@ -64,6 +70,7 @@ struct NodeMeasureContext {
     text: String,
     font_size: f32,
     has_checkbox_icon: bool, // checkbox 前面有 16px 图标
+    inline_icon_width: f32,  // 按钮右侧内联箭头/图标预留宽度
     padding_h: f32,          // 水平 padding
 }
 
@@ -94,7 +101,10 @@ impl TaffyBridge {
     fn resolve_text(&self, text: &str) -> String {
         if text.starts_with('@') {
             let key = &text[1..];
-            self.i18n_strings.get(key).cloned().unwrap_or_else(|| text.to_string())
+            self.i18n_strings
+                .get(key)
+                .cloned()
+                .unwrap_or_else(|| text.to_string())
         } else {
             text.to_string()
         }
@@ -161,11 +171,59 @@ impl TaffyBridge {
 
     /// 获取元素字号
     fn get_font_size(element: &LayoutElement) -> f32 {
-        element.visual_style.as_ref()
+        element
+            .visual_style
+            .as_ref()
             .and_then(|vs| vs.font_size)
-            .or_else(|| element.attributes.get_custom("font_size")
-                .and_then(|s| s.parse::<f32>().ok()))
+            .or_else(|| {
+                element
+                    .attributes
+                    .get_custom("font_size")
+                    .and_then(|s| s.parse::<f32>().ok())
+            })
             .unwrap_or(14.0)
+    }
+
+    fn get_inline_button_icon_width(element: &LayoutElement) -> f32 {
+        if element.element_type != ElementType::Button {
+            return 0.0;
+        }
+
+        let has_inline_icon = element.attributes.get_custom("inlineicon").is_some()
+            || element.attributes.get_custom("inline-icon").is_some()
+            || matches!(
+                element.attributes.id.as_deref(),
+                Some("btnShowMore_wrap" | "btnHideMore_wrap")
+            )
+            || element
+                .attributes
+                .get_custom("action")
+                .map(|action| action.ends_with(":show") || action.ends_with(":hide"))
+                .unwrap_or(false);
+
+        if !has_inline_icon {
+            return 0.0;
+        }
+
+        let icon_size = element
+            .attributes
+            .get_custom("inlineiconsize")
+            .or_else(|| element.attributes.get_custom("inline-icon-size"))
+            .or_else(|| element.attributes.get_custom("iconsize"))
+            .or_else(|| element.attributes.get_custom("icon-size"))
+            .and_then(|s| s.parse::<f32>().ok())
+            .unwrap_or(12.0);
+
+        let icon_gap = element
+            .attributes
+            .get_custom("inlineicongap")
+            .or_else(|| element.attributes.get_custom("inline-icon-gap"))
+            .or_else(|| element.attributes.get_custom("icongap"))
+            .or_else(|| element.attributes.get_custom("icon-gap"))
+            .and_then(|s| s.parse::<f32>().ok())
+            .unwrap_or(4.0);
+
+        icon_size + icon_gap
     }
 
     /// 估算文本像素宽度（不依赖 egui Context，用字号的经验公式）
@@ -188,11 +246,24 @@ impl TaffyBridge {
     fn build_node(&mut self, element: &LayoutElement) -> taffy::NodeId {
         let mut style = self.element_to_taffy_style(element);
 
+        if element.element_type == ElementType::Image
+            && (element.attributes.width.is_some() || element.attributes.height.is_some())
+        {
+            style.flex_shrink = 0.0;
+        }
+
+        if element.element_type == ElementType::Label
+            && element.attributes.wrap.unwrap_or(false)
+            && !Self::has_explicit_width(element)
+        {
+            style.min_size.width = taffy::Dimension::Length(0.0);
+        }
+
         // 隐藏元素不参与布局 (display: none)
-        let visible = element.visual_style.as_ref().map_or(
-            element.attributes.visible.unwrap_or(true),
-            |vs| vs.visible,
-        );
+        let visible = element
+            .visual_style
+            .as_ref()
+            .map_or(element.attributes.visible.unwrap_or(true), |vs| vs.visible);
         if !visible {
             style.display = taffy::Display::None;
         }
@@ -212,20 +283,23 @@ impl TaffyBridge {
             let text = self.get_element_text(element);
             let font_size = Self::get_font_size(element);
             let has_checkbox = element.element_type == ElementType::Checkbox;
-            let padding_h = element.attributes.padding.map(|(_, r, _, l)| r + l).unwrap_or(0.0);
+            let inline_icon_width = Self::get_inline_button_icon_width(element);
+            let padding_h = element
+                .attributes
+                .padding
+                .map(|(_, r, _, l)| r + l)
+                .unwrap_or(0.0);
 
             let ctx = NodeMeasureContext {
                 text,
                 font_size,
                 has_checkbox_icon: has_checkbox,
+                inline_icon_width,
                 padding_h,
             };
 
             self.tree
-                .new_leaf_with_context(
-                    style,
-                    ctx,
-                )
+                .new_leaf_with_context(style, ctx)
                 .expect("failed to create taffy leaf node")
         } else {
             self.tree
@@ -317,11 +391,15 @@ impl TaffyBridge {
             flex_shrink: 1.0,
             size: taffy::Size { width, height },
             min_size: taffy::Size {
-                width: attrs.min_width.map_or(taffy::Dimension::Auto, taffy::Dimension::Length),
+                width: attrs
+                    .min_width
+                    .map_or(taffy::Dimension::Auto, taffy::Dimension::Length),
                 height: taffy::Dimension::Auto,
             },
             max_size: taffy::Size {
-                width: attrs.max_width.map_or(taffy::Dimension::Auto, taffy::Dimension::Length),
+                width: attrs
+                    .max_width
+                    .map_or(taffy::Dimension::Auto, taffy::Dimension::Length),
                 height: taffy::Dimension::Auto,
             },
             padding,
@@ -388,12 +466,20 @@ fn measure_text_node(
     style: &taffy::Style,
 ) -> taffy::Size<f32> {
     let Some(ctx) = context else {
-        return taffy::Size { width: 0.0, height: 0.0 };
+        return taffy::Size {
+            width: 0.0,
+            height: 0.0,
+        };
     };
 
     let text_w = TaffyBridge::estimate_text_width(&ctx.text, ctx.font_size);
-    let icon_w = if ctx.has_checkbox_icon { 20.0 } else { 0.0 };
-    let intrinsic_w = text_w + icon_w + ctx.padding_h + 4.0; // 4px margin
+    let icon_w = if ctx.has_checkbox_icon { 20.0 } else { 0.0 } + ctx.inline_icon_width;
+    let extra_margin = if ctx.has_checkbox_icon || ctx.inline_icon_width > 0.0 {
+        4.0
+    } else {
+        0.0
+    };
+    let intrinsic_w = text_w + icon_w + ctx.padding_h + extra_margin;
     let line_h = ctx.font_size + 6.0; // line height ~= font_size + 6
 
     // 从 style.max_size.width 获取 max-width 约束
@@ -420,7 +506,7 @@ fn measure_text_node(
     // 计算文本区域可用宽度 (减去图标和 padding)
     // 用 max_width 约束来计算换行宽度（即使 actual_w == intrinsic_w）
     let wrap_w = max_w_from_style.unwrap_or(actual_w);
-    let text_area_w = (wrap_w - icon_w - ctx.padding_h - 4.0).max(1.0);
+    let text_area_w = (wrap_w - icon_w - ctx.padding_h - extra_margin).max(1.0);
 
     // 计算需要多少行
     let num_lines = if text_w > text_area_w {
@@ -439,11 +525,10 @@ fn measure_text_node(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::layout::element::ElementAttributes;
     use crate::layout::dimension::{Dimension, Edges};
-    use crate::layout::style_props::{
-        FlexStyle, FlexDirection, Position,
-    };
+    use crate::layout::element::ElementAttributes;
+    use crate::layout::style_props::{FlexDirection, FlexStyle, Position};
+    use crate::layout::xml_parser::XmlParser;
 
     fn make_page_with_flex(children: Vec<LayoutElement>) -> LayoutTree {
         let mut page = LayoutElement::new(ElementType::Page);
@@ -463,7 +548,9 @@ mod tests {
         for i in 0..3 {
             let mut child = LayoutElement::with_attributes(
                 ElementType::Label,
-                ElementAttributes::new().with_id(format!("item{}", i)).with_text("test"),
+                ElementAttributes::new()
+                    .with_id(format!("item{}", i))
+                    .with_text("test"),
             );
             child.flex_style = Some(FlexStyle {
                 width: Dimension::Percent(100.0),
@@ -648,7 +735,9 @@ mod tests {
 
         let long = LayoutElement::with_attributes(
             ElementType::Label,
-            ElementAttributes::new().with_id("long").with_text("Hello World This Is Long"),
+            ElementAttributes::new()
+                .with_id("long")
+                .with_text("Hello World This Is Long"),
         );
 
         hbox.children = vec![short, long];
@@ -661,7 +750,12 @@ mod tests {
         let l = layout.get_rect("long").unwrap();
 
         // short 应该比 long 窄
-        assert!(s.width < l.width, "short({}) should be < long({})", s.width, l.width);
+        assert!(
+            s.width < l.width,
+            "short({}) should be < long({})",
+            s.width,
+            l.width
+        );
         // 两个都应该有正的宽度
         assert!(s.width > 0.0);
         assert!(l.width > 0.0);
@@ -720,24 +814,21 @@ mod tests {
 
     #[test]
     fn test_legacy_attrs_compat() {
-        let page = LayoutElement::new(ElementType::Page)
-            .add_child(
-                LayoutElement::with_attributes(
-                    ElementType::VBox,
-                    ElementAttributes::new()
-                        .with_size(574.0, 358.0)
-                        .with_spacing(10.0),
-                )
-                .add_child(
-                    LayoutElement::with_attributes(
-                        ElementType::Label,
-                        ElementAttributes::new()
-                            .with_id("lbl")
-                            .with_text("Hello")
-                            .with_size(200.0, 40.0),
-                    ),
-                ),
-            );
+        let page = LayoutElement::new(ElementType::Page).add_child(
+            LayoutElement::with_attributes(
+                ElementType::VBox,
+                ElementAttributes::new()
+                    .with_size(574.0, 358.0)
+                    .with_spacing(10.0),
+            )
+            .add_child(LayoutElement::with_attributes(
+                ElementType::Label,
+                ElementAttributes::new()
+                    .with_id("lbl")
+                    .with_text("Hello")
+                    .with_size(200.0, 40.0),
+            )),
+        );
 
         let tree = LayoutTree::new(page);
         let mut bridge = TaffyBridge::new();
@@ -750,7 +841,12 @@ mod tests {
 
     #[test]
     fn test_computed_rect_to_egui_rect_with_offset() {
-        let rect = ComputedRect { x: 10.0, y: 20.0, width: 100.0, height: 50.0 };
+        let rect = ComputedRect {
+            x: 10.0,
+            y: 20.0,
+            width: 100.0,
+            height: 50.0,
+        };
         let egui_rect = rect.to_egui_rect(egui::Pos2::new(5.0, 3.0));
         assert_eq!(egui_rect.min.x, 15.0);
         assert_eq!(egui_rect.min.y, 23.0);
@@ -758,7 +854,12 @@ mod tests {
 
     #[test]
     fn test_computed_rect_to_egui_rect_zero_offset() {
-        let rect = ComputedRect { x: 50.0, y: 100.0, width: 200.0, height: 40.0 };
+        let rect = ComputedRect {
+            x: 50.0,
+            y: 100.0,
+            width: 200.0,
+            height: 40.0,
+        };
         let egui_rect = rect.to_egui_rect(egui::Pos2::ZERO);
         assert_eq!(egui_rect.min.x, 50.0);
         assert_eq!(egui_rect.min.y, 100.0);
@@ -783,7 +884,9 @@ mod tests {
 
         let mut btn = LayoutElement::with_attributes(
             ElementType::Button,
-            ElementAttributes::new().with_id("install_btn").with_text("Install"),
+            ElementAttributes::new()
+                .with_id("install_btn")
+                .with_text("Install"),
         );
         btn.flex_style = Some(FlexStyle {
             width: Dimension::Px(200.0),
@@ -832,5 +935,79 @@ mod tests {
         assert!((cjk - 56.0).abs() < 0.1);
         // Latin: 5 chars * 14 * 0.55 = 38.5
         assert!((latin - 38.5).abs() < 0.1);
+    }
+
+    #[test]
+    fn test_show_more_button_uses_compact_intrinsic_width_with_bounds() {
+        let mut button = LayoutElement::with_attributes(
+            ElementType::Button,
+            ElementAttributes::new()
+                .with_id("btnShowMore_wrap")
+                .with_text("自定义选项")
+                .with_custom("action", "toggle_panel:moreconfiginfo:show")
+                .with_custom("inline-icon-size", "12")
+                .with_custom("inline-icon-gap", "4"),
+        );
+        button.flex_style = Some(FlexStyle {
+            min_width: Dimension::Px(80.0),
+            max_width: Dimension::Px(164.0),
+            height: Dimension::Px(20.0),
+            ..Default::default()
+        });
+
+        let tree = make_page_with_flex(vec![button]);
+        let mut bridge = TaffyBridge::new();
+        let layout = bridge.compute_layout(&tree, 574.0, 358.0);
+
+        let rect = layout.get_rect("btnShowMore_wrap").unwrap();
+        assert_eq!(rect.height, 20.0);
+        assert!(rect.width >= 80.0);
+        assert!(rect.width < 100.0);
+    }
+
+    #[test]
+    fn test_real_config_button_content_stays_inside_button_bounds() {
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/TapTap/layouts/configpage.xml");
+        let xml = std::fs::read_to_string(&root)
+            .unwrap_or_else(|e| panic!("failed to read {}: {}", root.display(), e));
+
+        let mut parser = XmlParser::new();
+        let tree = parser
+            .parse_string(&xml)
+            .unwrap_or_else(|e| panic!("failed to parse {}: {}", root.display(), e));
+
+        let button = tree.find_by_id("btnShowMore_wrap").unwrap();
+        let content = &button.children[0];
+        let text = &content.children[0];
+        let icon = &content.children[1];
+
+        let button_id = button.attributes.id.as_ref().unwrap();
+        let content_id = content.attributes.id.as_ref().unwrap();
+        let text_id = text.attributes.id.as_ref().unwrap();
+        let icon_id = icon.attributes.id.as_ref().unwrap();
+
+        let mut bridge = TaffyBridge::new();
+        bridge.set_i18n_strings(HashMap::from([(
+            "show_more".to_string(),
+            "自定义选项".to_string(),
+        )]));
+        let layout = bridge.compute_layout(&tree, 574.0, 358.0);
+
+        let button_rect = layout.get_rect(button_id).unwrap();
+        let content_rect = layout.get_rect(content_id).unwrap();
+        let text_rect = layout.get_rect(text_id).unwrap();
+        let icon_rect = layout.get_rect(icon_id).unwrap();
+
+        assert!(content_rect.x >= button_rect.x);
+        assert!(content_rect.y >= button_rect.y);
+        assert!(content_rect.x + content_rect.width <= button_rect.x + button_rect.width + 0.1);
+        assert!(content_rect.y + content_rect.height <= button_rect.y + button_rect.height + 0.1);
+
+        assert!(text_rect.x >= content_rect.x);
+        assert!(icon_rect.x >= text_rect.x + text_rect.width);
+        assert!(icon_rect.x + icon_rect.width <= button_rect.x + button_rect.width + 0.1);
+        assert!(icon_rect.y >= button_rect.y);
+        assert!(icon_rect.y + icon_rect.height <= button_rect.y + button_rect.height + 0.1);
     }
 }

@@ -23,6 +23,9 @@ struct InstallStateInner {
     /// 是否添加到 PATH
     pub add_to_path: bool,
 
+    /// 是否启用开机自启动
+    pub autostart_enabled: bool,
+
     /// 当前进度
     pub progress: InstallProgress,
 
@@ -39,6 +42,7 @@ impl InstallState {
                 create_desktop_shortcut: true,
                 create_start_menu_shortcut: true,
                 add_to_path: false,
+                autostart_enabled: false,
                 progress: InstallProgress::default(),
                 cancelled: false,
             })),
@@ -83,6 +87,16 @@ impl InstallState {
     /// 设置是否添加到 PATH
     pub fn set_add_to_path(&self, add: bool) {
         self.inner.write().add_to_path = add;
+    }
+
+    /// 是否启用开机自启
+    pub fn autostart_enabled(&self) -> bool {
+        self.inner.read().autostart_enabled
+    }
+
+    /// 设置是否启用开机自启
+    pub fn set_autostart_enabled(&self, enabled: bool) {
+        self.inner.write().autostart_enabled = enabled;
     }
 
     /// 获取进度

@@ -1,5 +1,5 @@
 //! 向导流程配置
-//! 
+//!
 //! 定义安装和卸载的页面流程
 
 use serde::{Deserialize, Serialize};
@@ -127,7 +127,9 @@ impl WizardConfig {
 
     /// 获取页面配置
     pub fn get_page(&self, id: &str) -> Option<&PageConfig> {
-        self.pages.iter().find(|p| p.id == id)
+        self.pages
+            .iter()
+            .find(|p| p.id == id)
             .or_else(|| self.uninstall_pages.iter().find(|p| p.id == id))
     }
 

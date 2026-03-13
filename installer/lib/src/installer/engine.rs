@@ -1,6 +1,6 @@
 // 安装引擎
 
-use crate::common::{Error, Result, process::ProcessDetector};
+use crate::common::{process::ProcessDetector, Error, Result};
 use crate::installer::{InstallState, InstallTask};
 use crate::resources::manifest::InstallManifest;
 
@@ -8,22 +8,33 @@ use crate::resources::manifest::InstallManifest;
 pub struct InstallEngine {
     state: InstallState,
     tasks: Vec<Box<dyn InstallTask>>,
+    product_name: String,
+    version: String,
+    publisher: String,
 }
 
 impl InstallEngine {
     /// 创建新的安装引擎
-    pub fn new(install_path: String) -> Self {
+    pub fn new(
+        install_path: String,
+        product_name: String,
+        version: String,
+        publisher: String,
+    ) -> Self {
         Self {
             state: InstallState::new(install_path),
             tasks: Vec::new(),
+            product_name,
+            version,
+            publisher,
         }
     }
-    
+
     /// 获取状态
     pub fn state(&self) -> &InstallState {
         &self.state
     }
-    
+
     /// 添加任务
     pub fn add_task(&mut self, task: Box<dyn InstallTask>) {
         self.tasks.push(task);
@@ -46,15 +57,15 @@ impl InstallEngine {
         let detector = ProcessDetector::new(target_processes.to_vec());
         detector.request_target_processes_exit()
     }
-    
+
     /// 执行安装
     pub async fn install(&self) -> Result<InstallManifest> {
         use crate::logger::{log_step, StepStatus};
-        
+
         tracing::info!("Starting installation to: {}", self.state.install_path());
-        
+
         let mut completed_tasks = Vec::new();
-        
+
         // 执行所有任务
         for (i, task) in self.tasks.iter().enumerate() {
             if self.state.is_cancelled() {
@@ -62,10 +73,10 @@ impl InstallEngine {
                 self.rollback_tasks(&completed_tasks).await?;
                 return Err(Error::UserCancelled);
             }
-            
+
             let task_name = task.name();
             log_step(task_name, StepStatus::Started);
-            
+
             match task.execute(&self.state) {
                 Ok(_) => {
                     log_step(task_name, StepStatus::Completed);
@@ -74,10 +85,10 @@ impl InstallEngine {
                 Err(e) => {
                     log_step(task_name, StepStatus::Failed(e.to_string()));
                     tracing::error!("Task '{}' failed: {}", task_name, e);
-                    
+
                     // 回滚已完成的任务
                     self.rollback_tasks(&completed_tasks).await?;
-                    
+
                     return Err(Error::InstallationFailed(format!(
                         "Task '{}' failed: {}",
                         task_name, e
@@ -85,44 +96,46 @@ impl InstallEngine {
                 }
             }
         }
-        
+
         // 创建安装清单
         let manifest = InstallManifest::new(
-            "MyApp".to_string(), // 这应该从配置读取
-            "1.0.0".to_string(),
+            self.version.clone(),
+            self.product_name.clone(),
+            self.publisher.clone(),
             self.state.install_path().into(),
-            crate::i18n::current_locale(),
         );
-        
+
         // 保存清单
-        let manifest_path = std::path::Path::new(&self.state.install_path())
-            .join("install_manifest.json");
+        let manifest_path =
+            std::path::Path::new(&self.state.install_path()).join("install_manifest.json");
         manifest.save(&manifest_path)?;
-        
+
         tracing::info!("Installation completed successfully");
-        
+
         Ok(manifest)
     }
-    
+
     /// 回滚任务
     async fn rollback_tasks(&self, completed_task_indices: &[usize]) -> Result<()> {
         use crate::logger::{log_step, StepStatus};
-        
-        tracing::warn!("Rolling back {} completed tasks", completed_task_indices.len());
-        
+
+        tracing::warn!(
+            "Rolling back {} completed tasks",
+            completed_task_indices.len()
+        );
+
         for &index in completed_task_indices.iter().rev() {
             if let Some(task) = self.tasks.get(index) {
                 let task_name = task.name();
                 tracing::info!("Rolling back task: {}", task_name);
-                
+
                 if let Err(e) = task.rollback(&self.state) {
                     tracing::error!("Rollback failed for task '{}': {}", task_name, e);
                     // 继续回滚其他任务
                 }
             }
         }
-        
+
         Ok(())
     }
 }
-

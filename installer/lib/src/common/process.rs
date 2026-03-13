@@ -40,59 +40,63 @@ impl ProcessDetector {
     /// 检测目标进程是否正在运行
     pub fn is_target_running(&self) -> Result<bool> {
         let running_processes = self.get_running_processes()?;
-        
+
         for target in &self.target_processes {
             if running_processes.iter().any(|proc| {
-                proc.name.to_lowercase().contains(&target.to_lowercase()) ||
-                proc.executable_path.as_ref()
-                    .map(|path| path.to_lowercase().contains(&target.to_lowercase()))
-                    .unwrap_or(false)
+                proc.name.to_lowercase().contains(&target.to_lowercase())
+                    || proc
+                        .executable_path
+                        .as_ref()
+                        .map(|path| path.to_lowercase().contains(&target.to_lowercase()))
+                        .unwrap_or(false)
             }) {
                 return Ok(true);
             }
         }
-        
+
         Ok(false)
     }
 
     /// 获取正在运行的目标进程列表
     pub fn get_running_target_processes(&self) -> Result<Vec<ProcessInfo>> {
         let running_processes = self.get_running_processes()?;
-        
+
         let mut target_processes = Vec::new();
         for proc in running_processes {
             if self.target_processes.iter().any(|target| {
-                proc.name.to_lowercase().contains(&target.to_lowercase()) ||
-                proc.executable_path.as_ref()
-                    .map(|path| path.to_lowercase().contains(&target.to_lowercase()))
-                    .unwrap_or(false)
+                proc.name.to_lowercase().contains(&target.to_lowercase())
+                    || proc
+                        .executable_path
+                        .as_ref()
+                        .map(|path| path.to_lowercase().contains(&target.to_lowercase()))
+                        .unwrap_or(false)
             }) {
                 target_processes.push(proc);
             }
         }
-        
+
         Ok(target_processes)
     }
 
     /// 强制终止目标进程
     pub fn terminate_target_processes(&self) -> Result<()> {
         let target_processes = self.get_running_target_processes()?;
-        
+
         for proc in target_processes {
             self.terminate_process(proc.pid)?;
         }
-        
+
         Ok(())
     }
 
     /// 请求目标进程优雅退出
     pub fn request_target_processes_exit(&self) -> Result<()> {
         let target_processes = self.get_running_target_processes()?;
-        
+
         for proc in target_processes {
             self.request_process_exit(proc.pid)?;
         }
-        
+
         Ok(())
     }
 
@@ -135,8 +139,9 @@ impl ProcessDetector {
     #[cfg(windows)]
     fn get_running_processes_windows(&self) -> Result<Vec<ProcessInfo>> {
         unsafe {
-            let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
-                .map_err(|e| Error::ProcessDetectionFailed(format!("Failed to create snapshot: {}", e)))?;
+            let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).map_err(|e| {
+                Error::ProcessDetectionFailed(format!("Failed to create snapshot: {}", e))
+            })?;
 
             let mut processes = Vec::new();
             let mut entry = PROCESSENTRY32 {
@@ -147,11 +152,20 @@ impl ProcessDetector {
             if Process32First(snapshot, &mut entry).is_ok() {
                 loop {
                     // Convert the byte array to a null-terminated string
-                    let process_name = if let Some(null_pos) = entry.szExeFile.iter().position(|&b| b == 0) {
-                        String::from_utf8_lossy(std::slice::from_raw_parts(entry.szExeFile.as_ptr() as *const u8, null_pos)).to_string()
-                    } else {
-                        String::from_utf8_lossy(std::slice::from_raw_parts(entry.szExeFile.as_ptr() as *const u8, entry.szExeFile.len())).to_string()
-                    };
+                    let process_name =
+                        if let Some(null_pos) = entry.szExeFile.iter().position(|&b| b == 0) {
+                            String::from_utf8_lossy(std::slice::from_raw_parts(
+                                entry.szExeFile.as_ptr() as *const u8,
+                                null_pos,
+                            ))
+                            .to_string()
+                        } else {
+                            String::from_utf8_lossy(std::slice::from_raw_parts(
+                                entry.szExeFile.as_ptr() as *const u8,
+                                entry.szExeFile.len(),
+                            ))
+                            .to_string()
+                        };
 
                     // 获取进程可执行文件路径
                     let executable_path = self.get_process_executable_path(entry.th32ProcessID);
@@ -187,11 +201,16 @@ impl ProcessDetector {
     #[cfg(windows)]
     fn terminate_process_windows(&self, pid: u32) -> Result<()> {
         unsafe {
-            let handle = OpenProcess(PROCESS_TERMINATE, false, pid)
-                .map_err(|e| Error::ProcessTerminationFailed(format!("Failed to open process {}: {}", pid, e)))?;
+            let handle = OpenProcess(PROCESS_TERMINATE, false, pid).map_err(|e| {
+                Error::ProcessTerminationFailed(format!("Failed to open process {}: {}", pid, e))
+            })?;
 
-            windows::Win32::System::Threading::TerminateProcess(handle, 1)
-                .map_err(|e| Error::ProcessTerminationFailed(format!("Failed to terminate process {}: {}", pid, e)))?;
+            windows::Win32::System::Threading::TerminateProcess(handle, 1).map_err(|e| {
+                Error::ProcessTerminationFailed(format!(
+                    "Failed to terminate process {}: {}",
+                    pid, e
+                ))
+            })?;
 
             CloseHandle(handle)?;
             Ok(())
@@ -213,13 +232,16 @@ impl ProcessDetector {
             .map_err(|e| Error::ProcessDetectionFailed(format!("Failed to run ps: {}", e)))?;
 
         if !output.status.success() {
-            return Err(Error::ProcessDetectionFailed("ps command failed".to_string()));
+            return Err(Error::ProcessDetectionFailed(
+                "ps command failed".to_string(),
+            ));
         }
 
         let output_str = String::from_utf8_lossy(&output.stdout);
         let mut processes = Vec::new();
 
-        for line in output_str.lines().skip(1) { // Skip header
+        for line in output_str.lines().skip(1) {
+            // Skip header
             let parts: Vec<&str> = line.trim().split_whitespace().collect();
             if parts.len() >= 2 {
                 if let Ok(pid) = parts[0].parse::<u32>() {

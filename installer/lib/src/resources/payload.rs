@@ -19,22 +19,26 @@ impl PayloadExtractor {
                 }
             }
         }
-        
+
         // 尝试从项目根目录的 tools 子目录（开发环境）
         if let Ok(cargo_manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
-            let project_7za = std::path::PathBuf::from(cargo_manifest_dir).join("tools").join("7za.exe");
+            let project_7za = std::path::PathBuf::from(cargo_manifest_dir)
+                .join("tools")
+                .join("7za.exe");
             if project_7za.exists() {
                 return Ok(project_7za);
             }
         }
-        
+
         // 如果都不存在，尝试查找当前目录
         let current_7za = std::path::PathBuf::from("tools").join("7za.exe");
         if current_7za.exists() {
             return Ok(current_7za);
         }
-        
-        Err(Error::Archive("7za.exe not found in tools directory".to_string()))
+
+        Err(Error::Archive(
+            "7za.exe not found in tools directory".to_string(),
+        ))
     }
 
     /// 从当前 exe 中提取嵌入的 payload
@@ -95,21 +99,22 @@ impl PayloadExtractor {
         }
 
         // 先尝试系统 7z 命令
-        let system_7z_ok = ["7z", "7za", "7zr"].iter().any(|cmd| {
-            match std::process::Command::new(cmd)
-                .arg("x")
-                .arg(&temp_7z)
-                .arg(format!("-o{}", dest_dir.display()))
-                .arg("-y")
-                .output()
-            {
-                Ok(output) if output.status.success() => {
-                    tracing::info!("Extracted using system {}", cmd);
-                    true
+        let system_7z_ok =
+            ["7z", "7za", "7zr"].iter().any(|cmd| {
+                match std::process::Command::new(cmd)
+                    .arg("x")
+                    .arg(&temp_7z)
+                    .arg(format!("-o{}", dest_dir.display()))
+                    .arg("-y")
+                    .output()
+                {
+                    Ok(output) if output.status.success() => {
+                        tracing::info!("Extracted using system {}", cmd);
+                        true
+                    }
+                    _ => false,
                 }
-                _ => false,
-            }
-        });
+            });
 
         if !system_7z_ok {
             // 检测文件格式: 7z 头 = [0x37, 0x7A], ZIP 头 = [0x50, 0x4B]
@@ -121,7 +126,8 @@ impl PayloadExtractor {
                 let cursor = std::io::Cursor::new(data);
                 let mut archive = zip::ZipArchive::new(cursor)
                     .map_err(|e| Error::Archive(format!("ZIP open failed: {}", e)))?;
-                archive.extract(dest_dir)
+                archive
+                    .extract(dest_dir)
                     .map_err(|e| Error::Archive(format!("ZIP extraction failed: {}", e)))?;
                 tracing::info!("Extracted using zip crate");
             } else {

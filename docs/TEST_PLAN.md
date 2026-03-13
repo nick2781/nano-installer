@@ -6,6 +6,19 @@
 - DPI: 标准 (96) 和高 DPI (144+)
 - Rust: stable-x86_64-pc-windows-msvc
 
+## 测试分层
+
+- `library harness`
+  - 优先验证布局矩形、语言切换、动作分发、弹窗状态
+  - 入口见 [test_harness.rs](/D:/taptap-pc/nano-installer/installer/lib/src/ui/test_harness.rs)
+  - CLI 诊断入口：`nano-installer harness snapshot --project <dir> ...`
+- `script smoke`
+  - 验证真实 EXE 主链路
+  - 入口见 [smoke_test.ps1](/D:/taptap-pc/nano-installer/scripts/smoke_test.ps1)、
+    [gui_real_test.ps1](/D:/taptap-pc/nano-installer/scripts/gui_real_test.ps1)
+- `manual review`
+  - 只做最终视觉验收
+
 ## 测试项目：examples/TapTap
 
 ### 当前状态检查

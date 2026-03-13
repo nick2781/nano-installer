@@ -1,5 +1,5 @@
 // Runtime Stub - 纯粹的安装/卸载运行时
-// 
+//
 // 这是一个轻量级的 stub 程序，类似 NSIS 的 stub
 // 不包含任何 CLI 命令，只包含安装/卸载逻辑
 //
@@ -20,7 +20,7 @@ fn main() -> Result<()> {
     eprintln!("=== nano-installer DEBUG MODE ===");
     #[cfg(debug_assertions)]
     eprintln!("Console output enabled for debugging");
-    
+
     // 初始化日志：优先写到当前 exe 所在目录，便于调试时查找
     let exe_dir = std::env::current_exe()
         .ok()
@@ -28,12 +28,12 @@ fn main() -> Result<()> {
     let log_dir = exe_dir.as_deref();
 
     let _ = nano_installer::logger::init(log_dir, "installer", true);
-    
+
     #[cfg(debug_assertions)]
     eprintln!("Logger initialized");
-    
+
     tracing::info!("Initializing runtime resources...");
-    
+
     // 初始化运行时资源（从 exe 中提取）
     if let Err(e) = nano_installer::resources::RuntimeResources::init(None) {
         tracing::error!("Failed to initialize runtime resources: {:#}", e);
@@ -41,9 +41,9 @@ fn main() -> Result<()> {
         eprintln!("Cause: {:#}", e);
         std::process::exit(1);
     }
-    
+
     tracing::info!("Loading configuration...");
-    
+
     // 加载配置
     let config = match nano_installer::resources::RuntimeResources::get_config() {
         Ok(cfg) => cfg,
@@ -54,7 +54,7 @@ fn main() -> Result<()> {
             std::process::exit(1);
         }
     };
-    
+
     // 使用统一的模式检测
     let mode = nano_installer::installer_runtime::mode::InstallerMode::detect();
 
@@ -65,4 +65,3 @@ fn main() -> Result<()> {
 
     Ok(())
 }
-

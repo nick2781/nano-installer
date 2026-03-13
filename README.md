@@ -85,7 +85,7 @@ nano-installer init MyApp
 cd MyApp
 
 # 3. 准备你的应用程序文件
-# 将应用程序文件放到 payload/ 目录，或创建 app.7z
+# 推荐直接放到 files/ 目录；build 时会自动打包成 payload/app.7z
 
 # 4. 编辑配置（可选）
 # 编辑 installer_config.json 自定义安装器
@@ -116,8 +116,9 @@ MyApp/                          # 你的安装器项目
 ├── locales/                    # 语言文件
 │   ├── en-US.json
 │   └── zh-CN.json
-├── payload/                    # 应用程序文件
-│   └── app.7z                  # 或直接放置文件
+├── files/                      # 应用程序文件（推荐）
+├── payload/                    # 可选：预先打好的归档或 build 自动生成
+│   └── app.7z
 └── dist/                       # 构建输出
     └── MyApp_Setup.exe         # 最终的安装器
 ```
@@ -189,7 +190,7 @@ nano-installer/
   },
   "payload": {
     "file": "payload/app.7z",
-    "type": "7z"
+    "type": "7z-or-zip"
   }
 }
 ```

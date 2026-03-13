@@ -35,6 +35,7 @@ rfd.workspace = true
 uuid.workspace = true
 chrono.workspace = true
 parking_lot.workspace = true
+walkdir.workspace = true
 
 # 校验库
 crc32fast.workspace = true
@@ -68,4 +69,7 @@ winreg.workspace = true
 
 [features]
 default = []
+
+[dev-dependencies]
+tempfile.workspace = true
 

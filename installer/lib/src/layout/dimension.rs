@@ -90,7 +90,12 @@ impl Edges<Dimension> {
     /// 所有边为 0px
     pub fn zero() -> Self {
         let z = Dimension::Px(0.0);
-        Self { top: z, right: z, bottom: z, left: z }
+        Self {
+            top: z,
+            right: z,
+            bottom: z,
+            left: z,
+        }
     }
 
     /// 解析 CSS 简写格式的 margin/padding:
@@ -103,25 +108,45 @@ impl Edges<Dimension> {
         match parts.len() {
             1 => {
                 let v = Dimension::parse(parts[0])?;
-                Some(Edges { top: v, right: v, bottom: v, left: v })
+                Some(Edges {
+                    top: v,
+                    right: v,
+                    bottom: v,
+                    left: v,
+                })
             }
             2 => {
                 let tb = Dimension::parse(parts[0])?;
                 let lr = Dimension::parse(parts[1])?;
-                Some(Edges { top: tb, right: lr, bottom: tb, left: lr })
+                Some(Edges {
+                    top: tb,
+                    right: lr,
+                    bottom: tb,
+                    left: lr,
+                })
             }
             3 => {
                 let t = Dimension::parse(parts[0])?;
                 let lr = Dimension::parse(parts[1])?;
                 let b = Dimension::parse(parts[2])?;
-                Some(Edges { top: t, right: lr, bottom: b, left: lr })
+                Some(Edges {
+                    top: t,
+                    right: lr,
+                    bottom: b,
+                    left: lr,
+                })
             }
             4 => {
                 let t = Dimension::parse(parts[0])?;
                 let r = Dimension::parse(parts[1])?;
                 let b = Dimension::parse(parts[2])?;
                 let l = Dimension::parse(parts[3])?;
-                Some(Edges { top: t, right: r, bottom: b, left: l })
+                Some(Edges {
+                    top: t,
+                    right: r,
+                    bottom: b,
+                    left: l,
+                })
             }
             _ => None,
         }
@@ -165,8 +190,14 @@ mod tests {
 
     #[test]
     fn test_dimension_to_taffy() {
-        assert_eq!(Dimension::Px(100.0).to_taffy(), taffy::Dimension::Length(100.0));
-        assert_eq!(Dimension::Percent(50.0).to_taffy(), taffy::Dimension::Percent(0.5));
+        assert_eq!(
+            Dimension::Px(100.0).to_taffy(),
+            taffy::Dimension::Length(100.0)
+        );
+        assert_eq!(
+            Dimension::Percent(50.0).to_taffy(),
+            taffy::Dimension::Percent(0.5)
+        );
         assert_eq!(Dimension::Auto.to_taffy(), taffy::Dimension::Auto);
     }
 

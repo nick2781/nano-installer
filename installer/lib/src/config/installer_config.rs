@@ -1,10 +1,11 @@
 //! 主配置文件解析
-//! 
+//!
 //! 解析 installer_config.json 并映射到 InstallerConfig 结构体
 
+use crate::common::close_targets::{effective_close_targets, CloseTarget};
+use crate::config::validation::ConfigValidator;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use crate::config::validation::ConfigValidator;
 
 /// 主安装器配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -93,6 +94,21 @@ pub struct InstallConfig {
     pub kill_process_on_install: bool,
     /// 卸载时强制结束进程
     pub kill_process_on_uninstall: bool,
+    /// 需要在安装/卸载时处理的进程或服务
+    #[serde(default)]
+    pub close_targets: Vec<CloseTarget>,
+}
+
+impl InstallConfig {
+    pub fn effective_close_targets(&self) -> Vec<CloseTarget> {
+        effective_close_targets(
+            &self.close_targets,
+            &self.exe_name,
+            self.detect_running_process,
+            self.kill_process_on_install,
+            self.kill_process_on_uninstall,
+        )
+    }
 }
 
 /// 注册表配置
@@ -184,8 +200,12 @@ pub struct UiConfig {
     pub dpi_threshold: u32,
 }
 
-fn default_dialog_width() -> u32 { 400 }
-fn default_dialog_height() -> u32 { 230 }
+fn default_dialog_width() -> u32 {
+    400
+}
+fn default_dialog_height() -> u32 {
+    230
+}
 
 /// 向导流程配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -264,7 +284,9 @@ pub struct AdvancedConfig {
 
 impl InstallerConfig {
     /// 从文件加载配置
-    pub fn load_from_file<P: AsRef<std::path::Path>>(path: P) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn load_from_file<P: AsRef<std::path::Path>>(
+        path: P,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let content = std::fs::read_to_string(path)?;
         let config: InstallerConfig = serde_json::from_str(&content)?;
         Ok(config)
@@ -279,12 +301,15 @@ impl InstallerConfig {
     /// 展开环境变量
     pub fn expand_env_vars(&mut self) {
         self.install.default_path = Self::expand_env_vars_in_string(&self.install.default_path);
-        self.registry.install_path_key = Self::expand_env_vars_in_string(&self.registry.install_path_key);
+        self.registry.install_path_key =
+            Self::expand_env_vars_in_string(&self.registry.install_path_key);
         self.registry.uninstall_key = Self::expand_env_vars_in_string(&self.registry.uninstall_key);
         self.autostart.registry_key = Self::expand_env_vars_in_string(&self.autostart.registry_key);
-        
+
         // 展开卸载配置中的数据路径
-        self.uninstall.data_paths = self.uninstall.data_paths
+        self.uninstall.data_paths = self
+            .uninstall
+            .data_paths
             .iter()
             .map(|path| Self::expand_env_vars_in_string(path))
             .collect();
@@ -293,9 +318,15 @@ impl InstallerConfig {
     /// 展开字符串中的环境变量
     fn expand_env_vars_in_string(s: &str) -> String {
         s.replace("%PROGRAMFILES%", "C:\\Program Files")
-         .replace("%PROGRAMFILES(X86)%", "C:\\Program Files (x86)")
-         .replace("%APPDATA%", &std::env::var("APPDATA").unwrap_or_else(|_| "%APPDATA%".to_string()))
-         .replace("%USERPROFILE%", &std::env::var("USERPROFILE").unwrap_or_else(|_| "%USERPROFILE%".to_string()))
+            .replace("%PROGRAMFILES(X86)%", "C:\\Program Files (x86)")
+            .replace(
+                "%APPDATA%",
+                &std::env::var("APPDATA").unwrap_or_else(|_| "%APPDATA%".to_string()),
+            )
+            .replace(
+                "%USERPROFILE%",
+                &std::env::var("USERPROFILE").unwrap_or_else(|_| "%USERPROFILE%".to_string()),
+            )
     }
 }
 
@@ -325,10 +356,13 @@ impl Default for InstallerConfig {
                 detect_running_process: true,
                 kill_process_on_install: true,
                 kill_process_on_uninstall: true,
+                close_targets: vec![],
             },
             registry: RegistryConfig {
                 install_path_key: "HKLM\\Software\\MyApp".to_string(),
-                uninstall_key: "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\MyApp".to_string(),
+                uninstall_key:
+                    "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\MyApp"
+                        .to_string(),
                 help_link: "https://www.myapp.com".to_string(),
             },
             shortcuts: ShortcutsConfig {
@@ -350,8 +384,14 @@ impl Default for InstallerConfig {
             },
             links: {
                 let mut m = std::collections::HashMap::new();
-                m.insert("terms_of_service".to_string(), "https://www.myapp.com/terms".to_string());
-                m.insert("privacy_policy".to_string(), "https://www.myapp.com/privacy".to_string());
+                m.insert(
+                    "terms_of_service".to_string(),
+                    "https://www.myapp.com/terms".to_string(),
+                );
+                m.insert(
+                    "privacy_policy".to_string(),
+                    "https://www.myapp.com/privacy".to_string(),
+                );
                 m
             },
             resources: ResourcesConfig {
@@ -428,9 +468,7 @@ impl Default for InstallerConfig {
             uninstall: UninstallConfig {
                 show_keep_data_option: true,
                 keep_data_default: true,
-                data_paths: vec![
-                    "%APPDATA%\\MyApp".to_string(),
-                ],
+                data_paths: vec!["%APPDATA%\\MyApp".to_string()],
                 cleanup_game_registry: false,
                 game_registry_path: "HKLM\\Software\\MyApp\\Games".to_string(),
             },

@@ -1,7 +1,7 @@
 //! Process API — detect, kill, run processes
 
-use rhai::Engine;
 use super::context::ScriptContext;
+use rhai::Engine;
 
 pub fn register(engine: &mut Engine, _ctx: ScriptContext) {
     // is_process_running("TapTap.exe") -> bool
@@ -31,7 +31,8 @@ pub fn register(engine: &mut Engine, _ctx: ScriptContext) {
 
     // run_command("cmd", ["/C", "echo hello"]) -> i64 exit code
     engine.register_fn("run_command", |exe: &str, args: rhai::Array| -> i64 {
-        let args_str: Vec<String> = args.into_iter()
+        let args_str: Vec<String> = args
+            .into_iter()
             .map(|a| a.into_string().unwrap_or_default())
             .collect();
         match std::process::Command::new(exe).args(&args_str).output() {

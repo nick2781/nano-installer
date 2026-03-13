@@ -2,8 +2,8 @@
 //!
 //! 将元素属性分为三层：布局属性（FlexStyle）、视觉属性（VisualStyle）、控件属性（WidgetProps）
 
-use serde::{Deserialize, Serialize};
 use crate::layout::dimension::{Dimension, Edges};
+use serde::{Deserialize, Serialize};
 
 /// Flex 布局属性 (映射到 Taffy Style)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -159,6 +159,7 @@ impl Default for VisualStyle {
 pub struct WidgetProps {
     pub id: Option<String>,
     pub text: Option<String>,
+    pub value: Option<String>,
     /// 按钮行为声明 (例: "install", "close", "open_url:terms_of_service", "toggle_panel:moreconfiginfo:show")
     pub action: Option<String>,
 
@@ -199,6 +200,7 @@ impl Default for WidgetProps {
         Self {
             id: None,
             text: None,
+            value: None,
             action: None,
             normal_image: None,
             hover_image: None,
@@ -242,7 +244,9 @@ pub enum FlexDirection {
 }
 
 impl Default for FlexDirection {
-    fn default() -> Self { FlexDirection::Row }
+    fn default() -> Self {
+        FlexDirection::Row
+    }
 }
 
 impl FlexDirection {
@@ -269,7 +273,9 @@ pub enum FlexWrap {
 }
 
 impl Default for FlexWrap {
-    fn default() -> Self { FlexWrap::NoWrap }
+    fn default() -> Self {
+        FlexWrap::NoWrap
+    }
 }
 
 impl FlexWrap {
@@ -300,7 +306,9 @@ pub enum JustifyContent {
 }
 
 impl Default for JustifyContent {
-    fn default() -> Self { JustifyContent::FlexStart }
+    fn default() -> Self {
+        JustifyContent::FlexStart
+    }
 }
 
 impl JustifyContent {
@@ -338,7 +346,9 @@ pub enum AlignItems {
 }
 
 impl Default for AlignItems {
-    fn default() -> Self { AlignItems::Stretch }
+    fn default() -> Self {
+        AlignItems::Stretch
+    }
 }
 
 impl AlignItems {
@@ -375,7 +385,9 @@ pub enum AlignContent {
 }
 
 impl Default for AlignContent {
-    fn default() -> Self { AlignContent::Stretch }
+    fn default() -> Self {
+        AlignContent::Stretch
+    }
 }
 
 impl AlignContent {
@@ -414,7 +426,9 @@ pub enum AlignSelf {
 }
 
 impl Default for AlignSelf {
-    fn default() -> Self { AlignSelf::Auto }
+    fn default() -> Self {
+        AlignSelf::Auto
+    }
 }
 
 impl AlignSelf {
@@ -449,7 +463,9 @@ pub enum Position {
 }
 
 impl Default for Position {
-    fn default() -> Self { Position::Relative }
+    fn default() -> Self {
+        Position::Relative
+    }
 }
 
 impl Position {
@@ -537,7 +553,10 @@ mod tests {
     #[test]
     fn test_enum_parsing() {
         assert_eq!(FlexDirection::parse("column"), Some(FlexDirection::Column));
-        assert_eq!(JustifyContent::parse("space-between"), Some(JustifyContent::SpaceBetween));
+        assert_eq!(
+            JustifyContent::parse("space-between"),
+            Some(JustifyContent::SpaceBetween)
+        );
         assert_eq!(AlignItems::parse("flex-end"), Some(AlignItems::FlexEnd));
         assert_eq!(Position::parse("absolute"), Some(Position::Absolute));
     }

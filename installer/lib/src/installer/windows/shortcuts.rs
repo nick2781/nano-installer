@@ -5,8 +5,7 @@ use std::path::PathBuf;
 
 /// 创建桌面快捷方式
 pub fn create_desktop_shortcut(app_name: &str, target_path: &str) -> Result<()> {
-    let desktop = get_desktop_path()?;
-    let shortcut_path = desktop.join(format!("{}.lnk", app_name));
+    let shortcut_path = get_desktop_shortcut_path(app_name)?;
 
     create_shortcut(&shortcut_path, target_path, "")?;
 
@@ -16,9 +15,12 @@ pub fn create_desktop_shortcut(app_name: &str, target_path: &str) -> Result<()> 
 }
 
 /// 创建开始菜单快捷方式
-pub fn create_start_menu_shortcut(app_name: &str, target_path: &str) -> Result<()> {
-    let start_menu = get_start_menu_path()?;
-    let app_folder = start_menu.join(app_name);
+pub fn create_start_menu_shortcut(
+    app_name: &str,
+    start_menu_folder: &str,
+    target_path: &str,
+) -> Result<()> {
+    let app_folder = get_start_menu_folder_path(start_menu_folder)?;
 
     std::fs::create_dir_all(&app_folder)?;
 
@@ -38,51 +40,55 @@ fn create_shortcut(
     target_path: &str,
     arguments: &str,
 ) -> Result<()> {
-    use windows::core::PWSTR;
-    use windows::core::Interface;
-    use windows::Win32::System::Com::{
-        CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER,
-        COINIT_APARTMENTTHREADED,
-    };
-    use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
-    use windows::Win32::System::Com::IPersistFile;
+    use std::os::windows::process::CommandExt;
 
-    unsafe {
-        // 初始化 COM
-        let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
-        if hr.is_err() {
-            return Err(Error::Io(std::io::Error::new(std::io::ErrorKind::Other, "Failed to initialize COM")));
-        }
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-        // 创建 ShellLink 对象
-        let shell_link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER)?;
+    let shortcut_path = shortcut_path.to_string_lossy().replace('\'', "''");
+    let target_path = target_path.replace('\'', "''");
+    let arguments = arguments.replace('\'', "''");
+    let working_directory = std::path::Path::new(target_path.as_str())
+        .parent()
+        .map(|path| path.to_string_lossy().replace('\'', "''"))
+        .unwrap_or_default();
 
-        // 设置目标路径
-        let target_path_wide: Vec<u16> = target_path.encode_utf16().chain(Some(0)).collect();
-        shell_link.SetPath(PWSTR(target_path_wide.as_ptr() as *mut u16))?;
+    let script = format!(
+        "$ws = New-Object -ComObject WScript.Shell; \
+         $s = $ws.CreateShortcut('{shortcut}'); \
+         $s.TargetPath = '{target}'; \
+         $s.Arguments = '{arguments}'; \
+         $s.WorkingDirectory = '{working_dir}'; \
+         $s.Save()",
+        shortcut = shortcut_path,
+        target = target_path,
+        arguments = arguments,
+        working_dir = working_directory,
+    );
 
-        // 设置参数（如果有）
-        if !arguments.is_empty() {
-            let args_wide: Vec<u16> = arguments.encode_utf16().chain(Some(0)).collect();
-            shell_link.SetArguments(PWSTR(args_wide.as_ptr() as *mut u16))?;
-        }
+    let output = std::process::Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
+            &script,
+        ])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map_err(|e| {
+            Error::Io(std::io::Error::other(format!(
+                "Failed to launch PowerShell: {}",
+                e
+            )))
+        })?;
 
-        // 设置工作目录
-        if let Some(work_dir) = std::path::Path::new(target_path).parent() {
-            if let Some(work_dir_str) = work_dir.to_str() {
-                let work_dir_wide: Vec<u16> = work_dir_str.encode_utf16().chain(Some(0)).collect();
-                shell_link.SetWorkingDirectory(PWSTR(work_dir_wide.as_ptr() as *mut u16))?;
-            }
-        }
-
-        // 保存快捷方式
-        let persist_file: IPersistFile = shell_link.cast()?;
-        let shortcut_path_str = shortcut_path.to_string_lossy().to_string();
-        let shortcut_path_wide: Vec<u16> = shortcut_path_str.encode_utf16().chain(Some(0)).collect();
-        persist_file.Save(PWSTR(shortcut_path_wide.as_ptr() as *mut u16), true)?;
-
-        // 清理 COM
-        CoUninitialize();
+    if !output.status.success() {
+        return Err(Error::Unknown(format!(
+            "Failed to create shortcut {}: {}",
+            shortcut_path,
+            String::from_utf8_lossy(&output.stderr).trim()
+        )));
     }
 
     Ok(())
@@ -128,6 +134,11 @@ fn get_desktop_path() -> Result<PathBuf> {
     }
 }
 
+/// 获取桌面快捷方式完整路径
+pub fn get_desktop_shortcut_path(app_name: &str) -> Result<PathBuf> {
+    Ok(get_desktop_path()?.join(format!("{}.lnk", app_name)))
+}
+
 /// 获取开始菜单路径
 fn get_start_menu_path() -> Result<PathBuf> {
     #[cfg(windows)]
@@ -150,6 +161,16 @@ fn get_start_menu_path() -> Result<PathBuf> {
     {
         Ok(PathBuf::from("/usr/share/applications"))
     }
+}
+
+/// 获取开始菜单文件夹路径
+pub fn get_start_menu_folder_path(folder_name: &str) -> Result<PathBuf> {
+    Ok(get_start_menu_path()?.join(folder_name))
+}
+
+/// 获取开始菜单快捷方式完整路径
+pub fn get_start_menu_shortcut_path(app_name: &str, folder_name: &str) -> Result<PathBuf> {
+    Ok(get_start_menu_folder_path(folder_name)?.join(format!("{}.lnk", app_name)))
 }
 
 /// 删除快捷方式

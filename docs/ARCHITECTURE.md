@@ -84,6 +84,17 @@ target/release/
 └── uninst.exe                          # 卸载器 stub
 ```
 
+## Harness 边界
+
+为了避免所有 UI 问题都依赖真实窗口和手工截图，工程现在按资源源头拆分：
+
+- `RuntimeUiResourceProvider`
+  - 运行时从嵌入 bundle 读取布局和语言包
+- `FilesystemUiResourceProvider`
+  - harness 从项目目录直接读取 fixture
+
+这样 `InstallerApp`、`LayoutRenderer`、XML DSL 和语言切换逻辑可以在库内被直接驱动，真实 EXE smoke 只负责最后的链路确认。
+
 ## 工作流程
 
 ### 1. 编译时（nano-installer build）
@@ -378,6 +389,49 @@ let text = bundle.get("welcome.title")?;
 ```
 
 ## XML 布局系统
+
+### 设计边界
+
+`nano-installer` 的 UI 有三层职责：
+
+1. XML DSL 负责声明界面结构和盒模型语义。
+2. Taffy 负责根据这些语义计算布局结果。
+3. Renderer 只负责按计算后的盒子绘制，不允许再内置“某个按钮应该怎么排”的隐藏规则。
+
+这意味着：
+
+- `width` / `min-width` / `max-width` / `padding` / `margin` / `wrap` 这类约束必须由 XML 表达。
+- `Button` 内部“文字 + 图标”的排列也必须由 XML 内容模型表达，而不是靠 `dest='68,2,80,15'` 这类绘制坐标硬编码。
+- NSIS 风格属性仍然保留兼容，但只作为迁移层，不再作为新增布局能力的首选表达方式。
+
+### DSL 方向
+
+布局文件继续使用 XML 作为 DSL，但命名会向“人能读懂的盒模型”收敛，而不是直接暴露 CSS 术语或渲染器实现细节。
+
+推荐的新内容模型：
+
+```xml
+<Button min-width="80" max-width="164">
+  <Content
+    layout="horizontal"
+    horizontal-align="right"
+    vertical-align="center"
+    item-spacing="4">
+    <Text value="@show_more" wrap="true" />
+    <Icon src="assets/arrow-down.png" width="12" height="12" />
+  </Content>
+</Button>
+```
+
+语义约定：
+
+- `Content` 表示控件内部的内容容器。
+- `layout="horizontal|vertical"` 表示子项的排列方向。
+- `horizontal-align` / `vertical-align` 分开定义，不使用复合值。
+- `item-spacing` 表示子项之间的距离。
+- `wrap` 表示文本是否允许自动换行。
+
+内部实现上，这些属性会被规范化后映射到 Taffy 的 flex 语义；但这种映射属于引擎细节，不暴露给布局作者。
 
 ### 布局文件示例
 

@@ -8,9 +8,9 @@ use std::time::Duration;
 use windows::{
     core::PWSTR,
     Win32::{
+        Foundation::WAIT_OBJECT_0,
         Foundation::{CloseHandle, HANDLE, WAIT_TIMEOUT},
         System::Threading::{CreateMutexW, ReleaseMutex, WaitForSingleObject},
-        Foundation::WAIT_OBJECT_0,
     },
 };
 
@@ -221,7 +221,7 @@ impl MutexManager {
     #[cfg(not(windows))]
     fn try_lock_unix(&mut self) -> Result<bool> {
         let lock_path = self.get_lock_file_path();
-        
+
         // 尝试创建锁文件
         match std::fs::OpenOptions::new()
             .create_new(true)
@@ -251,16 +251,16 @@ impl MutexManager {
     #[cfg(not(windows))]
     fn wait_for_lock_unix(&mut self, timeout: Duration) -> Result<bool> {
         let start = std::time::Instant::now();
-        
+
         while start.elapsed() < timeout {
             if self.try_lock_unix()? {
                 return Ok(true);
             }
-            
+
             // 等待一小段时间后重试
             std::thread::sleep(Duration::from_millis(100));
         }
-        
+
         Ok(false) // 超时
     }
 

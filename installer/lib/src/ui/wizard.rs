@@ -1,8 +1,8 @@
 // 安装向导容器 — 配置驱动，零硬编码
 
-use std::collections::HashMap;
-use crate::layout::LayoutTree;
 use crate::config::installer_config::PageConfig;
+use crate::layout::LayoutTree;
+use std::collections::HashMap;
 
 /// 向导模式
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,7 +35,12 @@ pub struct Wizard {
 
 impl Wizard {
     /// 从配置创建向导
-    pub fn new(mode: WizardMode, install_pages: &[PageConfig], update_pages: &[PageConfig], uninstall_pages: &[PageConfig]) -> Self {
+    pub fn new(
+        mode: WizardMode,
+        install_pages: &[PageConfig],
+        update_pages: &[PageConfig],
+        uninstall_pages: &[PageConfig],
+    ) -> Self {
         let install_ids: Vec<String> = install_pages.iter().map(|p| p.id.clone()).collect();
         let update_ids: Vec<String> = if update_pages.is_empty() {
             // 如果没有配置 update_pages，回退到 install_pages（跳过第一页 config）
@@ -73,7 +78,10 @@ impl Wizard {
 
     /// 获取当前页面 ID
     pub fn current_page_id(&self) -> &str {
-        self.pages().get(self.current_index).map(|s| s.as_str()).unwrap_or("")
+        self.pages()
+            .get(self.current_index)
+            .map(|s| s.as_str())
+            .unwrap_or("")
     }
 
     /// 获取当前模式

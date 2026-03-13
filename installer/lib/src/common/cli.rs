@@ -20,7 +20,10 @@ impl std::str::FromStr for RunMode {
             "update" => Ok(RunMode::Update),
             "uninstall" => Ok(RunMode::Uninstall),
             "silent" => Ok(RunMode::Silent),
-            _ => Err(Error::InstallationFailed(format!("Invalid run mode: {}", s))),
+            _ => Err(Error::InstallationFailed(format!(
+                "Invalid run mode: {}",
+                s
+            ))),
         }
     }
 }
@@ -66,7 +69,9 @@ impl CliArgs {
                         cli_args.mode = args[i + 1].parse()?;
                         i += 2;
                     } else {
-                        return Err(Error::InstallationFailed("--mode requires a value".to_string()));
+                        return Err(Error::InstallationFailed(
+                            "--mode requires a value".to_string(),
+                        ));
                     }
                 }
                 "--silent" | "-s" => {
@@ -78,7 +83,9 @@ impl CliArgs {
                         cli_args.channel = Some(args[i + 1].clone());
                         i += 2;
                     } else {
-                        return Err(Error::InstallationFailed("--channel requires a value".to_string()));
+                        return Err(Error::InstallationFailed(
+                            "--channel requires a value".to_string(),
+                        ));
                     }
                 }
                 "--path" | "-p" => {
@@ -86,7 +93,9 @@ impl CliArgs {
                         cli_args.install_path = Some(args[i + 1].clone());
                         i += 2;
                     } else {
-                        return Err(Error::InstallationFailed("--path requires a value".to_string()));
+                        return Err(Error::InstallationFailed(
+                            "--path requires a value".to_string(),
+                        ));
                     }
                 }
                 "--config" => {
@@ -94,7 +103,9 @@ impl CliArgs {
                         cli_args.config_path = Some(args[i + 1].clone());
                         i += 2;
                     } else {
-                        return Err(Error::InstallationFailed("--config requires a value".to_string()));
+                        return Err(Error::InstallationFailed(
+                            "--config requires a value".to_string(),
+                        ));
                     }
                 }
                 "--log-level" => {
@@ -102,7 +113,9 @@ impl CliArgs {
                         cli_args.log_level = Some(args[i + 1].clone());
                         i += 2;
                     } else {
-                        return Err(Error::InstallationFailed("--log-level requires a value".to_string()));
+                        return Err(Error::InstallationFailed(
+                            "--log-level requires a value".to_string(),
+                        ));
                     }
                 }
                 "--help" | "-h" => {
@@ -139,7 +152,9 @@ impl CliArgs {
             if let Some(dot_pos) = filename.rfind('.') {
                 if underscore_pos < dot_pos {
                     let potential_channel = &filename[underscore_pos + 1..dot_pos];
-                    if !potential_channel.is_empty() && potential_channel.chars().all(|c| c.is_alphanumeric()) {
+                    if !potential_channel.is_empty()
+                        && potential_channel.chars().all(|c| c.is_alphanumeric())
+                    {
                         return Some(potential_channel.to_string());
                     }
                 }
@@ -183,7 +198,7 @@ impl CliArgs {
             RunMode::Silent => {
                 if self.install_path.is_none() {
                     return Err(Error::InstallationFailed(
-                        "Silent mode requires --path parameter".to_string()
+                        "Silent mode requires --path parameter".to_string(),
                     ));
                 }
             }
@@ -192,7 +207,10 @@ impl CliArgs {
 
         // 验证渠道名称
         if let Some(ref channel) = self.channel {
-            if !channel.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-') {
+            if !channel
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+            {
                 return Err(Error::InstallationFailed(
                     "Invalid channel name. Only alphanumeric characters, underscores and hyphens are allowed".to_string()
                 ));
@@ -203,7 +221,7 @@ impl CliArgs {
         if let Some(ref path) = self.install_path {
             if !std::path::Path::new(path).is_absolute() {
                 return Err(Error::InstallationFailed(
-                    "Installation path must be absolute".to_string()
+                    "Installation path must be absolute".to_string(),
                 ));
             }
         }

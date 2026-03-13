@@ -34,7 +34,7 @@ impl ShortcutCreator {
         {
             let desktop_path = self.get_desktop_path()?;
             let shortcut_path = desktop_path.join(format!("{}.lnk", self.product_name));
-            
+
             self.create_shortcut(&shortcut_path)?;
             info!("Created desktop shortcut: {:?}", shortcut_path);
         }
@@ -51,11 +51,12 @@ impl ShortcutCreator {
         {
             let start_menu_path = self.get_start_menu_path()?;
             let product_folder = start_menu_path.join(&self.product_name);
-            
+
             // 创建产品文件夹
-            std::fs::create_dir_all(&product_folder)
-                .map_err(|e| Error::InstallationFailed(format!("Failed to create start menu folder: {}", e)))?;
-            
+            std::fs::create_dir_all(&product_folder).map_err(|e| {
+                Error::InstallationFailed(format!("Failed to create start menu folder: {}", e))
+            })?;
+
             let shortcut_path = product_folder.join(format!("{}.lnk", self.product_name));
             self.create_shortcut(&shortcut_path)?;
             info!("Created start menu shortcut: {:?}", shortcut_path);
@@ -73,10 +74,11 @@ impl ShortcutCreator {
         {
             let desktop_path = self.get_desktop_path()?;
             let shortcut_path = desktop_path.join(format!("{}.lnk", self.product_name));
-            
+
             if shortcut_path.exists() {
-                std::fs::remove_file(&shortcut_path)
-                    .map_err(|e| Error::UninstallationFailed(format!("Failed to remove desktop shortcut: {}", e)))?;
+                std::fs::remove_file(&shortcut_path).map_err(|e| {
+                    Error::UninstallationFailed(format!("Failed to remove desktop shortcut: {}", e))
+                })?;
                 info!("Removed desktop shortcut: {:?}", shortcut_path);
             }
         }
@@ -93,10 +95,14 @@ impl ShortcutCreator {
         {
             let start_menu_path = self.get_start_menu_path()?;
             let product_folder = start_menu_path.join(&self.product_name);
-            
+
             if product_folder.exists() {
-                std::fs::remove_dir_all(&product_folder)
-                    .map_err(|e| Error::UninstallationFailed(format!("Failed to remove start menu folder: {}", e)))?;
+                std::fs::remove_dir_all(&product_folder).map_err(|e| {
+                    Error::UninstallationFailed(format!(
+                        "Failed to remove start menu folder: {}",
+                        e
+                    ))
+                })?;
                 info!("Removed start menu folder: {:?}", product_folder);
             }
         }
@@ -113,7 +119,9 @@ impl ShortcutCreator {
         if let Ok(desktop) = std::env::var("USERPROFILE") {
             Ok(std::path::PathBuf::from(desktop).join("Desktop"))
         } else {
-            Err(Error::InstallationFailed("Failed to get desktop path".to_string()))
+            Err(Error::InstallationFailed(
+                "Failed to get desktop path".to_string(),
+            ))
         }
     }
 
@@ -121,9 +129,15 @@ impl ShortcutCreator {
     fn get_start_menu_path(&self) -> Result<std::path::PathBuf, Error> {
         // 使用环境变量获取开始菜单路径
         if let Ok(program_data) = std::env::var("PROGRAMDATA") {
-            Ok(std::path::PathBuf::from(program_data).join("Microsoft").join("Windows").join("Start Menu").join("Programs"))
+            Ok(std::path::PathBuf::from(program_data)
+                .join("Microsoft")
+                .join("Windows")
+                .join("Start Menu")
+                .join("Programs"))
         } else {
-            Err(Error::InstallationFailed("Failed to get start menu path".to_string()))
+            Err(Error::InstallationFailed(
+                "Failed to get start menu path".to_string(),
+            ))
         }
     }
 
@@ -140,7 +154,10 @@ impl ShortcutCreator {
             "#,
             shortcut_path.display(),
             self.exe_path,
-            std::path::Path::new(&self.exe_path).parent().unwrap_or(std::path::Path::new("C:\\")).display()
+            std::path::Path::new(&self.exe_path)
+                .parent()
+                .unwrap_or(std::path::Path::new("C:\\"))
+                .display()
         );
 
         let output = std::process::Command::new("powershell")
@@ -153,10 +170,16 @@ impl ShortcutCreator {
                 if result.status.success() {
                     Ok(())
                 } else {
-                    Err(Error::InstallationFailed(format!("Failed to create shortcut: {}", String::from_utf8_lossy(&result.stderr))))
+                    Err(Error::InstallationFailed(format!(
+                        "Failed to create shortcut: {}",
+                        String::from_utf8_lossy(&result.stderr)
+                    )))
                 }
             }
-            Err(e) => Err(Error::InstallationFailed(format!("Failed to run PowerShell: {}", e))),
+            Err(e) => Err(Error::InstallationFailed(format!(
+                "Failed to run PowerShell: {}",
+                e
+            ))),
         }
     }
 }

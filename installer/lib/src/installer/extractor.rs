@@ -2,7 +2,7 @@ use crate::common::error::Error;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 
 /// 7z解压器
 pub struct SevenZipExtractor {
@@ -25,16 +25,13 @@ impl SevenZipExtractor {
     }
 
     /// 解压7z文件到指定目录
-    pub fn extract_7z_to_dir(
-        &self,
-        archive_data: &[u8],
-        target_dir: &Path,
-    ) -> Result<(), Error> {
+    pub fn extract_7z_to_dir(&self, archive_data: &[u8], target_dir: &Path) -> Result<(), Error> {
         info!("Starting 7z extraction to: {:?}", target_dir);
 
         // 确保目标目录存在
-        std::fs::create_dir_all(target_dir)
-            .map_err(|e| Error::InstallationFailed(format!("Failed to create target directory: {}", e)))?;
+        std::fs::create_dir_all(target_dir).map_err(|e| {
+            Error::InstallationFailed(format!("Failed to create target directory: {}", e))
+        })?;
 
         // 创建临时文件 (unique name to avoid conflicts)
         let unique_id = std::time::SystemTime::now()
@@ -58,7 +55,7 @@ impl SevenZipExtractor {
     fn extract_with_system_7z(&self, archive_path: &Path, target_dir: &Path) -> Result<(), Error> {
         // 尝试不同的7z命令
         let commands = ["7z", "7za", "7zr"];
-        
+
         for cmd in &commands {
             if let Ok(output) = std::process::Command::new(cmd)
                 .arg("x")
@@ -71,7 +68,11 @@ impl SevenZipExtractor {
                     info!("Successfully extracted using {}", cmd);
                     return Ok(());
                 } else {
-                    warn!("Failed to extract with {}: {}", cmd, String::from_utf8_lossy(&output.stderr));
+                    warn!(
+                        "Failed to extract with {}: {}",
+                        cmd,
+                        String::from_utf8_lossy(&output.stderr)
+                    );
                 }
             }
         }
@@ -81,8 +82,15 @@ impl SevenZipExtractor {
     }
 
     /// 使用Rust库解压（备用方案）
-    fn extract_with_rust_library(&self, archive_path: &Path, target_dir: &Path) -> Result<(), Error> {
-        info!("Extracting 7z archive using sevenz-rust library: {:?}", archive_path);
+    fn extract_with_rust_library(
+        &self,
+        archive_path: &Path,
+        target_dir: &Path,
+    ) -> Result<(), Error> {
+        info!(
+            "Extracting 7z archive using sevenz-rust library: {:?}",
+            archive_path
+        );
 
         // Report initial progress
         if let Some(ref cb) = self.progress_callback {

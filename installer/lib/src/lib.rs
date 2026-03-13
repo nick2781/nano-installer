@@ -43,15 +43,15 @@
 
 pub mod common;
 pub mod config;
+pub mod i18n;
 pub mod installer;
 pub mod installer_runtime;
-pub mod uninstaller;
-pub mod ui;
 pub mod layout;
-pub mod i18n;
-pub mod resources;
 pub mod logger;
+pub mod resources;
 pub mod scripting;
+pub mod ui;
+pub mod uninstaller;
 
 // Re-export commonly used types
 pub use common::{Error, Result};

@@ -49,18 +49,22 @@
 
       <Spacer flex-grow="1" />
 
-      <HBox id="btnShowMore_wrap" align-items="center" gap="4">
-        <Button id="btnShowMore" action="toggle_panel:moreconfiginfo:show" text="@show_more" font-size="11"
-                color="#FF9CA3AF" hover-color="#FFFFFFFF" cursor="hand" />
-        <Image id="arrowDown" src="assets/arrow-down.png" width="12" height="12" flex-shrink="0"
-               action="toggle_panel:moreconfiginfo:show" cursor="hand" />
-      </HBox>
-      <HBox id="btnHideMore_wrap" align-items="center" gap="4" visible="false">
-        <Button id="btnHideMore" action="toggle_panel:moreconfiginfo:hide" text="@hide_more" font-size="11"
-                color="#FF9CA3AF" hover-color="#FFFFFFFF" cursor="hand" />
-        <Image id="arrowUp" src="assets/arrow-up.png" width="12" height="12" flex-shrink="0"
-               action="toggle_panel:moreconfiginfo:hide" cursor="hand" />
-      </HBox>
+      <Button id="btnShowMore_wrap" action="toggle_panel:moreconfiginfo:show"
+              min-width="80" max-width="164" font-size="11"
+              color="#FF9CA3AF" hover-color="#FFFFFFFF" cursor="hand">
+        <Content id="showMore_content" layout="horizontal" horizontal-align="center" vertical-align="center" item-spacing="4">
+          <Text id="showMore_text" value="@show_more" wrap="true" />
+          <Icon id="showMore_icon" src="assets/arrow-down.png" width="10" height="10" />
+        </Content>
+      </Button>
+      <Button id="btnHideMore_wrap" action="toggle_panel:moreconfiginfo:hide"
+              min-width="80" max-width="164" font-size="11" visible="false"
+              color="#FF9CA3AF" hover-color="#FFFFFFFF" cursor="hand">
+        <Content id="hideMore_content" layout="horizontal" horizontal-align="center" vertical-align="center" item-spacing="4">
+          <Text id="hideMore_text" value="@hide_more" wrap="true" />
+          <Icon id="hideMore_icon" src="assets/arrow-up.png" width="10" height="10" />
+        </Content>
+      </Button>
 
     </HBox>
 

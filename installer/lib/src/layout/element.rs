@@ -1,10 +1,10 @@
 //! 布局元素定义
-//! 
+//!
 //! 定义所有支持的UI元素类型和属性
 
+use crate::layout::style_props::{FlexStyle, VisualStyle, WidgetProps};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use crate::layout::style_props::{FlexStyle, VisualStyle, WidgetProps};
 
 /// 布局元素类型
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -246,12 +246,14 @@ impl ElementAttributes {
 
     /// 检查是否支持子元素
     pub fn supports_children(&self, element_type: &ElementType) -> bool {
-        matches!(element_type,
-            ElementType::Page |
-            ElementType::VBox |
-            ElementType::HBox |
-            ElementType::Overlay |
-            ElementType::Select
+        matches!(
+            element_type,
+            ElementType::Page
+                | ElementType::VBox
+                | ElementType::HBox
+                | ElementType::Button
+                | ElementType::Overlay
+                | ElementType::Select
         )
     }
 
@@ -266,17 +268,26 @@ impl ElementAttributes {
                 let has_text = self.text.is_some() || self.text_i18n.is_some();
                 let has_icon = self.icon.is_some();
                 let has_image = self.custom.contains_key("normalimage");
-                
-                if !has_text && !has_icon && !has_image {
-                    errors.push(format!("{:?} 元素必须设置 text、icon 或 normalimage 属性", element_type));
+                let has_children = !self.custom.contains_key("__button_content_empty")
+                    && self
+                        .custom
+                        .get("__has_children")
+                        .map(|value| value == "true")
+                        .unwrap_or(false);
+
+                if !has_text && !has_icon && !has_image && !has_children {
+                    errors.push(format!(
+                        "{:?} 元素必须设置 text、icon 或 normalimage 属性",
+                        element_type
+                    ));
                 }
             }
             ElementType::Label => {
                 // Label 可以没有 text（空字符串），因为文本可能通过代码动态设置
                 // 只要设置了 text 属性（即使是空字符串）或 icon 属性即可
-                let has_text_attr = self.text.is_some();  // 即使为空字符串也算有属性
+                let has_text_attr = self.text.is_some(); // 即使为空字符串也算有属性
                 let has_icon = self.icon.is_some();
-                
+
                 if !has_text_attr && !has_icon {
                     errors.push(format!("{:?} 元素必须设置 text 或 icon 属性", element_type));
                 }
@@ -541,23 +552,33 @@ mod tests {
             ElementAttributes::new().with_progress(1.5),
         );
         assert!(invalid_progress.validate().is_err());
+
+        // 按钮也可以只通过子内容定义
+        let mut content_button =
+            LayoutElement::with_attributes(ElementType::Button, ElementAttributes::new());
+        content_button
+            .attributes
+            .custom
+            .insert("__has_children".to_string(), "true".to_string());
+        content_button.children.push(LayoutElement::with_attributes(
+            ElementType::HBox,
+            ElementAttributes::new(),
+        ));
+        assert!(content_button.validate().is_ok());
     }
 
     #[test]
     fn test_element_find_by_id() {
-        let page = LayoutElement::new(ElementType::Page)
-            .add_child(
-                LayoutElement::with_attributes(
-                    ElementType::VBox,
-                    ElementAttributes::new().with_id("main-container"),
-                )
-                .add_child(
-                    LayoutElement::with_attributes(
-                        ElementType::Button,
-                        ElementAttributes::new().with_id("submit-button"),
-                    ),
-                ),
-            );
+        let page = LayoutElement::new(ElementType::Page).add_child(
+            LayoutElement::with_attributes(
+                ElementType::VBox,
+                ElementAttributes::new().with_id("main-container"),
+            )
+            .add_child(LayoutElement::with_attributes(
+                ElementType::Button,
+                ElementAttributes::new().with_id("submit-button"),
+            )),
+        );
 
         assert!(page.find_by_id("main-container").is_some());
         assert!(page.find_by_id("submit-button").is_some());
@@ -566,13 +587,12 @@ mod tests {
 
     #[test]
     fn test_element_find_by_type() {
-        let page = LayoutElement::new(ElementType::Page)
-            .add_child(
-                LayoutElement::new(ElementType::VBox)
-                    .add_child(LayoutElement::new(ElementType::Button))
-                    .add_child(LayoutElement::new(ElementType::Label))
-                    .add_child(LayoutElement::new(ElementType::Button)),
-            );
+        let page = LayoutElement::new(ElementType::Page).add_child(
+            LayoutElement::new(ElementType::VBox)
+                .add_child(LayoutElement::new(ElementType::Button))
+                .add_child(LayoutElement::new(ElementType::Label))
+                .add_child(LayoutElement::new(ElementType::Button)),
+        );
 
         let buttons = page.find_by_type(&ElementType::Button);
         assert_eq!(buttons.len(), 2);

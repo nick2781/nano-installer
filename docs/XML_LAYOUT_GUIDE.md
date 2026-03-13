@@ -2,7 +2,44 @@
 
 nano-installer 使用 XML 来定义安装程序的用户界面。这份指南将教你如何创建和自定义界面布局。
 
-**重要提示**：nano-installer 使用 NSIS 布局格式，可以直接使用 NSIS 的 XML 布局文件。
+**重要提示**：nano-installer 仍兼容 NSIS 布局格式，但新的布局能力优先使用声明式 XML DSL，而不是继续堆叠 NSIS 专有绘制属性。
+
+## 设计原则
+
+布局系统分为三层：
+
+1. XML 负责声明结构和盒模型语义。
+2. Taffy 负责计算布局。
+3. 渲染器只负责绘制，不再私自决定控件内部排版。
+
+这意味着一个按钮里的“文字在左还是右、图标距离文字多少、超长时是否换行”，都应该由 XML 明确表达，而不是靠 `dest='68,2,80,15'` 这样的像素坐标暗示。
+
+## 推荐的内容 DSL
+
+对于“按钮内部还有自己的内容布局”这种场景，推荐使用 `Button + Content + Text + Icon` 结构：
+
+```xml
+<Button min-width="80" max-width="164">
+  <Content
+    layout="horizontal"
+    horizontal-align="right"
+    vertical-align="center"
+    item-spacing="4">
+    <Text value="@show_more" wrap="true" />
+    <Icon src="assets/arrow-down.png" width="12" height="12" />
+  </Content>
+</Button>
+```
+
+这套 DSL 的命名规则是：
+
+- `layout`：子项排列方向，`horizontal` 或 `vertical`
+- `horizontal-align`：内容在水平方向的对齐方式，`left` / `center` / `right`
+- `vertical-align`：内容在垂直方向的对齐方式，`top` / `center` / `bottom`
+- `item-spacing`：子项之间的间距，单位像素
+- `wrap`：文本是否自动换行
+
+如果只是普通按钮，仍然可以继续使用 `text="..."` 这种简写；只有在按钮内部需要更复杂的盒模型时，才使用内容 DSL。
 
 ## 📖 目录
 
@@ -353,6 +390,27 @@ NSIS 使用 `<Font>` 元素定义字体，然后在其他元素中通过 `font="
 | `float` | boolean | - | 是否浮动定位（NSIS） |
 | `pos` | string | - | 位置矩形（NSIS，格式：`"x1,y1,x2,y2"`） |
 
+**内容模型：**
+
+- 简单按钮：使用 `text` 属性即可。
+- 复杂按钮：允许在 `Button` 内部声明一个 `Content` 子元素，用来定义文字、图标等内部布局。
+- 当 `Button` 同时声明 `text` 和 `Content` 时，以 `Content` 为准。
+
+**推荐写法：**
+
+```xml
+<Button min-width="80" max-width="164">
+  <Content
+    layout="horizontal"
+    horizontal-align="right"
+    vertical-align="center"
+    item-spacing="4">
+    <Text value="@show_more" wrap="true" />
+    <Icon src="assets/arrow-down.png" width="12" height="12" />
+  </Content>
+</Button>
+```
+
 **按钮 ID 约定：**
 
 | ID | 功能 |
@@ -508,6 +566,58 @@ Button 元素支持 `action` 属性，用于声明式地定义按钮点击后的
 | 属性 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `icon` | string | 必需 | 图片路径（相对于项目根目录） |
+
+#### `<Content>` - 内容容器
+
+用于定义控件内部的内容排列，当前主要用于 `Button` 内部。
+
+```xml
+<Content
+  layout="horizontal"
+  horizontal-align="right"
+  vertical-align="center"
+  item-spacing="4">
+  <Text value="@show_more" wrap="true" />
+  <Icon src="assets/arrow-down.png" width="12" height="12" />
+</Content>
+```
+
+| 属性 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `layout` | string | `"horizontal"` | 子项排列方向：`horizontal` \| `vertical` |
+| `horizontal-align` | string | `"left"` | 水平对齐：`left` \| `center` \| `right` |
+| `vertical-align` | string | `"top"` | 垂直对齐：`top` \| `center` \| `bottom` |
+| `item-spacing` | number | `0` | 子项之间的间距 |
+| `padding` | string | - | 内容区内边距 |
+
+#### `<Text>` - 内容文本
+
+用于内容容器中的文本节点。
+
+```xml
+<Text value="@show_more" wrap="true" />
+```
+
+| 属性 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `value` | string | 必需 | 文本内容，支持 `@key` 国际化引用 |
+| `wrap` | boolean | `false` | 是否允许自动换行 |
+| `color` | string | 继承父元素 | 文本颜色 |
+| `font-size` | number | 继承父元素 | 字体大小 |
+
+#### `<Icon>` - 内容图标
+
+用于内容容器中的图标节点。
+
+```xml
+<Icon src="assets/arrow-down.png" width="12" height="12" />
+```
+
+| 属性 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `src` | string | 必需 | 图标路径 |
+| `width` | number | 原始宽度 | 显示宽度 |
+| `height` | number | 原始高度 | 显示高度 |
 | `width` | number | 可选 | 图片宽度，不指定则使用原始尺寸 |
 | `height` | number | 可选 | 图片高度 |
 

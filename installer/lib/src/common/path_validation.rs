@@ -29,7 +29,9 @@ pub enum DiskType {
 }
 
 impl Default for DiskType {
-    fn default() -> Self { DiskType::Unknown }
+    fn default() -> Self {
+        DiskType::Unknown
+    }
 }
 
 /// Path validator
@@ -97,7 +99,9 @@ impl PathValidator {
     /// Validate path format
     fn validate_path_format(&self, path: &Path, result: &mut PathValidationResult) -> Result<()> {
         if path.to_string_lossy().is_empty() {
-            result.errors.push("Install path cannot be empty".to_string());
+            result
+                .errors
+                .push("Install path cannot be empty".to_string());
             return Ok(());
         }
 
@@ -113,7 +117,9 @@ impl PathValidator {
 
         for ch in invalid_chars {
             if check_str.contains(ch) {
-                result.errors.push(format!("Path contains illegal character: '{}'", ch));
+                result
+                    .errors
+                    .push(format!("Path contains illegal character: '{}'", ch));
             }
         }
 
@@ -121,7 +127,9 @@ impl PathValidator {
         #[cfg(windows)]
         {
             if path_str.ends_with('\\') && path_str.len() > 3 {
-                result.warnings.push("Trailing backslash will be removed automatically".to_string());
+                result
+                    .warnings
+                    .push("Trailing backslash will be removed automatically".to_string());
             }
         }
 
@@ -139,26 +147,40 @@ impl PathValidator {
             }
             DiskType::Removable => {
                 if !self.allow_removable_drives {
-                    result.errors.push("Installation on removable disk is not allowed".to_string());
+                    result
+                        .errors
+                        .push("Installation on removable disk is not allowed".to_string());
                 } else {
-                    result.warnings.push("Installation on removable disk may cause issues".to_string());
+                    result
+                        .warnings
+                        .push("Installation on removable disk may cause issues".to_string());
                 }
             }
             DiskType::Network => {
                 if !self.allow_network_drives {
-                    result.errors.push("Installation on network disk is not allowed".to_string());
+                    result
+                        .errors
+                        .push("Installation on network disk is not allowed".to_string());
                 } else {
-                    result.warnings.push("Installation on network disk may cause performance issues".to_string());
+                    result.warnings.push(
+                        "Installation on network disk may cause performance issues".to_string(),
+                    );
                 }
             }
             DiskType::CdRom => {
-                result.errors.push("Cannot install on CD/DVD drive".to_string());
+                result
+                    .errors
+                    .push("Cannot install on CD/DVD drive".to_string());
             }
             DiskType::RamDisk => {
-                result.warnings.push("Installation on RAM disk will be lost after reboot".to_string());
+                result
+                    .warnings
+                    .push("Installation on RAM disk will be lost after reboot".to_string());
             }
             DiskType::Unknown => {
-                result.warnings.push("Unknown disk type, installation may be unstable".to_string());
+                result
+                    .warnings
+                    .push("Unknown disk type, installation may be unstable".to_string());
             }
         }
 
@@ -190,7 +212,11 @@ impl PathValidator {
     }
 
     /// Validate path permissions
-    fn validate_path_permissions(&self, path: &Path, result: &mut PathValidationResult) -> Result<()> {
+    fn validate_path_permissions(
+        &self,
+        path: &Path,
+        result: &mut PathValidationResult,
+    ) -> Result<()> {
         // Check if parent directory exists and is writable
         // Write permission is checked as a warning, not a blocking error.
         // The actual installation (create_dir_all, file extraction) will produce
@@ -198,7 +224,9 @@ impl PathValidator {
         if path.exists() {
             let test_file = path.join(".installer_test_write");
             if std::fs::write(&test_file, b"test").is_err() {
-                result.warnings.push("May require elevated permissions".to_string());
+                result
+                    .warnings
+                    .push("May require elevated permissions".to_string());
             } else {
                 let _ = std::fs::remove_file(&test_file);
             }
@@ -206,7 +234,9 @@ impl PathValidator {
             if parent.exists() {
                 let test_file = parent.join(".installer_test_write");
                 if std::fs::write(&test_file, b"test").is_err() {
-                    result.warnings.push("May require elevated permissions".to_string());
+                    result
+                        .warnings
+                        .push("May require elevated permissions".to_string());
                 } else {
                     let _ = std::fs::remove_file(&test_file);
                 }
@@ -218,7 +248,9 @@ impl PathValidator {
         {
             if let Ok(system_dir) = self.get_system_directory() {
                 if path.starts_with(&system_dir) {
-                    result.warnings.push("Installing in system directory is not recommended".to_string());
+                    result
+                        .warnings
+                        .push("Installing in system directory is not recommended".to_string());
                 }
             }
         }
@@ -234,7 +266,9 @@ impl PathValidator {
         #[cfg(windows)]
         {
             if path_str.len() > 260 {
-                result.errors.push("Path exceeds 260 character limit".to_string());
+                result
+                    .errors
+                    .push("Path exceeds 260 character limit".to_string());
             }
         }
 
@@ -247,22 +281,32 @@ impl PathValidator {
     }
 
     /// Validate special characters
-    fn validate_special_characters(&self, path: &Path, result: &mut PathValidationResult) -> Result<()> {
+    fn validate_special_characters(
+        &self,
+        path: &Path,
+        result: &mut PathValidationResult,
+    ) -> Result<()> {
         let path_str = path.to_string_lossy();
 
         // Check for relative path symbols
         if path_str.contains("..") {
-            result.warnings.push("Path contains relative path symbols, may cause security issues".to_string());
+            result
+                .warnings
+                .push("Path contains relative path symbols, may cause security issues".to_string());
         }
 
         // Check for spaces
         if path_str.contains(' ') {
-            result.warnings.push("Path contains spaces, some programs may not work properly".to_string());
+            result
+                .warnings
+                .push("Path contains spaces, some programs may not work properly".to_string());
         }
 
         // Check for non-ASCII characters
         if path_str.chars().any(|c| c as u32 > 127) {
-            result.warnings.push("Path contains non-ASCII characters, English path recommended".to_string());
+            result
+                .warnings
+                .push("Path contains non-ASCII characters, English path recommended".to_string());
         }
 
         Ok(())
@@ -284,7 +328,10 @@ impl PathValidator {
         use std::ffi::OsStr;
         use std::os::windows::ffi::OsStrExt;
 
-        let wide: Vec<u16> = OsStr::new(drive).encode_wide().chain(std::iter::once(0)).collect();
+        let wide: Vec<u16> = OsStr::new(drive)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
         let drive_type = unsafe { GetDriveTypeW(windows::core::PCWSTR(wide.as_ptr())) };
 
         Ok(match drive_type {
@@ -308,7 +355,10 @@ impl PathValidator {
         use std::ffi::OsStr;
         use std::os::windows::ffi::OsStrExt;
 
-        let wide: Vec<u16> = OsStr::new(drive).encode_wide().chain(std::iter::once(0)).collect();
+        let wide: Vec<u16> = OsStr::new(drive)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
         let mut free_bytes_available: u64 = 0;
         let mut total_number_of_bytes: u64 = 0;
         let mut total_free_bytes: u64 = 0;
@@ -325,10 +375,7 @@ impl PathValidator {
         match result {
             Ok(()) => Ok((free_bytes_available, total_number_of_bytes)),
             Err(e) => {
-                tracing::warn!(
-                    "Failed to get disk space for {}: {}",
-                    drive, e
-                );
+                tracing::warn!("Failed to get disk space for {}: {}", drive, e);
                 Err(anyhow::anyhow!("Failed to get disk space info: {}", e))
             }
         }
@@ -365,9 +412,11 @@ impl PathValidator {
             return Err(anyhow::anyhow!("df output fields insufficient"));
         }
 
-        let total: u64 = fields[1].parse()
+        let total: u64 = fields[1]
+            .parse()
             .map_err(|_| anyhow::anyhow!("Cannot parse total space"))?;
-        let available: u64 = fields[3].parse()
+        let available: u64 = fields[3]
+            .parse()
             .map_err(|_| anyhow::anyhow!("Cannot parse available space"))?;
 
         Ok((available, total))

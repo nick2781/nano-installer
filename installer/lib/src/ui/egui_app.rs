@@ -322,7 +322,12 @@ impl InstallerApp {
         tracing::info!("Starting installation to: {}", install_path);
         
         // 创建安装引擎
-        let mut engine = InstallEngine::new(install_path.clone());
+        let mut engine = InstallEngine::new(
+            install_path.clone(),
+            config.project.name.clone(),
+            config.project.version.clone(),
+            config.project.publisher.clone(),
+        );
         
         // 1. 添加文件解压任务
         if let Some(payload_data) = RuntimeResources::get_payload() {
@@ -344,6 +349,7 @@ impl InstallerApp {
         let exe_path = format!("{}\\{}", install_path, config.install.exe_name);
         engine.add_task(Box::new(CreateShortcutsTask {
             app_name: config.project.name.clone(),
+            start_menu_folder: config.shortcuts.start_menu_folder.clone(),
             exe_path,
         }));
         
@@ -355,6 +361,11 @@ impl InstallerApp {
             install_path: install_path.clone(),
             publisher: config.project.publisher.clone(),
             uninstaller_path: uninst_path,
+            install_path_key: config.registry.install_path_key.clone(),
+            uninstall_key: config.registry.uninstall_key.clone(),
+            autostart_key: None,
+            autostart_value_name: None,
+            exe_name: config.install.exe_name.clone(),
         }));
         
         // 执行安装
