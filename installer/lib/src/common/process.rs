@@ -1,13 +1,13 @@
 // 进程检测功能
 
 use crate::common::{Error, Result};
+#[cfg(not(windows))]
 use std::process::Command;
 
 #[cfg(windows)]
 use windows::{
-    core::PWSTR,
     Win32::{
-        Foundation::{CloseHandle, HANDLE},
+        Foundation::CloseHandle,
         System::{
             Diagnostics::ToolHelp::{
                 CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32,

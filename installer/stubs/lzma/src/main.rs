@@ -45,15 +45,12 @@ fn main() -> Result<()> {
     tracing::info!("Loading configuration...");
 
     // 加载配置
-    let config = match nano_installer::resources::RuntimeResources::get_config() {
-        Ok(cfg) => cfg,
-        Err(e) => {
-            tracing::error!("Failed to load installer config: {:#}", e);
-            eprintln!("ERROR: Failed to load installer config");
-            eprintln!("Cause: {:#}", e);
-            std::process::exit(1);
-        }
-    };
+    if let Err(e) = nano_installer::resources::RuntimeResources::get_config() {
+        tracing::error!("Failed to load installer config: {:#}", e);
+        eprintln!("ERROR: Failed to load installer config");
+        eprintln!("Cause: {:#}", e);
+        std::process::exit(1);
+    }
 
     // 使用统一的模式检测
     let mode = nano_installer::installer_runtime::mode::InstallerMode::detect();

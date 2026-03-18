@@ -1,7 +1,7 @@
 //! Rhai script engine — creates Engine, registers all API functions, runs scripts
 
 use super::context::ScriptContext;
-use rhai::{Dynamic, Engine, EvalAltResult, Scope};
+use rhai::{Engine, Scope};
 
 /// Script engine wrapping Rhai with nano-installer API
 pub struct ScriptEngine {

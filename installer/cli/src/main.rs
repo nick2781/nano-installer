@@ -1159,29 +1159,6 @@ mod tests {
     }
 }
 
-/// 递归复制目录
-fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
-    if !src.exists() {
-        bail!("Source directory not found: {}", src.display());
-    }
-
-    std::fs::create_dir_all(dst)?;
-
-    for entry in std::fs::read_dir(src)? {
-        let entry = entry?;
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
-
-        if src_path.is_dir() {
-            copy_dir_recursive(&src_path, &dst_path)?;
-        } else {
-            std::fs::copy(&src_path, &dst_path)?;
-        }
-    }
-
-    Ok(())
-}
-
 fn generate_build_script(output_dir: &Path) -> Result<()> {
     let script = r#"# Build script for nano-installer project
 
@@ -1261,27 +1238,6 @@ fn package_files_dir_to_zip(files_dir: &Path, output_path: &Path) -> Result<()> 
         bail!("files/ exists but does not contain any files to package");
     }
     Ok(())
-}
-
-/// 计算目录大小（递归）
-fn calculate_dir_size(path: &Path) -> Result<u64> {
-    let mut total = 0u64;
-    if path.is_file() {
-        return Ok(std::fs::metadata(path)?.len());
-    }
-
-    if path.is_dir() {
-        for entry in std::fs::read_dir(path)? {
-            let entry = entry?;
-            let metadata = entry.metadata()?;
-            if metadata.is_file() {
-                total += metadata.len();
-            } else if metadata.is_dir() {
-                total += calculate_dir_size(&entry.path())?;
-            }
-        }
-    }
-    Ok(total)
 }
 
 fn estimate_archive_uncompressed_size(path: &Path) -> Result<u64> {

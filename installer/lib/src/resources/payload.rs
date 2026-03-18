@@ -311,7 +311,7 @@ impl PayloadExtractor {
 /// 用于构建时嵌入 payload 的工具
 pub mod builder {
     use std::fs::File;
-    use std::io::{Read, Seek, SeekFrom, Write};
+    use std::io::Write;
     use std::path::Path;
 
     /// 将 payload 附加到 exe 文件

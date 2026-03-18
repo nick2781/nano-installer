@@ -1,7 +1,7 @@
 /// 运行时资源管理
 ///
 /// 从 exe 中提取并缓存嵌入的资源（分段格式）
-use super::bundle::{extract_bundle_from_exe, ResourceBundle, ResourceType, SegmentType};
+use super::bundle::{extract_bundle_from_exe, ResourceBundle, SegmentType};
 use crate::config::InstallerConfig;
 use anyhow::{Context, Result};
 use once_cell::sync::OnceCell;
@@ -14,7 +14,6 @@ static RUNTIME_RESOURCES: OnceCell<RwLock<RuntimeResources>> = OnceCell::new();
 /// 运行时资源容器
 pub struct RuntimeResources {
     bundle: ResourceBundle,
-    cache: HashMap<String, Vec<u8>>,
 
     // 解压后的分段缓存
     ui_files: OnceCell<HashMap<String, Vec<u8>>>,
@@ -33,7 +32,6 @@ impl RuntimeResources {
 
         let resources = RuntimeResources {
             bundle,
-            cache: HashMap::new(),
             ui_files: OnceCell::new(),
             locale_files: OnceCell::new(),
             script_files: OnceCell::new(),

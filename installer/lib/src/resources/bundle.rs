@@ -10,7 +10,7 @@ use anyhow::{bail, Context, Result};
 use std::collections::HashMap;
 use std::fs;
 use std::io::{Cursor, Read, Seek, SeekFrom, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// 资源包魔数
 const MAGIC: &[u8; 8] = b"NANORSRC";

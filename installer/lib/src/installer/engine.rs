@@ -117,8 +117,6 @@ impl InstallEngine {
 
     /// 回滚任务
     async fn rollback_tasks(&self, completed_task_indices: &[usize]) -> Result<()> {
-        use crate::logger::{log_step, StepStatus};
-
         tracing::warn!(
             "Rolling back {} completed tasks",
             completed_task_indices.len()
