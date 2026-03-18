@@ -6,4 +6,5 @@ target/*
 examples/TapTap/.build
 tmp/
 examples/TapTap/dist/*.log
+examples/TapTap-v2/dist/*.log
 screenshot*.png
