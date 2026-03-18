@@ -181,6 +181,7 @@ pub struct WidgetProps {
 
     // Image
     pub src: Option<String>,
+    pub icon: Option<String>,
 
     // TextInput
     pub placeholder: Option<String>,
@@ -213,6 +214,7 @@ impl Default for WidgetProps {
             bar_image: None,
             track_image: None,
             src: None,
+            icon: None,
             placeholder: None,
             readonly: None,
             multiline: None,

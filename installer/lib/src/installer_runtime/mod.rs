@@ -327,7 +327,7 @@ fn run_gui(config: InstallerConfig, wizard_mode: WizardMode) -> Result<()> {
             .with_inner_size([win_w, win_h])
             .with_resizable(false)
             .with_decorations(false)
-            .with_transparent(true)
+            .with_transparent(false)
             .with_active(true)
             .with_window_level(egui::WindowLevel::AlwaysOnTop)
             .with_icon(icon.unwrap_or_default()),

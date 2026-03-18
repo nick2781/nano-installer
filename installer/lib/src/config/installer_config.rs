@@ -188,6 +188,9 @@ pub struct UiConfig {
     pub window_height: u32,
     /// 展开自定义选项后的高度
     pub expanded_height: u32,
+    /// 主窗口圆角半径
+    #[serde(default = "default_window_corner_radius")]
+    pub window_corner_radius: u32,
     /// 对话框宽度 (消息框等)
     #[serde(default = "default_dialog_width")]
     pub dialog_width: u32,
@@ -198,6 +201,10 @@ pub struct UiConfig {
     pub dpi_aware: bool,
     /// DPI阈值（>=此值用2x资源）
     pub dpi_threshold: u32,
+}
+
+fn default_window_corner_radius() -> u32 {
+    8
 }
 
 fn default_dialog_width() -> u32 {
@@ -406,6 +413,7 @@ impl Default for InstallerConfig {
                 window_width: 574,
                 window_height: 358,
                 expanded_height: 518,
+                window_corner_radius: 8,
                 dialog_width: 400,
                 dialog_height: 230,
                 dpi_aware: true,

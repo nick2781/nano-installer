@@ -329,7 +329,10 @@ impl DpiConfig {
 
         Some(egui::Rect::from_min_max(
             egui::Pos2::new(min_x as f32 / width as f32, min_y as f32 / height as f32),
-            egui::Pos2::new((max_x + 1) as f32 / width as f32, (max_y + 1) as f32 / height as f32),
+            egui::Pos2::new(
+                (max_x + 1) as f32 / width as f32,
+                (max_y + 1) as f32 / height as f32,
+            ),
         ))
     }
 

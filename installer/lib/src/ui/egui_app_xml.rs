@@ -19,11 +19,24 @@ use crate::ui::style_engine::StyleEngine;
 use crate::ui::wizard::{Wizard, WizardMode};
 use eframe::egui;
 use parking_lot::RwLock;
+#[cfg(windows)]
+use raw_window_handle::{HasWindowHandle as _, RawWindowHandle};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+#[cfg(windows)]
+use windows::Win32::{
+    Foundation::{BOOL, HWND},
+    Graphics::{
+        Dwm::{
+            DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND,
+            DWM_WINDOW_CORNER_PREFERENCE,
+        },
+        Gdi::{CreateRoundRectRgn, SetWindowRgn},
+    },
+};
 
 /// 安装程序应用
 pub struct InstallerApp {
@@ -336,6 +349,7 @@ impl InstallerApp {
                     }
                 }
 
+                self.sync_checkbox_defaults_from_layout(&layout_tree);
                 self.layout_cache.insert(page_id.to_string(), layout_tree);
                 tracing::warn!(
                     "layout inserted: page_id={}, cache_size={}, has_key={}",
@@ -356,6 +370,39 @@ impl InstallerApp {
                 None
             }
         }
+    }
+
+    fn sync_checkbox_defaults_from_layout(&mut self, layout: &LayoutTree) {
+        fn sync_element(app: &mut InstallerApp, element: &crate::layout::element::LayoutElement) {
+            if let Some(id) = element.attributes.id.as_deref() {
+                if let Some(checked) = element.attributes.selected {
+                    match id {
+                        "chkAgree" | "agree_terms" | "agree_license" => {
+                            app.agree_to_terms = checked;
+                        }
+                        "chkShotcut" | "desktop_shortcut" => {
+                            app.create_desktop_shortcut = checked;
+                        }
+                        "chkAutoRun" => {
+                            app.autorun_preference = checked;
+                        }
+                        "chkReserveData" => {
+                            app.reserve_data_preference = checked;
+                        }
+                        "start_menu_shortcut" => {
+                            app.create_start_menu_shortcut = checked;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            for child in &element.children {
+                sync_element(app, child);
+            }
+        }
+
+        sync_element(self, &layout.root);
     }
 
     /// 查找页面对应的布局文件（从 config.wizard 读取）
@@ -985,6 +1032,16 @@ impl InstallerApp {
         if let Some(ref state) = self.install_state {
             if self.install_thread.is_some() {
                 let progress = state.progress();
+                let installing_template = if current_page_id == "installing" {
+                    Some(self.i18n("installing_text"))
+                } else {
+                    None
+                };
+                let install_complete_text = if current_page_id == "installing" {
+                    Some(self.i18n("status.install_complete"))
+                } else {
+                    None
+                };
 
                 // Update the progress bar and label in the layout
                 if let Some(layout) = self.layout_cache.get_mut(&current_page_id) {
@@ -994,7 +1051,25 @@ impl InstallerApp {
                         progress.percentage / 100.0,
                     );
 
-                    let label_text = if progress.percentage >= 100.0 {
+                    let label_text = if current_page_id == "installing" {
+                        if progress.percentage >= 100.0 {
+                            install_complete_text
+                                .clone()
+                                .unwrap_or_else(|| progress.current_step.clone())
+                        } else {
+                            let percent = format!("{:.0}%", progress.percentage);
+                            let template = installing_template.clone().unwrap_or_default();
+                            if template.contains("0%") {
+                                template.replace("0%", &percent)
+                            } else if template.contains("{percent}") {
+                                template.replace("{percent}", &percent)
+                            } else if template.trim().is_empty() {
+                                percent
+                            } else {
+                                format!("{} {}", template.trim(), percent)
+                            }
+                        }
+                    } else if progress.percentage >= 100.0 {
                         progress.current_step.clone()
                     } else if progress.current_step.is_empty() {
                         format!("{:.0}%", progress.percentage)
@@ -1308,9 +1383,58 @@ impl InstallerApp {
     }
 }
 
+#[cfg(windows)]
+fn apply_native_window_rounding(
+    frame: &eframe::Frame,
+    logical_size: egui::Vec2,
+    pixels_per_point: f32,
+    radius: i32,
+) {
+    let raw_handle = match frame.window_handle().map(|handle| handle.as_raw()) {
+        Ok(handle) => handle,
+        Err(_) => return,
+    };
+
+    let hwnd = match raw_handle {
+        RawWindowHandle::Win32(handle) => HWND(handle.hwnd.get() as *mut core::ffi::c_void),
+        _ => return,
+    };
+
+    let width = (logical_size.x * pixels_per_point).round().max(1.0) as i32;
+    let height = (logical_size.y * pixels_per_point).round().max(1.0) as i32;
+    let radius = ((radius.max(0) as f32) * pixels_per_point).round().max(1.0) as i32;
+
+    unsafe {
+        let preference = DWM_WINDOW_CORNER_PREFERENCE(DWMWCP_ROUND.0);
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_WINDOW_CORNER_PREFERENCE,
+            &preference as *const _ as *const core::ffi::c_void,
+            std::mem::size_of::<DWM_WINDOW_CORNER_PREFERENCE>() as u32,
+        );
+
+        let region = CreateRoundRectRgn(0, 0, width + 1, height + 1, radius * 2, radius * 2);
+        if !region.0.is_null() {
+            let _ = SetWindowRgn(hwnd, region, BOOL(1));
+        }
+    }
+}
+
 impl eframe::App for InstallerApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        egui::Color32::from_rgb(0x18, 0x1B, 0x22).to_normalized_gamma_f32()
+    }
+
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         tracing::trace!("update() called");
+
+        #[cfg(windows)]
+        apply_native_window_rounding(
+            frame,
+            ctx.viewport_rect().size(),
+            ctx.pixels_per_point(),
+            self.config.ui.window_corner_radius as i32,
+        );
 
         // Disable always_on_top after first frame (used to bring window to front after UAC)
         if self.first_frame_done {
@@ -1568,6 +1692,15 @@ impl InstallerApp {
 
     pub(crate) fn harness_has_pending_close_confirmation(&self) -> bool {
         self.pending_close_confirm_id.is_some()
+    }
+
+    pub(crate) fn harness_pending_close_confirmation_config(
+        &self,
+    ) -> Option<crate::ui::message_box::MessageBoxConfig> {
+        self.pending_close_confirm_id
+            .as_ref()
+            .and_then(|id| self.message_box_manager.get_dialog_config(id))
+            .cloned()
     }
 
     pub(crate) fn harness_i18n(&self, key: &str) -> String {

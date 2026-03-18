@@ -166,6 +166,22 @@ impl LayoutRenderer {
             .unwrap_or((0.0, 0.0, 0.0, 0.0))
     }
 
+    fn parse_spacing_shorthand(value: Option<&String>) -> Option<(f32, f32, f32, f32)> {
+        let value = value?;
+        let parts: Vec<f32> = value
+            .split(|c: char| c == ',' || c.is_whitespace())
+            .filter(|part| !part.is_empty())
+            .filter_map(|part| part.trim().parse::<f32>().ok())
+            .collect();
+        match parts.as_slice() {
+            [all] => Some((*all, *all, *all, *all)),
+            [vertical, horizontal] => Some((*vertical, *horizontal, *vertical, *horizontal)),
+            [top, horizontal, bottom] => Some((*top, *horizontal, *bottom, *horizontal)),
+            [top, right, bottom, left] => Some((*top, *right, *bottom, *left)),
+            _ => None,
+        }
+    }
+
     fn button_text_padding(element: &LayoutElement, text_align_str: &str) -> (f32, f32, f32, f32) {
         let (left, top, right, bottom) =
             Self::parse_box_sides(element.attributes.get_custom("textpadding"));
@@ -353,6 +369,16 @@ impl LayoutRenderer {
                 draw_rect.top()
             },
         );
+        ui.painter().line_segment([left, mid], stroke);
+        ui.painter().line_segment([mid, right], stroke);
+    }
+
+    fn paint_checkmark_in_rect(ui: &mut Ui, rect: Rect, color: Color32) {
+        let draw_rect = rect.shrink(rect.width().min(rect.height()) * 0.18);
+        let stroke = egui::Stroke::new(1.8, color);
+        let left = Pos2::new(draw_rect.left(), draw_rect.center().y);
+        let mid = Pos2::new(draw_rect.center().x - draw_rect.width() * 0.08, draw_rect.bottom());
+        let right = Pos2::new(draw_rect.right(), draw_rect.top());
         ui.painter().line_segment([left, mid], stroke);
         ui.painter().line_segment([mid, right], stroke);
     }
@@ -982,15 +1008,14 @@ impl LayoutRenderer {
                 .as_ref()
                 .and_then(|wp| wp.wrap)
                 .unwrap_or(false);
-        let has_width_constraint = element
+        let has_width_constraint = wrap_enabled
+            || element
             .flex_style
             .as_ref()
             .map(|fs| {
                 !matches!(fs.max_width, crate::layout::dimension::Dimension::Auto)
-                    || !matches!(fs.width, crate::layout::dimension::Dimension::Auto)
             })
-            .unwrap_or(false)
-            || wrap_enabled;
+            .unwrap_or(false);
 
         if has_width_constraint {
             // 有 max-width 约束：使用 LayoutJob 按 rect 宽度换行
@@ -1475,39 +1500,120 @@ impl LayoutRenderer {
             .and_then(|c| self.parse_color(c))
             .unwrap_or(Color32::WHITE);
 
+        let icon_width = element
+            .attributes
+            .get_custom("icon-width")
+            .or_else(|| element.attributes.get_custom("icon_width"))
+            .and_then(|s| s.parse::<f32>().ok())
+            .unwrap_or(16.0);
+        let icon_height = element
+            .attributes
+            .get_custom("icon-height")
+            .or_else(|| element.attributes.get_custom("icon_height"))
+            .and_then(|s| s.parse::<f32>().ok())
+            .unwrap_or(icon_width);
+        let icon_gap = element
+            .attributes
+            .get_custom("icon-gap")
+            .or_else(|| element.attributes.get_custom("icon_gap"))
+            .and_then(|s| s.parse::<f32>().ok())
+            .unwrap_or(10.0);
+        let has_icon = element.attributes.icon.is_some();
+        let (padding_top, padding_right, padding_bottom, padding_left) =
+            element.attributes.padding.unwrap_or((0.0, 0.0, 0.0, 0.0));
+        let right_padding = if has_icon {
+            padding_right + icon_width + icon_gap
+        } else {
+            padding_right
+        };
+
         let text_value = self
             .interaction_state
             .text_inputs
             .entry(id.to_string())
             .or_insert_with(String::new);
-        // 内缩 padding (模拟 NSIS inset)
-        let inner_rect = rect.shrink2(Vec2::new(8.0, 4.0));
-        let mut child_ui = ui.new_child(egui::UiBuilder::new().max_rect(inner_rect));
-        child_ui.style_mut().visuals.extreme_bg_color = Color32::TRANSPARENT;
-
-        let mut text_input = if multiline {
-            egui::TextEdit::multiline(text_value)
-        } else {
-            egui::TextEdit::singleline(text_value)
-        };
-        text_input = text_input.font(font_id).text_color(text_color).frame(false);
-        if readonly || !enabled {
-            text_input = text_input.interactive(false);
-        }
-        text_input = text_input.desired_width(inner_rect.width());
-
-        let response = child_ui.add(text_input);
-        if response.changed() {
-            result.text_input_changes.insert(
-                id.to_string(),
-                self.interaction_state
-                    .text_inputs
-                    .get(id)
-                    .cloned()
-                    .unwrap_or_default(),
+        let inner_rect = Rect::from_min_max(
+            Pos2::new(rect.min.x + padding_left, rect.min.y + padding_top),
+            Pos2::new(rect.max.x - right_padding, rect.max.y - padding_bottom),
+        );
+        if readonly {
+            let display_value = text_value.clone();
+            let response = ui.interact(
+                rect,
+                egui::Id::new(format!("readonly_text_input_{}", id)),
+                egui::Sense::click(),
             );
+            let galley = self.layout_button_text_galley(
+                ui,
+                display_value,
+                font_id.clone(),
+                text_color,
+                inner_rect.width().max(1.0),
+                false,
+            );
+            let text_pos = Pos2::new(
+                inner_rect.min.x,
+                rect.center().y - (galley.size().y / 2.0),
+            );
+            ui.painter().galley(text_pos, galley, text_color);
+            result.text_input_responses.insert(id.to_string(), response);
+        } else {
+            let mut child_ui = ui.new_child(egui::UiBuilder::new().max_rect(inner_rect));
+            child_ui.style_mut().visuals.extreme_bg_color = Color32::TRANSPARENT;
+
+            let mut text_input = if multiline {
+                egui::TextEdit::multiline(text_value)
+            } else {
+                egui::TextEdit::singleline(text_value)
+            };
+            text_input = text_input.font(font_id).text_color(text_color).frame(false);
+            if !enabled {
+                text_input = text_input.interactive(false);
+            }
+            text_input = text_input.desired_width(inner_rect.width());
+
+            let response = child_ui.add(text_input);
+            if response.changed() {
+                result.text_input_changes.insert(
+                    id.to_string(),
+                    self.interaction_state
+                        .text_inputs
+                        .get(id)
+                        .cloned()
+                        .unwrap_or_default(),
+                );
+            }
+            result.text_input_responses.insert(id.to_string(), response);
         }
-        result.text_input_responses.insert(id.to_string(), response);
+
+        if let Some(icon) = &element.attributes.icon {
+            let icon_rect = Rect::from_center_size(
+                Pos2::new(
+                    rect.max.x - padding_right - icon_width / 2.0,
+                    rect.center().y,
+                ),
+                Vec2::new(icon_width, icon_height),
+            );
+            if let Some(texture) =
+                self.resource_cache
+                    .get_background(ui.ctx(), &self.dpi_config, icon)
+            {
+                let render_size = self.dpi_config.get_render_size(texture);
+                let draw_rect = Rect::from_center_size(
+                    icon_rect.center(),
+                    Vec2::new(
+                        render_size.x.min(icon_rect.width()),
+                        render_size.y.min(icon_rect.height()),
+                    ),
+                );
+                ui.painter().image(
+                    texture.id(),
+                    draw_rect,
+                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                    Color32::WHITE,
+                );
+            }
+        }
     }
 
     /// 在指定 rect 内渲染进度条
@@ -1568,8 +1674,13 @@ impl LayoutRenderer {
             let progress_rect =
                 Rect::from_min_size(rect.min, Vec2::new(progress_width, rect.height()));
 
-            if let Some(foreimage_str) = element.attributes.get_custom("foreimage") {
-                let image_path = Self::parse_image_path(foreimage_str);
+            let foreimage_str = element
+                .attributes
+                .get_custom("foreimage")
+                .cloned()
+                .or_else(|| element.attributes.get_custom("bar-image").cloned());
+            if let Some(foreimage_str) = foreimage_str {
+                let image_path = Self::parse_image_path(&foreimage_str);
                 if let Some(fg_texture) =
                     self.resource_cache
                         .get_background(ui.ctx(), &self.dpi_config, &image_path.path)
@@ -1688,18 +1799,46 @@ impl LayoutRenderer {
                     .rect_filled(rect, CornerRadius::same(8), Color32::from_white_alpha(8));
             }
 
-            let content_padding = 6.0;
-            let icon_size = 12.0;
+            let content_padding_left = 10.0;
+            let content_padding_right = 8.0;
+            let icon_width = element
+                .attributes
+                .get_custom("dropdown-icon-width")
+                .or_else(|| element.attributes.get_custom("dropdown_icon_width"))
+                .and_then(|s| s.parse::<f32>().ok())
+                .unwrap_or(10.0);
+            let icon_height = element
+                .attributes
+                .get_custom("dropdown-icon-height")
+                .or_else(|| element.attributes.get_custom("dropdown_icon_height"))
+                .and_then(|s| s.parse::<f32>().ok())
+                .unwrap_or(icon_width);
+            let image_width = element
+                .attributes
+                .get_custom("dropdown-image-width")
+                .or_else(|| element.attributes.get_custom("dropdown_image_width"))
+                .and_then(|s| s.parse::<f32>().ok())
+                .unwrap_or(icon_width);
+            let image_height = element
+                .attributes
+                .get_custom("dropdown-image-height")
+                .or_else(|| element.attributes.get_custom("dropdown_image_height"))
+                .and_then(|s| s.parse::<f32>().ok())
+                .unwrap_or(icon_height);
             let icon_gap = 4.0;
             let icon_rect = Rect::from_center_size(
                 Pos2::new(
-                    rect.max.x - content_padding - (icon_size / 2.0),
+                    rect.max.x - content_padding_right - (icon_width / 2.0),
                     rect.center().y,
                 ),
-                Vec2::new(icon_size, icon_size),
+                Vec2::new(icon_width, icon_height),
+            );
+            let image_rect = Rect::from_center_size(
+                icon_rect.center(),
+                Vec2::new(image_width.min(icon_width), image_height.min(icon_height)),
             );
             let text_rect = Rect::from_min_max(
-                Pos2::new(rect.min.x + content_padding, rect.min.y),
+                Pos2::new(rect.min.x + content_padding_left, rect.min.y),
                 Pos2::new(icon_rect.min.x - icon_gap, rect.max.y),
             );
             let galley = self.layout_button_text_galley(
@@ -1716,7 +1855,53 @@ impl LayoutRenderer {
                 text_rect.center().y - (galley_size.y / 2.0),
             );
             ui.painter().galley(text_pos, galley, text_color);
-            Self::paint_chevron_in_rect(ui, icon_rect, text_color, is_open);
+
+            let dropdown_image = if is_open {
+                element
+                    .attributes
+                    .get_custom("dropdown-open-image")
+                    .or_else(|| element.attributes.get_custom("dropdown_open_image"))
+                    .or_else(|| {
+                        element
+                            .attributes
+                            .get_custom("dropdown-image")
+                            .or_else(|| element.attributes.get_custom("dropdown_image"))
+                    })
+            } else {
+                element
+                    .attributes
+                    .get_custom("dropdown-image")
+                    .or_else(|| element.attributes.get_custom("dropdown_image"))
+            };
+
+            if let Some(dropdown_image) = dropdown_image {
+                let image_path = Self::parse_image_path(dropdown_image);
+                let texture_id = self
+                    .resource_cache
+                    .get_background(ui.ctx(), &self.dpi_config, &image_path.path)
+                    .map(|texture| texture.id());
+                if let Some(texture) = self
+                    .resource_cache
+                    .get_background(ui.ctx(), &self.dpi_config, &image_path.path)
+                {
+                    let natural_size = self.dpi_config.get_render_size(texture);
+                    let draw_size = Vec2::new(
+                        natural_size.x.min(icon_rect.width()),
+                        natural_size.y.min(icon_rect.height()),
+                    );
+                    let draw_rect = Rect::from_center_size(icon_rect.center(), draw_size);
+                    ui.painter().image(
+                        texture.id(),
+                        draw_rect,
+                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                        Color32::WHITE,
+                    );
+                } else {
+                    Self::paint_chevron_in_rect(ui, icon_rect, text_color, is_open);
+                }
+            } else {
+                Self::paint_chevron_in_rect(ui, icon_rect, text_color, is_open);
+            }
         }
 
         let mut new_selected = selected.clone();
@@ -1725,45 +1910,88 @@ impl LayoutRenderer {
             new_open_state = !is_open;
         }
 
-        let row_height = (font_size + 10.0).max(rect.height());
-        let popup_height = row_height * options.len() as f32;
+        let popup_width = element
+            .attributes
+            .get_custom("popup-width")
+            .or_else(|| element.attributes.get_custom("popup_width"))
+            .and_then(|s| s.parse::<f32>().ok())
+            .unwrap_or(rect.width().max(120.0));
+        let popup_row_height = element
+            .attributes
+            .get_custom("popup-row-height")
+            .or_else(|| element.attributes.get_custom("popup_row_height"))
+            .and_then(|s| s.parse::<f32>().ok())
+            .unwrap_or(26.0);
+        let popup_padding = element
+            .attributes
+            .get_custom("popup-padding")
+            .or_else(|| element.attributes.get_custom("popup_padding"))
+            .and_then(|s| s.parse::<f32>().ok())
+            .unwrap_or(2.0);
+        let popup_bg = element
+            .attributes
+            .get_custom("popup-background")
+            .or_else(|| element.attributes.get_custom("popup_background"))
+            .and_then(|c| Self::parse_color_static(c))
+            .unwrap_or(Color32::from_rgba_premultiplied(63, 77, 91, 245));
+        let popup_selected_bg = element
+            .attributes
+            .get_custom("popup-selected-background")
+            .or_else(|| element.attributes.get_custom("popup_selected_background"))
+            .and_then(|c| Self::parse_color_static(c))
+            .unwrap_or(Color32::from_rgba_premultiplied(79, 92, 106, 255));
+        let popup_border = element
+            .attributes
+            .get_custom("popup-border-color")
+            .or_else(|| element.attributes.get_custom("popup_border_color"))
+            .and_then(|c| Self::parse_color_static(c))
+            .unwrap_or(Color32::from_rgba_premultiplied(255, 255, 255, 32));
+        let popup_check_color = element
+            .attributes
+            .get_custom("popup-check-color")
+            .or_else(|| element.attributes.get_custom("popup_check_color"))
+            .and_then(|c| Self::parse_color_static(c))
+            .unwrap_or(Color32::WHITE);
+        let popup_height = popup_padding * 2.0 + popup_row_height * options.len() as f32;
         let popup_rect = Rect::from_min_size(
             Pos2::new(rect.min.x, rect.max.y + 4.0),
-            Vec2::new(rect.width().max(120.0), popup_height),
+            Vec2::new(popup_width, popup_height),
         );
 
         if new_open_state && !options.is_empty() {
-            ui.painter().rect_filled(
-                popup_rect,
-                CornerRadius::same(8),
-                Color32::from_rgba_premultiplied(20, 24, 30, 235),
-            );
+            ui.painter().rect_filled(popup_rect, CornerRadius::same(8), popup_bg);
             ui.painter().rect_stroke(
                 popup_rect,
                 CornerRadius::same(8),
-                egui::Stroke::new(1.0, Color32::from_rgba_premultiplied(255, 255, 255, 32)),
+                egui::Stroke::new(1.0, popup_border),
                 egui::StrokeKind::Inside,
             );
 
             for (index, (value, text)) in options.iter().enumerate() {
                 let option_rect = Rect::from_min_max(
                     Pos2::new(
-                        popup_rect.min.x,
-                        popup_rect.min.y + row_height * index as f32,
+                        popup_rect.min.x + popup_padding,
+                        popup_rect.min.y + popup_padding + popup_row_height * index as f32,
                     ),
                     Pos2::new(
-                        popup_rect.max.x,
-                        popup_rect.min.y + row_height * (index as f32 + 1.0),
+                        popup_rect.max.x - popup_padding,
+                        popup_rect.min.y
+                            + popup_padding
+                            + popup_row_height * (index as f32 + 1.0),
                     ),
                 );
                 let option_id = egui::Id::new(format!("select_{}_{}", id, value));
                 let option_response = ui.interact(option_rect, option_id, egui::Sense::click());
                 let is_selected = value == &selected;
-                if option_response.hovered() {
+                if is_selected || option_response.hovered() {
                     ui.painter().rect_filled(
-                        option_rect.shrink2(Vec2::new(2.0, 1.0)),
-                        CornerRadius::same(6),
-                        Color32::from_white_alpha(10),
+                        option_rect,
+                        CornerRadius::same(8),
+                        if is_selected {
+                            popup_selected_bg
+                        } else {
+                            Color32::from_white_alpha(14)
+                        },
                     );
                 }
                 let option_color = if is_selected {
@@ -1776,14 +2004,21 @@ impl LayoutRenderer {
                     text.clone(),
                     egui::FontId::proportional(font_size),
                     option_color,
-                    option_rect.width() - 16.0,
+                    option_rect.width() - 32.0,
                     false,
                 );
                 let option_pos = Pos2::new(
-                    option_rect.min.x + 8.0,
+                    option_rect.min.x + 14.0,
                     option_rect.center().y - (option_galley.size().y / 2.0),
                 );
                 ui.painter().galley(option_pos, option_galley, option_color);
+                if is_selected {
+                    let check_rect = Rect::from_center_size(
+                        Pos2::new(option_rect.max.x - 16.0, option_rect.center().y),
+                        Vec2::new(12.0, 12.0),
+                    );
+                    Self::paint_checkmark_in_rect(ui, check_rect, popup_check_color);
+                }
                 if option_response.clicked() {
                     new_selected = value.clone();
                     new_open_state = false;
@@ -4691,8 +4926,13 @@ impl LayoutRenderer {
                     Rect::from_min_size(rect.min, Vec2::new(progress_width, height));
 
                 // 尝试使用 foreimage（前景图片）
-                if let Some(foreimage_str) = element.attributes.get_custom("foreimage") {
-                    let image_path = Self::parse_image_path(foreimage_str);
+                let foreimage_str = element
+                    .attributes
+                    .get_custom("foreimage")
+                    .cloned()
+                    .or_else(|| element.attributes.get_custom("bar-image").cloned());
+                if let Some(foreimage_str) = foreimage_str {
+                    let image_path = Self::parse_image_path(&foreimage_str);
                     if let Some(fg_texture) = self.resource_cache.get_background(
                         ui.ctx(),
                         &self.dpi_config,
@@ -4816,6 +5056,10 @@ impl LayoutRenderer {
         } else {
             String::new()
         }
+    }
+
+    pub(crate) fn get_display_text_for_harness(&self, attrs: &ElementAttributes) -> String {
+        self.get_display_text(attrs)
     }
 
     /// 获取按钮点击状态

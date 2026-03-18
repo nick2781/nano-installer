@@ -8,10 +8,11 @@
 
 ## 测试分层
 
-- `library harness`
+- `library snapshot / verification tooling`
   - 优先验证布局矩形、语言切换、动作分发、弹窗状态
   - 入口见 [test_harness.rs](/D:/taptap-pc/nano-installer/installer/lib/src/ui/test_harness.rs)
   - CLI 诊断入口：`nano-installer harness snapshot --project <dir> ...`
+  - 资源基线入口：`nano-installer harness lint-resources --project <dir>`
 - `script smoke`
   - 验证真实 EXE 主链路
   - 入口见 [smoke_test.ps1](/D:/taptap-pc/nano-installer/scripts/smoke_test.ps1)、
@@ -26,6 +27,7 @@
 - [x] `nano-installer.exe` 已编译（带图标）
 - [ ] TapTap 项目完整性
 - [ ] 所有资源文件存在
+- [ ] `harness lint-resources` 无 error
 
 ## 测试计划
 
@@ -85,6 +87,16 @@ cd D:\taptap-pc\nano-installer
 期望结果：
 - 生成 `test.pak` 文件
 - 文件大小 > 0
+
+#### 2.4 Harness 资源检查
+```powershell
+.\target\release\nano-installer.exe harness lint-resources --project examples\TapTap --format text
+```
+
+期望结果：
+- 无 `error`
+- 若有 `warning`，必须能解释其合理性或修复
+- 自定义 `resources.layouts_dir/assets_dir/locales_dir` 时仍能正确扫描和构建
 
 ### 阶段 3：TapTap 安装器构建
 
@@ -288,6 +300,7 @@ rm examples\TapTap\assets\logo.png
 - [ ] 项目初始化
 - [ ] 配置验证
 - [ ] 语言包构建
+- [ ] Harness 资源检查
 - [ ] 安装器构建
 - [ ] GUI 显示
 - [ ] 多语言支持

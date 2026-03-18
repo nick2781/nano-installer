@@ -63,6 +63,7 @@
     "window_width": 574,
     "window_height": 358,
     "expanded_height": 518,
+    "window_corner_radius": 8,
     "dpi_aware": true,
     "dpi_threshold": 144
   },

@@ -1957,6 +1957,7 @@ dependencies = [
  "lzma-rs",
  "once_cell",
  "parking_lot",
+ "raw-window-handle",
  "regex",
  "rfd",
  "rhai",

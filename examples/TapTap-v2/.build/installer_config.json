@@ -1,0 +1,149 @@
+{
+  "advanced": {
+    "launch_app_after_install": true,
+    "silent_mode_support": true,
+    "uninstall_mode_support": true,
+    "update_mode_support": true
+  },
+  "autostart": {
+    "default": false,
+    "enabled": true,
+    "registry_key": "HKLM\\\\Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run",
+    "registry_value_name": "TapTapTest"
+  },
+  "channel": {
+    "default_channel": "default",
+    "extract_from_filename": true,
+    "filename_regex": ".*_([^_]+)\\\\.exe$",
+    "output_channel_conf": true
+  },
+  "install": {
+    "append_to_path": "TapTapTest",
+    "default_path": "C:\\Program Files\\TapTapTest",
+    "detect_running_process": true,
+    "exe_name": "TapTap.exe",
+    "kill_process_on_install": true,
+    "kill_process_on_uninstall": true,
+    "mutex_name": "TapTapTest_Installer",
+    "require_admin": true,
+    "required_space_mb": 538
+  },
+  "links": {
+    "help": "https://www.taptap.cn/help",
+    "privacy_policy": "https://www.taptap.cn/doc/privacy-policy/",
+    "terms_of_service": "https://www.taptap.cn/doc/terms/"
+  },
+  "localization": {
+    "default_locale": "zh-CN",
+    "show_language_selector": true,
+    "supported_locales": [
+      "zh-CN",
+      "en-US",
+      "ru"
+    ]
+  },
+  "output": {
+    "installer_icon": "assets/logo.ico",
+    "installer_name": "TapTapV2_Setup.exe",
+    "uninstaller_icon": "assets/uninst.ico",
+    "uninstaller_name": "uninst.exe"
+  },
+  "project": {
+    "copyright": "© 2025 TapTap",
+    "name": "TapTap v2",
+    "output_name": "TapTapV2",
+    "publisher": "易玩网络(上海)科技有限公司",
+    "version": "1.0.0"
+  },
+  "registry": {
+    "help_link": "https://www.taptap.cn/help",
+    "install_path_key": "HKCU\\\\Software\\\\TapTapTest",
+    "uninstall_key": "HKCU\\\\Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\TapTapTest"
+  },
+  "resources": {
+    "assets_dir": "assets",
+    "installer_icon": "assets/logo.ico",
+    "layouts_dir": "layouts",
+    "locales_dir": "locales",
+    "payload_dir": "payload",
+    "payload_file": "payload/app.7z",
+    "uninstaller_icon": "assets/uninst.ico"
+  },
+  "shortcuts": {
+    "desktop_default": true,
+    "desktop_shortcut": true,
+    "start_menu": true,
+    "start_menu_folder": "TapTapTest"
+  },
+  "ui": {
+    "dpi_aware": true,
+    "dpi_threshold": 144,
+    "expanded_height": 450,
+    "window_corner_radius": 12,
+    "window_height": 450,
+    "window_width": 720
+  },
+  "uninstall": {
+    "cleanup_game_registry": false,
+    "data_paths": [
+      "%APPDATA%\\\\TapTapTest",
+      "%LOCALAPPDATA%\\\\TapTapTest"
+    ],
+    "game_registry_path": "SOFTWARE\\\\TapTapTest\\\\Games",
+    "keep_data_default": true,
+    "show_keep_data_option": true
+  },
+  "validation": {
+    "check_disk_space": true,
+    "check_disk_type": "Any",
+    "check_path_legal": true
+  },
+  "wizard": {
+    "pages": [
+      {
+        "id": "config",
+        "layout": "layouts/configpage.xml",
+        "title": "安装选项"
+      },
+      {
+        "id": "installing",
+        "layout": "layouts/installingpage.xml",
+        "title": "正在安装"
+      },
+      {
+        "id": "finish",
+        "layout": "layouts/finishpage.xml",
+        "title": "安装完成"
+      }
+    ],
+    "uninstall_pages": [
+      {
+        "id": "uninstall_confirm",
+        "layout": "layouts/uninstallpage.xml",
+        "title": "确认卸载"
+      },
+      {
+        "id": "uninstall_progress",
+        "layout": "layouts/uninstallingpage.xml",
+        "title": "正在卸载"
+      },
+      {
+        "id": "uninstall_finish",
+        "layout": "layouts/uninstallfinishpage.xml",
+        "title": "卸载完成"
+      }
+    ],
+    "update_pages": [
+      {
+        "id": "installing",
+        "layout": "layouts/installingpage.xml",
+        "title": "Updating"
+      },
+      {
+        "id": "finish",
+        "layout": "layouts/finishpage.xml",
+        "title": "Update Complete"
+      }
+    ]
+  }
+}

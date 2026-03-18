@@ -3,6 +3,7 @@ use crate::layout::taffy_bridge::{ComputedLayout, ComputedRect};
 use crate::layout::LayoutTree;
 use crate::ui::dpi_handler::DpiConfig;
 use crate::ui::egui_app_xml::InstallerApp;
+use crate::ui::message_box::{MessageBoxButton, MessageBoxConfig, MessageBoxType};
 use crate::ui::resource_provider::FilesystemUiResourceProvider;
 use crate::ui::wizard::WizardMode;
 use anyhow::{Context, Result};
@@ -31,6 +32,34 @@ impl LayoutSnapshot {
     /// 获取完整布局计算结果。
     pub fn computed(&self) -> &ComputedLayout {
         &self.computed
+    }
+}
+
+/// 待显示消息框的最小快照。
+#[derive(Debug, Clone, PartialEq)]
+pub struct PendingMessageBoxSnapshot {
+    pub title: String,
+    pub message: String,
+    pub message_type: MessageBoxType,
+    pub buttons: MessageBoxButton,
+    pub width: Option<f32>,
+    pub height: Option<f32>,
+    pub ok_text: String,
+    pub cancel_text: String,
+}
+
+impl From<MessageBoxConfig> for PendingMessageBoxSnapshot {
+    fn from(config: MessageBoxConfig) -> Self {
+        Self {
+            title: config.title,
+            message: config.message,
+            message_type: config.message_type,
+            buttons: config.buttons,
+            width: config.width,
+            height: config.height,
+            ok_text: config.ok_text,
+            cancel_text: config.cancel_text,
+        }
     }
 }
 
@@ -119,6 +148,13 @@ impl UiHarness {
         self.app.harness_has_pending_close_confirmation()
     }
 
+    /// 获取待显示关闭确认框的配置快照。
+    pub fn pending_close_confirmation(&self) -> Option<PendingMessageBoxSnapshot> {
+        self.app
+            .harness_pending_close_confirmation_config()
+            .map(Into::into)
+    }
+
     /// 查询单个文本输入/选择框缓存值。
     pub fn text_input_value(&self, id: &str) -> Option<String> {
         self.app
@@ -139,6 +175,33 @@ impl UiHarness {
             .harness_load_page_layout(page_id)
             .and_then(|layout| layout.root.find_by_id(element_id))
             .and_then(|element| element.attributes.visible)
+    }
+
+    /// 获取选择框当前显示文案，而不是内部值。
+    pub fn select_display_text(&mut self, page_id: &str, select_id: &str) -> Option<String> {
+        let selected_value = self.text_input_value(select_id)?;
+        let selected_attrs = {
+            let layout = self.app.harness_load_page_layout(page_id)?;
+            let select = layout.root.find_by_id(select_id)?;
+
+            select
+                .children
+                .iter()
+                .find(|child| {
+                    child
+                        .attributes
+                        .get_custom("value")
+                        .map(|value| value == &selected_value)
+                        .unwrap_or(false)
+                })
+                .map(|child| child.attributes.clone())
+        };
+        let renderer = self.app.harness_layout_renderer()?;
+
+        selected_attrs
+            .as_ref()
+            .map(|attrs| renderer.get_display_text_for_harness(attrs))
+            .or_else(|| Some(selected_value))
     }
 }
 
@@ -179,6 +242,12 @@ mod tests {
             harness.text_input_value("langSelect").as_deref(),
             Some("ru")
         );
+        assert_eq!(
+            harness
+                .select_display_text("config", "langSelect")
+                .as_deref(),
+            Some("Русский")
+        );
     }
 
     #[test]
@@ -189,6 +258,16 @@ mod tests {
         harness.dispatch_action("close_confirm");
 
         assert!(harness.has_pending_close_confirmation());
+        let snapshot = harness
+            .pending_close_confirmation()
+            .expect("pending close confirmation snapshot");
+        assert_eq!(snapshot.message_type, MessageBoxType::Question);
+        assert_eq!(snapshot.buttons, MessageBoxButton::OkCancel);
+        assert_eq!(snapshot.message, "安装尚未完成,您确定要退出安装吗?");
+        assert_eq!(snapshot.ok_text, "确定");
+        assert_eq!(snapshot.cancel_text, "取消");
+        assert_eq!(snapshot.width, Some(400.0));
+        assert_eq!(snapshot.height, Some(230.0));
     }
 
     #[test]
@@ -268,6 +347,33 @@ mod tests {
         assert_eq!(before_show_more.height, after_show_more.height);
         assert!(after_show_more.width >= before_show_more.width);
         assert!(after_show_more.x + after_show_more.width <= 574.0 + 0.1);
+        assert_eq!(
+            harness
+                .select_display_text("config", "langSelect")
+                .as_deref(),
+            Some("Русский")
+        );
+    }
+
+    #[test]
+    fn test_close_confirmation_snapshot_switches_with_locale() {
+        let mut harness = UiHarness::from_project_dir(example_project_dir(), WizardMode::Install)
+            .expect("create harness");
+
+        harness.switch_language("ru");
+        harness.dispatch_action("close_confirm");
+
+        let snapshot = harness
+            .pending_close_confirmation()
+            .expect("pending close confirmation snapshot");
+        assert_eq!(
+            snapshot.message,
+            "Установка ещё не завершена. Вы уверены, что хотите выйти?"
+        );
+        assert_eq!(snapshot.ok_text, "ОК");
+        assert_eq!(snapshot.cancel_text, "Отмена");
+        assert_eq!(snapshot.width, Some(400.0));
+        assert_eq!(snapshot.height, Some(230.0));
     }
 
     #[test]

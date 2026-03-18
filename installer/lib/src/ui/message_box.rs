@@ -581,6 +581,11 @@ impl MessageBoxManager {
         !self.active_dialogs.is_empty()
     }
 
+    /// 获取指定对话框的配置快照。
+    pub fn get_dialog_config(&self, id: &str) -> Option<&MessageBoxConfig> {
+        self.active_dialogs.get(id)
+    }
+
     /// 关闭所有消息框
     pub fn close_all(&mut self) {
         self.active_dialogs.clear();

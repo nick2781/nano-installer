@@ -3,6 +3,7 @@
 use super::context::ScriptContext;
 use rhai::Engine;
 use std::path::Path;
+use std::time::Instant;
 
 pub fn register(engine: &mut Engine, ctx: ScriptContext) {
     // Extract embedded payload to install path
@@ -161,6 +162,7 @@ pub fn register(engine: &mut Engine, ctx: ScriptContext) {
                 end_pct
             );
 
+            let payload_started = Instant::now();
             let payload = match crate::resources::RuntimeResources::get_payload() {
                 Some(data) => data,
                 None => {
@@ -168,52 +170,36 @@ pub fn register(engine: &mut Engine, ctx: ScriptContext) {
                     return false;
                 }
             };
-
-            // Run extraction in background thread
-            let install_path_clone = install_path.clone();
-            let payload_clone = payload;
-            let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-            let failed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-            let done2 = done.clone();
-            let failed2 = failed.clone();
-
-            std::thread::spawn(move || {
-                match crate::resources::PayloadExt::extract_7z_to_dir(
-                    &payload_clone,
-                    std::path::Path::new(&install_path_clone),
-                ) {
-                    Ok(()) => {}
-                    Err(e) => {
-                        tracing::error!("[script] extract failed: {}", e);
-                        failed2.store(true, std::sync::atomic::Ordering::SeqCst);
-                    }
-                }
-                done2.store(true, std::sync::atomic::Ordering::SeqCst);
-            });
-
-            // Animate progress while waiting
+            let payload_elapsed = payload_started.elapsed();
             let range = end_pct - start_pct;
-            let mut elapsed_ms: u64 = 0;
-            let poll_interval = 100u64; // ms
-
-            while !done.load(std::sync::atomic::Ordering::SeqCst) {
-                elapsed_ms += poll_interval;
-                // Non-linear progress: fast start, slow finish (asymptotic to 95% of range)
-                let t = (elapsed_ms as f64 / 1000.0).min(120.0); // cap at 120s
-                let ratio = 1.0 - (-t / 15.0f64).exp(); // ~95% after 45s
-                let pct = start_pct + range * ratio * 0.95; // never reach end_pct until done
-                c.set_progress(pct as f32);
-                std::thread::sleep(std::time::Duration::from_millis(poll_interval));
-            }
-
-            if failed.load(std::sync::atomic::Ordering::SeqCst) {
+            c.set_progress(start_pct as f32);
+            let extract_started = Instant::now();
+            if let Err(e) = crate::resources::PayloadExt::extract_7z_to_dir_with_progress(
+                &payload,
+                std::path::Path::new(&install_path),
+                |progress| {
+                    let mapped = start_pct + range * progress as f64;
+                    c.set_progress(mapped as f32);
+                },
+            ) {
+                tracing::error!("[script] extract failed: {}", e);
                 return false;
             }
+            let extract_elapsed = extract_started.elapsed();
 
             c.set_progress(end_pct as f32);
+            let delta_started = Instant::now();
             if let Err(e) = c.record_install_tree_delta() {
                 tracing::warn!("[script] failed to record extracted files: {}", e);
             }
+            let delta_elapsed = delta_started.elapsed();
+            tracing::info!(
+                "[script] extract timings: payload={:.3}s extract={:.3}s install_tree_delta={:.3}s total={:.3}s",
+                payload_elapsed.as_secs_f64(),
+                extract_elapsed.as_secs_f64(),
+                delta_elapsed.as_secs_f64(),
+                (payload_elapsed + extract_elapsed + delta_elapsed).as_secs_f64()
+            );
             true
         },
     );

@@ -75,6 +75,7 @@ lzma-rs = "0.3"
 
 # 文件遍历库
 walkdir = "2.4"
+raw-window-handle = "0.6"
 
 # Windows registry
 winreg = "0.52"
@@ -107,6 +108,8 @@ features = [
     "Win32_Globalization",
     "Win32_UI_HiDpi",
     "Win32_System_LibraryLoader",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
 ]
 
 [profile.release]

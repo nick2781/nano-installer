@@ -751,8 +751,9 @@ impl XmlParser {
                 "bar-image" => widget.bar_image = Some(val.to_string()),
                 "track-image" => widget.track_image = Some(val.to_string()),
 
-                // Image
+                // Image / icon
                 "src" => widget.src = Some(val.to_string()),
+                "icon" => widget.icon = Some(val.to_string()),
 
                 // TextInput
                 "placeholder" => widget.placeholder = Some(val.to_string()),
@@ -899,9 +900,12 @@ impl XmlParser {
 
         attrs.color = visual.color.clone();
 
-        // Icon/src for Image
+        // Icon/src for Image/TextInput
         if let Some(src) = &widget.src {
             attrs.icon = Some(src.clone());
+        }
+        if let Some(icon) = &widget.icon {
+            attrs.icon = Some(icon.clone());
         }
 
         // Checkbox selected
@@ -909,6 +913,12 @@ impl XmlParser {
 
         // Progress
         attrs.progress = widget.progress;
+        if let Some(img) = &widget.bar_image {
+            attrs.custom.insert("bar-image".to_string(), img.clone());
+        }
+        if let Some(img) = &widget.track_image {
+            attrs.custom.insert("track-image".to_string(), img.clone());
+        }
 
         // 绝对定位
         if flex.position == Position::Absolute {
@@ -1836,5 +1846,31 @@ mod tests {
         let content = &button.children[0];
         assert_eq!(content.element_type, ElementType::HBox);
         assert_eq!(content.children.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_progress_bar_images_are_preserved_for_legacy_renderer() {
+        let xml = r#"
+        <Page width="720" height="450">
+            <ProgressBar id="slrProgress"
+                         width="576" height="10"
+                         progress="0.5"
+                         bar-image="assets/bar_installing.png"
+                         track-image="assets/progress_bg.png" />
+        </Page>
+        "#;
+
+        let mut parser = XmlParser::new();
+        let tree = parser.parse_string(xml).unwrap();
+
+        let progress = tree.find_by_id("slrProgress").unwrap();
+        assert_eq!(
+            progress.attributes.get_custom("bar-image").map(String::as_str),
+            Some("assets/bar_installing.png")
+        );
+        assert_eq!(
+            progress.attributes.get_custom("track-image").map(String::as_str),
+            Some("assets/progress_bg.png")
+        );
     }
 }

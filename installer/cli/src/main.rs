@@ -5,9 +5,9 @@ use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 mod icon_replacer;
+mod resource_lint;
 mod version_info_builder;
 
 #[derive(Parser)]
@@ -103,6 +103,21 @@ enum HarnessCommands {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+
+    /// Lint project UI assets for harness-driven review
+    LintResources {
+        /// Project directory
+        #[arg(short, long, default_value = ".")]
+        project: PathBuf,
+
+        /// Output format
+        #[arg(long, value_enum, default_value_t = HarnessOutputFormat::Text)]
+        format: HarnessOutputFormat,
+
+        /// Write output to file instead of stdout
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
@@ -180,6 +195,11 @@ fn run_cli() -> Result<()> {
                 format,
                 output.as_deref(),
             ),
+            HarnessCommands::LintResources {
+                project,
+                format,
+                output,
+            } => cmd_harness_lint_resources(&project, format, output.as_deref()),
         },
     }
 }
@@ -206,6 +226,38 @@ fn cmd_harness_snapshot(
         println!("✅ Harness snapshot written: {}", path.display());
     } else {
         println!("{}", report);
+    }
+
+    Ok(())
+}
+
+fn cmd_harness_lint_resources(
+    project_dir: &Path,
+    format: HarnessOutputFormat,
+    output_path: Option<&Path>,
+) -> Result<()> {
+    let report = build_harness_resource_lint_report(project_dir, format)?;
+
+    if let Some(path) = output_path {
+        if let Some(parent) = path.parent() {
+            if !parent.as_os_str().is_empty() {
+                std::fs::create_dir_all(parent)?;
+            }
+        }
+        std::fs::write(path, report.as_bytes())
+            .with_context(|| format!("failed to write resource lint report: {}", path.display()))?;
+        println!("✅ Resource lint report written: {}", path.display());
+    } else {
+        println!("{}", report);
+    }
+
+    let lint = resource_lint::lint_project_resources(project_dir)?;
+    if lint.has_errors() {
+        bail!(
+            "resource lint failed with {} error(s) and {} warning(s)",
+            lint.error_count(),
+            lint.warning_count()
+        );
     }
 
     Ok(())
@@ -255,6 +307,24 @@ fn build_harness_snapshot_report(
             serde_json::to_string_pretty(&payload).context("failed to serialize harness snapshot")
         }
         HarnessOutputFormat::Text => Ok(render_harness_snapshot_text(&payload)),
+    }
+}
+
+fn build_harness_resource_lint_report(
+    project_dir: &Path,
+    format: HarnessOutputFormat,
+) -> Result<String> {
+    let report = resource_lint::lint_project_resources(project_dir).with_context(|| {
+        format!(
+            "failed to lint harness resources for project: {}",
+            project_dir.display()
+        )
+    })?;
+
+    match format {
+        HarnessOutputFormat::Json => serde_json::to_string_pretty(&report)
+            .context("failed to serialize resource lint report"),
+        HarnessOutputFormat::Text => Ok(resource_lint::render_resource_lint_text(&report)),
     }
 }
 
@@ -495,6 +565,22 @@ fn cleanup_stale_installer_artifacts(dist_dir: &Path, active_installer_name: &st
     Ok(())
 }
 
+fn config_resource_dir(config: &serde_json::Value, key: &str, default: &str) -> String {
+    config["resources"][key]
+        .as_str()
+        .unwrap_or(default)
+        .to_string()
+}
+
+fn project_resource_dir(
+    project_dir: &Path,
+    config: &serde_json::Value,
+    key: &str,
+    default: &str,
+) -> PathBuf {
+    project_dir.join(config_resource_dir(config, key, default))
+}
+
 /// 验证配置文件
 fn cmd_validate(config_path: &Path) -> Result<()> {
     println!("🔍 Validating configuration...");
@@ -555,18 +641,18 @@ fn validate_project_resources(project_dir: &Path, config: &serde_json::Value) ->
     println!("🔍 Validating resources...");
 
     // 检查必要的目录
-    let assets_dir = project_dir.join("assets");
-    let layouts_dir = project_dir.join("layouts");
-    let locales_dir = project_dir.join("locales");
+    let assets_dir = project_resource_dir(project_dir, config, "assets_dir", "assets");
+    let layouts_dir = project_resource_dir(project_dir, config, "layouts_dir", "layouts");
+    let locales_dir = project_resource_dir(project_dir, config, "locales_dir", "locales");
 
     if !assets_dir.exists() {
-        bail!("assets/ directory not found");
+        bail!("assets directory not found: {}", assets_dir.display());
     }
     if !layouts_dir.exists() {
-        bail!("layouts/ directory not found");
+        bail!("layouts directory not found: {}", layouts_dir.display());
     }
     if !locales_dir.exists() {
-        bail!("locales/ directory not found");
+        bail!("locales directory not found: {}", locales_dir.display());
     }
 
     // 检查 payload_file 配置（必需）
@@ -585,13 +671,25 @@ fn validate_project_resources(project_dir: &Path, config: &serde_json::Value) ->
     println!("✅ All required directories and files exist");
     println!("   📦 Payload: {}", payload_file);
 
+    let lint = resource_lint::lint_project_resources(project_dir)?;
+    println!(
+        "   🧪 Resource lint: {} error(s), {} warning(s)",
+        lint.error_count(),
+        lint.warning_count()
+    );
+    if lint.has_errors() {
+        bail!(
+            "resource lint failed with {} error(s); run `nano-installer harness lint-resources --project {}`",
+            lint.error_count(),
+            project_dir.display()
+        );
+    }
+
     Ok(())
 }
 
 /// 验证所有布局文件
 fn validate_layout_files(project_dir: &Path, config: &serde_json::Value) -> Result<()> {
-    use nano_installer::layout::xml_parser::XmlParser;
-
     println!("🔍 Validating layout files...");
 
     let layouts_dir = project_dir.join(
@@ -911,7 +1009,8 @@ For more information, see the nano-installer documentation.
 #[cfg(test)]
 mod tests {
     use super::{
-        build_harness_snapshot_report, generate_default_config, HarnessModeArg, HarnessOutputFormat,
+        build_harness_resource_lint_report, build_harness_snapshot_report, generate_default_config,
+        validate_project_resources, HarnessModeArg, HarnessOutputFormat,
     };
     use anyhow::Result;
     use nano_installer::config::InstallerConfig;
@@ -994,6 +1093,68 @@ mod tests {
         assert_eq!(json["close_confirmation_pending"].as_bool(), Some(false));
         assert!(json["computed"]["by_id"]["langSelect"].is_object());
         assert!(json["computed"]["by_id"]["moreconfiginfo"].is_object());
+        Ok(())
+    }
+
+    #[test]
+    fn harness_resource_lint_report_contains_project_summary() -> Result<()> {
+        let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/TapTap");
+
+        let report = build_harness_resource_lint_report(&project_dir, HarnessOutputFormat::Json)?;
+        let json: Value = serde_json::from_str(&report)?;
+
+        assert_eq!(
+            json["project"].as_str(),
+            Some(project_dir.to_string_lossy().as_ref())
+        );
+        assert!(json["referenced_assets"].as_u64().unwrap_or_default() > 0);
+        assert!(json["checked_assets"].as_u64().unwrap_or_default() > 0);
+        assert!(json["issues"].is_array());
+        Ok(())
+    }
+
+    #[test]
+    fn validate_project_resources_honors_custom_resource_directories() -> Result<()> {
+        let temp = tempdir()?;
+        let project_dir = temp.path();
+        fs::create_dir_all(project_dir.join("skin"))?;
+        fs::create_dir_all(project_dir.join("ui"))?;
+        fs::create_dir_all(project_dir.join("lang"))?;
+        fs::create_dir_all(project_dir.join("payload"))?;
+        fs::write(
+            project_dir.join("installer_config.json"),
+            serde_json::json!({
+                "resources": {
+                    "assets_dir": "skin",
+                    "layouts_dir": "ui",
+                    "locales_dir": "lang",
+                    "payload_file": "payload/app.7z"
+                }
+            })
+            .to_string(),
+        )?;
+        fs::write(
+            project_dir.join("ui").join("config.xml"),
+            r#"<Page><Icon src="skin/logo.png" /></Page>"#,
+        )?;
+        let image =
+            image::ImageBuffer::from_pixel(12, 12, image::Rgba([255u8, 255u8, 255u8, 255u8]));
+        image.save(project_dir.join("skin").join("logo.png"))?;
+        let retina =
+            image::ImageBuffer::from_pixel(24, 24, image::Rgba([255u8, 255u8, 255u8, 255u8]));
+        retina.save(project_dir.join("skin").join("logo@2x.png"))?;
+        fs::write(project_dir.join("payload").join("app.7z"), [1u8, 2, 3, 4])?;
+
+        let config: Value = serde_json::json!({
+            "resources": {
+                "assets_dir": "skin",
+                "layouts_dir": "ui",
+                "locales_dir": "lang",
+                "payload_file": "payload/app.7z"
+            }
+        });
+
+        validate_project_resources(project_dir, &config)?;
         Ok(())
     }
 }
@@ -1305,7 +1466,7 @@ fn build_installer_exe(
     let mut ui_count = 0;
 
     // 2.1 收集 layouts
-    let layouts_dir = project_dir.join("layouts");
+    let layouts_dir = project_resource_dir(project_dir, config, "layouts_dir", "layouts");
     if layouts_dir.exists() {
         for entry in walkdir::WalkDir::new(&layouts_dir)
             .into_iter()
@@ -1327,7 +1488,7 @@ fn build_installer_exe(
     eprintln!("      [DEBUG] Total layouts collected: {}", ui_count);
 
     // 2.2 收集 assets
-    let assets_dir = project_dir.join("assets");
+    let assets_dir = project_resource_dir(project_dir, config, "assets_dir", "assets");
     if assets_dir.exists() {
         for entry in walkdir::WalkDir::new(&assets_dir)
             .into_iter()
@@ -1373,7 +1534,7 @@ fn build_installer_exe(
     }
 
     // 3. 添加语言包段（编译 JSON -> .pak，然后打包为 7z）
-    let locales_dir = project_dir.join("locales");
+    let locales_dir = project_resource_dir(project_dir, config, "locales_dir", "locales");
     if locales_dir.exists() {
         let pak_files = compile_locales_to_pak(&project_dir, &locales_dir)?;
         let locale_count = pak_files.len();
@@ -1603,10 +1764,10 @@ fn build_installer_exe(
 fn build_uninstaller_exe(
     project_dir: &Path,
     config: &serde_json::Value,
-    output_name: &str,
+    _output_name: &str,
     _release: bool,
 ) -> Result<()> {
-    use nano_installer::resources::bundle::{append_bundle_to_exe, ResourceBundle, ResourceType};
+    use nano_installer::resources::bundle::{append_bundle_to_exe, ResourceBundle};
 
     // 卸载器输出到临时构建目录，而不是 dist/
     let build_dir = project_dir.join(".build");
@@ -1635,40 +1796,42 @@ fn build_uninstaller_exe(
     let mut ui_count = 0;
 
     // 3.1 添加所有布局文件（uninst 是完整引擎，需要 uninstall + msgBox 等通用布局）
-    let layouts_dir = project_dir.join("layouts");
+    let layouts_dir = project_resource_dir(project_dir, config, "layouts_dir", "layouts");
     if layouts_dir.exists() {
-        for entry in std::fs::read_dir(&layouts_dir)? {
-            let entry = entry?;
+        for entry in walkdir::WalkDir::new(&layouts_dir)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file())
+        {
             let path = entry.path();
-            if path.is_file() {
-                let relative_path = path
-                    .strip_prefix(project_dir)
-                    .context("Failed to get relative path")?;
-                let name = relative_path.to_string_lossy().replace('\\', "/");
-                let data = std::fs::read(&path)?;
-                ui_files.insert(name, data);
-                ui_count += 1;
-            }
+            let relative_path = path
+                .strip_prefix(project_dir)
+                .context("Failed to get relative path")?;
+            let name = relative_path.to_string_lossy().replace('\\', "/");
+            let data = std::fs::read(path)?;
+            ui_files.insert(name, data);
+            ui_count += 1;
         }
     }
     println!("      ✓ Layouts: {}", ui_count);
 
     // 3.2 添加所有资源文件（uninst 现在是完整 egui 引擎，需要全部 UI 资源）
-    let assets_dir = project_dir.join("assets");
+    let assets_dir = project_resource_dir(project_dir, config, "assets_dir", "assets");
     let mut asset_count = 0;
     if assets_dir.exists() {
-        for entry in std::fs::read_dir(&assets_dir)? {
-            let entry = entry?;
+        for entry in walkdir::WalkDir::new(&assets_dir)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file())
+        {
             let path = entry.path();
-            if path.is_file() {
-                let relative_path = path
-                    .strip_prefix(project_dir)
-                    .context("Failed to get relative path")?;
-                let name = relative_path.to_string_lossy().replace('\\', "/");
-                let data = std::fs::read(&path)?;
-                ui_files.insert(name, data);
-                asset_count += 1;
-            }
+            let relative_path = path
+                .strip_prefix(project_dir)
+                .context("Failed to get relative path")?;
+            let name = relative_path.to_string_lossy().replace('\\', "/");
+            let data = std::fs::read(path)?;
+            ui_files.insert(name, data);
+            asset_count += 1;
         }
     }
     println!("      ✓ Assets: {}", asset_count);
@@ -1677,7 +1840,7 @@ fn build_uninstaller_exe(
     bundle.add_ui_resources(ui_files)?;
 
     // 4. 编译并添加语言文件（JSON -> .pak）
-    let locales_dir = project_dir.join("locales");
+    let locales_dir = project_resource_dir(project_dir, config, "locales_dir", "locales");
     if locales_dir.exists() {
         let pak_files = compile_locales_to_pak(&project_dir, &locales_dir)?;
         let locale_count = pak_files.len();
