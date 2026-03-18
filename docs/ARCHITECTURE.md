@@ -2,24 +2,10 @@
 
 ## 概述
 
-nano-installer 是一个现代化的 Windows 安装器生成工具，架构设计对标 NSIS，但使用 Rust 和 Egui 构建。
+nano-installer 是一个现代化的 Windows 安装器框架，使用 Rust 构建，采用 CLI + runtime stub + 资源分段打包 的架构。
 
-## 架构对比
+## 总体架构
 
-### NSIS 架构
-```
-makensis.exe              # 编译器（CLI 工具）
-  ├─ 读取 .nsi 脚本
-  ├─ 选择 stub 文件
-  ├─ 打包资源
-  └─ 生成 installer.exe
-
-Stubs/
-  ├─ lzma-x86-unicode     # 安装器 stub (~40KB)
-  └─ uninst               # 卸载器 stub (~15KB)
-```
-
-### nano-installer 架构
 ```
 nano-installer.exe        # CLI 工具
   ├─ 读取 installer_config.json
@@ -28,8 +14,8 @@ nano-installer.exe        # CLI 工具
   └─ 生成 YourApp_Setup.exe
 
 Stubs/
-  ├─ lzma-x64-unicode.exe # 安装器 stub (~4MB → 目标 <1MB)
-  └─ uninst.exe           # 卸载器 stub (~200KB)
+  ├─ lzma-x64-unicode.exe # 安装器 stub
+  └─ uninst.exe           # 卸载器 stub
 ```
 
 ## 项目结构
@@ -485,7 +471,8 @@ let text = bundle.get("welcome.title")?;
 
 ## 参考
 
-- [NSIS 官方文档](https://nsis.sourceforge.io/Docs/)
+- [Rust 官方文档](https://doc.rust-lang.org/)
+- [egui 文档](https://docs.rs/egui/)
 - [Egui 文档](https://docs.rs/egui/)
 - [Windows Installer](https://learn.microsoft.com/en-us/windows/win32/msi/windows-installer-portal)
 

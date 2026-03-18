@@ -1474,6 +1474,10 @@ fn build_installer_exe(
             .filter(|e| e.file_type().is_file())
         {
             let path = entry.path();
+            let file_name = path.file_name().and_then(|name| name.to_str()).unwrap_or("");
+            if file_name.ends_with(".bak") || file_name.ends_with(".backup") {
+                continue;
+            }
             let relative_path = path
                 .strip_prefix(project_dir)
                 .context("Failed to get relative path")?;

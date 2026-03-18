@@ -371,7 +371,7 @@ cargo flamegraph --bin installer
 1. 在 `src/config/installer_config.rs` 中添加字段
 2. 更新 `examples/TapTap/installer_config.json` 示例
 3. 在 `docs/CONFIG_REFERENCE.md` 中添加文档
-4. 在 `docs/JSON_SCHEMA.md` 中更新类型定义
+4. 在 `docs/CONFIG_REFERENCE.md` 中更新对应配置说明
 
 ### 添加新语言
 
