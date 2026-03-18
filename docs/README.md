@@ -1,26 +1,27 @@
 # nano-installer 文档
 
-欢迎使用 `nano-installer` 文档站。
+`nano-installer` 是一个面向现代 Windows 桌面的安装器框架。文档站覆盖产品定位、架构、配置、布局 DSL、本地化、开发与验证。
 
-这里保留的是对外发布所需的核心文档，重点覆盖：
+## 从哪里开始
 
-- 产品和架构概览
-- 快速开始
-- 配置和布局 DSL
-- 本地化
-- 开发与构建
-- 测试与验证
-
-## 推荐阅读顺序
+如果你是第一次接触这个项目，建议按这个顺序阅读：
 
 1. [项目首页](../README.md)
 2. [架构概览](ARCHITECTURE.md)
 3. [配置参考](CONFIG_REFERENCE.md)
 4. [XML 布局指南](XML_LAYOUT_GUIDE.md)
-5. [XML Schema](XML_SCHEMA.md)
-6. [本地化](LOCALIZATION.md)
-7. [开发指南](DEVELOPMENT.md)
-8. [测试与验证](TEST_PLAN.md)
+5. [本地化](LOCALIZATION.md)
+
+## 常用文档
+
+- [配置参考](CONFIG_REFERENCE.md)
+- [XML 布局指南](XML_LAYOUT_GUIDE.md)
+- [XML Schema](XML_SCHEMA.md)
+- [本地化](LOCALIZATION.md)
+- [开发指南](DEVELOPMENT.md)
+- [测试与验证](TEST_PLAN.md)
+- [项目结构](PROJECT_STRUCTURE.md)
+- [常见问题](FAQ.md)
 
 ## 示例工程
 
@@ -30,5 +31,5 @@
 ## 说明
 
 - 文档站采用 `docsify` 组织。
-- 历史迁移材料和一次性计划文档已从对外文档面移除。
-- 当前文档默认以“现代化 Windows 安装器框架”为产品定位。
+- 文档默认以“现代化 Windows 安装器框架”为产品定位。
+- 历史迁移材料和一次性计划文档已从对外发布面移除。
