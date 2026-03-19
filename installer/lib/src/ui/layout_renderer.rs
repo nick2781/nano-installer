@@ -377,7 +377,10 @@ impl LayoutRenderer {
         let draw_rect = rect.shrink(rect.width().min(rect.height()) * 0.18);
         let stroke = egui::Stroke::new(1.8, color);
         let left = Pos2::new(draw_rect.left(), draw_rect.center().y);
-        let mid = Pos2::new(draw_rect.center().x - draw_rect.width() * 0.08, draw_rect.bottom());
+        let mid = Pos2::new(
+            draw_rect.center().x - draw_rect.width() * 0.08,
+            draw_rect.bottom(),
+        );
         let right = Pos2::new(draw_rect.right(), draw_rect.top());
         ui.painter().line_segment([left, mid], stroke);
         ui.painter().line_segment([mid, right], stroke);
@@ -1010,12 +1013,10 @@ impl LayoutRenderer {
                 .unwrap_or(false);
         let has_width_constraint = wrap_enabled
             || element
-            .flex_style
-            .as_ref()
-            .map(|fs| {
-                !matches!(fs.max_width, crate::layout::dimension::Dimension::Auto)
-            })
-            .unwrap_or(false);
+                .flex_style
+                .as_ref()
+                .map(|fs| !matches!(fs.max_width, crate::layout::dimension::Dimension::Auto))
+                .unwrap_or(false);
 
         if has_width_constraint {
             // 有 max-width 约束：使用 LayoutJob 按 rect 宽度换行
@@ -1551,10 +1552,7 @@ impl LayoutRenderer {
                 inner_rect.width().max(1.0),
                 false,
             );
-            let text_pos = Pos2::new(
-                inner_rect.min.x,
-                rect.center().y - (galley.size().y / 2.0),
-            );
+            let text_pos = Pos2::new(inner_rect.min.x, rect.center().y - (galley.size().y / 2.0));
             ui.painter().galley(text_pos, galley, text_color);
             result.text_input_responses.insert(id.to_string(), response);
         } else {
@@ -1872,9 +1870,9 @@ impl LayoutRenderer {
 
             if let Some(dropdown_image) = dropdown_image {
                 let image_path = Self::parse_image_path(dropdown_image);
-                if let Some(texture) = self
-                    .resource_cache
-                    .get_background(ui.ctx(), &self.dpi_config, &image_path.path)
+                if let Some(texture) =
+                    self.resource_cache
+                        .get_background(ui.ctx(), &self.dpi_config, &image_path.path)
                 {
                     let natural_size = self.dpi_config.get_render_size(texture);
                     let draw_size = Vec2::new(
@@ -1951,7 +1949,8 @@ impl LayoutRenderer {
         );
 
         if new_open_state && !options.is_empty() {
-            ui.painter().rect_filled(popup_rect, CornerRadius::same(8), popup_bg);
+            ui.painter()
+                .rect_filled(popup_rect, CornerRadius::same(8), popup_bg);
             ui.painter().rect_stroke(
                 popup_rect,
                 CornerRadius::same(8),
@@ -1967,9 +1966,7 @@ impl LayoutRenderer {
                     ),
                     Pos2::new(
                         popup_rect.max.x - popup_padding,
-                        popup_rect.min.y
-                            + popup_padding
-                            + popup_row_height * (index as f32 + 1.0),
+                        popup_rect.min.y + popup_padding + popup_row_height * (index as f32 + 1.0),
                     ),
                 );
                 let option_id = egui::Id::new(format!("select_{}_{}", id, value));

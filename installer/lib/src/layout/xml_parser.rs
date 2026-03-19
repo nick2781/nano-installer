@@ -1865,11 +1865,17 @@ mod tests {
 
         let progress = tree.find_by_id("slrProgress").unwrap();
         assert_eq!(
-            progress.attributes.get_custom("bar-image").map(String::as_str),
+            progress
+                .attributes
+                .get_custom("bar-image")
+                .map(String::as_str),
             Some("assets/bar_installing.png")
         );
         assert_eq!(
-            progress.attributes.get_custom("track-image").map(String::as_str),
+            progress
+                .attributes
+                .get_custom("track-image")
+                .map(String::as_str),
             Some("assets/progress_bg.png")
         );
     }

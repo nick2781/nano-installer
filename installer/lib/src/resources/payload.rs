@@ -3,12 +3,12 @@
 use crate::common::{Error, Result};
 use regex::Regex;
 use std::io::{BufWriter, Read, Write};
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 use std::time::Instant;
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
 #[cfg(windows)]
 use windows::Win32::System::Threading::CREATE_NO_WINDOW;
 
@@ -200,8 +200,7 @@ impl PayloadExtractor {
 
     fn parse_7za_progress_fragment(fragment: &str) -> Option<f32> {
         static PROGRESS_RE: OnceLock<Regex> = OnceLock::new();
-        let regex =
-            PROGRESS_RE.get_or_init(|| Regex::new(r"(?:^|[^0-9])([0-9]{1,3})%").unwrap());
+        let regex = PROGRESS_RE.get_or_init(|| Regex::new(r"(?:^|[^0-9])([0-9]{1,3})%").unwrap());
 
         regex
             .captures_iter(fragment)

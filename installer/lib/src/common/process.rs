@@ -5,16 +5,14 @@ use crate::common::{Error, Result};
 use std::process::Command;
 
 #[cfg(windows)]
-use windows::{
-    Win32::{
-        Foundation::CloseHandle,
-        System::{
-            Diagnostics::ToolHelp::{
-                CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32,
-                TH32CS_SNAPPROCESS,
-            },
-            Threading::{OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_TERMINATE},
+use windows::Win32::{
+    Foundation::CloseHandle,
+    System::{
+        Diagnostics::ToolHelp::{
+            CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32,
+            TH32CS_SNAPPROCESS,
         },
+        Threading::{OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_TERMINATE},
     },
 };
 
