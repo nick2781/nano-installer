@@ -893,15 +893,6 @@ impl InstallerApp {
 
                 *status.write() = status_user_data;
                 *progress.write() = 0.45;
-                if !reserve_data {
-                    for data_path_template in &config.uninstall.data_paths {
-                        let expanded = Self::expand_env_vars(data_path_template);
-                        let data_path = PathBuf::from(&expanded);
-                        if data_path.exists() {
-                            let _ = std::fs::remove_dir_all(&data_path);
-                        }
-                    }
-                }
 
                 *status.write() = status_files;
                 *progress.write() = 0.60;
@@ -1776,28 +1767,5 @@ impl InstallerApp {
                 tracing::info!("Launched self-deletion script: {:?}", batch_path);
             }
         }
-    }
-
-    /// 展开 Windows 风格的环境变量 (%VAR% -> value)
-    fn expand_env_vars(input: &str) -> String {
-        let mut result = input.to_string();
-        while let Some(start) = result.find('%') {
-            if let Some(end) = result[start + 1..].find('%') {
-                let var_name = &result[start + 1..start + 1 + end];
-                if let Ok(value) = std::env::var(var_name) {
-                    result = format!(
-                        "{}{}{}",
-                        &result[..start],
-                        value,
-                        &result[start + 2 + end..]
-                    );
-                } else {
-                    break;
-                }
-            } else {
-                break;
-            }
-        }
-        result
     }
 }

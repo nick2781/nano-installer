@@ -117,8 +117,7 @@
   },
   "uninstall": {
     "show_keep_data_option": true,
-    "keep_data_default": true,
-    "data_paths": ["%APPDATA%\\\\TapTapTest", "%LOCALAPPDATA%\\\\TapTapTest"]
+    "keep_data_default": true
   },
   "validation": {
     "check_path_legal": true,

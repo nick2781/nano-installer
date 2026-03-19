@@ -906,11 +906,10 @@ fn generate_default_config(name: &str) -> String {
             ],
             "uninstall_pages": []
         },
-        "uninstall": {
+          "uninstall": {
             "show_keep_data_option": true,
-            "keep_data_default": true,
-            "data_paths": []
-        },
+            "keep_data_default": true
+          },
         "validation": {
             "check_path_legal": true,
             "check_disk_type": "Any",
@@ -1422,7 +1421,10 @@ fn build_installer_exe(
             .filter(|e| e.file_type().is_file())
         {
             let path = entry.path();
-            let file_name = path.file_name().and_then(|name| name.to_str()).unwrap_or("");
+            let file_name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("");
             if file_name.ends_with(".bak") || file_name.ends_with(".backup") {
                 continue;
             }

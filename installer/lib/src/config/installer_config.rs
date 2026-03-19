@@ -242,8 +242,6 @@ pub struct UninstallConfig {
     pub show_keep_data_option: bool,
     /// "保留数据"默认勾选
     pub keep_data_default: bool,
-    /// 卸载时删除的数据路径
-    pub data_paths: Vec<String>,
 }
 
 /// 路径校验配置
@@ -293,14 +291,6 @@ impl InstallerConfig {
             Self::expand_env_vars_in_string(&self.registry.install_path_key);
         self.registry.uninstall_key = Self::expand_env_vars_in_string(&self.registry.uninstall_key);
         self.autostart.registry_key = Self::expand_env_vars_in_string(&self.autostart.registry_key);
-
-        // 展开卸载配置中的数据路径
-        self.uninstall.data_paths = self
-            .uninstall
-            .data_paths
-            .iter()
-            .map(|path| Self::expand_env_vars_in_string(path))
-            .collect();
     }
 
     /// 展开字符串中的环境变量
@@ -451,7 +441,6 @@ impl Default for InstallerConfig {
             uninstall: UninstallConfig {
                 show_keep_data_option: true,
                 keep_data_default: true,
-                data_paths: vec!["%APPDATA%\\MyApp".to_string()],
             },
             validation: ValidationConfig {
                 check_path_legal: true,
@@ -466,5 +455,24 @@ impl Default for InstallerConfig {
             },
             install_tasks: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::InstallerConfig;
+
+    #[test]
+    fn serialized_uninstall_config_does_not_expose_data_paths() {
+        let config = InstallerConfig::default();
+        let value = serde_json::to_value(&config).expect("serialize config");
+        let uninstall = value
+            .get("uninstall")
+            .expect("uninstall section should be serialized");
+
+        assert!(
+            uninstall.get("data_paths").is_none(),
+            "product-specific data cleanup should be expressed in uninstall scripts, not config"
+        );
     }
 }

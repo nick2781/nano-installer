@@ -285,19 +285,17 @@ your_project/
 |------|------|--------|------|
 | `show_keep_data_option` | boolean | `false` | 是否显示"保留用户数据"选项 |
 | `keep_data_default` | boolean | `true` | "保留用户数据"默认是否勾选 |
-| `data_paths` | string[] | `[]` | 卸载时需要清理的用户数据路径（支持环境变量） |
 
 ```json
 {
   "uninstall": {
     "show_keep_data_option": true,
-    "keep_data_default": true,
-    "data_paths": [
-      "%APPDATA%\\TapTap"
-    ]
+    "keep_data_default": true
   }
 }
 ```
+
+产品数据清理、渠道文件删除、游戏业务注册表清理等产品副作用，统一放在 `scripts/uninstall.rhai` 中表达，不再通过配置声明。
 
 ---
 
@@ -422,8 +420,7 @@ your_project/
   },
   "uninstall": {
     "show_keep_data_option": true,
-    "keep_data_default": true,
-    "data_paths": ["%APPDATA%\\TapTap"]
+    "keep_data_default": true
   },
   "validation": {
     "check_path_legal": true,
