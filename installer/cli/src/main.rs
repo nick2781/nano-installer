@@ -906,10 +906,6 @@ fn generate_default_config(name: &str) -> String {
             ],
             "uninstall_pages": []
         },
-          "uninstall": {
-            "show_keep_data_option": true,
-            "keep_data_default": true
-          },
         "validation": {
             "check_path_legal": true,
             "check_disk_type": "Any",

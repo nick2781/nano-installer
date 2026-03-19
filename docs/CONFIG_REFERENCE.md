@@ -279,26 +279,6 @@ your_project/
 
 ---
 
-## uninstall - 卸载配置
-
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `show_keep_data_option` | boolean | `false` | 是否显示"保留用户数据"选项 |
-| `keep_data_default` | boolean | `true` | "保留用户数据"默认是否勾选 |
-
-```json
-{
-  "uninstall": {
-    "show_keep_data_option": true,
-    "keep_data_default": true
-  }
-}
-```
-
-产品数据清理、渠道文件删除、游戏业务注册表清理等产品副作用，统一放在 `scripts/uninstall.rhai` 中表达，不再通过配置声明。
-
----
-
 ## validation - 路径验证配置
 
 | 字段 | 类型 | 默认值 | 说明 |
@@ -418,10 +398,6 @@ your_project/
       { "id": "finish", "layout": "uninstallfinishpage", "title": "卸载完成" }
     ]
   },
-  "uninstall": {
-    "show_keep_data_option": true,
-    "keep_data_default": true
-  },
   "validation": {
     "check_path_legal": true,
     "check_disk_type": false,
@@ -443,14 +419,14 @@ your_project/
 - 快捷方式
 - 开机自启
 - 通用注册表键
-- 卸载时的用户数据保留选项
-
-产品业务副作用应放到安装或卸载脚本里实现，例如：
+产品业务副作用和业务型卸载 UI 应放到安装或卸载脚本、页面布局里实现，例如：
 
 - 写入 `channel.conf`
 - 写入渠道文件或业务配置文件
 - 清理产品自定义目录
 - 删除产品自定义注册表键
+- 是否显示“保留数据”选项
+- “保留数据”默认是否勾选
 
 通用能力优先走配置；无法抽象成通用能力的产品逻辑，统一走脚本。
 

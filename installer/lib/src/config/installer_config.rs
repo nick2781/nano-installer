@@ -32,8 +32,6 @@ pub struct InstallerConfig {
     pub ui: UiConfig,
     /// 向导流程配置
     pub wizard: WizardConfig,
-    /// 卸载配置
-    pub uninstall: UninstallConfig,
     /// 路径校验配置
     pub validation: ValidationConfig,
     /// 高级选项
@@ -235,15 +233,6 @@ pub struct PageConfig {
     pub title: String,
 }
 
-/// 卸载配置
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UninstallConfig {
-    /// 是否显示"保留数据"选项
-    pub show_keep_data_option: bool,
-    /// "保留数据"默认勾选
-    pub keep_data_default: bool,
-}
-
 /// 路径校验配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationConfig {
@@ -438,10 +427,6 @@ impl Default for InstallerConfig {
                     },
                 ],
             },
-            uninstall: UninstallConfig {
-                show_keep_data_option: true,
-                keep_data_default: true,
-            },
             validation: ValidationConfig {
                 check_path_legal: true,
                 check_disk_type: "Any".to_string(),
@@ -463,16 +448,13 @@ mod tests {
     use super::InstallerConfig;
 
     #[test]
-    fn serialized_uninstall_config_does_not_expose_data_paths() {
+    fn serialized_config_does_not_expose_uninstall_section() {
         let config = InstallerConfig::default();
         let value = serde_json::to_value(&config).expect("serialize config");
-        let uninstall = value
-            .get("uninstall")
-            .expect("uninstall section should be serialized");
 
         assert!(
-            uninstall.get("data_paths").is_none(),
-            "product-specific data cleanup should be expressed in uninstall scripts, not config"
+            value.get("uninstall").is_none(),
+            "uninstall page business logic should be expressed in layout + scripts, not config"
         );
     }
 }

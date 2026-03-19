@@ -169,7 +169,7 @@ impl InstallerApp {
 
         let create_desktop_shortcut = config.shortcuts.desktop_default;
         let autorun_preference = config.autostart.default;
-        let reserve_data_preference = config.uninstall.keep_data_default;
+        let reserve_data_preference = false;
 
         let parser = XmlParser::new();
 
