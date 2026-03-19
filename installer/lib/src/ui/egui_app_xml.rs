@@ -1508,7 +1508,7 @@ impl eframe::App for InstallerApp {
 
         // 主面板 - 完全由 XML 布局控制
         egui::CentralPanel::default()
-            .frame(egui::Frame::none())
+            .frame(egui::Frame::NONE)
             .show(ctx, |ui| {
                 let current_page_id = self.wizard.current_page_id().to_string();
 

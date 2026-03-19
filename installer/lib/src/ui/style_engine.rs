@@ -192,7 +192,7 @@ impl StyleEngine {
 
     /// 获取分隔线样式
     pub fn get_divider_style(&self, style_type: &StyleType) -> DividerStyle {
-        let base_config = self.get_style_config(style_type);
+        let _base_config = self.get_style_config(style_type);
 
         DividerStyle {
             color: Color32::from_rgba_unmultiplied(0, 196, 178, 51), // 20% 透明度

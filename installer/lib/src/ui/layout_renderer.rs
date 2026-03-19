@@ -1813,13 +1813,13 @@ impl LayoutRenderer {
                 .or_else(|| element.attributes.get_custom("dropdown_icon_height"))
                 .and_then(|s| s.parse::<f32>().ok())
                 .unwrap_or(icon_width);
-            let image_width = element
+            let _image_width = element
                 .attributes
                 .get_custom("dropdown-image-width")
                 .or_else(|| element.attributes.get_custom("dropdown_image_width"))
                 .and_then(|s| s.parse::<f32>().ok())
                 .unwrap_or(icon_width);
-            let image_height = element
+            let _image_height = element
                 .attributes
                 .get_custom("dropdown-image-height")
                 .or_else(|| element.attributes.get_custom("dropdown_image_height"))
@@ -1832,10 +1832,6 @@ impl LayoutRenderer {
                     rect.center().y,
                 ),
                 Vec2::new(icon_width, icon_height),
-            );
-            let image_rect = Rect::from_center_size(
-                icon_rect.center(),
-                Vec2::new(image_width.min(icon_width), image_height.min(icon_height)),
             );
             let text_rect = Rect::from_min_max(
                 Pos2::new(rect.min.x + content_padding_left, rect.min.y),
@@ -1876,10 +1872,6 @@ impl LayoutRenderer {
 
             if let Some(dropdown_image) = dropdown_image {
                 let image_path = Self::parse_image_path(dropdown_image);
-                let texture_id = self
-                    .resource_cache
-                    .get_background(ui.ctx(), &self.dpi_config, &image_path.path)
-                    .map(|texture| texture.id());
                 if let Some(texture) = self
                     .resource_cache
                     .get_background(ui.ctx(), &self.dpi_config, &image_path.path)
@@ -2139,7 +2131,6 @@ impl LayoutRenderer {
             .unwrap_or(self.dpi_config.window_height);
 
         // 先分配整个页面的矩形空间
-        let page_rect = ui.max_rect();
         let (full_rect, _response) =
             ui.allocate_exact_size(egui::vec2(page_width, page_height), egui::Sense::hover());
 
@@ -2754,7 +2745,7 @@ impl LayoutRenderer {
         ui: &mut Ui,
         element: &LayoutElement,
         result: &mut RenderResult,
-        align: &str,
+        _align: &str,
         halign: &str,
         valign: &str,
     ) {
@@ -3104,7 +3095,7 @@ impl LayoutRenderer {
 
         // 如果指定了高度，先分配固定高度的区域
         if let Some(h) = height {
-            let response = ui.allocate_ui_with_layout(
+            ui.allocate_ui_with_layout(
                 egui::vec2(ui.available_width(), h),
                 egui::Layout::left_to_right(egui::Align::Min),
                 |ui| {
@@ -3559,7 +3550,6 @@ impl LayoutRenderer {
             .unwrap_or(&"".to_string())
             .clone();
         let text = self.get_display_text(&element.attributes);
-        let style_type = StyleType::from(&element.attributes);
         let enabled = element.attributes.enabled.unwrap_or(true);
 
         let width = element.attributes.width.unwrap_or(120.0);
@@ -3584,13 +3574,6 @@ impl LayoutRenderer {
 
         // 获取字体和颜色配置
         let font_id = self.get_font_id(element);
-
-        let text_color = element
-            .attributes
-            .color
-            .as_ref()
-            .and_then(|c| self.parse_color(c))
-            .unwrap_or(Color32::WHITE);
 
         // 检查是否有绝对定位（position 属性或 float="true" + pos 属性）
         let is_float = element
@@ -3684,7 +3667,7 @@ impl LayoutRenderer {
 
         // 绘制按钮背景和文本
         // 检查是否有绝对定位（position 属性或 float="true" + pos 属性）
-        let is_absolute = element.attributes.get_custom("position").is_some()
+        let _is_absolute = element.attributes.get_custom("position").is_some()
             || element
                 .attributes
                 .get_custom("is_absolute")
@@ -4067,7 +4050,7 @@ impl LayoutRenderer {
                 egui::vec2(w, 0.0),
                 egui::Layout::left_to_right(egui::Align::Min),
                 |ui| {
-                    let mut rich_text = egui::RichText::new(&text).font(font_id).color(text_color);
+                    let rich_text = egui::RichText::new(&text).font(font_id).color(text_color);
 
                     let label = egui::Label::new(rich_text);
                     ui.add(label);
@@ -4200,7 +4183,7 @@ impl LayoutRenderer {
     fn get_font_id(&self, element: &LayoutElement) -> egui::FontId {
         // 优先从 font_id 获取字体配置
         if let Some(font_id_str) = element.attributes.get_custom("font_id") {
-            if let Ok(font_id) = font_id_str.parse::<u32>() {
+            if font_id_str.parse::<u32>().is_ok() {
                 // 从 custom 中获取字体配置
                 if let (Some(font_name), Some(font_size_str), Some(font_bold_str)) = (
                     element.attributes.get_custom("font_name"),
@@ -4234,7 +4217,7 @@ impl LayoutRenderer {
 
     /// 渲染复选框
     fn render_checkbox(&mut self, ui: &mut Ui, element: &LayoutElement, result: &mut RenderResult) {
-        let id = element
+        let _id = element
             .attributes
             .id
             .as_ref()

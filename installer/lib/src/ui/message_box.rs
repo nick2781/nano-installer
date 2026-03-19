@@ -265,7 +265,7 @@ impl MessageBoxManager {
         config: &MessageBoxConfig,
         layout: &LayoutTree,
         dpi_config: &crate::ui::dpi_handler::DpiConfig,
-        resource_cache: &mut crate::ui::dpi_handler::ResourceCache,
+        _resource_cache: &mut crate::ui::dpi_handler::ResourceCache,
     ) -> Option<MessageBoxResult> {
         let mut result = None;
 
@@ -397,7 +397,7 @@ impl MessageBoxManager {
                             max_width: message_rect.width(),
                             ..Default::default()
                         };
-                        ui.allocate_ui_at_rect(message_rect, |ui| {
+                        ui.scope_builder(egui::UiBuilder::new().max_rect(message_rect), |ui| {
                             ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
                             ui.centered_and_justified(|ui| {
                                 ui.add_sized(message_rect.size(), egui::Label::new(job).wrap());
