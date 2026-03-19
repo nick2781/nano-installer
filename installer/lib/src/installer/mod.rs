@@ -1,7 +1,6 @@
 // 安装逻辑模块
 
 pub(crate) mod artifacts;
-pub mod channel;
 pub mod engine;
 pub mod extractor;
 pub mod launcher;
@@ -14,7 +13,6 @@ pub mod tasks;
 #[cfg(windows)]
 pub mod windows;
 
-pub use channel::ChannelManager;
 pub use engine::InstallEngine;
 pub use extractor::{ExtractionResult, ExtractionStatus, SevenZipExtractor};
 pub use launcher::AppLauncher;

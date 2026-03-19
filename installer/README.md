@@ -87,7 +87,6 @@ installer/
 │       │   ├── tasks.rs         # 安装任务
 │       │   ├── extractor.rs     # 文件解压
 │       │   ├── launcher.rs      # 应用启动
-│       │   ├── channel.rs       # 进度通信
 │       │   ├── registry.rs      # 注册表（通用）
 │       │   ├── shortcuts.rs     # 快捷方式（通用）
 │       │   └── windows/         # Windows 特定实现

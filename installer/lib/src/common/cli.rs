@@ -33,7 +33,6 @@ impl std::str::FromStr for RunMode {
 pub struct CliArgs {
     pub mode: RunMode,
     pub silent: bool,
-    pub channel: Option<String>,
     pub install_path: Option<String>,
     pub config_path: Option<String>,
     pub log_level: Option<String>,
@@ -46,7 +45,6 @@ impl CliArgs {
         Self {
             mode: RunMode::Install,
             silent: false,
-            channel: None,
             install_path: None,
             config_path: None,
             log_level: None,
@@ -77,16 +75,6 @@ impl CliArgs {
                 "--silent" | "-s" => {
                     cli_args.silent = true;
                     i += 1;
-                }
-                "--channel" | "-c" => {
-                    if i + 1 < args.len() {
-                        cli_args.channel = Some(args[i + 1].clone());
-                        i += 2;
-                    } else {
-                        return Err(Error::InstallationFailed(
-                            "--channel requires a value".to_string(),
-                        ));
-                    }
                 }
                 "--path" | "-p" => {
                     if i + 1 < args.len() {
@@ -127,10 +115,6 @@ impl CliArgs {
                     i += 1;
                 }
                 _ => {
-                    // 尝试从文件名提取渠道信息
-                    if cli_args.channel.is_none() {
-                        cli_args.channel = Self::extract_channel_from_filename(arg);
-                    }
                     i += 1;
                 }
             }
@@ -145,24 +129,6 @@ impl CliArgs {
         Ok(cli_args)
     }
 
-    /// 从文件名提取渠道信息
-    fn extract_channel_from_filename(filename: &str) -> Option<String> {
-        // 简单的渠道提取逻辑
-        if let Some(underscore_pos) = filename.rfind('_') {
-            if let Some(dot_pos) = filename.rfind('.') {
-                if underscore_pos < dot_pos {
-                    let potential_channel = &filename[underscore_pos + 1..dot_pos];
-                    if !potential_channel.is_empty()
-                        && potential_channel.chars().all(|c| c.is_alphanumeric())
-                    {
-                        return Some(potential_channel.to_string());
-                    }
-                }
-            }
-        }
-        None
-    }
-
     /// 显示帮助信息
     pub fn show_help() {
         println!("nano-installer - Universal installer generator");
@@ -172,7 +138,6 @@ impl CliArgs {
         println!("Options:");
         println!("  -m, --mode <MODE>        Run mode: install, update, uninstall, silent");
         println!("  -s, --silent             Silent mode (no UI)");
-        println!("  -c, --channel <CHANNEL> Channel identifier");
         println!("  -p, --path <PATH>        Installation path");
         println!("      --config <PATH>      Configuration file path");
         println!("      --log-level <LEVEL>  Log level: trace, debug, info, warn, error");
@@ -180,7 +145,6 @@ impl CliArgs {
         println!("  -v, --version            Show version information");
         println!();
         println!("Examples:");
-        println!("  nano-installer --mode install --channel CN");
         println!("  nano-installer --silent --path \"C:\\Program Files\\MyApp\"");
         println!("  nano-installer --mode uninstall");
     }
@@ -203,18 +167,6 @@ impl CliArgs {
                 }
             }
             _ => {}
-        }
-
-        // 验证渠道名称
-        if let Some(ref channel) = self.channel {
-            if !channel
-                .chars()
-                .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
-            {
-                return Err(Error::InstallationFailed(
-                    "Invalid channel name. Only alphanumeric characters, underscores and hyphens are allowed".to_string()
-                ));
-            }
         }
 
         // 验证安装路径

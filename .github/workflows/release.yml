@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build release artifacts
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.81.0
+
+      - name: Restore cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release stubs
+        run: cargo build --release -p nano-installer-lzma -p uninst -p nano-installer-cli
+
+      - name: Build TapTap-v2 setup
+        run: cargo run --release -p nano-installer-cli -- build --project examples/TapTap-v2
+
+      - name: Package release bundle
+        shell: powershell
+        run: |
+          $bundleDir = Join-Path $PWD "release-bundle"
+          New-Item -ItemType Directory -Force -Path $bundleDir | Out-Null
+          Copy-Item "target/release/nano-installer.exe" $bundleDir
+          Copy-Item "target/release/lzma-x64-unicode.exe" $bundleDir
+          Copy-Item "target/release/uninst.exe" $bundleDir
+          Copy-Item "examples/TapTap-v2/dist/TapTapV2_Setup.exe" $bundleDir
+          $archive = Join-Path $PWD "nano-installer-windows-x64.zip"
+          if (Test-Path $archive) { Remove-Item $archive -Force }
+          Compress-Archive -Path "$bundleDir\\*" -DestinationPath $archive
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nano-installer-windows-x64
+          path: |
+            nano-installer-windows-x64.zip
+            examples/TapTap-v2/dist/TapTapV2_Setup.exe
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            nano-installer-windows-x64.zip
+            examples/TapTap-v2/dist/TapTapV2_Setup.exe

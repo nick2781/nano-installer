@@ -104,21 +104,10 @@ reg_write_string(uninst_key, "HelpLink", "https://www.taptap.cn");
 reg_write_dword(uninst_key, "NoModify", 1);
 reg_write_dword(uninst_key, "NoRepair", 1);
 
-set_progress(80.0);
-
-// ═══════════════════════════════════════════
-// Step 7: Write channel.conf (NSIS: CreateTapChannelConf)
-// ═══════════════════════════════════════════
-let channel = get_config_value("channel.default_channel");
-if channel != () && channel != "" {
-    write_file(path_join(install_path, "channel.conf"), channel);
-    log_info("Wrote channel.conf: " + channel);
-}
-
 set_progress(90.0);
 
 // ═══════════════════════════════════════════
-// Step 8: Shell notification (NSIS: SHChangeNotify)
+// Step 7: Shell notification (NSIS: SHChangeNotify)
 // ═══════════════════════════════════════════
 shell_notify();
 

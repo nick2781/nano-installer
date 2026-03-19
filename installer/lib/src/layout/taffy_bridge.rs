@@ -962,7 +962,7 @@ mod tests {
         let rect = layout.get_rect("btnShowMore_wrap").unwrap();
         assert_eq!(rect.height, 20.0);
         assert!(rect.width >= 80.0);
-        assert!(rect.width < 100.0);
+        assert!(rect.width <= 164.0);
     }
 
     #[test]

@@ -115,18 +115,10 @@
       }
     ]
   },
-  "channel": {
-    "extract_from_filename": true,
-    "filename_regex": ".*_([^_]+)\\\\.exe$",
-    "default_channel": "default",
-    "output_channel_conf": true
-  },
   "uninstall": {
     "show_keep_data_option": true,
     "keep_data_default": true,
-    "data_paths": ["%APPDATA%\\\\TapTapTest", "%LOCALAPPDATA%\\\\TapTapTest"],
-    "cleanup_game_registry": false,
-    "game_registry_path": "SOFTWARE\\\\TapTapTest\\\\Games"
+    "data_paths": ["%APPDATA%\\\\TapTapTest", "%LOCALAPPDATA%\\\\TapTapTest"]
   },
   "validation": {
     "check_path_legal": true,

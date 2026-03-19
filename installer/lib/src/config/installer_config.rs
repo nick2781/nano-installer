@@ -32,8 +32,6 @@ pub struct InstallerConfig {
     pub ui: UiConfig,
     /// 向导流程配置
     pub wizard: WizardConfig,
-    /// 渠道配置
-    pub channel: ChannelConfig,
     /// 卸载配置
     pub uninstall: UninstallConfig,
     /// 路径校验配置
@@ -237,19 +235,6 @@ pub struct PageConfig {
     pub title: String,
 }
 
-/// 渠道配置
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChannelConfig {
-    /// 是否从文件名提取渠道
-    pub extract_from_filename: bool,
-    /// 文件名正则表达式
-    pub filename_regex: String,
-    /// 默认渠道
-    pub default_channel: String,
-    /// 是否输出channel.conf文件
-    pub output_channel_conf: bool,
-}
-
 /// 卸载配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UninstallConfig {
@@ -259,10 +244,6 @@ pub struct UninstallConfig {
     pub keep_data_default: bool,
     /// 卸载时删除的数据路径
     pub data_paths: Vec<String>,
-    /// 是否清理注册表游戏列表
-    pub cleanup_game_registry: bool,
-    /// 游戏注册表路径
-    pub game_registry_path: String,
 }
 
 /// 路径校验配置
@@ -467,18 +448,10 @@ impl Default for InstallerConfig {
                     },
                 ],
             },
-            channel: ChannelConfig {
-                extract_from_filename: true,
-                filename_regex: r"^MyApp_Setup_[0-9.]+_([a-zA-Z][a-zA-Z0-9_-]+)\.exe$".to_string(),
-                default_channel: "default".to_string(),
-                output_channel_conf: true,
-            },
             uninstall: UninstallConfig {
                 show_keep_data_option: true,
                 keep_data_default: true,
                 data_paths: vec!["%APPDATA%\\MyApp".to_string()],
-                cleanup_game_registry: false,
-                game_registry_path: "HKLM\\Software\\MyApp\\Games".to_string(),
             },
             validation: ValidationConfig {
                 check_path_legal: true,

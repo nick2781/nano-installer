@@ -175,11 +175,6 @@ impl ConfigValidator {
             errors.push("卸载信息注册表键格式无效".to_string());
         }
 
-        // 验证渠道正则表达式
-        if let Err(e) = regex::Regex::new(&config.channel.filename_regex) {
-            errors.push(format!("渠道文件名正则表达式无效: {}", e));
-        }
-
         // 验证磁盘空间
         if config.install.required_space_mb == 0 {
             errors.push("需要的磁盘空间不能为0".to_string());

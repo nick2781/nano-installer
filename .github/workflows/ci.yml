@@ -2,83 +2,56 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches:
+      - master
   pull_request:
-    branches: [ main ]
-
-env:
-  RUST_VERSION: "1.75.0"
+    branches:
+      - master
+  workflow_dispatch:
 
 jobs:
-  test:
-    name: Test
+  windows-verify:
+    name: Windows Verify
     runs-on: windows-latest
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Install Rust ${{ env.RUST_VERSION }}
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: ${{ env.RUST_VERSION }}
-        override: true
-        components: rustfmt, clippy
-    
-    - name: Verify Rust version
-      run: rustc --version
-      shell: cmd
-    
-    - name: Check formatting
-      run: cargo fmt -- --check
-      shell: cmd
-    
-    - name: Run clippy
-      run: cargo clippy -- -D warnings
-      shell: cmd
-    
-    - name: Build library
-      run: cargo check --lib
-      shell: cmd
-    
-    - name: Build binaries
-      run: cargo check --bins
-      shell: cmd
-    
-    - name: Run tests
-      run: cargo test
-      shell: cmd
-    
-    - name: Build release
-      run: cargo build --release
-      shell: cmd
 
-  build-installer:
-    name: Build Installer
-    runs-on: windows-latest
-    needs: test
-    
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Install Rust ${{ env.RUST_VERSION }}
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: ${{ env.RUST_VERSION }}
-        override: true
-    
-    - name: Create example project
-      run: |
-        cargo run --bin builder -- init test-app --output examples/test-app
-      shell: cmd
-    
-    - name: Build example installer
-      run: |
-        cd examples/test-app
-        cargo run --bin builder -- build --config installer_config.toml
-      shell: cmd
-    
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v3
-      with:
-        name: installer-artifacts
-        path: examples/test-app/dist/
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.81.0
+          components: rustfmt
+
+      - name: Restore cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Test library
+        run: cargo test -p nano-installer-lib --lib
+
+      - name: Test CLI
+        run: cargo test -p nano-installer-cli
+
+      - name: Check installer crates
+        run: cargo check -p nano-installer-lib -p nano-installer-cli -p nano-installer-lzma -p uninst
+
+      - name: Lint TapTap-v2 UI resources
+        run: cargo run -p nano-installer-cli -- harness lint-resources --project examples/TapTap-v2 --format text
+
+      - name: Build release stubs
+        run: cargo build --release -p nano-installer-lzma -p uninst -p nano-installer-cli
+
+      - name: Build TapTap-v2 setup
+        run: cargo run --release -p nano-installer-cli -- build --project examples/TapTap-v2
+
+      - name: Upload TapTap-v2 setup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TapTapV2_Setup
+          path: examples/TapTap-v2/dist/TapTapV2_Setup.exe

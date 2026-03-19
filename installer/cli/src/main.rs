@@ -906,18 +906,10 @@ fn generate_default_config(name: &str) -> String {
             ],
             "uninstall_pages": []
         },
-        "channel": {
-            "extract_from_filename": true,
-            "filename_regex": ".*_([^_]+)\\.exe$",
-            "default_channel": "default",
-            "output_channel_conf": false
-        },
         "uninstall": {
             "show_keep_data_option": true,
             "keep_data_default": true,
-            "data_paths": [],
-            "cleanup_game_registry": false,
-            "game_registry_path": ""
+            "data_paths": []
         },
         "validation": {
             "check_path_legal": true,

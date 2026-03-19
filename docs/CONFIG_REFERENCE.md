@@ -279,30 +279,6 @@ your_project/
 
 ---
 
-## channel - 分渠道配置
-
-支持根据文件名或配置分发不同渠道版本。
-
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `extract_from_filename` | boolean | `false` | 是否从安装程序文件名中提取渠道标识 |
-| `filename_regex` | string | `""` | 从文件名提取渠道的正则表达式 |
-| `default_channel` | string | `""` | 默认渠道名称 |
-| `output_channel_conf` | string | `""` | 渠道配置输出文件名 |
-
-```json
-{
-  "channel": {
-    "extract_from_filename": true,
-    "filename_regex": "TapTap_Setup_(\\w+)\\.exe",
-    "default_channel": "official",
-    "output_channel_conf": "channel.conf"
-  }
-}
-```
-
----
-
 ## uninstall - 卸载配置
 
 | 字段 | 类型 | 默认值 | 说明 |
@@ -310,8 +286,6 @@ your_project/
 | `show_keep_data_option` | boolean | `false` | 是否显示"保留用户数据"选项 |
 | `keep_data_default` | boolean | `true` | "保留用户数据"默认是否勾选 |
 | `data_paths` | string[] | `[]` | 卸载时需要清理的用户数据路径（支持环境变量） |
-| `cleanup_game_registry` | boolean | `false` | 是否清理游戏相关注册表 |
-| `game_registry_path` | string | `""` | 游戏注册表路径 |
 
 ```json
 {
@@ -320,9 +294,7 @@ your_project/
     "keep_data_default": true,
     "data_paths": [
       "%APPDATA%\\TapTap"
-    ],
-    "cleanup_game_registry": false,
-    "game_registry_path": ""
+    ]
   }
 }
 ```
@@ -448,10 +420,6 @@ your_project/
       { "id": "finish", "layout": "uninstallfinishpage", "title": "卸载完成" }
     ]
   },
-  "channel": {
-    "extract_from_filename": false,
-    "default_channel": "official"
-  },
   "uninstall": {
     "show_keep_data_option": true,
     "keep_data_default": true,
@@ -470,6 +438,24 @@ your_project/
   }
 }
 ```
+
+## 什么时候使用脚本
+
+配置只描述安装器的通用能力，例如：
+
+- 快捷方式
+- 开机自启
+- 通用注册表键
+- 卸载时的用户数据保留选项
+
+产品业务副作用应放到安装或卸载脚本里实现，例如：
+
+- 写入 `channel.conf`
+- 写入渠道文件或业务配置文件
+- 清理产品自定义目录
+- 删除产品自定义注册表键
+
+通用能力优先走配置；无法抽象成通用能力的产品逻辑，统一走脚本。
 
 ---
 

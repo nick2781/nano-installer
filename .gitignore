@@ -7,4 +7,5 @@ examples/TapTap/.build
 tmp/
 examples/TapTap/dist/*.log
 examples/TapTap-v2/dist/*.log
+.tmp-docsify-*.log
 screenshot*.png

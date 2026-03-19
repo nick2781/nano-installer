@@ -21,7 +21,7 @@
 
 ### 系统要求
 
-- **Rust**: 1.75 或更高版本
+- **Rust**: 1.81 或更高版本
 - **操作系统**: Windows 10+ (开发和测试)
 - **工具**: Git, Visual Studio Build Tools (Windows)
 
@@ -53,66 +53,31 @@ cargo build
 
 ## 项目结构
 
-```
+```text
 nano-installer/
-├── src/
-│   ├── bin/                    # 可执行文件
-│   │   ├── installer.rs        # 安装程序入口
-│   │   ├── uninstaller.rs      # 卸载程序入口
-│   │   ├── langpack_builder.rs # 语言包构建工具
-│   │   ├── builder.rs          # 打包工具
-│   │   └── nano-installer.rs   # CLI 工具
-│   ├── common/                 # 通用模块
-│   │   ├── cli.rs             # 命令行参数
-│   │   ├── config.rs          # 配置系统
-│   │   ├── error.rs           # 错误类型
-│   │   └── ...
-│   ├── config/                 # 配置解析
-│   │   ├── installer_config.rs # 主配置结构
-│   │   ├── wizard_config.rs    # 向导配置
-│   │   └── validation.rs       # 配置验证
-│   ├── i18n/                   # 多语言系统
-│   │   ├── bundle.rs          # 语言包
-│   │   ├── langpack.rs        # .pak 文件格式
-│   │   └── loader.rs          # 加载器
-│   ├── installer/              # 安装逻辑
-│   │   ├── engine.rs          # 安装引擎
-│   │   ├── tasks.rs           # 安装任务
-│   │   ├── extractor.rs       # 7z 解压
-│   │   ├── registry.rs        # 注册表操作
-│   │   ├── shortcuts.rs       # 快捷方式
-│   │   └── ...
-│   ├── layout/                 # XML 布局系统
-│   │   ├── xml_parser.rs      # XML 解析
-│   │   ├── element.rs         # 元素定义
-│   │   └── layout_tree.rs     # 布局树
-│   ├── ui/                     # 用户界面
-│   │   ├── egui_app_xml.rs    # 主 UI (基于 XML)
-│   │   ├── layout_renderer.rs # 布局渲染
-│   │   ├── dpi_handler.rs     # DPI 处理
-│   │   ├── wizard.rs          # 向导流程
-│   │   └── ...
-│   ├── uninstaller/            # 卸载逻辑
-│   └── resources/              # 资源管理
-├── docs/                       # 文档
-├── examples/                   # 示例项目
-│   └── TapTap/                # TapTap 示例
-├── tools/                      # 工具
-│   └── 7za.exe                # 7-Zip 命令行
-├── assets/                     # 资源文件
-├── build.rs                    # 构建脚本
-└── Cargo.toml                  # 项目配置
+├── installer/
+│   ├── cli/                    # nano-installer CLI
+│   ├── lib/                    # runtime / layout / installer / uninstaller 核心库
+│   └── stubs/                  # installer / uninstaller stub
+├── examples/
+│   ├── TapTap/                 # v1 示例工程
+│   └── TapTap-v2/              # v2 发布级示例工程
+├── docs/                       # docsify 文档站
+├── scripts/                    # smoke、诊断、辅助脚本
+├── templates/                  # init 生成模板
+└── tools/                      # 随产品分发的辅助工具（如 7za.exe）
 ```
 
 ### 核心模块说明
 
 | 模块 | 功能 | 关键文件 |
 |------|------|----------|
-| `config/` | 配置解析和验证 | `installer_config.rs` |
-| `layout/` | XML 布局系统 | `xml_parser.rs`, `layout_tree.rs` |
-| `ui/` | egui 界面渲染 | `egui_app_xml.rs`, `layout_renderer.rs` |
-| `installer/` | 安装核心逻辑 | `engine.rs`, `tasks.rs` |
-| `i18n/` | 多语言支持 | `langpack.rs`, `loader.rs` |
+| `installer/lib/src/config` | 配置解析和验证 | `installer_config.rs`, `validation.rs` |
+| `installer/lib/src/layout` | XML 布局 DSL 与 Taffy 桥接 | `xml_parser.rs`, `taffy_bridge.rs` |
+| `installer/lib/src/ui` | egui UI 和布局渲染 | `egui_app_xml.rs`, `layout_renderer.rs` |
+| `installer/lib/src/resources` | payload / bundle / 7za 资源链路 | `payload.rs`, `bundle.rs` |
+| `installer/lib/src/scripting` | Rhai 脚本 API 与上下文 | `engine.rs`, `context.rs` |
+| `installer/lib/src/uninstaller` | 卸载引擎 | `engine.rs` |
 
 ## 构建和测试
 
@@ -121,22 +86,16 @@ nano-installer/
 ```bash
 # 构建所有二进制文件
 cargo build
-
-# 只构建 installer
-cargo build --bin installer
-
-# 构建并运行
-cargo run --bin installer
 ```
 
 ### Release 构建
 
 ```bash
-# 优化构建
-cargo build --release
+# 重编 release stubs / runtime
+cargo build --release -p nano-installer-lzma -p uninst -p nano-installer-cli
 
-# 输出在 target/release/
-ls target/release/installer.exe
+# 构建 TapTap-v2 示例安装器
+cargo run --release -p nano-installer-cli -- build --project examples/TapTap-v2
 ```
 
 ### 运行测试
