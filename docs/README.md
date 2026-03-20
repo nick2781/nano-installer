@@ -15,11 +15,13 @@
 ## 常用文档
 
 - [配置参考](CONFIG_REFERENCE.md)
+- [配置与脚本边界](CONFIG_VS_SCRIPT.md)
 - [XML 布局指南](XML_LAYOUT_GUIDE.md)
 - [XML Schema](XML_SCHEMA.md)
 - [本地化](LOCALIZATION.md)
 - [开发指南](DEVELOPMENT.md)
 - [测试与验证](TEST_PLAN.md)
+- [发布指南](RELEASE.md)
 - [项目结构](PROJECT_STRUCTURE.md)
 - [常见问题](FAQ.md)
 
@@ -32,4 +34,5 @@
 
 - 文档站采用 `docsify` 组织。
 - 文档默认以“现代化 Windows 安装器框架”为产品定位。
-- 历史迁移材料和一次性计划文档已从对外发布面移除。
+- 一次性计划和内部整理文档已从对外发布面移除。
+- 配置、布局和脚本的边界说明见 [配置与脚本边界](CONFIG_VS_SCRIPT.md)。

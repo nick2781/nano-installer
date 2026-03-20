@@ -25,13 +25,13 @@ installer/
     └── uninst/   卸载器 stub    (uninst.exe           ~199 KB)
 ```
 
-### 类比 NSIS
+### 组件对应关系
 
-| NSIS | nano-installer | 大小 | 说明 |
-|------|----------------|------|------|
-| `makensis.exe` | `nano-installer.exe` | ~500 KB | 编译工具 |
-| `lzma-x86-unicode` | `lzma-x64-unicode.exe` | ~4 MB | 安装器 |
-| `uninst` | `uninst.exe` | ~200 KB | 卸载器 |
+| 组件 | 可执行文件 | 大小 | 说明 |
+|------|------------|------|------|
+| CLI | `nano-installer.exe` | ~500 KB | 编译/打包工具 |
+| Installer Stub | `lzma-x64-unicode.exe` | ~4 MB | 安装器 stub |
+| Uninstaller Stub | `uninst.exe` | ~200 KB | 卸载器 stub |
 
 ---
 

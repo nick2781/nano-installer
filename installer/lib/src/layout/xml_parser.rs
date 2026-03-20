@@ -329,7 +329,7 @@ impl XmlParser {
         // 解析布局容器元素
         let layout_element = self.parse_element(&layout_node)?;
 
-        // 创建一个 Page 元素来包装布局容器（用于验证和兼容性）
+        // 创建一个 Page 元素来包装布局容器，统一进入后续验证流程
         // 将布局容器的 width 和 height 设置到 Page 元素上
         let page_element = LayoutElement::with_attributes(ElementType::Page, page_attributes)
             .add_child(layout_element);
@@ -451,7 +451,7 @@ impl XmlParser {
             self.parse_new_attributes(node, &element_type)?;
         self.apply_inherited_text_visuals(&mut visual_style, parent_visual);
 
-        // 同时生成旧格式 attributes (用于渲染器向后兼容, Phase 3 前需要)
+        // 同时生成渲染器当前仍会读取的属性映射
         let legacy_attrs =
             self.new_to_legacy_attrs(&flex_style, &visual_style, &widget_props, &element_type);
 
@@ -764,7 +764,7 @@ impl XmlParser {
                 "max-lines" => widget.max_lines = val.parse::<usize>().ok(),
                 "wrap" => widget.wrap = self.parse_bool(val).ok(),
 
-                // 兼容旧格式属性名 (无 hyphen)
+                // 同时接受无连字符的属性名
                 "normalimage" | "hotimage" | "pushedimage" | "disabledimage" | "selectedimage"
                 | "foreimage" | "normalhotimage" | "selectedhotimage" | "focusedimage" => {
                     widget.custom.insert(key.to_string(), val.to_string());
@@ -827,7 +827,7 @@ impl XmlParser {
         Ok((flex, visual, widget))
     }
 
-    /// 将新格式属性转换为旧格式 ElementAttributes (向后兼容渲染器)
+    /// 将解析后的属性同步到渲染器当前使用的 ElementAttributes 结构
     fn new_to_legacy_attrs(
         &self,
         flex: &FlexStyle,
@@ -1040,7 +1040,6 @@ impl XmlParser {
             "Label" => Ok(ElementType::Label),
             "CheckBox" => Ok(ElementType::Checkbox),
             "RichEdit" => Ok(ElementType::TextInput),
-            "Slider" => Ok(ElementType::ProgressBar),
             "TabLayout" => Ok(ElementType::VBox), // 暂时映射为 VBox
             "Include" => Ok(ElementType::Spacer), // Include 暂时映射为空白占位符（后续可扩展为文件包含）
             "Font" => Err(ParseError::InvalidElementType(
@@ -1244,7 +1243,7 @@ impl XmlParser {
                 "readonly" | "autohscroll" | "wantreturn" | "wantctrlreturn" | "multiline" => {
                     attributes.custom.insert(key.to_string(), value.to_string());
                 }
-                // Slider 特有属性
+                // ProgressBar 补充属性
                 "min" | "max" | "value" | "thumbsize" | "mouse" => {
                     attributes.custom.insert(key.to_string(), value.to_string());
                 }

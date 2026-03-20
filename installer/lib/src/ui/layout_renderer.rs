@@ -4822,14 +4822,14 @@ impl LayoutRenderer {
         }
     }
 
-    /// 渲染进度条（Slider）
+    /// 渲染进度条
     fn render_progress_bar(
         &mut self,
         ui: &mut Ui,
         element: &LayoutElement,
         _result: &mut RenderResult,
     ) {
-        // 获取 Slider 特有属性
+        // 获取 ProgressBar 补充属性
         let min = element
             .attributes
             .get_custom("min")

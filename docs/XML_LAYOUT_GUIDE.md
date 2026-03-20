@@ -2,7 +2,7 @@
 
 nano-installer 使用 XML 来定义安装程序的用户界面。这份指南将教你如何创建和自定义界面布局。
 
-**重要提示**：新的布局能力应优先使用声明式 XML DSL。兼容层仍然存在，但不应作为新增 UI 的首选表达方式。
+**重要提示**：推荐优先使用声明式 XML DSL 来表达结构、盒模型和控件内容。
 
 ## 设计原则
 
@@ -44,7 +44,6 @@ nano-installer 使用 XML 来定义安装程序的用户界面。这份指南将
 ## 📖 目录
 
 - [基本结构](#基本结构)
-- [NSIS 格式支持](#nsis-格式支持)
 - [布局元素](#布局元素)
 - [元素属性](#元素属性)
 - [变量替换](#变量替换)
@@ -53,7 +52,7 @@ nano-installer 使用 XML 来定义安装程序的用户界面。这份指南将
 
 ## 基本结构
 
-nano-installer 使用 NSIS 布局格式：
+nano-installer 使用 XML 布局 DSL，支持以下基本结构：
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -111,11 +110,12 @@ nano-installer 支持两种根元素：
 | `<CheckBox>` | 复选框 |
 | `<Label>` | 文本标签 |
 | `<RichEdit>` | 富文本编辑框 |
-| `<Slider>` | 滑块/进度条 |
 | `<TabLayout>` | 标签页容器（暂未完全实现） |
 | `<Include>` | 包含其他布局文件（暂未完全实现） |
 
 ## 支持的属性
+
+以下属性覆盖当前运行时支持的常用字段。部分字段存在别名或另一种写法，便于在不同布局风格下使用。
 
 | 属性 | 说明 |
 |------|------|
@@ -139,7 +139,7 @@ nano-installer 支持两种根元素：
 
 ### 图片路径格式
 
-NSIS 支持复杂的图片路径格式：
+图片资源字段支持复杂的字符串格式：
 
 ```xml
 <!-- 基本格式 -->
@@ -160,7 +160,7 @@ NSIS 支持复杂的图片路径格式：
 
 ### 字体系统
 
-NSIS 使用 `<Font>` 元素定义字体，然后在其他元素中通过 `font="id"` 引用：
+可以使用 `<Font>` 元素定义字体，然后在其他元素中通过 `font="id"` 引用：
 
 ```xml
 <Windows>
@@ -187,9 +187,9 @@ NSIS 使用 `<Font>` 元素定义字体，然后在其他元素中通过 `font="
 
 #### `<VBox>` / `<VerticalLayout>` - 垂直布局
 
-将子元素垂直排列。两种格式都支持：
+将子元素垂直排列。
 
-**传统格式：**
+**简洁写法：**
 ```xml
 <VBox>
   <Label text="第一行" />
@@ -198,7 +198,7 @@ NSIS 使用 `<Font>` 元素定义字体，然后在其他元素中通过 `font="
 </VBox>
 ```
 
-**NSIS 格式：**
+**另一种写法：**
 ```xml
 <VerticalLayout>
   <Label text="第一行" />
@@ -208,24 +208,24 @@ NSIS 使用 `<Font>` 元素定义字体，然后在其他元素中通过 `font="
 ```
 
 **属性：**
-- `padding` - 内边距，格式：`"top,right,bottom,left"`（传统）或 `"left,top,right,bottom"`（NSIS）
-- `inset` - 内边距（NSIS 格式，格式：`"left,top,right,bottom"`）
+- `padding` - 内边距，格式：`"top,right,bottom,left"` 或 `"left,top,right,bottom"`
+- `inset` - 内边距，格式：`"left,top,right,bottom"`
 - `spacing` - 子元素间距（像素）
 - `align` - 水平对齐：`"left"` | `"center"` | `"right"`
-- `valign` - 垂直对齐（NSIS）：`"top"` | `"center"` | `"vcenter"` | `"bottom"`
-- `bkcolor` - 背景颜色（NSIS）
-- `bkimage` - 背景图片（NSIS）
-- `borderround` - 圆角（NSIS，格式：`"x,y"`）
-- `bordercolor` - 边框颜色（NSIS）
-- `bordersize` - 边框大小（NSIS）
-- `float` - 是否浮动定位（NSIS）
-- `pos` - 位置矩形（NSIS，格式：`"x1,y1,x2,y2"`）
+- `valign` - 垂直对齐：`"top"` | `"center"` | `"vcenter"` | `"bottom"`
+- `bkcolor` - 背景颜色
+- `bkimage` - 背景图片
+- `borderround` - 圆角，格式：`"x,y"`
+- `bordercolor` - 边框颜色
+- `bordersize` - 边框大小
+- `float` - 是否浮动定位
+- `pos` - 位置矩形，格式：`"x1,y1,x2,y2"`
 
 #### `<HBox>` / `<HorizontalLayout>` - 水平布局
 
-将子元素水平排列。两种格式都支持：
+将子元素水平排列。
 
-**传统格式：**
+**简洁写法：**
 ```xml
 <HBox>
   <Button text="按钮1" />
@@ -234,7 +234,7 @@ NSIS 使用 `<Font>` 元素定义字体，然后在其他元素中通过 `font="
 </HBox>
 ```
 
-**NSIS 格式：**
+**另一种写法：**
 ```xml
 <HorizontalLayout>
   <Button text="按钮1" />
@@ -249,13 +249,13 @@ NSIS 使用 `<Font>` 元素定义字体，然后在其他元素中通过 `font="
 
 创建空白间距或占位符。
 
-**传统格式：**
+**简洁写法：**
 ```xml
 <Spacer height="20" />
 <Spacer width="10" />
 ```
 
-**NSIS 格式：**
+**另一种写法：**
 ```xml
 <Container width="20" height="20" />
 <Control width="10" height="10" bkimage="assets/bg.png" />
@@ -264,17 +264,17 @@ NSIS 使用 `<Font>` 元素定义字体，然后在其他元素中通过 `font="
 **属性：**
 - `width` - 宽度（像素）
 - `height` - 高度（像素）
-- `bkcolor` - 背景颜色（NSIS，仅 `<Container>` 和 `<Control>`）
-- `bkimage` - 背景图片（NSIS，仅 `<Container>` 和 `<Control>`）
+- `bkcolor` - 背景颜色（仅 `<Container>` 和 `<Control>`）
+- `bkimage` - 背景图片（仅 `<Container>` 和 `<Control>`）
 - `visible` - 是否可见
 
 ### 基础元素
 
 #### `<Label>` - 文本标签
 
-显示文本内容。两种格式都支持：
+显示文本内容。
 
-**传统格式：**
+**简洁写法：**
 ```xml
 <Label 
   text="欢迎使用 {product_name}" 
@@ -283,7 +283,7 @@ NSIS 使用 `<Font>` 元素定义字体，然后在其他元素中通过 `font="
 />
 ```
 
-**NSIS 格式：**
+**另一种写法：**
 ```xml
 <Label 
   name="title"
@@ -304,28 +304,28 @@ NSIS 使用 `<Font>` 元素定义字体，然后在其他元素中通过 `font="
 
 | 属性 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `name` | string | - | 元素名称（NSIS） |
+| `name` | string | - | 元素名称 |
 | `text` | string | 必需 | 显示的文本内容 |
-| `font_size` | number | 14 | 字体大小（像素，传统格式） |
-| `font` | number | - | 字体 ID（NSIS，引用 `<Font>` 元素） |
-| `color` / `textcolor` | string | `"#FFFFFF"` | 文本颜色（`color` 传统，`textcolor` NSIS） |
-| `bold` | boolean | false | 是否加粗（传统格式） |
-| `italic` | boolean | false | 是否斜体（传统格式） |
-| `alignment` / `textalign` | string | `"left"` | 文本对齐（`alignment` 传统，`textalign` NSIS）：`"left"` \| `"center"` \| `"right"` |
-| `align` | string | - | 水平对齐（NSIS）：`"left"` \| `"center"` \| `"right"` |
-| `valign` | string | - | 垂直对齐（NSIS）：`"top"` \| `"center"` \| `"vcenter"` \| `"bottom"` |
+| `font_size` | number | 14 | 字体大小（像素） |
+| `font` | number | - | 字体 ID（引用 `<Font>` 元素） |
+| `color` / `textcolor` | string | `"#FFFFFF"` | 文本颜色（`color` 与 `textcolor` 都可使用） |
+| `bold` | boolean | false | 是否加粗 |
+| `italic` | boolean | false | 是否斜体 |
+| `alignment` / `textalign` | string | `"left"` | 文本对齐（`alignment` 与 `textalign` 都可使用）：`"left"` \| `"center"` \| `"right"` |
+| `align` | string | - | 水平对齐：`"left"` \| `"center"` \| `"right"` |
+| `valign` | string | - | 垂直对齐：`"top"` \| `"center"` \| `"vcenter"` \| `"bottom"` |
 | `width` | number | - | 宽度（像素） |
 | `height` | number | - | 高度（像素） |
-| `padding` | string | - | 内边距（NSIS，格式：`"left,top,right,bottom"`） |
-| `showhtml` | boolean | false | 是否显示 HTML（NSIS） |
-| `wrap` | boolean | false | 是否自动换行（传统格式） |
-| `max_lines` | number | - | 最大行数（传统格式） |
+| `padding` | string | - | 内边距，格式：`"left,top,right,bottom"` |
+| `showhtml` | boolean | false | 是否显示 HTML |
+| `wrap` | boolean | false | 是否自动换行 |
+| `max_lines` | number | - | 最大行数 |
 
 #### `<Button>` - 按钮
 
-可点击的按钮。两种格式都支持：
+可点击的按钮。
 
-**传统格式：**
+**推荐写法：**
 ```xml
 <Button 
   id="next" 
@@ -336,7 +336,7 @@ NSIS 使用 `<Font>` 元素定义字体，然后在其他元素中通过 `font="
 />
 ```
 
-**NSIS 格式：**
+**完整写法：**
 ```xml
 <Button 
   name="next" 
@@ -361,34 +361,34 @@ NSIS 使用 `<Font>` 元素定义字体，然后在其他元素中通过 `font="
 
 | 属性 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `id` / `name` | string | 必需 | 按钮标识符（`id` 传统，`name` NSIS） |
+| `id` / `name` | string | 必需 | 按钮标识符（`id` 与 `name` 都可使用） |
 | `text` | string | 必需 | 按钮文字 |
 | `width` | number | 120 | 按钮宽度（像素） |
 | `height` | number | 40 | 按钮高度（像素） |
 | `enabled` | boolean | true | 是否启用 |
-| `style` | string | `"default"` | 样式（传统）：`"primary"` \| `"secondary"` \| `"link"` |
-| `font` | number | - | 字体 ID（NSIS，引用 `<Font>` 元素） |
-| `textcolor` | string | - | 文本颜色（NSIS） |
-| `hottextcolor` | string | - | 悬停时文本颜色（NSIS） |
-| `pushedtextcolor` | string | - | 按下时文本颜色（NSIS） |
-| `disabledtextcolor` | string | - | 禁用时文本颜色（NSIS） |
-| `normalimage` | string | - | 正常状态图片（NSIS，支持 `file='path' dest='x1,y1,x2,y2' corner='x1,y1,x2,y2' fade='value'` 格式） |
-| `hotimage` | string | - | 悬停状态图片（NSIS） |
-| `pushedimage` | string | - | 按下状态图片（NSIS） |
-| `disabledimage` | string | - | 禁用状态图片（NSIS） |
-| `focusedimage` | string | - | 获得焦点时图片（NSIS） |
-| `padding` | string | - | 内边距（NSIS，格式：`"left,top,right,bottom"`） |
-| `margin` | string | - | 外边距（NSIS，格式：`"left,top,right,bottom"`） |
-| `inset` | string | - | 内边距（NSIS，格式：`"left,top,right,bottom"`） |
-| `textpadding` | string | - | 文本内边距（NSIS，格式：`"left,top,right,bottom"`） |
-| `align` | string | - | 水平对齐（NSIS）：`"left"` \| `"center"` \| `"right"` |
-| `valign` | string | - | 垂直对齐（NSIS）：`"top"` \| `"center"` \| `"vcenter"` \| `"bottom"` |
-| `borderround` | string | - | 圆角（NSIS，格式：`"x,y"`） |
-| `bordercolor` | string | - | 边框颜色（NSIS） |
-| `bordersize` | number | - | 边框大小（NSIS） |
-| `cursor` | string | - | 鼠标样式（NSIS）：`"hand"` \| `"arrow"` 等 |
-| `float` | boolean | - | 是否浮动定位（NSIS） |
-| `pos` | string | - | 位置矩形（NSIS，格式：`"x1,y1,x2,y2"`） |
+| `style` | string | `"default"` | 样式：`"primary"` \| `"secondary"` \| `"link"` |
+| `font` | number | - | 字体 ID（引用 `<Font>` 元素） |
+| `textcolor` | string | - | 文本颜色 |
+| `hottextcolor` | string | - | 悬停时文本颜色 |
+| `pushedtextcolor` | string | - | 按下时文本颜色 |
+| `disabledtextcolor` | string | - | 禁用时文本颜色 |
+| `normalimage` | string | - | 正常状态图片（支持 `file='path' dest='x1,y1,x2,y2' corner='x1,y1,x2,y2' fade='value'` 格式） |
+| `hotimage` | string | - | 悬停状态图片 |
+| `pushedimage` | string | - | 按下状态图片 |
+| `disabledimage` | string | - | 禁用状态图片 |
+| `focusedimage` | string | - | 获得焦点时图片 |
+| `padding` | string | - | 内边距，格式：`"left,top,right,bottom"` |
+| `margin` | string | - | 外边距，格式：`"left,top,right,bottom"` |
+| `inset` | string | - | 内边距，格式：`"left,top,right,bottom"` |
+| `textpadding` | string | - | 文本内边距，格式：`"left,top,right,bottom"` |
+| `align` | string | - | 水平对齐：`"left"` \| `"center"` \| `"right"` |
+| `valign` | string | - | 垂直对齐：`"top"` \| `"center"` \| `"vcenter"` \| `"bottom"` |
+| `borderround` | string | - | 圆角，格式：`"x,y"` |
+| `bordercolor` | string | - | 边框颜色 |
+| `bordersize` | number | - | 边框大小 |
+| `cursor` | string | - | 鼠标样式：`"hand"` \| `"arrow"` 等 |
+| `float` | boolean | - | 是否浮动定位 |
+| `pos` | string | - | 位置矩形，格式：`"x1,y1,x2,y2"` |
 
 **内容模型：**
 
@@ -547,7 +547,7 @@ Button 元素支持 `action` 属性，用于声明式地定义按钮点击后的
    - **对话框类**（`dialog_ok`、`dialog_cancel`）：关闭消息框并设置返回值
    - **外部类**（`open_url`）：调用系统浏览器打开 URL
 
-如果按钮没有 `action` 属性，系统会回退到基于按钮 `name`/`id` 的传统行为映射（见上方"按钮 ID 约定"表格）。
+如果按钮没有 `action` 属性，系统会回退到基于按钮 `name`/`id` 的默认行为映射（见上方“按钮 ID 约定”表格）。
 
 #### `<Image>` - 图片
 
@@ -625,9 +625,9 @@ Button 元素支持 `action` 属性，用于声明式地定义按钮点击后的
 
 #### `<Checkbox>` / `<CheckBox>` - 复选框
 
-用户可勾选的选项。两种格式都支持：
+用户可勾选的选项。
 
-**传统格式：**
+**推荐写法：**
 ```xml
 <Checkbox 
   id="agree_license" 
@@ -636,7 +636,7 @@ Button 元素支持 `action` 属性，用于声明式地定义按钮点击后的
 />
 ```
 
-**NSIS 格式：**
+**完整写法：**
 ```xml
 <CheckBox 
   name="agree_license" 
@@ -651,19 +651,19 @@ Button 元素支持 `action` 属性，用于声明式地定义按钮点击后的
 
 | 属性 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `id` / `name` | string | 必需 | 复选框标识符（`id` 传统，`name` NSIS） |
+| `id` / `name` | string | 必需 | 复选框标识符（`id` 与 `name` 都可使用） |
 | `text` | string | 必需 | 显示文本 |
-| `checked` / `selected` | boolean | false | 初始状态（`checked` 传统，`selected` NSIS） |
+| `checked` / `selected` | boolean | false | 初始状态（`checked` 与 `selected` 都可使用） |
 | `enabled` | boolean | true | 是否启用 |
-| `font` | number | - | 字体 ID（NSIS，引用 `<Font>` 元素） |
-| `textcolor` | string | - | 文本颜色（NSIS） |
-| `textpadding` | string | - | 文本内边距（NSIS，格式：`"left,top,right,bottom"`） |
-| `normalimage` | string | - | 未选中图片（NSIS，支持 `file='path' dest='x1,y1,x2,y2'` 格式） |
-| `normalhotimage` | string | - | 未选中悬停图片（NSIS） |
-| `selectedimage` | string | - | 选中图片（NSIS） |
-| `selectedhotimage` | string | - | 选中悬停图片（NSIS） |
-| `align` | string | - | 水平对齐（NSIS） |
-| `valign` | string | - | 垂直对齐（NSIS） |
+| `font` | number | - | 字体 ID（引用 `<Font>` 元素） |
+| `textcolor` | string | - | 文本颜色 |
+| `textpadding` | string | - | 文本内边距，格式：`"left,top,right,bottom"` |
+| `normalimage` | string | - | 未选中图片（支持 `file='path' dest='x1,y1,x2,y2'` 格式） |
+| `normalhotimage` | string | - | 未选中悬停图片 |
+| `selectedimage` | string | - | 选中图片 |
+| `selectedhotimage` | string | - | 选中悬停图片 |
+| `align` | string | - | 水平对齐 |
+| `valign` | string | - | 垂直对齐 |
 
 **常用 ID：**
 
@@ -676,9 +676,9 @@ Button 元素支持 `action` 属性，用于声明式地定义按钮点击后的
 
 #### `<TextInput>` / `<RichEdit>` - 文本输入框
 
-用户输入文本的控件。两种格式都支持：
+用户输入文本的控件。
 
-**传统格式：**
+**简洁写法：**
 ```xml
 <TextInput 
   id="install_path" 
@@ -687,7 +687,7 @@ Button 元素支持 `action` 属性，用于声明式地定义按钮点击后的
 />
 ```
 
-**NSIS 格式：**
+**另一种写法：**
 ```xml
 <RichEdit 
   name="install_path" 
@@ -705,27 +705,27 @@ Button 元素支持 `action` 属性，用于声明式地定义按钮点击后的
 
 | 属性 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `id` / `name` | string | 必需 | 输入框标识符（`id` 传统，`name` NSIS） |
+| `id` / `name` | string | 必需 | 输入框标识符（`id` 与 `name` 都可使用） |
 | `text` | string | `""` | 初始文本 |
-| `placeholder` | string | `""` | 占位符文本（仅传统格式） |
+| `placeholder` | string | `""` | 占位符文本 |
 | `width` | number | 200 | 宽度（像素） |
 | `height` | number | 32 | 高度（像素） |
 | `readonly` | boolean | false | 是否只读 |
-| `multiline` | boolean | false | 是否多行（NSIS） |
-| `font` | number | - | 字体 ID（NSIS） |
-| `textcolor` | string | - | 文本颜色（NSIS） |
-| `bkcolor` | string | - | 背景颜色（NSIS） |
-| `inset` | string | - | 内边距（NSIS，格式：`"left,top,right,bottom"`） |
-| `borderround` | string | - | 圆角（NSIS，格式：`"x,y"`） |
-| `autohscroll` | boolean | - | 自动水平滚动（NSIS） |
-| `wantreturn` | boolean | - | 接受回车（NSIS） |
-| `wantctrlreturn` | boolean | - | 接受 Ctrl+回车（NSIS） |
+| `multiline` | boolean | false | 是否多行 |
+| `font` | number | - | 字体 ID |
+| `textcolor` | string | - | 文本颜色 |
+| `bkcolor` | string | - | 背景颜色 |
+| `inset` | string | - | 内边距，格式：`"left,top,right,bottom"` |
+| `borderround` | string | - | 圆角，格式：`"x,y"` |
+| `autohscroll` | boolean | - | 自动水平滚动 |
+| `wantreturn` | boolean | - | 接受回车 |
+| `wantctrlreturn` | boolean | - | 接受 Ctrl+回车 |
 
-#### `<ProgressBar>` / `<Slider>` - 进度条
+#### `<ProgressBar>` - 进度条
 
-显示安装进度。两种格式都支持：
+显示安装进度。
 
-**传统格式：**
+**简洁写法：**
 ```xml
 <ProgressBar 
   id="install_progress" 
@@ -735,35 +735,23 @@ Button 元素支持 `action` 属性，用于声明式地定义按钮点击后的
 />
 ```
 
-**NSIS 格式：**
+**另一种写法：**
 ```xml
-<Slider 
-  name="install_progress" 
-  min="0" 
-  max="100" 
-  value="50" 
-  width="400" 
-  height="8"
-  bkcolor="#1A1D28"
-  foreimage="file='assets/progress_fg.png'"
-/>
-```
-
 **属性：**
 
 | 属性 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `id` / `name` | string | 必需 | 进度条标识符（`id` 传统，`name` NSIS） |
-| `progress` | number | 0.0 | 进度值（0.0 ~ 1.0，传统格式） |
-| `min` | number | 0 | 最小值（NSIS） |
-| `max` | number | 100 | 最大值（NSIS） |
-| `value` | number | 0 | 当前值（NSIS，计算进度：`(value - min) / (max - min)`） |
+| `id` / `name` | string | 必需 | 进度条标识符 |
+| `progress` | number | 0.0 | 进度值（0.0 ~ 1.0） |
+| `min` | number | 0 | 最小值 |
+| `max` | number | 100 | 最大值 |
+| `value` | number | 0 | 当前值，计算进度：`(value - min) / (max - min)` |
 | `width` | number | 300 | 宽度（像素） |
 | `height` | number | 8 | 高度（像素） |
-| `bkcolor` | string | - | 背景颜色（NSIS） |
-| `foreimage` | string | - | 前景图片（NSIS，支持 `file='path'` 格式） |
-| `thumbsize` | string | - | 滑块大小（NSIS，格式：`"width,height"`） |
-| `mouse` | boolean | - | 是否可用鼠标（NSIS） |
+| `bkcolor` | string | - | 背景颜色 |
+| `foreimage` | string | - | 前景图片（支持 `file='path'` 格式） |
+| `thumbsize` | string | - | 前景块尺寸，格式：`"width,height"` |
+| `mouse` | boolean | - | 是否可用鼠标 |
 | `enabled` | boolean | true | 是否启用 |
 
 #### `<Spacer>` - 间距
@@ -1125,3 +1113,6 @@ layouts/
 ---
 
 有问题？查看 [examples/TapTap/layouts/](../examples/TapTap/layouts/) 中的实际示例！
+
+
+
