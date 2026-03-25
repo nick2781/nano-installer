@@ -1,6 +1,6 @@
-# TapTap PC Installer Example
+# TapTap CN Installer Example
 
-This is a complete example of a TapTap PC installer built with nano-installer. It demonstrates all major features including multi-page wizard flow, i18n, custom XML layouts, and DPI-aware asset handling.
+This is the domestic TapTap installer example built with nano-installer. It demonstrates the full multi-page wizard flow, i18n, custom XML layouts, and DPI-aware asset handling for the CN release.
 
 ## Directory Structure
 

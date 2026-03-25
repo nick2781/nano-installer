@@ -28,7 +28,7 @@
 ## 示例工程
 
 - [TapTap](../examples/TapTap/)
-- [TapTap-v2](../examples/TapTap-v2/)
+- [TapTap-Global](../examples/TapTap-Global/)
 
 ## 说明
 

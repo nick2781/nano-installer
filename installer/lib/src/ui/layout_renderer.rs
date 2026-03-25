@@ -1019,40 +1019,75 @@ impl LayoutRenderer {
                 .unwrap_or(false);
 
         if has_width_constraint {
-            // 有 max-width 约束：使用 LayoutJob 按 rect 宽度换行
-            let mut job = egui::text::LayoutJob::single_section(
-                text.clone(),
-                egui::TextFormat {
-                    font_id: font_id.clone(),
-                    color: text_color,
+            // 先测量单行宽度。短文案应继续走非换行路径，这样 RIGHT/CENTER
+            // 对齐会真正贴到文本框右侧/中间，而不是被 wrap 路径拉回左侧。
+            let single_line_galley =
+                ui.painter()
+                    .layout_no_wrap(text.clone(), font_id.clone(), text_color);
+
+            if single_line_galley.size().x <= rect.width() {
+                let (text_pos, align2) = match (text_align_str, valign) {
+                    ("left", "center") | ("left", "vcenter") => (
+                        Pos2::new(rect.min.x, rect.center().y),
+                        egui::Align2::LEFT_CENTER,
+                    ),
+                    ("left", "bottom") => {
+                        (Pos2::new(rect.min.x, rect.max.y), egui::Align2::LEFT_BOTTOM)
+                    }
+                    ("center", "top") => (
+                        Pos2::new(rect.center().x, rect.min.y),
+                        egui::Align2::CENTER_TOP,
+                    ),
+                    ("center", "center") | ("center", "vcenter") => {
+                        (rect.center(), egui::Align2::CENTER_CENTER)
+                    }
+                    ("center", "bottom") => (
+                        Pos2::new(rect.center().x, rect.max.y),
+                        egui::Align2::CENTER_BOTTOM,
+                    ),
+                    ("right", "top") => {
+                        (Pos2::new(rect.max.x, rect.min.y), egui::Align2::RIGHT_TOP)
+                    }
+                    ("right", "center") | ("right", "vcenter") => (
+                        Pos2::new(rect.max.x, rect.center().y),
+                        egui::Align2::RIGHT_CENTER,
+                    ),
+                    ("right", "bottom") => (rect.max, egui::Align2::RIGHT_BOTTOM),
+                    _ => (rect.min, egui::Align2::LEFT_TOP),
+                };
+
+                ui.painter()
+                    .text(text_pos, align2, &text, font_id, text_color);
+            } else {
+                let mut job = egui::text::LayoutJob::single_section(
+                    text.clone(),
+                    egui::TextFormat {
+                        font_id: font_id.clone(),
+                        color: text_color,
+                        ..Default::default()
+                    },
+                );
+                job.halign = match text_align_str {
+                    "center" => egui::Align::Center,
+                    "right" => egui::Align::Max,
+                    _ => egui::Align::Min,
+                };
+                job.wrap = egui::text::TextWrapping {
+                    max_width: rect.width(),
                     ..Default::default()
-                },
-            );
-            let halign = match text_align_str {
-                "center" => egui::Align::Center,
-                "right" => egui::Align::Max,
-                _ => egui::Align::Min,
-            };
-            job.halign = halign;
-            job.wrap = egui::text::TextWrapping {
-                max_width: rect.width(),
-                ..Default::default()
-            };
+                };
 
-            let galley = ui.painter().layout_job(job);
-            let galley_size = galley.size();
+                let galley = ui.painter().layout_job(job);
+                let galley_size = galley.size();
 
-            let y = match valign {
-                "center" | "vcenter" => rect.min.y + (rect.height() - galley_size.y) / 2.0,
-                "bottom" => rect.max.y - galley_size.y,
-                _ => rect.min.y,
-            };
-            let x = match text_align_str {
-                "center" => rect.min.x + ((rect.width() - galley_size.x) / 2.0).max(0.0),
-                "right" => rect.max.x - galley_size.x,
-                _ => rect.min.x,
-            };
-            ui.painter().galley(Pos2::new(x, y), galley, text_color);
+                let y = match valign {
+                    "center" | "vcenter" => rect.min.y + (rect.height() - galley_size.y) / 2.0,
+                    "bottom" => rect.max.y - galley_size.y,
+                    _ => rect.min.y,
+                };
+                ui.painter()
+                    .galley(Pos2::new(rect.min.x, y), galley, text_color);
+            }
         } else {
             // 无约束：原始不换行渲染
             let (text_pos, align2) = match (text_align_str, valign) {

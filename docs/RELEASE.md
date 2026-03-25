@@ -9,7 +9,7 @@
 - CLI 工具
 - installer runtime / stubs
 - docsify 文档站
-- 示例工程：`TapTap`、`TapTap-v2`
+- 示例工程：`TapTap`、`TapTap-Global`
 
 ## 文档发布
 
@@ -45,8 +45,10 @@ CI 中已有独立 docs workflow，可用于发布文档站。
 1. `cargo test -p nano-installer-lib --lib`
 2. `cargo test -p nano-installer-cli`
 3. `cargo build --release -p nano-installer-lzma -p uninst -p nano-installer-cli`
-4. `cargo run --release -p nano-installer-cli -- build --project examples\\TapTap-v2`
-5. `cargo run -p nano-installer-cli -- harness lint-resources --project examples\\TapTap-v2 --format text`
+4. `cargo run --release -p nano-installer-cli -- build --project examples\\TapTap`
+5. `cargo run --release -p nano-installer-cli -- build --project examples\\TapTap-Global`
+6. `cargo run -p nano-installer-cli -- harness lint-resources --project examples\\TapTap --format text`
+7. `cargo run -p nano-installer-cli -- harness lint-resources --project examples\\TapTap-Global --format text`
 
 如果修改了 `installer/**`，必须先重编 release stubs/runtime，再重打 setup。
 

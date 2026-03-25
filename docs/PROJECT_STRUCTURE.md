@@ -7,7 +7,7 @@
 ```text
 nano-installer/
 ├── installer/     # CLI、核心库、安装器/卸载器 stub
-├── examples/      # 示例工程（如 TapTap、TapTap-v2）
+├── examples/      # 示例工程（如 TapTap、TapTap-Global）
 ├── docs/          # 对外发布文档（docsify）
 ├── assets/        # 仓库级共享图标资源
 ├── tools/         # 随产品分发的辅助工具（如 7za）
@@ -36,7 +36,7 @@ nano-installer/
 
 - `examples/TapTap/`
   - 原始样板
-- `examples/TapTap-v2/`
+- `examples/TapTap-Global/`
   - 当前较新的视觉和交互基线
 
 每个示例工程通常包含：

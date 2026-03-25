@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page width="720" height="450"
+      background="#FF181B22"
+      background-image="assets/bg_main.png"
+      border-radius="12"
+      border-color="#26FFFFFF"
+      border-width="1">
+
+  <Button id="btnMinimize" action="minimize"
+          position="absolute" left="640" top="12" width="34" height="34"
+          normal-image="file='assets/btn_minimize.png' dest='7,7,27,27' fade='160'"
+          hover-image="file='assets/btn_minimize.png' dest='7,7,27,27'"
+          pressed-image="file='assets/btn_minimize.png' dest='7,7,27,27'"
+          cursor="hand" />
+
+  <Button id="close" action="finish"
+          position="absolute" left="674" top="12" width="34" height="34"
+          normal-image="file='assets/btn_close.png' dest='7,7,27,27' fade='160'"
+          hover-image="file='assets/btn_close.png' dest='7,7,27,27'"
+          pressed-image="file='assets/btn_close.png' dest='7,7,27,27'"
+          cursor="hand" />
+
+  <Image id="logo"
+         src="assets/logo.png"
+         position="absolute"
+         left="260" top="99"
+         width="200" height="58" />
+
+  <Box id="taglineGroup"
+       position="absolute"
+       left="259" top="181"
+       width="202" height="53">
+    <HBox id="taglineRow1"
+          position="absolute"
+          left="0" top="0"
+          width="202" height="24"
+          justify-content="center"
+          align-items="center"
+          item-spacing="8">
+      <Image id="taglineGamepad"
+             src="assets/tagline-gamepad.png"
+             width="24" height="24" />
+      <Label id="taglineDiscover"
+             text="DISCOVER"
+             font-size="28"
+             font-weight="bold"
+             color="#FFFFFFFF"
+             wrap="false" />
+      <Image id="taglineComment"
+             src="assets/tagline-comment.png"
+             width="24" height="24" />
+    </HBox>
+
+    <Label id="taglineSuperbGames"
+           position="absolute"
+           left="0" top="27"
+           width="202" height="26"
+           text="SUPERB GAMES"
+           font-size="28"
+           font-weight="bold"
+           color="#FFFFFFFF"
+           wrap="false"
+           textalign="center"
+           valign="center" />
+  </Box>
+
+  <Button id="btnRun" action="launch_app"
+          position="absolute"
+          left="240" top="268"
+          width="240" height="40"
+          normal-image="assets/btn_primary.png"
+          hover-image="assets/btn_hover.png"
+          pressed-image="assets/btn_hover.png"
+          disabled-image="assets/btn_disabled.png"
+          font-size="14" font-weight="bold" color="#FFFFFFFF"
+          text="@launch_button" cursor="hand" />
+
+  <Label id="lblComplete"
+         position="absolute"
+         left="0" top="332"
+         width="720" height="22"
+         text="@install_complete"
+         font-size="14"
+         color="#FFFFFFFF"
+         text-align="center" />
+</Page>

@@ -42,7 +42,7 @@
   },
   "localization": {
     "default_locale": "zh-CN",
-    "supported_locales": ["zh-CN", "en-US", "ja", "ko"],
+    "supported_locales": ["zh-CN", "en-US", "ru"],
     "show_language_selector": true
   },
   "links": {
@@ -60,10 +60,10 @@
     "uninstaller_icon": "assets/uninst.ico"
   },
   "ui": {
-    "window_width": 574,
-    "window_height": 358,
-    "expanded_height": 518,
-    "window_corner_radius": 8,
+    "window_width": 720,
+    "window_height": 450,
+    "expanded_height": 450,
+    "window_corner_radius": 12,
     "dpi_aware": true,
     "dpi_threshold": 144
   },

@@ -387,7 +387,7 @@ mod tests {
     fn ignores_non_progress_7za_output() {
         assert_eq!(
             PayloadExtractor::parse_7za_progress_fragment(
-                "  0M Scan D:\\taptap-pc\\nano-installer\\examples\\TapTap-v2\\payload\\"
+                "  0M Scan D:\\taptap-pc\\nano-installer\\examples\\TapTap\\payload\\"
             ),
             None
         );
@@ -403,7 +403,7 @@ mod tests {
             .join("..")
             .join("..")
             .join("examples")
-            .join("TapTap-v2")
+            .join("TapTap")
             .join("payload")
             .join("app.7z");
         assert!(

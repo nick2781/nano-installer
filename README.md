@@ -20,7 +20,7 @@
 - 多语言支持
 - 内置 `7za` 解压链路
 - 安装器 / 卸载器打包
-- 示例工程：`TapTap`、`TapTap-v2`
+- 示例工程：`TapTap`、`TapTap-Global`
 
 ## 快速开始
 
@@ -41,12 +41,12 @@ target/release/nano-installer.exe build
 构建示例工程：
 
 ```bash
-target/release/nano-installer.exe build --project examples/TapTap-v2
+target/release/nano-installer.exe build --project examples/TapTap
 ```
 
 输出安装器：
 
-- `examples/TapTap-v2/dist/TapTapV2_Setup.exe`
+- `examples/TapTap/dist/TapTap_Setup.exe`
 
 ## 文档入口
 
@@ -66,7 +66,7 @@ target/release/nano-installer.exe build --project examples/TapTap-v2
 ## 示例工程
 
 - [examples/TapTap](examples/TapTap/)
-- [examples/TapTap-v2](examples/TapTap-v2/)
+- [examples/TapTap-Global](examples/TapTap-Global/)
 
 ## 仓库结构
 

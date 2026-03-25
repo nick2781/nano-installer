@@ -41,17 +41,29 @@ jobs:
       - name: Check installer crates
         run: cargo check -p nano-installer-lib -p nano-installer-cli -p nano-installer-lzma -p uninst
 
-      - name: Lint TapTap-v2 UI resources
-        run: cargo run -p nano-installer-cli -- harness lint-resources --project examples/TapTap-v2 --format text
+      - name: Lint TapTap UI resources
+        run: cargo run -p nano-installer-cli -- harness lint-resources --project examples/TapTap --format text
+
+      - name: Lint TapTap-Global UI resources
+        run: cargo run -p nano-installer-cli -- harness lint-resources --project examples/TapTap-Global --format text
 
       - name: Build release stubs
         run: cargo build --release -p nano-installer-lzma -p uninst -p nano-installer-cli
 
-      - name: Build TapTap-v2 setup
-        run: cargo run --release -p nano-installer-cli -- build --project examples/TapTap-v2
+      - name: Build TapTap setup
+        run: cargo run --release -p nano-installer-cli -- build --project examples/TapTap
 
-      - name: Upload TapTap-v2 setup artifact
+      - name: Build TapTap-Global setup
+        run: cargo run --release -p nano-installer-cli -- build --project examples/TapTap-Global
+
+      - name: Upload TapTap setup artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TapTapV2_Setup
-          path: examples/TapTap-v2/dist/TapTapV2_Setup.exe
+          name: TapTap_Setup
+          path: examples/TapTap/dist/TapTap_Setup.exe
+
+      - name: Upload TapTap-Global setup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TapTap_Global_Setup
+          path: examples/TapTap-Global/dist/TapTap_Global_Setup.exe

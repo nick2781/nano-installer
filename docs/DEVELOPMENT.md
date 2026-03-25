@@ -61,7 +61,7 @@ nano-installer/
 │   └── stubs/                  # installer / uninstaller stub
 ├── examples/
 │   ├── TapTap/                 # v1 示例工程
-│   └── TapTap-v2/              # v2 发布级示例工程
+│   └── TapTap-Global/          # 海外版发布级示例工程
 ├── docs/                       # docsify 文档站
 ├── scripts/                    # smoke、诊断、辅助脚本
 ├── templates/                  # init 生成模板
@@ -94,8 +94,11 @@ cargo build
 # 重编 release stubs / runtime
 cargo build --release -p nano-installer-lzma -p uninst -p nano-installer-cli
 
-# 构建 TapTap-v2 示例安装器
-cargo run --release -p nano-installer-cli -- build --project examples/TapTap-v2
+# 构建 TapTap 国内版示例安装器
+cargo run --release -p nano-installer-cli -- build --project examples/TapTap
+
+# 构建 TapTap 海外版示例安装器
+cargo run --release -p nano-installer-cli -- build --project examples/TapTap-Global
 ```
 
 ### 运行测试

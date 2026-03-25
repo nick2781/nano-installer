@@ -17,7 +17,7 @@
 如果只改了 `examples/**` 下的资源、布局、文案或配置，不需要重编 stub/runtime，只需要重新：
 
 ```bash
-target/release/nano-installer.exe build --project examples/TapTap-v2
+target/release/nano-installer.exe build --project examples/TapTap
 ```
 
 ## `1x/@2x` 资源是怎么工作的？
@@ -26,7 +26,7 @@ XML 布局默认只写 `1x` 资源路径。运行时会根据当前机器 DPI �
 
 ## 当前推荐从哪个示例开始？
 
-推荐优先参考 [TapTap-v2](../examples/TapTap-v2/)。它包含较新的视觉和交互基线。
+推荐优先参考 [TapTap](../examples/TapTap/) 和 [TapTap-Global](../examples/TapTap-Global/)。它们分别提供国内版与海外版的最新视觉和交互基线。
 
 ## 安装 payload 是怎么解压的？
 
