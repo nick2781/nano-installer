@@ -29,15 +29,8 @@ impl AssetLoader {
     }
 
     /// 获取系统 DPI 缩放因子
-    #[cfg(windows)]
     fn get_system_scale_factor() -> f32 {
-        use windows::Win32::UI::HiDpi::GetDpiForSystem;
-        use windows::Win32::UI::WindowsAndMessaging::USER_DEFAULT_SCREEN_DPI;
-
-        unsafe {
-            let dpi = GetDpiForSystem();
-            dpi as f32 / USER_DEFAULT_SCREEN_DPI as f32
-        }
+        crate::common::platform::system_dpi() as f32 / 96.0
     }
 
     /// 加载图片，自动根据 DPI 选择 1x 或 2x

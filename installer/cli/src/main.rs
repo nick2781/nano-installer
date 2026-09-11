@@ -45,6 +45,10 @@ enum Commands {
         /// Release build (optimized)
         #[arg(long)]
         release: bool,
+
+        /// Executable, .cmd, or PowerShell script used to sign uninstaller and setup
+        #[arg(long)]
+        sign_script: Option<PathBuf>,
     },
 
     /// Validate project configuration
@@ -174,7 +178,8 @@ fn run_cli() -> Result<()> {
             project,
             output,
             release,
-        } => cmd_build(&project, output.as_deref(), release),
+            sign_script,
+        } => cmd_build(&project, output.as_deref(), release, sign_script.as_deref()),
         Commands::Validate { config } => cmd_validate(&config),
         Commands::Langpack { input, output } => cmd_langpack(&input, output.as_deref()),
         Commands::Harness { command } => match command {
@@ -430,7 +435,12 @@ fn cmd_init(name: &str, output_dir: Option<&Path>) -> Result<()> {
 }
 
 /// 编译项目生成安装器
-fn cmd_build(project_dir: &Path, output_name: Option<&str>, release: bool) -> Result<()> {
+fn cmd_build(
+    project_dir: &Path,
+    output_name: Option<&str>,
+    release: bool,
+    sign_script: Option<&Path>,
+) -> Result<()> {
     println!("🔨 Building installer...");
     println!("📁 Project: {}", project_dir.display());
 
@@ -470,6 +480,13 @@ fn cmd_build(project_dir: &Path, output_name: Option<&str>, release: bool) -> Re
     // 验证布局文件
     validate_layout_files(project_dir, &config)?;
 
+    // 在清理旧产物和生成卸载器之前验证固定的 x64 stub 矩阵。
+    let stub_selection = validate_configured_stub_selection(project_dir, &config)?;
+    println!(
+        "🧩 Runtime stubs: {} + {}",
+        stub_selection.installer, stub_selection.uninstaller
+    );
+
     // 创建临时构建目录和 dist 目录
     let build_dir = project_dir.join(".build");
     let dist_dir = project_dir.join("dist");
@@ -489,10 +506,19 @@ fn cmd_build(project_dir: &Path, output_name: Option<&str>, release: bool) -> Re
     // 先生成卸载器（这样安装器可以将它打包进去）
     println!("🗑️  Building uninstaller executable...");
     build_uninstaller_exe(project_dir, &config, output_name, release)?;
+    if let Some(sign_script) = sign_script {
+        let uninstaller_name = config["output"]["uninstaller_name"]
+            .as_str()
+            .unwrap_or("uninst.exe");
+        sign_artifact(sign_script, &build_dir.join(uninstaller_name))?;
+    }
 
     // 再生成安装器（会自动打包所有资源包括 payload 和 uninst.exe）
     println!("📦 Building installer executable...");
     build_installer_exe(project_dir, &config, output_name, release)?;
+    if let Some(sign_script) = sign_script {
+        sign_artifact(sign_script, &dist_dir.join(&installer_name))?;
+    }
 
     // 保留 .build 目录用于调试（包含中间构建产物）
     // uninst.exe 已经嵌入到 TapTap_Setup.exe 中，不需要复制到 dist/
@@ -514,13 +540,14 @@ fn cmd_build(project_dir: &Path, output_name: Option<&str>, release: bool) -> Re
     println!("📁 Output: {}", dist_dir.display());
     println!("\n📦 Installer package structure (segmented):");
     println!("   {}", installer_name);
-    println!("   ├─ lzma-x64-unicode.exe stub (~4 MB)");
-    println!("   └─ Resource bundle (5 segments, ~3 MB)");
+    println!("   ├─ {} stub", stub_selection.installer);
+    println!("   └─ Resource bundle");
     println!("      ├─ Segment 1: Config (JSON)");
     println!("      ├─ Segment 2: UI Resources (layouts + assets → 7z)");
-    println!("      ├─ Segment 3: Locales (11 .pak files → 7z)");
+    println!("      ├─ Segment 3: Locales (.pak files → 7z)");
     println!("      ├─ Segment 4: Payload (app.7z)");
-    println!("      └─ Segment 5: Uninstaller (uninst.exe)");
+    println!("      ├─ Segment 5: Uninstaller (uninst.exe)");
+    println!("      └─ Segment 6: Scripts (optional)");
     println!("\n💡 To test:");
     println!("   cd {}", dist_dir.display());
     println!("   .\\{}", installer_name);
@@ -565,6 +592,245 @@ fn cleanup_stale_installer_artifacts(dist_dir: &Path, active_installer_name: &st
     Ok(())
 }
 
+fn runtime_binary_candidates(file_name: &str, prefer_release: bool) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+
+    if let Some(stub_dir) = std::env::var_os("NANO_INSTALLER_STUB_DIR") {
+        candidates.push(PathBuf::from(stub_dir).join(file_name));
+    }
+
+    if let Ok(current_exe) = std::env::current_exe() {
+        if let Some(cli_dir) = current_exe.parent() {
+            candidates.push(cli_dir.join(file_name));
+        }
+    }
+
+    let profiles = if prefer_release {
+        ["release", "debug"]
+    } else {
+        ["debug", "release"]
+    };
+    for profile in profiles {
+        candidates.push(PathBuf::from("target").join(profile).join(file_name));
+        candidates.push(PathBuf::from("../../target").join(profile).join(file_name));
+    }
+
+    candidates
+}
+
+fn find_runtime_binary(file_name: &str, prefer_release: bool) -> Result<PathBuf> {
+    let candidates = runtime_binary_candidates(file_name, prefer_release);
+    if let Some(path) = candidates.iter().find(|path| path.is_file()) {
+        return Ok(path.clone());
+    }
+
+    let searched = candidates
+        .iter()
+        .map(|path| format!("  - {}", path.display()))
+        .collect::<Vec<_>>()
+        .join("\n");
+    bail!(
+        "runtime binary '{}' was not found; searched:\n{}\n\
+         Build the runtime stubs first or set NANO_INSTALLER_STUB_DIR.",
+        file_name,
+        searched
+    )
+}
+
+fn configured_runtime_binary(
+    config: &serde_json::Value,
+    config_key: &str,
+    env_key: &str,
+    default: &str,
+) -> String {
+    std::env::var(env_key)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            config["output"][config_key]
+                .as_str()
+                .filter(|value| !value.trim().is_empty())
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| default.to_string())
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PayloadFormat {
+    SevenZip,
+    Zip,
+}
+
+impl PayloadFormat {
+    fn label(self) -> &'static str {
+        match self {
+            Self::SevenZip => "7z/LZMA",
+            Self::Zip => "ZIP/Deflate",
+        }
+    }
+}
+
+struct ValidatedStubSelection {
+    installer: String,
+    uninstaller: String,
+}
+
+fn runtime_file_name(path: &str) -> &str {
+    Path::new(path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(path)
+}
+
+fn parse_installer_stub(stub: &str) -> Result<PayloadFormat> {
+    match runtime_file_name(stub).to_ascii_lowercase().as_str() {
+        "lzma-x64.exe" => Ok(PayloadFormat::SevenZip),
+        "zlib-x64.exe" => Ok(PayloadFormat::Zip),
+        _ => bail!(
+            "unsupported installer stub '{}'; expected lzma-x64.exe or zlib-x64.exe",
+            stub
+        ),
+    }
+}
+
+fn validate_uninstaller_stub(stub: &str) -> Result<()> {
+    if runtime_file_name(stub).eq_ignore_ascii_case("uninst-x64.exe") {
+        Ok(())
+    } else {
+        bail!(
+            "unsupported uninstaller stub '{}'; expected uninst-x64.exe",
+            stub
+        )
+    }
+}
+
+fn detect_payload_format(payload_path: &Path) -> Result<PayloadFormat> {
+    use std::io::Read;
+
+    let mut file = std::fs::File::open(payload_path)
+        .with_context(|| format!("Failed to open payload: {}", payload_path.display()))?;
+    let mut signature = [0u8; 6];
+    let bytes_read = file
+        .read(&mut signature)
+        .with_context(|| format!("Failed to read payload: {}", payload_path.display()))?;
+
+    if bytes_read >= 2 && signature[..2] == *b"PK" {
+        return Ok(PayloadFormat::Zip);
+    }
+    if bytes_read == signature.len() && signature == [0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C] {
+        return Ok(PayloadFormat::SevenZip);
+    }
+
+    bail!(
+        "unsupported payload format in {}; only ZIP and 7z archives are supported",
+        payload_path.display()
+    )
+}
+
+fn validate_payload_stub_pair(
+    payload_path: &Path,
+    installer_stub: &str,
+    uninstaller_stub: &str,
+) -> Result<()> {
+    let payload_format = detect_payload_format(payload_path)?;
+    let stub_format = parse_installer_stub(installer_stub)?;
+    validate_uninstaller_stub(uninstaller_stub)?;
+
+    if payload_format != stub_format {
+        bail!(
+            "payload/stub mismatch: {} is {}, but '{}' only supports {} payloads",
+            payload_path.display(),
+            payload_format.label(),
+            installer_stub,
+            stub_format.label()
+        );
+    }
+
+    Ok(())
+}
+
+fn validate_configured_stub_selection(
+    project_dir: &Path,
+    config: &serde_json::Value,
+) -> Result<ValidatedStubSelection> {
+    let payload_file = config["resources"]["payload_file"]
+        .as_str()
+        .context("Missing 'resources.payload_file' in installer_config.json")?;
+    let installer = configured_runtime_binary(
+        config,
+        "installer_stub",
+        "NANO_INSTALLER_INSTALLER_STUB",
+        "lzma-x64.exe",
+    );
+    let uninstaller = configured_runtime_binary(
+        config,
+        "uninstaller_stub",
+        "NANO_INSTALLER_UNINSTALLER_STUB",
+        "uninst-x64.exe",
+    );
+
+    validate_payload_stub_pair(&project_dir.join(payload_file), &installer, &uninstaller)?;
+    Ok(ValidatedStubSelection {
+        installer,
+        uninstaller,
+    })
+}
+
+fn sign_artifact(sign_script: &Path, artifact: &Path) -> Result<()> {
+    let current_dir = std::env::current_dir().context("failed to resolve current directory")?;
+    let sign_script = if sign_script.is_absolute() {
+        sign_script.to_path_buf()
+    } else {
+        current_dir.join(sign_script)
+    };
+    let artifact = if artifact.is_absolute() {
+        artifact.to_path_buf()
+    } else {
+        current_dir.join(artifact)
+    };
+    if !sign_script.is_file() {
+        bail!("sign script not found: {}", sign_script.display());
+    }
+    if !artifact.is_file() {
+        bail!("artifact to sign not found: {}", artifact.display());
+    }
+
+    println!("   🔏 Signing: {}", artifact.display());
+    let extension = sign_script
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+
+    let status = match extension.as_str() {
+        "ps1" => std::process::Command::new("powershell.exe")
+            .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
+            .arg(&sign_script)
+            .arg(&artifact)
+            .status(),
+        "cmd" | "bat" => std::process::Command::new("cmd.exe")
+            .arg("/C")
+            .arg(&sign_script)
+            .arg(&artifact)
+            .status(),
+        _ => std::process::Command::new(&sign_script)
+            .arg(&artifact)
+            .status(),
+    }
+    .with_context(|| format!("failed to execute sign script: {}", sign_script.display()))?;
+
+    if !status.success() {
+        bail!(
+            "sign script failed for {} with exit code {:?}",
+            artifact.display(),
+            status.code()
+        );
+    }
+
+    println!("      ✓ Signature applied");
+    Ok(())
+}
+
 fn config_resource_dir(config: &serde_json::Value, key: &str, default: &str) -> String {
     config["resources"][key]
         .as_str()
@@ -596,6 +862,10 @@ fn cmd_validate(config_path: &Path) -> Result<()> {
 
     let _config: nano_installer::config::InstallerConfig =
         serde_json::from_str(&config_content).context("Failed to parse configuration")?;
+    let config: serde_json::Value =
+        serde_json::from_str(&config_content).context("Failed to parse configuration")?;
+    let project_dir = config_path.parent().unwrap_or_else(|| Path::new("."));
+    validate_configured_stub_selection(project_dir, &config)?;
 
     println!("✅ Configuration is valid!");
 
@@ -833,7 +1103,9 @@ fn generate_default_config(name: &str) -> String {
             "installer_name": format!("{}_Setup.exe", name),
             "installer_icon": "assets/logo.ico",
             "uninstaller_name": "uninst.exe",
-            "uninstaller_icon": "assets/logo.ico"
+            "uninstaller_icon": "assets/logo.ico",
+            "installer_stub": "lzma-x64.exe",
+            "uninstaller_stub": "uninst-x64.exe"
         },
         "install": {
             "exe_name": format!("{}.exe", name),
@@ -997,7 +1269,7 @@ For more information, see the nano-installer documentation.
 mod tests {
     use super::{
         build_harness_resource_lint_report, build_harness_snapshot_report, generate_default_config,
-        validate_project_resources, HarnessModeArg, HarnessOutputFormat,
+        sign_artifact, validate_project_resources, HarnessModeArg, HarnessOutputFormat,
     };
     use anyhow::Result;
     use nano_installer::config::InstallerConfig;
@@ -1048,16 +1320,80 @@ mod tests {
         fs::write(files_dir.join("hello.txt"), "hello world")?;
 
         let config: Value = serde_json::json!({
+            "output": {
+                "installer_stub": "zlib-x64.exe"
+            },
             "resources": {
-                "payload_file": "payload/app.7z"
+                "payload_file": "payload/app.zip"
             }
         });
 
         super::ensure_payload_exists(project_dir, &config)?;
 
-        let payload_path = project_dir.join("payload").join("app.7z");
+        let payload_path = project_dir.join("payload").join("app.zip");
         assert!(payload_path.exists());
-        assert!(fs::metadata(payload_path)?.len() > 0);
+        assert!(fs::read(payload_path)?.starts_with(b"PK"));
+        Ok(())
+    }
+
+    #[test]
+    fn x64_stub_matrix_accepts_matching_payload_formats() -> Result<()> {
+        let temp = tempdir()?;
+        let zip_payload = temp.path().join("app.zip");
+        let seven_zip_payload = temp.path().join("app.7z");
+        fs::write(&zip_payload, b"PK\x03\x04test")?;
+        fs::write(
+            &seven_zip_payload,
+            [0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C, 0, 0],
+        )?;
+
+        super::validate_payload_stub_pair(&zip_payload, "zlib-x64.exe", "uninst-x64.exe")?;
+        super::validate_payload_stub_pair(&seven_zip_payload, "lzma-x64.exe", "uninst-x64.exe")?;
+        Ok(())
+    }
+
+    #[test]
+    fn x64_stub_matrix_rejects_mismatches_and_legacy_names() -> Result<()> {
+        let temp = tempdir()?;
+        let zip_payload = temp.path().join("app.zip");
+        fs::write(&zip_payload, b"PK\x03\x04test")?;
+
+        let mismatch =
+            super::validate_payload_stub_pair(&zip_payload, "lzma-x64.exe", "uninst-x64.exe")
+                .unwrap_err()
+                .to_string();
+        assert!(mismatch.contains("payload/stub mismatch"));
+
+        let legacy_name = super::validate_payload_stub_pair(
+            &zip_payload,
+            "zlib-x64-unicode.exe",
+            "uninst-x64.exe",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(legacy_name.contains("unsupported installer stub"));
+
+        let x86_name =
+            super::validate_payload_stub_pair(&zip_payload, "zlib-x86.exe", "uninst-x86.exe")
+                .unwrap_err()
+                .to_string();
+        assert!(x86_name.contains("unsupported installer stub"));
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn sign_artifact_passes_the_artifact_to_the_signer() -> Result<()> {
+        let temp = tempdir()?;
+        let artifact = temp.path().join("unsigned setup.exe");
+        let signer = temp.path().join("sign.cmd");
+        fs::write(&artifact, b"test artifact")?;
+        fs::write(
+            &signer,
+            "@echo off\r\nif not exist \"%~1\" exit /b 2\r\nexit /b 0\r\n",
+        )?;
+
+        sign_artifact(&signer, &artifact)?;
         Ok(())
     }
 
@@ -1181,8 +1517,52 @@ fn ensure_payload_exists(project_dir: &Path, config: &serde_json::Value) -> Resu
     if let Some(parent) = payload_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    package_files_dir_to_zip(&files_dir, &payload_path)?;
+    let installer_stub = configured_runtime_binary(
+        config,
+        "installer_stub",
+        "NANO_INSTALLER_INSTALLER_STUB",
+        "lzma-x64.exe",
+    );
+    match parse_installer_stub(&installer_stub)? {
+        PayloadFormat::SevenZip => package_files_dir_to_7z(&files_dir, &payload_path)?,
+        PayloadFormat::Zip => package_files_dir_to_zip(&files_dir, &payload_path)?,
+    }
     println!("   ✓ Created payload archive: {}", payload_path.display());
+    Ok(())
+}
+
+fn package_files_dir_to_7z(files_dir: &Path, output_path: &Path) -> Result<()> {
+    let seven_zip = find_7za_for_build().context(
+        "7za.exe not found; set NANO_INSTALLER_7ZA or place it in tools/ beside the CLI",
+    )?;
+    let output_path = if output_path.is_absolute() {
+        output_path.to_path_buf()
+    } else {
+        std::env::current_dir()?.join(output_path)
+    };
+    let mut command = std::process::Command::new(&seven_zip);
+    command
+        .args(["a", "-t7z"])
+        .arg(&output_path)
+        .arg("*")
+        .args(["-m0=lzma2", "-mx=9", "-y"])
+        .current_dir(files_dir);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x08000000);
+    }
+    let output = command
+        .output()
+        .with_context(|| format!("failed to run {}", seven_zip.display()))?;
+    if !output.status.success() {
+        bail!(
+            "7za failed to create {}: {}{}",
+            output_path.display(),
+            String::from_utf8_lossy(&output.stdout).trim(),
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
     Ok(())
 }
 
@@ -1241,13 +1621,51 @@ fn estimate_archive_uncompressed_size(path: &Path) -> Result<u64> {
         return Ok(total);
     }
 
-    let mut total = 0u64;
-    let mut source = std::fs::File::open(path)?;
-    let _ = sevenz_rust::decompress_with_extract_fn(&mut source, ".", |entry, _, _| {
-        total += entry.size();
-        Ok(true)
-    });
+    let seven_zip = find_7za_for_build().context(
+        "7za.exe not found; set NANO_INSTALLER_7ZA or place it in tools/ beside the CLI",
+    )?;
+    let mut command = std::process::Command::new(&seven_zip);
+    command.args(["l", "-slt", "-ba"]).arg(path);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x08000000);
+    }
+    let output = command
+        .output()
+        .with_context(|| format!("failed to run {}", seven_zip.display()))?;
+    if !output.status.success() {
+        bail!(
+            "7za list failed for {}: {}",
+            path.display(),
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+
+    let total = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("Size = "))
+        .filter_map(|value| value.parse::<u64>().ok())
+        .sum::<u64>();
+    if total == 0 {
+        bail!("7za returned no file sizes for {}", path.display());
+    }
     Ok(total)
+}
+
+fn find_7za_for_build() -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Some(path) = std::env::var_os("NANO_INSTALLER_7ZA") {
+        candidates.push(PathBuf::from(path));
+    }
+    if let Ok(current_exe) = std::env::current_exe() {
+        if let Some(cli_dir) = current_exe.parent() {
+            candidates.push(cli_dir.join("7za.exe"));
+            candidates.push(cli_dir.join("tools").join("7za.exe"));
+        }
+    }
+    candidates.push(PathBuf::from("tools/7za.exe"));
+    candidates.into_iter().find(|candidate| candidate.is_file())
 }
 
 /// 编译 JSON 语言文件为 .pak 格式
@@ -1349,7 +1767,7 @@ fn build_installer_exe(
     project_dir: &Path,
     config: &serde_json::Value,
     output_name: &str,
-    _release: bool,
+    release: bool,
 ) -> Result<()> {
     use nano_installer::resources::bundle::{append_bundle_to_exe, ResourceBundle};
 
@@ -1372,14 +1790,28 @@ fn build_installer_exe(
             .unwrap_or("payload/app.7z"),
     );
 
+    let configured_required_size = config["install"]["required_space_mb"]
+        .as_u64()
+        .unwrap_or(1)
+        .max(1);
     let uncompressed_size_bytes = if payload_file_path.exists() {
-        estimate_archive_uncompressed_size(&payload_file_path).unwrap_or(0)
+        match estimate_archive_uncompressed_size(&payload_file_path) {
+            Ok(size) => size,
+            Err(error) => {
+                println!(
+                    "      ⚠️  Unable to inspect payload size, keeping configured value: {}",
+                    error
+                );
+                0
+            }
+        }
     } else {
         0
     };
     let uncompressed_size_mb = uncompressed_size_bytes as f64 / 1024.0 / 1024.0;
     // 加 20% 缓冲 (注册表、快捷方式、临时文件等)
-    let final_required_size = ((uncompressed_size_mb * 1.2) as u64).max(1);
+    let calculated_required_size = (uncompressed_size_mb * 1.2).ceil() as u64;
+    let final_required_size = calculated_required_size.max(configured_required_size);
     println!(
         "      ℹ️  Payload uncompressed: {:.2} MB, required space: {} MB",
         uncompressed_size_mb, final_required_size
@@ -1584,20 +2016,14 @@ fn build_installer_exe(
     let bundle_size_mb = bundle_data.len() as f64 / 1024.0 / 1024.0;
     println!("      ✓ Bundle size: {:.2} MB", bundle_size_mb);
 
-    // 复制 lzma-x64-unicode.exe 作为基础（完整的安装器，类似 NSIS 的 lzma-x86-unicode）
-    // 优先使用 debug 版本（带控制台输出），如果不存在则使用 release 版本
-    let possible_stub_paths: Vec<Option<PathBuf>> = vec![
-        Some(PathBuf::from("target/release/lzma-x64-unicode.exe")),
-        Some(PathBuf::from("../../target/release/lzma-x64-unicode.exe")),
-        Some(PathBuf::from("target/debug/lzma-x64-unicode.exe")),
-        Some(PathBuf::from("../../target/debug/lzma-x64-unicode.exe")),
-    ];
-
-    let stub_exe = possible_stub_paths
-        .into_iter()
-        .flatten()
-        .find(|p| p.exists())
-        .context("lzma-x64-unicode.exe not found. Please compile it first with: cargo build --release -p lzma-x64-unicode")?;
+    // Installed release bundles keep the CLI and both runtime stubs together.
+    let stub_name = configured_runtime_binary(
+        config,
+        "installer_stub",
+        "NANO_INSTALLER_INSTALLER_STUB",
+        "lzma-x64.exe",
+    );
+    let stub_exe = find_runtime_binary(&stub_name, release)?;
 
     println!("   📋 Creating installer executable...");
     let stub_size_mb = std::fs::metadata(&stub_exe)?.len() as f64 / 1024.0 / 1024.0;
@@ -1715,7 +2141,7 @@ fn build_uninstaller_exe(
     project_dir: &Path,
     config: &serde_json::Value,
     _output_name: &str,
-    _release: bool,
+    release: bool,
 ) -> Result<()> {
     use nano_installer::resources::bundle::{append_bundle_to_exe, ResourceBundle};
 
@@ -1804,24 +2230,29 @@ fn build_uninstaller_exe(
         );
     }
 
+    // 5. 卸载器需要产品卸载脚本，但不需要 payload。
+    let uninstall_script = project_dir.join("scripts").join("uninstall.rhai");
+    if uninstall_script.is_file() {
+        bundle.add_scripts(std::collections::HashMap::from([(
+            "scripts/uninstall.rhai".to_string(),
+            std::fs::read(&uninstall_script)?,
+        )]))?;
+        println!("      ✓ Script: scripts/uninstall.rhai");
+    }
+
     // 打包资源
     let bundle_data = bundle.pack()?;
     let bundle_size_kb = bundle_data.len() as f64 / 1024.0;
     println!("      ✓ Bundle size: {:.2} KB", bundle_size_kb);
 
-    // 复制 uninst.exe stub（完整 egui 引擎，和安装器共用同一套代码）
-    let possible_stub_paths = [
-        "target/release/uninst.exe",
-        "target/debug/uninst.exe",
-        "../../target/release/uninst.exe",
-        "../../target/debug/uninst.exe",
-    ];
-
-    let stub_exe = possible_stub_paths
-        .iter()
-        .map(PathBuf::from)
-        .find(|p| p.exists())
-        .context("uninst.exe not found. Please compile it first with: cargo build -p uninst")?;
+    // Installed release bundles keep the CLI and both runtime stubs together.
+    let stub_name = configured_runtime_binary(
+        config,
+        "uninstaller_stub",
+        "NANO_INSTALLER_UNINSTALLER_STUB",
+        "uninst-x64.exe",
+    );
+    let stub_exe = find_runtime_binary(&stub_name, release)?;
 
     println!(
         "      Using stub: {} ({} KB)",

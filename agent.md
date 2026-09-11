@@ -159,7 +159,7 @@ if let Some(vs) = &mut element.visual_style {
 cargo build
 
 # 编译 (release, 用于打包)
-cargo build --release --bin lzma-x64-unicode --bin uninst
+cargo build --release --bin lzma-x64 --bin uninst-x64
 
 # 运行测试
 cargo test

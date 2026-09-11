@@ -3,6 +3,7 @@
 pub mod dpi_handler;
 // pub mod egui_app;  // 旧的硬编码实现 (已废弃)
 pub mod egui_app_xml; // 基于 XML 布局的新实现
+pub mod folder_dialog;
 pub mod layout_renderer;
 pub mod message_box;
 pub mod resource_provider;

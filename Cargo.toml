@@ -4,15 +4,18 @@ members = [
     "installer/cli",
     "installer/lib",
     "installer/stubs/lzma",
+    "installer/stubs/zlib",
     "installer/stubs/uninst",
 ]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.81"
-authors = ["Your Name <your.email@example.com>"]
-description = "Modern installer framework inspired by NSIS"
+rust-version = "1.88"
+authors = ["nano-installer contributors"]
+description = "Configuration-driven Windows installer framework"
+license = "MIT"
+repository = "https://github.com/Nick2781/nano-installer"
 
 [workspace.dependencies]
 # 基础依赖
@@ -28,16 +31,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
 
 # GUI 库
-eframe = { version = "0.33", default-features = false, features = ["default_fonts", "glow"] }
-egui = "0.33"
-egui_extras = { version = "0.33", features = ["image"] }
+eframe = { version = "0.33", default-features = false, features = ["glow"] }
+egui = { version = "0.33", default-features = false }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "ico"] }
-
-# 文件对话框
-rfd = "0.14"
-
-# 异步运行时
-tokio = { version = "1.38", features = ["full"] }
 
 # 工具库
 uuid = { version = "1.10", features = ["v4"] }
@@ -55,12 +51,6 @@ roxmltree = "0.20"
 # 正则表达式库
 regex = "1.10"
 
-# JSON with comments 解析库
-jsonc-parser = "0.27"
-
-# TOML 解析库
-toml = "0.8"
-
 # 布局引擎
 taffy = "0.7"
 
@@ -69,8 +59,7 @@ rhai = "1.21"
 
 # 压缩库
 flate2 = "1.0"
-zip = "0.6"
-sevenz-rust = "0.6"
+zip = { version = "0.6", default-features = false, features = ["deflate"] }
 lzma-rs = "0.3"
 
 # 文件遍历库
@@ -78,10 +67,8 @@ walkdir = "2.4"
 raw-window-handle = "0.6"
 
 # Windows registry
-winreg = "0.52"
+winreg = "0.56"
 
-# Build dependencies (used by build.rs)
-embed-resource = "2.4"
 winres = "0.1"
 
 # Dev dependencies
@@ -106,7 +93,6 @@ features = [
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_SystemInformation",
     "Win32_Globalization",
-    "Win32_UI_HiDpi",
     "Win32_System_LibraryLoader",
     "Win32_Graphics_Dwm",
     "Win32_Graphics_Gdi",
@@ -117,3 +103,4 @@ opt-level = "s"     # 优化文件大小 (比 "z" 更安全)
 lto = true          # 启用链接时优化
 codegen-units = 1   # 减少代码生成单元以获得更好的优化
 strip = true        # 剥离符号信息
+panic = "abort"     # 安装器无法从 panic 恢复，移除 unwind 运行时

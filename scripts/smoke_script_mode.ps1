@@ -97,7 +97,10 @@ $desktopShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "TapTapSc
 $startMenuShortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\TapTapScriptSmoke\TapTapScriptSmoke.lnk"
 
 Write-Host "[script-smoke] Building release binaries..."
-cargo build --release -p nano-installer-cli -p nano-installer-lzma -p uninst | Out-Host
+cargo build --release -p nano-installer-lzma | Out-Host
+cargo build --release -p nano-installer-zlib | Out-Host
+cargo build --release -p uninst | Out-Host
+cargo build --release -p nano-installer-cli | Out-Host
 
 Write-Host "[script-smoke] Building installer package..."
 cargo run --bin nano-installer -- build --project $projectDir | Out-Host

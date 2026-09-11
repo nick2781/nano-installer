@@ -1,81 +1,71 @@
-# nano-installer 架构概览
+# 架构
 
-## 概述
+## 总体模型
 
-`nano-installer` 采用“CLI + runtime stub + 资源分段打包”的架构：
-
-- CLI 负责读取项目配置、验证资源、打包安装器
-- 安装器 stub 负责运行时启动、加载资源、执行安装流程
-- 卸载器 stub 负责读取卸载信息并执行清理
-- 布局、图片、语言包和 payload 作为资源随 setup 一起分发
-
-## 构建链路
-
-典型构建流程如下：
+项目由构建期 CLI、共享核心库和三个预编译 x64 stub 组成：LZMA installer、zlib
+installer 和 uninstaller。每次产品构建只选择一个 installer stub 和 uninstaller。
 
 ```text
-nano-installer.exe build --project <Project>
-  ├─ 读取 installer_config.json
-  ├─ 校验 layouts / assets / locales / payload
-  ├─ 生成卸载器资源
-  ├─ 打包 UI 资源与 payload
-  ├─ 复制安装器 stub
-  └─ 产出 <Project>_Setup.exe
+product project                         nano-installer toolchain
+installer_config.json ----+             nano-installer.exe
+layouts / assets ----------+----------> resource validation and bundle
+locales / scripts ---------+                       |
+payload/app.7z ------------+                       v
+                                      lzma-x64.exe + bundle
+                                                   |
+                                                   v
+                                          <Product>_Setup.exe
 ```
 
-## 运行时链路
+`installer/lib` 同时被 CLI、安装器 stub 和卸载器 stub 使用。CLI 不应包含产品逻辑，
+产品项目也不应修改 stub 来实现品牌差异。
 
-安装器运行时主要分成三层：
+## 构建流程
 
-1. `installer_runtime`
-   - 决定当前运行模式
-   - 初始化窗口、资源和安装流程
-2. `ui + layout`
-   - 解析 XML 布局
-   - 渲染页面、控件和多语言文案
-3. `installer / uninstaller / resources`
-   - 解压 payload
-   - 执行文件、快捷方式、注册表操作
-   - 写入或读取卸载信息
+`nano-installer build --project <dir>` 执行：
 
-## 目录对应关系
+1. 读取并校验 `installer_config.json`。
+2. 校验 XML、资源引用和 `@2x` 配对。
+3. 把 JSON locale 编译为 `.pak`。
+4. 给卸载器 stub 注入配置、布局、资源、语言和脚本。
+5. 签名生成后的卸载器（配置了 `--sign-script` 时）。
+6. 压缩卸载器，把配置、UI 资源、语言、payload、卸载器和脚本组成分段 bundle。
+7. 复制安装器 stub，替换图标和版本资源，追加 bundle，最后签名 setup。
+
+中间卸载器位于 `<project>/.build/`，最终 setup 位于 `<project>/dist/`。
+
+## 运行时流程
 
 ```text
-installer/
-├── cli/          # 构建工具
-├── lib/          # 共享核心库
-└── stubs/
-   ├── lzma/      # 安装器 runtime stub
-   └── uninst/    # 卸载器 runtime stub
+stub start
+  -> read embedded bundle
+  -> load config and locale
+  -> detect install/update/uninstall/silent mode
+  -> render XML wizard or run silent path
+  -> execute configured tasks and optional Rhai script
+  -> write uninstall manifest
 ```
 
-## UI 与资源
+卸载器读取安装时写入的 manifest，以此删除文件、快捷方式和注册表项。产品脚本创建的
+副作用必须通过脚本 API 记录，否则通用卸载器无法可靠清理。
 
-UI 由两部分组成：
+## Stub 查找
 
-- JSON 配置
-  - 控制项目基础信息、路径、行为、资源目录
-- XML 布局 DSL
-  - 控制页面结构、控件位置、图片、文字和交互动作
+CLI 按以下顺序查找配置或环境变量选择的 installer/uninstaller stub：
 
-资源默认按 `1x` 路径声明，运行时会根据 DPI 自动映射到 `@2x` 资源。
+1. `NANO_INSTALLER_STUB_DIR`。
+2. `nano-installer.exe` 所在目录。
+3. 当前工作目录相对的 `target/<profile>` 和 `../../target/<profile>`。
 
-## 验证与回归
+因此 release bundle 可以把 CLI 和所选 stubs 平铺在同一目录，也可以由生产流水线显式设置
+`NANO_INSTALLER_STUB_DIR`。
 
-当前工程把验证分成三层：
+## 产品边界
 
-- library snapshot / verification tooling
-  - 用于检查布局矩形、语言切换、动作分发、资源引用
-- script smoke
-  - 用于验证真实 EXE 主链路
-- manual review
-  - 用于最终视觉验收
+- JSON 配置：跨产品都成立的安装能力。
+- XML：页面结构、控件、默认状态和动作绑定。
+- locale：所有用户可见文案。
+- Rhai：渠道文件、私有注册表、URI scheme 等产品副作用。
+- Rust runtime：稳定且跨产品复用的引擎能力。
 
-## 关键工程边界
-
-- 修改 `installer/**`
-  - 需要先重编 runtime/stub，再重打 setup
-- 只修改 `examples/**`
-  - 只需要重建对应示例工程
-
-详见 [AGENTS.md](../AGENTS.md)。
+具体判断规则见[配置与脚本边界](CONFIG_VS_SCRIPT.md)。

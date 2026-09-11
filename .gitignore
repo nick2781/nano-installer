@@ -3,9 +3,8 @@ target/*
 *.7z
 .claude
 .idea
-examples/TapTap/.build
+examples/*/.build/
 tmp/
-examples/TapTap/dist/*.log
-examples/TapTap-v2/dist/*.log
+examples/*/dist/*.log
 .tmp-docsify-*.log
 screenshot*.png

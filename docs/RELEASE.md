@@ -1,66 +1,74 @@
-# 发布指南
+# 发布
 
-本文档描述 `nano-installer` 当前的发布面和建议发布流程。
+## 工具链发布
 
-## 发布内容
+release bundle 包含：
 
-当前仓库对外发布的内容包括：
+```text
+nano-installer.exe
+lzma-x64.exe
+zlib-x64.exe
+uninst-x64.exe
+7za.exe
+```
 
-- CLI 工具
-- installer runtime / stubs
-- docsify 文档站
-- 示例工程：`TapTap`、`TapTap-Global`
+这些文件可以平铺使用。CLI 优先从自身目录找 stub，也可以使用
+`NANO_INSTALLER_STUB_DIR` 指向受控工具目录。
+`7za.exe` 供 CLI 检查或自动创建 7z payload；LZMA runtime 已内嵌自己的副本，不要求
+终端用户机器预装 7-Zip。
 
-## 文档发布
+发布物仅提供 Unicode stub，不构建 ANSI 变体。stub 文件名中的维度只有压缩算法和架构。
 
-文档站目录在 [docs](/D:/taptap-pc/nano-installer/docs)。
+必须用独立的 Cargo 命令分别构建三个 stub，避免 Cargo 合并共享库 features 后把所有 payload
+后端链接进每个二进制。`scripts/build.ps1` 已按这个规则执行。
 
-当前文档站基于 `docsify`：
+## 当前尺寸
 
-- 首页：[README.md](/D:/taptap-pc/nano-installer/docs/README.md)
-- 侧边栏：[docs/_sidebar.md](/D:/taptap-pc/nano-installer/docs/_sidebar.md)
-- 顶部导航：[docs/_navbar.md](/D:/taptap-pc/nano-installer/docs/_navbar.md)
-- 入口页：[docs/index.html](/D:/taptap-pc/nano-installer/docs/index.html)
+以下是同一份 TapTap payload（压缩后 143.69 MiB）的本地 release 实测值：
 
-CI 中已有独立 docs workflow，可用于发布文档站。
+| 产物 | 标准 x64 | Win7 x64 |
+| --- | ---: | ---: |
+| `lzma-x64.exe` | 6.95 MiB | 6.94 MiB |
+| `zlib-x64.exe` | 4.83 MiB | 4.80 MiB |
+| `uninst-x64.exe` | 4.80 MiB | 4.77 MiB |
+| TapTap setup（LZMA） | 159.14 MiB | 159.12 MiB |
 
-## Release 发布
+优化前同 payload 的 setup 为 170.66 MiB，当前标准构建减少约 11.52 MiB。stub 仍明显大于
+NSIS 的原因和进一步缩到几百 KB 所需的架构变化见 [FAQ](FAQ.md)。
 
-当前 release pipeline 已覆盖：
+## 发布前命令
 
-- 基础 CI
-- docs 文档发布
-- release 版本发布
+```powershell
+cargo fmt --all -- --check
+cargo test -p nano-installer-lib --lib
+cargo test -p nano-installer-cli
+cargo check --workspace --locked
+.\scripts\build.ps1 -Project examples\TapTap
+```
 
-对应 workflow：
+GitHub Actions 的 CI 与 release workflow 固定使用 Rust 1.91.1，并只构建 TapTap 示例。
 
-- [.github/workflows/ci.yml](/D:/taptap-pc/nano-installer/.github/workflows/ci.yml)
-- [.github/workflows/docs.yml](/D:/taptap-pc/nano-installer/.github/workflows/docs.yml)
-- [.github/workflows/release.yml](/D:/taptap-pc/nano-installer/.github/workflows/release.yml)
+## 版本与可复现性
 
-## 发布前检查
+- 提交并使用 `Cargo.lock`。
+- 构建使用 `--locked`。
+- release tag 对应唯一工具链版本和 commit。
+- 产品配置中的版本应由生产流水线更新并校验。
+- 保存最终 setup、SHA-256、签名时间戳和构建日志。
 
-建议至少执行：
+## 签名
 
-1. `cargo test -p nano-installer-lib --lib`
-2. `cargo test -p nano-installer-cli`
-3. `cargo build --release -p nano-installer-lzma -p uninst -p nano-installer-cli`
-4. `cargo run --release -p nano-installer-cli -- build --project examples\\TapTap`
-5. `cargo run --release -p nano-installer-cli -- build --project examples\\TapTap-Global`
-6. `cargo run -p nano-installer-cli -- harness lint-resources --project examples\\TapTap --format text`
-7. `cargo run -p nano-installer-cli -- harness lint-resources --project examples\\TapTap-Global --format text`
+最终 setup 必须在所有图标、版本资源和 bundle 追加完成后签名。嵌入 setup 的卸载器也
+必须单独签名。构建命令通过同一个 signer 依次签名卸载器和最终 setup：
 
-如果修改了 `installer/**`，必须先重编 release stubs/runtime，再重打 setup。
+```powershell
+.\scripts\build.ps1 -Project examples\TapTap -SignScript scripts\sign.ps1
+```
 
-如果只修改了 `examples/**`，只需要重新 build 对应示例工程。
+默认 signer 从 `NANO_INSTALLER_CERT_THUMBPRINT` 读取证书指纹；生产环境也可以传入企业
+签名服务的 `.exe`、`.cmd` 或 `.ps1` wrapper。签名后的卸载器再被无损压缩并嵌入。
 
-## 对外口径
+## 发布验收
 
-发布时建议统一口径为：
-
-- `nano-installer` 是现代化 Windows 安装器框架
-- 配置负责通用能力
-- XML 布局 DSL 负责界面
-- 脚本负责产品业务逻辑
-
-不再以“NSIS 迁移工具”作为主要对外定位。
+按[测试计划](TEST_PLAN.md)完成 Windows 10/11、DPI、语言、首装、升级、静默和卸载
+矩阵。系统支持口径必须与[Windows 兼容性](WINDOWS_COMPATIBILITY.md)一致。

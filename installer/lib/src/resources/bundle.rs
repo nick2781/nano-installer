@@ -14,7 +14,7 @@ use std::path::Path;
 
 /// 资源包魔数
 const MAGIC: &[u8; 8] = b"NANORSRC";
-const VERSION: u16 = 2; // 版本 2：分段式设计
+const VERSION: u16 = 3; // 版本 3：卸载器段使用 LZMA 压缩
 
 /// 资源段类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -118,11 +118,12 @@ impl ResourceBundle {
 
     /// 添加卸载器段
     pub fn add_uninstaller(&mut self, data: Vec<u8>) -> Result<()> {
+        let compressed = Self::compress_files_to_7z(vec![("uninst.exe".to_string(), data)])?;
         self.segments.push(ResourceSegment {
             segment_type: SegmentType::Uninstaller,
-            name: "uninst.exe".to_string(),
-            data,
-            compressed: false,
+            name: "uninstaller.7z".to_string(),
+            data: compressed,
+            compressed: true,
         });
         Ok(())
     }
@@ -223,7 +224,7 @@ impl ResourceBundle {
         cursor.read_exact(&mut version_bytes)?;
         let version = u16::from_le_bytes(version_bytes);
 
-        if version != VERSION && version != 1 {
+        if version != VERSION && version != 2 && version != 1 {
             // 兼容旧版本
             bail!("Unsupported resource bundle version: {}", version);
         }
@@ -642,7 +643,7 @@ pub fn extract_bundle_from_exe(exe_path: &Path) -> Result<ResourceBundle> {
     tracing::debug!("Found {} NANORSRC magic(s) in exe", magic_positions.len());
 
     // 从后往前尝试解析，找到第一个有效且段数量 >= 4 的资源包
-    // （安装器应该有 5 个段，卸载器只有 3 个段）
+    // （安装器通常有 6 个段，卸载器通常有 4 个段）
     for magic_pos in magic_positions.iter().rev() {
         tracing::debug!("Trying to parse bundle at position {}", magic_pos);
         let bundle_data = &exe_data[*magic_pos..];
@@ -746,4 +747,27 @@ pub struct ResourceItem {
     pub resource_type: ResourceType,
     pub name: String,
     pub data: Vec<u8>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ResourceBundle, SegmentType};
+
+    #[test]
+    fn compressed_uninstaller_roundtrips() {
+        let original = b"signed-uninstaller-bytes".repeat(1024);
+        let mut bundle = ResourceBundle::new();
+        bundle.add_uninstaller(original.clone()).unwrap();
+
+        let segment = bundle.get_segment(SegmentType::Uninstaller).unwrap();
+        assert!(segment.compressed);
+        assert!(segment.data.len() < original.len());
+
+        let packed = bundle.pack().unwrap();
+        let unpacked = ResourceBundle::unpack(&packed).unwrap();
+        let mut files = unpacked
+            .decompress_segment(SegmentType::Uninstaller)
+            .unwrap();
+        assert_eq!(files.remove("uninst.exe"), Some(original));
+    }
 }

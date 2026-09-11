@@ -1,15 +1,17 @@
 * [首页](README.md)
-* 入门
-  * [架构概览](ARCHITECTURE.md)
-  * [项目结构](PROJECT_STRUCTURE.md)
-  * [常见问题](FAQ.md)
-* 配置与布局
+* 使用
+  * [生产接入](PRODUCTION_INTEGRATION.md)
   * [配置参考](CONFIG_REFERENCE.md)
   * [配置与脚本边界](CONFIG_VS_SCRIPT.md)
   * [XML 布局指南](XML_LAYOUT_GUIDE.md)
   * [XML Schema](XML_SCHEMA.md)
   * [本地化](LOCALIZATION.md)
-* 开发与验证
-  * [开发指南](DEVELOPMENT.md)
-  * [测试与验证](TEST_PLAN.md)
-  * [发布指南](RELEASE.md)
+  * [语言键](LOCALE_KEYS.md)
+* 工程
+  * [架构](ARCHITECTURE.md)
+  * [项目结构](PROJECT_STRUCTURE.md)
+  * [Windows 兼容性](WINDOWS_COMPATIBILITY.md)
+  * [开发](DEVELOPMENT.md)
+  * [测试](TEST_PLAN.md)
+  * [发布](RELEASE.md)
+  * [FAQ](FAQ.md)

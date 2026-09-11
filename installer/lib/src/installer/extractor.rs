@@ -77,36 +77,10 @@ impl SevenZipExtractor {
             }
         }
 
-        // 如果系统7z不可用，尝试使用Rust库
-        self.extract_with_rust_library(archive_path, target_dir)
-    }
-
-    /// 使用Rust库解压（备用方案）
-    fn extract_with_rust_library(
-        &self,
-        archive_path: &Path,
-        target_dir: &Path,
-    ) -> Result<(), Error> {
-        info!(
-            "Extracting 7z archive using sevenz-rust library: {:?}",
-            archive_path
-        );
-
-        // Report initial progress
-        if let Some(ref cb) = self.progress_callback {
-            cb(0.0);
-        }
-
-        sevenz_rust::decompress_file(archive_path, target_dir)
-            .map_err(|e| Error::InstallationFailed(format!("7z extraction failed: {}", e)))?;
-
-        // Report completion
-        if let Some(ref cb) = self.progress_callback {
-            cb(1.0);
-        }
-
-        info!("7z extraction completed successfully using sevenz-rust");
-        Ok(())
+        // Reuse the runtime extractor, which provides a bundled 7za fallback.
+        let archive_data = std::fs::read(archive_path)
+            .map_err(|e| Error::InstallationFailed(format!("Failed to read 7z archive: {}", e)))?;
+        crate::resources::payload::PayloadExtractor::extract_7z_to_dir(&archive_data, target_dir)
     }
 
     /// 异步解压（在后台线程中执行）

@@ -1,7 +1,6 @@
-//! nano-installer - Universal installer generator
+//! nano-installer - configuration-driven Windows installer framework
 //!
-//! A modern, cross-platform installer generator built with Rust and egui.
-//! Similar to NSIS but with a modern architecture and better user experience.
+//! The library powers the build CLI plus the installer and uninstaller runtime stubs.
 //!
 //! ## Features
 //!
@@ -9,8 +8,8 @@
 //! - **Configuration-driven**: JSON-based configuration with comments
 //! - **XML Layouts**: Flexible UI layout system
 //! - **Multi-language**: Support for 11+ languages
-//! - **Cross-platform**: Windows 10+ (Windows 7 with VxKex)
-//! - **Extensible**: Plugin architecture for custom functionality
+//! - **Windows runtime**: Windows 10 and newer
+//! - **Extensible**: Rhai scripts for product-specific install behavior
 //!
 //! ## Quick Start
 //!

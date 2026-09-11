@@ -1,25 +1,34 @@
 // Payload 提取器（从 exe 中提取嵌入的 7z 文件）
 
 use crate::common::{Error, Result};
+#[cfg(feature = "payload-lzma")]
 use regex::Regex;
-use std::io::{BufWriter, Read, Write};
-#[cfg(windows)]
+#[cfg(any(feature = "payload-lzma", feature = "payload-zip"))]
+use std::io::Read;
+#[cfg(feature = "payload-zip")]
+use std::io::{BufWriter, Write};
+#[cfg(all(windows, feature = "payload-lzma"))]
 use std::os::windows::process::CommandExt;
 use std::path::Path;
+#[cfg(feature = "payload-lzma")]
 use std::process::{Command, Stdio};
+#[cfg(feature = "payload-lzma")]
 use std::sync::OnceLock;
+#[cfg(any(feature = "payload-lzma", feature = "payload-zip"))]
 use std::time::Instant;
-#[cfg(windows)]
+#[cfg(all(windows, feature = "payload-lzma"))]
 use windows::Win32::System::Threading::CREATE_NO_WINDOW;
 
 /// Payload 提取器
 pub struct PayloadExtractor;
 
 impl PayloadExtractor {
+    #[cfg(feature = "payload-lzma")]
     const BUNDLED_7ZA: &'static [u8] =
         include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../tools/7za.exe"));
 
     /// 获取 7za.exe 的路径
+    #[cfg(feature = "payload-lzma")]
     fn get_7za_path() -> Result<std::path::PathBuf> {
         // 首先尝试从当前 exe 所在目录的 tools 子目录
         if let Ok(exe_path) = std::env::current_exe() {
@@ -76,7 +85,7 @@ impl PayloadExtractor {
         Ok(payload_data)
     }
 
-    /// 解压 7z 数据到目标目录（先尝试系统 7z，回退到 sevenz-rust）
+    /// 解压 ZIP 或 7z 数据到目标目录。
     pub fn extract_7z_to_dir(data: &[u8], dest_dir: &Path) -> Result<()> {
         Self::extract_7z_to_dir_with_progress(data, dest_dir, |_| {})
     }
@@ -90,24 +99,46 @@ impl PayloadExtractor {
     where
         F: FnMut(f32),
     {
-        tracing::info!("Extracting 7z archive to {:?}", dest_dir);
-        std::fs::create_dir_all(dest_dir)?;
-        progress_callback(0.0);
-
-        // 检测文件格式: 7z 头 = [0x37, 0x7A], ZIP 头 = [0x50, 0x4B]
-        let is_zip = data.len() >= 2 && data[0] == 0x50 && data[1] == 0x4B;
-
-        if is_zip {
-            Self::extract_zip_with_progress(data, dest_dir, &mut progress_callback)?;
-        } else {
-            Self::extract_7z_with_progress(data, dest_dir, &mut progress_callback)?;
+        #[cfg(not(any(feature = "payload-lzma", feature = "payload-zip")))]
+        {
+            let _ = (data, dest_dir, &mut progress_callback);
+            return Err(Error::Archive(
+                "payload extraction is not supported by this runtime stub".to_string(),
+            ));
         }
 
-        progress_callback(1.0);
-        tracing::info!("Extraction completed");
-        Ok(())
+        #[cfg(any(feature = "payload-lzma", feature = "payload-zip"))]
+        {
+            tracing::info!("Extracting 7z archive to {:?}", dest_dir);
+            std::fs::create_dir_all(dest_dir)?;
+            progress_callback(0.0);
+
+            // 检测文件格式: 7z 头 = [0x37, 0x7A], ZIP 头 = [0x50, 0x4B]
+            let is_zip = data.len() >= 2 && data[0] == 0x50 && data[1] == 0x4B;
+
+            if is_zip {
+                #[cfg(feature = "payload-zip")]
+                Self::extract_zip_with_progress(data, dest_dir, &mut progress_callback)?;
+                #[cfg(not(feature = "payload-zip"))]
+                return Err(Error::Archive(
+                    "ZIP payload is not supported by this runtime stub".to_string(),
+                ));
+            } else {
+                #[cfg(feature = "payload-lzma")]
+                Self::extract_7z_with_progress(data, dest_dir, &mut progress_callback)?;
+                #[cfg(not(feature = "payload-lzma"))]
+                return Err(Error::Archive(
+                    "7z/LZMA payload is not supported by this runtime stub".to_string(),
+                ));
+            }
+
+            progress_callback(1.0);
+            tracing::info!("Extraction completed");
+            Ok(())
+        }
     }
 
+    #[cfg(feature = "payload-zip")]
     fn extract_zip_with_progress<F>(
         data: &[u8],
         dest_dir: &Path,
@@ -177,6 +208,7 @@ impl PayloadExtractor {
         Ok(())
     }
 
+    #[cfg(feature = "payload-lzma")]
     fn ensure_bundled_7za() -> Result<std::path::PathBuf> {
         static BUNDLED_7ZA_PATH: OnceLock<std::path::PathBuf> = OnceLock::new();
 
@@ -198,6 +230,7 @@ impl PayloadExtractor {
         Ok(out_path)
     }
 
+    #[cfg(feature = "payload-lzma")]
     fn parse_7za_progress_fragment(fragment: &str) -> Option<f32> {
         static PROGRESS_RE: OnceLock<Regex> = OnceLock::new();
         let regex = PROGRESS_RE.get_or_init(|| Regex::new(r"(?:^|[^0-9])([0-9]{1,3})%").unwrap());
@@ -210,6 +243,7 @@ impl PayloadExtractor {
             .map(|value| value as f32 / 100.0)
     }
 
+    #[cfg(feature = "payload-lzma")]
     fn extract_7z_with_progress<F>(
         data: &[u8],
         dest_dir: &Path,
@@ -299,6 +333,7 @@ impl PayloadExtractor {
     }
 
     /// 计算 SHA256
+    #[cfg(feature = "payload-lzma")]
     pub fn calculate_sha256(data: &[u8]) -> String {
         use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
@@ -372,6 +407,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "payload-lzma")]
     fn parses_7za_progress_updates() {
         assert_eq!(
             PayloadExtractor::parse_7za_progress_fragment(" 27% 68"),
@@ -384,6 +420,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "payload-lzma")]
     fn ignores_non_progress_7za_output() {
         assert_eq!(
             PayloadExtractor::parse_7za_progress_fragment(
@@ -396,6 +433,7 @@ mod tests {
 
     #[test]
     #[ignore = "manual timing benchmark"]
+    #[cfg(feature = "payload-lzma")]
     fn benchmark_taptap_v2_payload_extract_timing() {
         init_tracing();
 

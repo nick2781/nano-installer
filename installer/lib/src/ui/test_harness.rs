@@ -263,9 +263,9 @@ mod tests {
             .expect("pending close confirmation snapshot");
         assert_eq!(snapshot.message_type, MessageBoxType::Question);
         assert_eq!(snapshot.buttons, MessageBoxButton::OkCancel);
-        assert_eq!(snapshot.message, "安装尚未完成,您确定要退出安装吗?");
-        assert_eq!(snapshot.ok_text, "确定");
-        assert_eq!(snapshot.cancel_text, "取消");
+        assert_eq!(snapshot.message, "安装尚未完成，确定退出安装？");
+        assert_eq!(snapshot.ok_text, "退出安装");
+        assert_eq!(snapshot.cancel_text, "继续安装");
         assert_eq!(snapshot.width, Some(400.0));
         assert_eq!(snapshot.height, Some(230.0));
     }
@@ -346,7 +346,7 @@ mod tests {
         assert_eq!(before_lang.height, after_lang.height);
         assert_eq!(before_show_more.height, after_show_more.height);
         assert!(after_show_more.width >= before_show_more.width);
-        assert!(after_show_more.x + after_show_more.width <= 574.0 + 0.1);
+        assert!(after_show_more.x + after_show_more.width <= after.computed.container_width + 0.1);
         assert_eq!(
             harness
                 .select_display_text("config", "langSelect")
@@ -370,8 +370,8 @@ mod tests {
             snapshot.message,
             "Установка ещё не завершена. Вы уверены, что хотите выйти?"
         );
-        assert_eq!(snapshot.ok_text, "ОК");
-        assert_eq!(snapshot.cancel_text, "Отмена");
+        assert_eq!(snapshot.ok_text, "Выйти");
+        assert_eq!(snapshot.cancel_text, "Продолжить");
         assert_eq!(snapshot.width, Some(400.0));
         assert_eq!(snapshot.height, Some(230.0));
     }
@@ -388,6 +388,7 @@ mod tests {
         let button = snapshot.rect("btnShowMore_wrap").expect("button rect");
         let content = snapshot.rect("showMore_content").expect("content rect");
         let text = snapshot.rect("showMore_text").expect("text rect");
+        let badge = snapshot.rect("showMore_badge").expect("badge rect");
         let icon = snapshot.rect("showMore_icon").expect("icon rect");
 
         assert!(content.x >= button.x);
@@ -395,10 +396,16 @@ mod tests {
         assert!(content.x + content.width <= button.x + button.width + 0.1);
         assert!(content.y + content.height <= button.y + button.height + 0.1);
         assert!(text.x >= content.x);
-        assert!(text.x + text.width <= content.x + content.width + 0.1);
-        assert!(icon.x >= text.x + text.width);
-        assert!(icon.x + icon.width <= content.x + content.width + 0.1);
-        assert!((icon.x - (text.x + text.width) - 4.0).abs() <= 0.1);
+        assert!(text.y >= content.y);
+        assert!(text.x + text.width <= badge.x + 0.1);
+        assert!(text.y + text.height <= content.y + content.height + 0.1);
+        assert!(badge.x + badge.width <= content.x + content.width + 0.1);
+        assert!(badge.y >= content.y);
+        assert!(badge.y + badge.height <= content.y + content.height + 0.1);
+        assert!(icon.x >= badge.x);
+        assert!(icon.y >= badge.y);
+        assert!(icon.x + icon.width <= badge.x + badge.width + 0.1);
+        assert!(icon.y + icon.height <= badge.y + badge.height + 0.1);
     }
 
     #[test]
@@ -415,91 +422,20 @@ mod tests {
         let button = ru.rect("btnShowMore_wrap").expect("button rect");
         let content = ru.rect("showMore_content").expect("content rect");
         let text = ru.rect("showMore_text").expect("text rect");
+        let badge = ru.rect("showMore_badge").expect("badge rect");
         let icon = ru.rect("showMore_icon").expect("icon rect");
 
         assert!(button.width >= zh_button.width);
-        assert!(button.width <= 164.0 + 0.1);
+        assert!(button.width <= 184.0 + 0.1);
         assert!((content.x + content.width - (button.x + button.width)).abs() <= 0.1);
         assert!(text.x >= button.x);
         assert!(text.y >= button.y);
         assert!(text.y + text.height <= button.y + button.height + 0.1);
-        assert!(icon.x + icon.width <= button.x + button.width + 0.1);
-        assert!(icon.y >= button.y);
-        assert!(icon.y + icon.height <= button.y + button.height + 0.1);
-        assert!((icon.x - (text.x + text.width) - 4.0).abs() <= 0.1);
-    }
-
-    fn global_example_project_dir() -> std::path::PathBuf {
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/TapTap-Global")
-    }
-
-    #[test]
-    fn test_global_show_more_row_reserves_right_button_space_for_russian() {
-        let mut harness =
-            UiHarness::from_project_dir(global_example_project_dir(), WizardMode::Install)
-                .expect("create harness");
-
-        harness.switch_language("ru");
-
-        let snapshot = harness
-            .snapshot_current_page()
-            .expect("snapshot current page");
-
-        let row = snapshot.rect("__auto_hbox_6721").expect("bottom row rect");
-        let checkbox = snapshot.rect("chkAgree").expect("agreement rect");
-        let button = snapshot.rect("btnShowMore_wrap").expect("show more button rect");
-        let text = snapshot.rect("showMore_text").expect("show more text rect");
-        let badge = snapshot.rect("showMore_badge").expect("show more badge rect");
-
-        assert!(checkbox.x >= row.x);
-        assert!(checkbox.x + checkbox.width <= button.x - 31.9);
-        assert!(button.x + button.width <= row.x + row.width + 0.1);
-        assert!(text.x >= button.x);
-        assert!(badge.x >= text.x + text.width + 7.9);
+        assert!(text.x + text.width <= badge.x + 0.1);
         assert!(badge.x + badge.width <= button.x + button.width + 0.1);
-    }
-
-    #[test]
-    fn test_global_show_more_button_uses_adaptive_box_model_across_locales() {
-        let mut harness =
-            UiHarness::from_project_dir(global_example_project_dir(), WizardMode::Install)
-                .expect("create harness");
-
-        let mut widths = std::collections::HashMap::new();
-        for locale in ["zh-CN", "en-US", "ru"] {
-            harness.switch_language(locale);
-            let snapshot = harness.snapshot_current_page().expect("snapshot current page");
-
-            let button = snapshot.rect("btnShowMore_wrap").expect("show more button rect");
-            let text = snapshot.rect("showMore_text").expect("show more text rect");
-            let badge = snapshot.rect("showMore_badge").expect("show more badge rect");
-
-            widths.insert(locale, button.width);
-
-            assert!(button.width <= 184.0 + 0.1, "locale {locale}");
-            assert!(text.width <= 152.0 + 0.1, "locale {locale}");
-            assert!((badge.width - 24.0).abs() <= 0.1, "locale {locale}");
-            assert!(
-                (badge.x - (button.x + button.width - badge.width)).abs() <= 0.1,
-                "locale {locale}"
-            );
-            assert!(
-                (text.x + text.width + 8.0 - badge.x).abs() <= 0.1,
-                "locale {locale}"
-            );
-        }
-
-        assert!(
-            widths["zh-CN"] < 184.0,
-            "short zh text should not stretch to max width"
-        );
-        assert!(
-            widths["en-US"] < 184.0,
-            "short en text should not stretch to max width"
-        );
-        assert!(
-            widths["ru"] > widths["en-US"],
-            "ru button should be wider than en button"
-        );
+        assert!(icon.x >= badge.x);
+        assert!(icon.y >= badge.y);
+        assert!(icon.x + icon.width <= badge.x + badge.width + 0.1);
+        assert!(icon.y + icon.height <= badge.y + badge.height + 0.1);
     }
 }

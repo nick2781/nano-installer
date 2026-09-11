@@ -67,6 +67,20 @@ pub struct OutputConfig {
     pub uninstaller_name: String,
     /// 卸载器图标
     pub uninstaller_icon: String,
+    /// 构建期选择的安装器 runtime stub
+    #[serde(default = "default_installer_stub")]
+    pub installer_stub: String,
+    /// 构建期选择的卸载器 runtime stub
+    #[serde(default = "default_uninstaller_stub")]
+    pub uninstaller_stub: String,
+}
+
+fn default_installer_stub() -> String {
+    "lzma-x64.exe".to_string()
+}
+
+fn default_uninstaller_stub() -> String {
+    "uninst-x64.exe".to_string()
 }
 
 /// 安装配置
@@ -312,6 +326,8 @@ impl Default for InstallerConfig {
                 installer_icon: "assets/logo.ico".to_string(),
                 uninstaller_name: "uninst.exe".to_string(),
                 uninstaller_icon: "assets/uninst.ico".to_string(),
+                installer_stub: default_installer_stub(),
+                uninstaller_stub: default_uninstaller_stub(),
             },
             install: InstallConfig {
                 exe_name: "MyApp.exe".to_string(),

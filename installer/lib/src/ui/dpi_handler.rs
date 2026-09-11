@@ -52,74 +52,9 @@ impl DpiConfig {
         }
     }
 
-    /// 检测系统DPI（与 NSIS 的 GetDpiForSystem 一致）
-    ///
-    /// 注意：GetDpiForSystem() 的返回值可能受到以下因素影响：
-    /// 1. 线程的 DPI 感知上下文（SetThreadDpiAwarenessContext）
-    /// 2. 进程的 DPI 感知模式（SetProcessDpiAwareness）
-    /// 3. 窗口创建前后的上下文变化
-    ///
-    /// 这就是为什么在窗口创建前和窗口创建后调用可能返回不同值的原因。
-    /// 解决方案：在应用启动时统一检测一次，然后传递结果，避免重复检测。
-    ///
-    /// 检测系统DPI（与 NSIS 一致：在 UNAWARE 模式下检测）
-    /// NSIS 也是在 UNAWARE 模式下检测，返回 96 DPI，这是正确的行为。
+    /// 检测系统 DPI。
     fn detect_system_dpi() -> u32 {
-        #[cfg(target_os = "windows")]
-        {
-            use windows::Win32::UI::HiDpi::AreDpiAwarenessContextsEqual;
-            use windows::Win32::UI::HiDpi::GetDpiForSystem;
-            use windows::Win32::UI::HiDpi::GetThreadDpiAwarenessContext;
-            use windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT_UNAWARE;
-
-            unsafe {
-                let dpi = GetDpiForSystem() as u32;
-
-                // 检测当前线程的 DPI 感知上下文（用于调试）
-                let current_context = GetThreadDpiAwarenessContext();
-                let is_unaware =
-                    AreDpiAwarenessContextsEqual(current_context, DPI_AWARENESS_CONTEXT_UNAWARE)
-                        .as_bool();
-
-                // 每次检测都输出
-                static DPI_DETECT_COUNT: std::sync::atomic::AtomicU32 =
-                    std::sync::atomic::AtomicU32::new(0);
-                let count = DPI_DETECT_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
-
-                eprintln!(
-                    "[DPI检测 #{}] GetDpiForSystem() = {} (与 NSIS 一致，在 UNAWARE 模式下)",
-                    count, dpi
-                );
-                eprintln!(
-                    "[DPI检测 #{}] 当前线程 DPI 感知模式: {}",
-                    count,
-                    if is_unaware {
-                        "UNAWARE (未感知，程序认为所有显示器都是96DPI，与 NSIS 一致)"
-                    } else {
-                        "AWARE (已感知)"
-                    }
-                );
-
-                // 解释为什么同一个函数会返回不同的值
-                if count == 1 {
-                    eprintln!(
-                        "[DPI检测 #{}] 说明: NSIS 也是在 UNAWARE 模式下检测，返回 96 DPI",
-                        count
-                    );
-                    eprintln!(
-                        "[DPI检测 #{}]        - 这是正确的行为，与 NSIS 保持一致",
-                        count
-                    );
-                    eprintln!("[DPI检测 #{}]        - 问题在于 egui 在窗口创建后可能自动调整了 pixels_per_point", count);
-                }
-
-                dpi
-            }
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            96 // 默认 96 DPI
-        }
+        crate::common::platform::system_dpi()
     }
 
     /// 获取资源路径（自动选择1x或2x）

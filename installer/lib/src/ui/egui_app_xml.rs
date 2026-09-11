@@ -987,11 +987,10 @@ impl InstallerApp {
     // =========================================================================
 
     fn browse_for_folder(&mut self) {
-        let dialog = rfd::FileDialog::new()
-            .set_title("Select Install Directory")
-            .set_directory(&self.install_path);
-
-        if let Some(folder) = dialog.pick_folder() {
+        if let Some(folder) = crate::ui::folder_dialog::pick_folder(
+            "Select Install Directory",
+            std::path::Path::new(&self.install_path),
+        ) {
             let mut new_path = folder.to_string_lossy().to_string();
 
             let append = &self.config.install.append_to_path;

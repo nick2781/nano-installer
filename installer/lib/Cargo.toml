@@ -28,9 +28,6 @@ eframe.workspace = true
 egui.workspace = true
 image.workspace = true
 
-# 文件对话框
-rfd.workspace = true
-
 # 工具库
 uuid.workspace = true
 chrono.workspace = true
@@ -41,16 +38,13 @@ tempfile.workspace = true
 
 # 校验库
 crc32fast.workspace = true
-sha2.workspace = true
+sha2 = { workspace = true, optional = true }
 
 # XML 解析库
 roxmltree.workspace = true
 
 # 正则表达式库
-regex.workspace = true
-
-# TOML 解析库
-toml.workspace = true
+regex = { workspace = true, optional = true }
 
 # 脚本引擎
 rhai.workspace = true
@@ -60,8 +54,7 @@ taffy.workspace = true
 
 # 压缩库
 flate2.workspace = true
-zip.workspace = true
-sevenz-rust.workspace = true
+zip = { workspace = true, optional = true }
 lzma-rs.workspace = true
 
 # Windows specific
@@ -70,5 +63,7 @@ windows.workspace = true
 winreg.workspace = true
 
 [features]
-default = []
+default = ["payload-lzma", "payload-zip"]
+payload-lzma = ["dep:regex", "dep:sha2"]
+payload-zip = ["dep:zip"]
 

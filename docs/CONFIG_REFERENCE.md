@@ -1,442 +1,235 @@
 # installer_config.json 配置参考
 
-本文档是 `installer_config.json` 的完整字段参考。该文件是 nano-installer 的核心配置文件，定义了安装程序的所有行为和属性。
+配置文件位于产品项目根目录。除非表格标记“可选”，字段都必须存在；Rust 中的
+`Default` 实现不会自动补全缺失的 JSON 字段。可构建的完整配置以
+[examples/TapTap/installer_config.json](../examples/TapTap/installer_config.json) 为准。
 
-## 配置文件位置
-
-```
-your_project/
-  installer_config.json   <-- 此文件
-  layouts/
-  assets/
-  locales/
-```
-
----
-
-## project - 项目基本信息
-
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `name` | string | **必需** | 产品名称，用于窗口标题、快捷方式等 |
-| `version` | string | `"1.0.0"` | 版本号，显示在 UI 中并写入注册表 |
-| `publisher` | string | `""` | 发布者/公司名，写入注册表卸载信息 |
-| `copyright` | string | `""` | 版权声明 |
-| `output_name` | string | `"{name}_Setup"` | 输出文件名前缀 |
+## 顶层结构
 
 ```json
 {
-  "project": {
-    "name": "TapTap",
-    "version": "3.0.0",
-    "publisher": "TapTap",
-    "copyright": "Copyright 2024 TapTap",
-    "output_name": "TapTap_Setup"
-  }
+  "project": {},
+  "output": {},
+  "install": {},
+  "registry": {},
+  "shortcuts": {},
+  "autostart": {},
+  "localization": {},
+  "links": {},
+  "resources": {},
+  "ui": {},
+  "wizard": {},
+  "validation": {},
+  "advanced": {},
+  "install_tasks": []
 }
 ```
 
----
+`install_tasks` 可省略，其余顶层对象必须存在。
 
-## output - 输出文件配置
-
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `installer_name` | string | `"{project.name}_Setup.exe"` | 安装程序输出文件名 |
-| `installer_icon` | string | `""` | 安装程序图标路径（.ico） |
-| `uninstaller_name` | string | `"uninst.exe"` | 卸载程序文件名 |
-| `uninstaller_icon` | string | `""` | 卸载程序图标路径（.ico） |
-
-```json
-{
-  "output": {
-    "installer_name": "TapTap_Setup.exe",
-    "installer_icon": "assets/installer.ico",
-    "uninstaller_name": "uninst.exe",
-    "uninstaller_icon": "assets/uninstaller.ico"
-  }
-}
-```
-
----
-
-## install - 安装行为配置
-
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `exe_name` | string | **必需** | 主程序可执行文件名（如 `"TapTap.exe"`） |
-| `default_path` | string | `"C:\\Program Files\\{project.name}"` | 默认安装路径，支持 `{product_name}` 变量 |
-| `append_to_path` | string | `""` | 追加到安装路径末尾的子目录 |
-| `required_space_mb` | number | `500` | 所需磁盘空间（MB），用于空间检查和 UI 显示 |
-| `require_admin` | boolean | `false` | 是否需要管理员权限 |
-| `mutex_name` | string | `""` | 互斥锁名称，防止多实例安装 |
-| `detect_running_process` | string | `""` | 安装前检测的进程名（如 `"TapTap.exe"`） |
-| `kill_process_on_install` | boolean | `false` | 安装时是否自动结束正在运行的目标进程 |
-| `kill_process_on_uninstall` | boolean | `false` | 卸载时是否自动结束正在运行的目标进程 |
-
-```json
-{
-  "install": {
-    "exe_name": "TapTap.exe",
-    "default_path": "C:\\Program Files\\TapTap",
-    "required_space_mb": 500,
-    "require_admin": false,
-    "mutex_name": "TapTapInstaller",
-    "detect_running_process": "TapTap.exe",
-    "kill_process_on_install": true,
-    "kill_process_on_uninstall": true
-  }
-}
-```
-
----
-
-## registry - 注册表配置
-
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `install_path_key` | string | `""` | 安装路径注册表键，用于检测已安装的版本 |
-| `uninstall_key` | string | `""` | 卸载信息注册表键路径（在 `HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\` 下） |
-| `help_link` | string | `""` | 帮助链接，写入注册表卸载信息的 HelpLink 字段 |
-
-```json
-{
-  "registry": {
-    "install_path_key": "Software\\TapTap\\InstallPath",
-    "uninstall_key": "TapTap",
-    "help_link": "https://www.taptap.cn/help"
-  }
-}
-```
-
----
-
-## shortcuts - 快捷方式配置
-
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `desktop_shortcut` | boolean | `true` | 是否支持创建桌面快捷方式 |
-| `desktop_default` | boolean | `true` | 桌面快捷方式默认是否勾选 |
-| `start_menu` | boolean | `true` | 是否支持创建开始菜单快捷方式 |
-| `start_menu_folder` | string | `"{project.name}"` | 开始菜单文件夹名称 |
-
-```json
-{
-  "shortcuts": {
-    "desktop_shortcut": true,
-    "desktop_default": true,
-    "start_menu": true,
-    "start_menu_folder": "TapTap"
-  }
-}
-```
-
----
-
-## autostart - 开机自启配置
-
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `enabled` | boolean | `false` | 是否支持开机自启选项 |
-| `default` | boolean | `false` | 开机自启默认是否勾选 |
-| `registry_key` | string | `"Software\\Microsoft\\Windows\\CurrentVersion\\Run"` | 自启注册表键路径 |
-| `registry_value_name` | string | `"{project.name}"` | 自启注册表值名称 |
-
-```json
-{
-  "autostart": {
-    "enabled": true,
-    "default": false,
-    "registry_key": "Software\\Microsoft\\Windows\\CurrentVersion\\Run",
-    "registry_value_name": "TapTap"
-  }
-}
-```
-
----
-
-## localization - 多语言配置
-
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `default_locale` | string | `"zh-CN"` | 默认语言代码 |
-| `supported_locales` | string[] | `["zh-CN"]` | 支持的语言列表 |
-| `show_language_selector` | boolean | `false` | 是否在 UI 中显示语言选择器 |
-
-```json
-{
-  "localization": {
-    "default_locale": "zh-CN",
-    "supported_locales": ["zh-CN", "zh-TW", "en-US", "ja", "ko"],
-    "show_language_selector": false
-  }
-}
-```
-
----
-
-## links - 外部链接
-
-`links` 是一个 `HashMap<String, String>`，键为链接标识符，值为 URL。在 XML 布局中通过 `action="open_url:KEY"` 引用。
-
-```json
-{
-  "links": {
-    "homepage": "https://www.taptap.cn",
-    "agreement": "https://www.taptap.cn/agreement",
-    "privacy": "https://www.taptap.cn/privacy"
-  }
-}
-```
-
----
-
-## resources - 资源路径配置
-
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `layouts_dir` | string | `"layouts"` | XML 布局文件目录（相对于项目根目录） |
-| `assets_dir` | string | `"assets"` | 图片等资源文件目录 |
-| `locales_dir` | string | `"locales"` | 语言文件目录 |
-| `payload_dir` | string | `""` | 待打包文件的源目录 |
-| `payload_file` | string | `""` | 预打包的 7z/payload 文件路径 |
-| `installer_icon` | string | `""` | 安装程序图标（覆盖 output.installer_icon） |
-| `uninstaller_icon` | string | `""` | 卸载程序图标（覆盖 output.uninstaller_icon） |
-
-```json
-{
-  "resources": {
-    "layouts_dir": "layouts",
-    "assets_dir": "assets",
-    "locales_dir": "locales",
-    "payload_dir": "payload",
-    "payload_file": "payload.7z"
-  }
-}
-```
-
----
-
-## ui - 界面配置
-
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `window_width` | number | `800` | 窗口宽度（逻辑像素） |
-| `window_height` | number | `460` | 窗口高度（逻辑像素） |
-| `expanded_height` | number | `600` | 展开面板后的窗口高度（逻辑像素） |
-| `dpi_aware` | boolean | `true` | 是否启用 DPI 感知 |
-| `dpi_threshold` | number | `1.5` | DPI 缩放阈值，超过此值使用 @2x 资源 |
-
-```json
-{
-  "ui": {
-    "window_width": 800,
-    "window_height": 460,
-    "expanded_height": 600,
-    "dpi_aware": true,
-    "dpi_threshold": 1.5
-  }
-}
-```
-
-**注意：** 窗口尺寸使用逻辑像素，egui 会根据系统 DPI 自动缩放。不要设置 `pixels_per_point`。
-
----
-
-## wizard - 向导页面配置
-
-定义安装和卸载的页面流程。每个页面由字符串 `id` 标识，对应一个 XML 布局文件。
-
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `pages` | Page[] | `[]` | 安装向导页面列表 |
-| `uninstall_pages` | Page[] | `[]` | 卸载向导页面列表 |
-
-**Page 对象字段：**
+## project
 
 | 字段 | 类型 | 说明 |
-|------|------|------|
-| `id` | string | 页面唯一标识符（如 `"config"`、`"installing"`、`"finish"`） |
-| `layout` | string | 对应的 XML 布局文件名（不含扩展名） |
-| `title` | string | 页面标题（可选，用于调试） |
+| --- | --- | --- |
+| `name` | string | 产品显示名称 |
+| `version` | string | `x.y.z` 版本，写入 PE 和卸载信息 |
+| `publisher` | string | 发布者 |
+| `copyright` | string | 版权信息 |
+| `output_name` | string | 默认输出名前缀 |
+
+## output
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `installer_name` | string | 最终 setup 文件名，包含 `.exe` |
+| `installer_icon` | string | 相对项目目录的安装器 ICO |
+| `uninstaller_name` | string | 安装后的卸载器文件名 |
+| `uninstaller_icon` | string | 相对项目目录的卸载器 ICO |
+| `installer_stub` | string，可选 | 默认 `lzma-x64.exe` |
+| `uninstaller_stub` | string，可选 | 默认 `uninst-x64.exe` |
+
+可用 installer stub 为 `lzma-x64.exe` 和 `zlib-x64.exe`，uninstaller stub 为
+`uninst-x64.exe`。所有 stub 仅支持 Windows x64 和 Unicode，不提供 x86 或 ANSI 变体。
+压缩格式必须与 payload 匹配。构建脚本可通过环境变量
+`NANO_INSTALLER_INSTALLER_STUB`、`NANO_INSTALLER_UNINSTALLER_STUB` 临时覆盖配置。
+
+当前 schema 同时在 `resources` 保留了两个 icon 字段。构建输出优先读取 `output`，
+配置校验会检查 `resources` 中的路径；接入时应把两处写成相同值。
+
+## install
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `exe_name` | string | payload 内的主程序文件名 |
+| `default_path` | string | 默认安装目录 |
+| `append_to_path` | string | 用户选择目录后追加的子目录 |
+| `required_space_mb` | u32 | 所需空间，必须大于 0 |
+| `require_admin` | boolean | 是否请求管理员权限 |
+| `mutex_name` | string | 安装器单实例 mutex |
+| `detect_running_process` | boolean | 兼容旧配置的主进程检测开关 |
+| `kill_process_on_install` | boolean | 兼容旧配置的安装前关闭开关 |
+| `kill_process_on_uninstall` | boolean | 兼容旧配置的卸载前关闭开关 |
+| `close_targets` | array，可选 | 明确的进程/服务列表，默认空数组 |
+
+配置了 `close_targets` 后，它会覆盖三个 legacy 开关组合出的主进程规则：
 
 ```json
 {
-  "wizard": {
-    "pages": [
-      { "id": "config", "layout": "configpage", "title": "配置" },
-      { "id": "installing", "layout": "installingpage", "title": "安装中" },
-      { "id": "finish", "layout": "finishpage", "title": "完成" }
-    ],
-    "uninstall_pages": [
-      { "id": "confirm", "layout": "uninstallpage", "title": "确认卸载" },
-      { "id": "uninstalling", "layout": "uninstallingpage", "title": "卸载中" },
-      { "id": "finish", "layout": "uninstallfinishpage", "title": "卸载完成" }
-    ]
-  }
+  "close_targets": [
+    {
+      "name": "MyApp.exe",
+      "kind": "process",
+      "detect_on_install": true,
+      "close_on_install": false,
+      "close_on_uninstall": true,
+      "force": true
+    }
+  ]
 }
 ```
 
----
+`kind` 为 `process` 或 `service`，默认 `process`；各行为开关默认 `false`，`force`
+默认 `true`。
 
-## validation - 路径验证配置
+## registry
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `check_path_legal` | boolean | `true` | 是否检查安装路径合法性（非法字符等） |
-| `check_disk_type` | boolean | `false` | 是否检查磁盘类型（如拒绝网络驱动器） |
-| `check_disk_space` | boolean | `true` | 是否检查磁盘可用空间 |
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `install_path_key` | string | 保存/检测安装目录的完整 HKLM/HKCU/HKCR 路径 |
+| `uninstall_key` | string | 控制面板卸载信息的完整注册表路径 |
+| `help_link` | string | 卸载信息中的帮助链接 |
+
+不要在版本间随意修改前两个键，否则更新检测和旧版本卸载会失去关联。
+
+## shortcuts
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `desktop_shortcut` | boolean | 产品是否提供桌面快捷方式能力 |
+| `desktop_default` | boolean | 默认是否创建桌面快捷方式 |
+| `start_menu` | boolean | 是否创建开始菜单项 |
+| `start_menu_folder` | string | 开始菜单文件夹名 |
+
+选项是否显示由 XML 布局决定，配置值决定通用任务的默认行为。
+
+## autostart
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `enabled` | boolean | 是否启用自启动能力 |
+| `default` | boolean | 默认是否开启 |
+| `registry_key` | string | 通常是 HKLM/HKCU 下的 `Run` 键 |
+| `registry_value_name` | string | 写入的 value 名称 |
+
+## localization
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `default_locale` | string | 默认 locale，必须有同名 JSON |
+| `supported_locales` | string[] | 打包的 locale 列表 |
+| `show_language_selector` | boolean | 是否启用语言选择能力 |
+
+locale 文件路径为 `<resources.locales_dir>/<locale>.json`。布局仍需包含对应 Select
+控件，用户才能切换语言。
+
+## links
+
+`links` 是任意 `key -> URL` 对象。XML 可通过 `open_url:<key>` 或带链接的富文本引用。
 
 ```json
 {
-  "validation": {
-    "check_path_legal": true,
-    "check_disk_type": false,
-    "check_disk_space": true
-  }
-}
-```
-
----
-
-## advanced - 高级配置
-
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `silent_mode_support` | boolean | `false` | 是否支持静默安装（`/S` 命令行参数） |
-| `update_mode_support` | boolean | `false` | 是否支持更新模式 |
-| `uninstall_mode_support` | boolean | `true` | 是否支持卸载模式 |
-| `launch_app_after_install` | boolean | `true` | 安装完成后是否启动应用 |
-
-```json
-{
-  "advanced": {
-    "silent_mode_support": false,
-    "update_mode_support": false,
-    "uninstall_mode_support": true,
-    "launch_app_after_install": true
-  }
-}
-```
-
----
-
-## 完整配置示例
-
-```json
-{
-  "project": {
-    "name": "TapTap",
-    "version": "3.0.0",
-    "publisher": "TapTap",
-    "copyright": "Copyright 2024 TapTap",
-    "output_name": "TapTap_Setup"
-  },
-  "output": {
-    "installer_name": "TapTap_Setup.exe",
-    "installer_icon": "assets/installer.ico",
-    "uninstaller_name": "uninst.exe",
-    "uninstaller_icon": "assets/uninstaller.ico"
-  },
-  "install": {
-    "exe_name": "TapTap.exe",
-    "default_path": "C:\\Program Files\\TapTap",
-    "required_space_mb": 500,
-    "require_admin": false,
-    "mutex_name": "TapTapInstaller",
-    "detect_running_process": "TapTap.exe",
-    "kill_process_on_install": true,
-    "kill_process_on_uninstall": true
-  },
-  "registry": {
-    "install_path_key": "Software\\TapTap\\InstallPath",
-    "uninstall_key": "TapTap",
-    "help_link": "https://www.taptap.cn/help"
-  },
-  "shortcuts": {
-    "desktop_shortcut": true,
-    "desktop_default": true,
-    "start_menu": true,
-    "start_menu_folder": "TapTap"
-  },
-  "autostart": {
-    "enabled": true,
-    "default": false
-  },
-  "localization": {
-    "default_locale": "zh-CN",
-    "supported_locales": ["zh-CN", "zh-TW", "en-US", "ja", "ko"],
-    "show_language_selector": false
-  },
   "links": {
-    "homepage": "https://www.taptap.cn",
-    "agreement": "https://www.taptap.cn/agreement",
-    "privacy": "https://www.taptap.cn/privacy"
-  },
-  "resources": {
-    "layouts_dir": "layouts",
-    "assets_dir": "assets",
-    "locales_dir": "locales",
-    "payload_dir": "payload"
-  },
-  "ui": {
-    "window_width": 800,
-    "window_height": 460,
-    "expanded_height": 600,
-    "dpi_aware": true,
-    "dpi_threshold": 1.5
-  },
-  "wizard": {
-    "pages": [
-      { "id": "config", "layout": "configpage", "title": "配置" },
-      { "id": "installing", "layout": "installingpage", "title": "安装中" },
-      { "id": "finish", "layout": "finishpage", "title": "完成" }
-    ],
-    "uninstall_pages": [
-      { "id": "confirm", "layout": "uninstallpage", "title": "确认卸载" },
-      { "id": "uninstalling", "layout": "uninstallingpage", "title": "卸载中" },
-      { "id": "finish", "layout": "uninstallfinishpage", "title": "卸载完成" }
-    ]
-  },
-  "validation": {
-    "check_path_legal": true,
-    "check_disk_type": false,
-    "check_disk_space": true
-  },
-  "advanced": {
-    "silent_mode_support": false,
-    "update_mode_support": false,
-    "uninstall_mode_support": true,
-    "launch_app_after_install": true
+    "terms_of_service": "https://example.com/terms",
+    "privacy_policy": "https://example.com/privacy"
   }
 }
 ```
 
-## 什么时候使用脚本
+## resources
 
-配置只描述安装器的通用能力，例如：
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `layouts_dir` | string | XML 目录，相对项目根目录 |
+| `assets_dir` | string | 图片和 ICO 目录 |
+| `locales_dir` | string | locale JSON 目录 |
+| `payload_file` | string | payload 归档文件 |
+| `installer_icon` | string | 校验使用的安装器 ICO |
+| `uninstaller_icon` | string | 校验使用的卸载器 ICO |
 
-- 快捷方式
-- 开机自启
-- 通用注册表键
+不存在 `payload_dir` 字段。本地开发时，如果 `payload_file` 不存在且项目根目录有
+`files/`，CLI 会自动生成归档；生产流水线应显式生成 `payload_file`。
 
-产品业务副作用和业务型卸载 UI 应放到安装或卸载脚本、页面布局里实现，例如：
+## ui
 
-- 写入 `channel.conf`
-- 写入渠道文件或业务配置文件
-- 清理产品自定义目录
-- 删除产品自定义注册表键
-- 是否显示“保留数据”选项
-- “保留数据”默认是否勾选
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `window_width` | u32 | 普通窗口宽度，逻辑像素 |
+| `window_height` | u32 | 普通窗口高度 |
+| `expanded_height` | u32 | 展开配置区域后的高度，不得小于普通高度 |
+| `window_corner_radius` | u32，可选 | 默认 8 |
+| `dialog_width` | u32，可选 | 默认 400 |
+| `dialog_height` | u32，可选 | 默认 230 |
+| `dpi_aware` | boolean | DPI 能力开关字段 |
+| `dpi_threshold` | u32 | 使用 `@2x` 资源的 DPI 阈值，如 144 |
 
-通用能力优先走配置；无法抽象成通用能力的产品逻辑，统一走脚本。
+`dpi_threshold` 是 DPI 值，不是 `1.5` 这样的缩放倍数。
+`dpi_aware` 当前已进入 schema，但 runtime 仍会统一计算 DPI；它尚不能用于彻底关闭
+DPI 适配。
 
-更完整的边界说明见 [配置与脚本边界](CONFIG_VS_SCRIPT.md)。
+## wizard
 
----
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `pages` | Page[] | install 页面流 |
+| `update_pages` | Page[]，可选 | update 页面流，默认空数组 |
+| `uninstall_pages` | Page[] | uninstall 页面流 |
 
-## 相关文档
+每个 Page 都需要 `id`、`layout` 和 `title`。`layout` 是相对于
+`resources.layouts_dir` 的文件名，应包含 `.xml`：
 
-- [XML 布局指南](XML_LAYOUT_GUIDE.md) - XML 布局格式详解
-- [多语言键值参考](LOCALE_KEYS.md) - 所有 locale 键值说明
-- [示例项目](../examples/TapTap/README.md) - TapTap 安装程序示例
+```json
+{
+  "id": "config",
+  "layout": "configpage.xml",
+  "title": "安装选项"
+}
+```
+
+## validation
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `check_path_legal` | boolean | 路径合法性策略字段 |
+| `check_disk_type` | string | `Any`、`HDD` 或 `SSD` 策略字段 |
+| `check_disk_space` | boolean | 空间检查策略字段 |
+
+这三个字段当前已进入 schema，但 runtime 尚未读取 `config.validation` 来切换检查行为。
+在补齐实现前，不要依赖把它们设为 `false` 来绕过运行时校验。
+
+## advanced
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `silent_mode_support` | boolean | 是否允许静默安装/卸载 |
+| `update_mode_support` | boolean | 是否启用已安装版本检测和 update 模式 |
+| `uninstall_mode_support` | boolean | 是否允许卸载模式 |
+| `launch_app_after_install` | boolean | 安装完成页的启动策略 |
+
+## install_tasks
+
+省略时执行默认顺序：`extract`、`copy_uninstaller`、`create_shortcuts`、
+`write_registry`。自定义数组会完全替换默认顺序，配置错误可能产出不可卸载的安装结果。
+
+```json
+{
+  "install_tasks": [
+    { "type": "extract" },
+    { "type": "copy_uninstaller" },
+    { "type": "create_shortcuts" },
+    { "type": "write_registry" }
+  ]
+}
+```
+
+`payload` 和 `params` 是可选字段。除非确实需要改变核心流水线，产品定制优先放到 Rhai
+脚本，边界见[配置与脚本边界](CONFIG_VS_SCRIPT.md)。

@@ -23,19 +23,20 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.81.0
+          toolchain: 1.91.1
 
       - name: Restore cargo cache
         uses: Swatinem/rust-cache@v2
 
       - name: Build release stubs
-        run: cargo build --release -p nano-installer-lzma -p uninst -p nano-installer-cli
+        run: |
+          cargo build --locked --release -p nano-installer-lzma
+          cargo build --locked --release -p nano-installer-zlib
+          cargo build --locked --release -p uninst
+          cargo build --locked --release -p nano-installer-cli
 
       - name: Build TapTap setup
-        run: cargo run --release -p nano-installer-cli -- build --project examples/TapTap
-
-      - name: Build TapTap-Global setup
-        run: cargo run --release -p nano-installer-cli -- build --project examples/TapTap-Global
+        run: cargo run --locked --release -p nano-installer-cli -- build --project examples/TapTap --release
 
       - name: Package release bundle
         shell: powershell
@@ -43,10 +44,11 @@ jobs:
           $bundleDir = Join-Path $PWD "release-bundle"
           New-Item -ItemType Directory -Force -Path $bundleDir | Out-Null
           Copy-Item "target/release/nano-installer.exe" $bundleDir
-          Copy-Item "target/release/lzma-x64-unicode.exe" $bundleDir
-          Copy-Item "target/release/uninst.exe" $bundleDir
+          Copy-Item "target/release/lzma-x64.exe" $bundleDir
+          Copy-Item "target/release/zlib-x64.exe" $bundleDir
+          Copy-Item "target/release/uninst-x64.exe" $bundleDir
+          Copy-Item "tools/7za.exe" $bundleDir
           Copy-Item "examples/TapTap/dist/TapTap_Setup.exe" $bundleDir
-          Copy-Item "examples/TapTap-Global/dist/TapTap_Global_Setup.exe" $bundleDir
           $archive = Join-Path $PWD "nano-installer-windows-x64.zip"
           if (Test-Path $archive) { Remove-Item $archive -Force }
           Compress-Archive -Path "$bundleDir\\*" -DestinationPath $archive
@@ -58,7 +60,6 @@ jobs:
           path: |
             nano-installer-windows-x64.zip
             examples/TapTap/dist/TapTap_Setup.exe
-            examples/TapTap-Global/dist/TapTap_Global_Setup.exe
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -67,4 +68,3 @@ jobs:
           files: |
             nano-installer-windows-x64.zip
             examples/TapTap/dist/TapTap_Setup.exe
-            examples/TapTap-Global/dist/TapTap_Global_Setup.exe

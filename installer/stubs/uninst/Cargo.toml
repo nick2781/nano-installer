@@ -7,13 +7,10 @@ authors.workspace = true
 description = "Uninstaller stub - same engine as installer, runs in uninstall mode"
 
 [[bin]]
-name = "uninst"
-path = "src/main.rs"
+name = "uninst-x64"
+path = "src/x64.rs"
 
 [dependencies]
-nano-installer-lib = { path = "../../lib" }
+nano-installer-lib = { path = "../../lib", default-features = false }
 anyhow.workspace = true
 tracing.workspace = true
-
-[build-dependencies]
-winres.workspace = true

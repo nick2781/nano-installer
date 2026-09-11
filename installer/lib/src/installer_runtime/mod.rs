@@ -353,22 +353,7 @@ fn run_gui(config: InstallerConfig, wizard_mode: WizardMode) -> Result<()> {
 
 /// 从 InstallerConfig 创建 DpiConfig，窗口尺寸从配置读取
 fn create_dpi_config(config: &InstallerConfig) -> crate::ui::dpi_handler::DpiConfig {
-    #[cfg(target_os = "windows")]
-    let window_dpi = unsafe {
-        use windows::Win32::UI::HiDpi::GetDpiForSystem;
-        GetDpiForSystem() as u32
-    };
-
-    #[cfg(not(target_os = "windows"))]
-    let window_dpi = 96u32;
-
-    crate::ui::dpi_handler::DpiConfig {
-        scale_factor: window_dpi as f32 / 96.0,
-        use_2x: window_dpi >= config.ui.dpi_threshold,
-        window_width: config.ui.window_width as f32,
-        window_height: config.ui.window_height as f32,
-        expanded_height: config.ui.expanded_height as f32,
-    }
+    crate::ui::dpi_handler::DpiConfig::new(config)
 }
 
 /// 从配置加载图标
@@ -563,18 +548,15 @@ fn setup_chinese_font(ctx: &egui::Context) {
                     .font_data
                     .insert(name.to_string(), Arc::new(egui::FontData::from_owned(data)));
 
-                // Insert into font families (CJK first, then others as fallback)
-                let priority = if *name == "cjk" { 0 } else { loaded_count + 1 };
-                fonts
-                    .families
-                    .entry(FontFamily::Proportional)
-                    .or_default()
-                    .insert(priority, name.to_string());
-                fonts
-                    .families
-                    .entry(FontFamily::Monospace)
-                    .or_default()
-                    .insert(priority, name.to_string());
+                // Insert into font families (CJK first, then others as fallback).
+                for family in [FontFamily::Proportional, FontFamily::Monospace] {
+                    let family_fonts = fonts.families.entry(family).or_default();
+                    if *name == "cjk" {
+                        family_fonts.insert(0, name.to_string());
+                    } else {
+                        family_fonts.push(name.to_string());
+                    }
+                }
 
                 loaded_count += 1;
                 break; // Only need one font per category

@@ -7,18 +7,15 @@ authors.workspace = true
 description = "LZMA installer stub for nano-installer (like NSIS lzma stub)"
 
 [[bin]]
-name = "lzma-x64-unicode"
-path = "src/main.rs"
+name = "lzma-x64"
+path = "src/x64.rs"
 
 [dependencies]
 # 依赖共享库
-nano-installer-lib = { path = "../../lib" }
+nano-installer-lib = { path = "../../lib", default-features = false, features = ["payload-lzma"] }
 
 # 基础依赖
 anyhow.workspace = true
 tracing.workspace = true
-
-[build-dependencies]
-winres.workspace = true
 
 

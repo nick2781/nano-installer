@@ -2,6 +2,38 @@
 
 use crate::common::Result;
 
+/// Return the effective system DPI, falling back to the Windows baseline.
+///
+/// GDI is used here because these APIs predate Windows 7. Keeping DPI detection
+/// in one place also prevents runtime stubs from importing newer DPI APIs.
+pub fn system_dpi() -> u32 {
+    #[cfg(windows)]
+    unsafe {
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::Graphics::Gdi::{GetDC, GetDeviceCaps, ReleaseDC, LOGPIXELSX};
+
+        let desktop = HWND::default();
+        let device_context = GetDC(desktop);
+        if device_context.0.is_null() {
+            return 96;
+        }
+
+        let dpi = GetDeviceCaps(device_context, LOGPIXELSX);
+        ReleaseDC(desktop, device_context);
+
+        if dpi > 0 {
+            dpi as u32
+        } else {
+            96
+        }
+    }
+
+    #[cfg(not(windows))]
+    {
+        96
+    }
+}
+
 /// 检测系统语言
 pub fn detect_system_locale() -> String {
     #[cfg(windows)]

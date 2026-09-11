@@ -39,7 +39,7 @@
 项目当前最重要的 contract 已经明确写入 [AGENTS.md](/D:/taptap-pc/nano-installer/AGENTS.md)：
 
 - 修改 `installer/**` 的运行时或 stub 源码
-  - 必须先重编 `nano-installer-lzma`、`uninst`、`nano-installer-cli`
+  - 必须先重编 `nano-installer-lzma`、`nano-installer-zlib`、`uninst`、`nano-installer-cli`
   - 然后再重打 setup
 - 只修改 `examples/**`
   - 只需要重新 `build --project ...`

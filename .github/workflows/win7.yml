@@ -1,0 +1,54 @@
+name: Windows 7 Compatibility
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  win7-build:
+    name: Build and audit Win7 x64
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.91.1
+
+      - name: Install Win7 build toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2025-11-08
+          components: rust-src
+
+      - name: Configure MSVC tools
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Restore cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: win7-x64
+
+      - name: Build and audit Win7 setup
+        shell: powershell
+        run: .\scripts\build-win7.ps1 -Project examples\TapTap -Toolchain nightly-2025-11-08
+
+      - name: Upload Win7 compatibility artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nano-installer-win7-x64
+          path: |
+            target/x86_64-win7-windows-msvc/release/lzma-x64.exe
+            target/x86_64-win7-windows-msvc/release/zlib-x64.exe
+            target/x86_64-win7-windows-msvc/release/uninst-x64.exe
+            examples/TapTap/dist/TapTap_Setup.exe

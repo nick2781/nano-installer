@@ -55,6 +55,12 @@ impl ConfigValidator {
         if config.install.default_path.is_empty() {
             errors.push("默认安装路径不能为空".to_string());
         }
+        if config.output.installer_stub.is_empty() {
+            errors.push("安装器 stub 名称不能为空".to_string());
+        }
+        if config.output.uninstaller_stub.is_empty() {
+            errors.push("卸载器 stub 名称不能为空".to_string());
+        }
         if config.install.mutex_name.is_empty() {
             errors.push("互斥锁名称不能为空".to_string());
         }

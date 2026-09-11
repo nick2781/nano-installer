@@ -176,11 +176,16 @@ impl RuntimeResources {
         let resources = RUNTIME_RESOURCES.get()?;
         let resources = resources.read();
 
-        // Uninstaller 段是完整的 exe，不需要解压
+        let segment = resources.bundle.get_segment(SegmentType::Uninstaller)?;
+        if !segment.compressed {
+            return Some(segment.data.clone());
+        }
+
         resources
             .bundle
-            .get_segment(SegmentType::Uninstaller)
-            .map(|seg| seg.data.clone())
+            .decompress_segment(SegmentType::Uninstaller)
+            .ok()?
+            .remove("uninst.exe")
     }
 
     /// 列出所有布局文件

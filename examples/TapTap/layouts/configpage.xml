@@ -140,8 +140,11 @@
     <Divider position="absolute" left="40" top="196" width="640" height="1" background="#33FFFFFF" />
   </Box>
 
-  <HBox position="absolute" left="0" top="361" width="720" height="89" padding="0 40" align-items="center">
-    <Checkbox id="chkAgree" max-width="380" font-size="12"
+  <HBox position="absolute" left="40" top="378" width="640" height="56"
+        align-items="center" item-spacing="32">
+    <Checkbox id="chkAgree"
+              flex-grow="1" flex-basis="0" min-width="0" height="36"
+              font-size="12"
               text="@agree_full" color="#CCFFFFFF" checked="true"
               linkcolor="#00C4B2"
               unchecked-image="file='assets/checkbox-0.png' dest='0,1,16,17'"
@@ -150,10 +153,21 @@
     <Spacer flex-grow="1" />
 
     <Button id="btnShowMore_wrap" action="toggle_panel:moreconfiginfo:show"
-            width="92" height="24"
+            width="184" height="56"
+            flex-shrink="0"
+            font-family="Microsoft YaHei"
             font-size="12" color="#FFFFFFFF" hover-color="#FFFFFFFF" cursor="hand">
-      <Content id="showMore_content" layout="horizontal" horizontal-align="center" vertical-align="center" item-spacing="8">
-        <Text id="showMore_text" value="@show_more" wrap="true" />
+      <Content id="showMore_content"
+               layout="horizontal"
+               horizontal-align="right"
+               vertical-align="center"
+               item-spacing="4">
+        <Label id="showMore_text"
+               value="@show_more"
+               max-width="156"
+               wrap="true"
+               valign="center"
+               textalign="right" />
         <Box id="showMore_badge"
              width="24" height="24"
              background="#1AFFFFFF"
@@ -166,10 +180,21 @@
     </Button>
 
     <Button id="btnHideMore_wrap" action="toggle_panel:moreconfiginfo:hide"
-            min-width="56" max-width="120" height="24" visible="false"
+            width="184" height="56" visible="false"
+            flex-shrink="0"
+            font-family="Microsoft YaHei"
             font-size="12" color="#FFFFFFFF" hover-color="#FFFFFFFF" cursor="hand">
-      <Content id="hideMore_content" layout="horizontal" horizontal-align="center" vertical-align="center" item-spacing="8">
-        <Text id="hideMore_text" value="@hide_more" wrap="true" />
+      <Content id="hideMore_content"
+               layout="horizontal"
+               horizontal-align="right"
+               vertical-align="center"
+               item-spacing="4">
+        <Label id="hideMore_text"
+               value="@hide_more"
+               max-width="156"
+               wrap="true"
+               valign="center"
+               textalign="right" />
         <Box id="hideMore_badge"
              width="24" height="24"
              background="#1AFFFFFF"

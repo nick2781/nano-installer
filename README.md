@@ -1,91 +1,93 @@
 # nano-installer
 
-现代化的 Windows 安装器框架。
+`nano-installer` 是一个配置驱动的 Windows 安装器框架。构建工具把产品配置、XML
+布局、语言包、图片、Rhai 脚本、payload 和卸载器封装为单个 setup；安装器和卸载器
+共享同一套 Rust 运行时。
 
-`nano-installer` 使用 Rust 构建，提供配置驱动的打包流程、原生 GUI、国际化、多页面 XML 布局 DSL、自动 DPI 资源切换，以及内置的 payload / uninstaller 打包能力。
+## 当前状态
 
-## 适用场景
+- 正式运行平台：Windows 10/11 x64
+- 兼容构建：Windows 7 SP1 x64，已通过编译和 PE 导入审计，等待 VM 验收
+- 构建平台：Windows x64 + MSVC Build Tools
+- CI 工具链：Rust 1.91.1；workspace MSRV 为 1.88
+- 示例工程：`examples/TapTap`
 
-- 需要现代化安装器界面
-- 需要多语言和高 DPI 资源支持
-- 需要配置驱动的安装器构建流程
-- 需要把安装器样式、资源、文案和运行时解耦
-- 需要同时维护多个产品皮肤或示例工程
+Windows 7 目前不在正式支持范围。原因、证据和可选技术路线见
+[Windows 兼容性](docs/WINDOWS_COMPATIBILITY.md)。
 
-## 核心能力
+## 组件
 
-- 原生 Windows 安装器 UI
-- JSON 配置 + XML 布局 DSL
-- 自动 DPI 资源切换（`1x/@2x`）
-- 多语言支持
-- 内置 `7za` 解压链路
-- 安装器 / 卸载器打包
-- 示例工程：`TapTap`、`TapTap-Global`
+| 组件 | 产物 | 职责 |
+| --- | --- | --- |
+| `installer/cli` | `nano-installer.exe` | 初始化、校验和打包项目 |
+| `installer/stubs/lzma` | `lzma-x64.exe` | 7z/LZMA 安装器 stub |
+| `installer/stubs/zlib` | `zlib-x64.exe` | ZIP/Deflate 安装器 stub |
+| `installer/stubs/uninst` | `uninst-x64.exe` | 卸载器 stub |
+| `installer/lib` | Rust library | 配置、资源、UI、安装和卸载引擎 |
 
-## 快速开始
+发布工具包中的 CLI 和所选 stubs 应放在同一目录。CLI 也支持通过
+`NANO_INSTALLER_STUB_DIR` 指定 stub 目录。
 
-```bash
-git clone https://github.com/Nick2781/nano-installer.git
-cd nano-installer
-cargo build --release
+运行时 stub 全部使用 Unicode Windows API 和 UTF-16 字符串，不提供 ANSI 版本。
+当前只发布 Windows x64 版本；文件名保留 `x64`，明确表示目标架构。
+
+## 构建
+
+```powershell
+cargo build --locked --release -p nano-installer-lzma
+cargo build --locked --release -p nano-installer-zlib
+cargo build --locked --release -p uninst
+cargo build --locked --release -p nano-installer-cli
+
+.\target\release\nano-installer.exe `
+  build --project .\examples\TapTap --release
 ```
 
-创建一个新项目：
+也可以使用统一脚本：
 
-```bash
-target/release/nano-installer.exe init MyApp
-cd MyApp
-target/release/nano-installer.exe build
+```powershell
+.\scripts\build.ps1 -Project examples\TapTap
 ```
 
-构建示例工程：
+可用 `-Compression lzma|zlib` 选择预编译 stub。
 
-```bash
-target/release/nano-installer.exe build --project examples/TapTap
-```
+三个 stub 必须分别执行 `cargo build`。在同一次 invocation 中同时选择三个包会合并共享库
+features，使每个 stub 都链接两种 payload 后端，失去按压缩算法拆分的意义。
 
-输出安装器：
+Win7 SP1 x64 兼容构建见 [Windows 兼容性](docs/WINDOWS_COMPATIBILITY.md)。
 
-- `examples/TapTap/dist/TapTap_Setup.exe`
+输出位于 `examples/TapTap/dist/TapTap_Setup.exe`。
 
-## 文档入口
+## 制作产品安装器
 
-发布文档位于 [docs/README.md](docs/README.md)。
-
-推荐入口：
-
-- [架构概览](docs/ARCHITECTURE.md)
-- [配置参考](docs/CONFIG_REFERENCE.md)
-- [XML 布局指南](docs/XML_LAYOUT_GUIDE.md)
-- [XML Schema](docs/XML_SCHEMA.md)
-- [本地化](docs/LOCALIZATION.md)
-- [开发指南](docs/DEVELOPMENT.md)
-- [测试与验证](docs/TEST_PLAN.md)
-- [常见问题](docs/FAQ.md)
-
-## 示例工程
-
-- [examples/TapTap](examples/TapTap/)
-- [examples/TapTap-Global](examples/TapTap-Global/)
-
-## 仓库结构
+先阅读[生产接入指南](docs/PRODUCTION_INTEGRATION.md)。产品工程由以下内容组成：
 
 ```text
-nano-installer/
-├── installer/        # CLI、runtime、stub、核心库
-├── examples/         # 示例工程
-├── docs/             # docsify 文档站
-├── tools/            # 随产品分发的辅助工具
-└── assets/           # 仓库级共享资源
+installer_config.json
+assets/
+layouts/
+locales/
+scripts/       # 可选
+payload/app.7z
 ```
 
-## 开发说明
+配置表达通用安装能力，XML 表达界面与交互，Rhai 脚本只承载产品特有副作用。
 
-- 修改 `installer/**` 后，必须先重编 stub/runtime，再重打 setup。
-- 只修改 `examples/**` 的资源、布局、文案或配置时，只需要重新 build 对应示例。
+## 文档
 
-详细规则见 [AGENTS.md](AGENTS.md)。
+- [文档入口](docs/README.md)
+- [架构](docs/ARCHITECTURE.md)
+- [生产接入](docs/PRODUCTION_INTEGRATION.md)
+- [配置参考](docs/CONFIG_REFERENCE.md)
+- [XML 布局](docs/XML_LAYOUT_GUIDE.md)
+- [本地化](docs/LOCALIZATION.md)
+- [开发](docs/DEVELOPMENT.md)
+- [测试](docs/TEST_PLAN.md)
+- [发布](docs/RELEASE.md)
 
-## 许可证
+修改 `installer/**` 后必须先重编四个 release 组件，再重新打 setup；只修改产品项目的
+配置、资源、布局或语言文件时，可以直接重打对应 setup。详细约束见 [AGENTS.md](AGENTS.md)。
+
+## License
 
 MIT
