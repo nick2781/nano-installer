@@ -1,7 +1,7 @@
 # TapTap 示例安装器
 
-这是仓库中保留的完整示例，用于验证多页面安装/更新/卸载流程、多语言、XML 布局、
-Rhai 脚本以及 `1x/@2x` 图片资源。
+这是 native 分支唯一的端到端输入项目，用于直接验证 XML 布局、多语言、图片资源、
+payload 打包和 Win7 SP1+ 原生运行时。
 
 ## 资源权属
 
@@ -18,9 +18,7 @@ TapTap/
 ├── layouts/
 ├── locales/
 ├── scripts/
-├── payload/app.7z
-├── .build/                 # 中间产物
-└── dist/TapTap_Setup.exe   # 最终产物
+└── payload/app.7z
 ```
 
 ## 构建
@@ -31,11 +29,8 @@ TapTap/
 .\scripts\build.ps1 -Project examples\TapTap
 ```
 
-若只修改本示例的配置、资源、布局、语言或脚本，并且 release stubs 已经是最新版本：
-
-```powershell
-.\scripts\build.ps1 -Project examples\TapTap -SkipStubs
-```
+构建脚本总是生成唯一的 Win7 SP1+ x64/Unicode 工具链，输出位于
+`target/release/`。Cargo 的 cross-target 目录只是内部缓存。
 
 ## 用作产品起点
 
@@ -48,5 +43,5 @@ TapTap/
 - `scripts/` 中的产品专用安装与卸载行为
 - `payload/app.7z` 中的应用文件
 
-正式接入生产项目之前，请按[生产接入指南](../../docs/PRODUCTION_INTEGRATION.md)
-完成签名、升级/卸载、静默模式和回滚验证。
+当前 native runtime 尚未实现 payload 解压、安装任务、完整页面流和卸载流程，不能用于
+生产发布。

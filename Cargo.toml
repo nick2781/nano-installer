@@ -1,107 +1,25 @@
 [workspace]
 resolver = "2"
-members = [
-    "installer/cli",
-    "installer/lib",
-    "installer/stubs/lzma",
-    "installer/stubs/zlib",
-    "installer/stubs/uninst",
-    "installer/native",
-]
+members = ["installer/native"]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.88"
 authors = ["nano-installer contributors"]
-description = "Configuration-driven Windows installer framework"
+description = "Native configuration-driven Windows installer framework"
 license = "MIT"
 repository = "https://github.com/Nick2781/nano-installer"
 
 [workspace.dependencies]
-# 基础依赖
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
 anyhow = "1.0"
-thiserror = "1.0"
-once_cell = "1.19"
-
-# 日志库
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tracing-appender = "0.2"
-
-# GUI 库
-eframe = { version = "0.33", default-features = false, features = ["glow"] }
-egui = { version = "0.33", default-features = false }
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "ico"] }
-
-# 工具库
-uuid = { version = "1.10", features = ["v4"] }
-chrono = "0.4"
-clap = { version = "4.5", features = ["derive"] }
-parking_lot = "0.12"
-
-# 校验库
-crc32fast = "1.3"
-sha2 = "0.10"
-
-# XML 解析库
 roxmltree = "0.20"
-
-# 正则表达式库
-regex = "1.10"
-
-# 布局引擎
-taffy = "0.7"
-
-# 脚本引擎
-rhai = "1.21"
-
-# 压缩库
-flate2 = "1.0"
-zip = { version = "0.6", default-features = false, features = ["deflate"] }
-lzma-rs = "0.3"
-
-# 文件遍历库
-walkdir = "2.4"
-raw-window-handle = "0.6"
-
-# Windows registry
-winreg = "0.56"
-
-winres = "0.1"
-
-# Dev dependencies
+serde_json = "1.0"
 tempfile = "3.8"
 
-# Windows specific
-[workspace.dependencies.windows]
-version = "0.58"
-features = [
-    "Win32_Foundation",
-    "Win32_System_Registry",
-    "Win32_System_Com",
-    "Win32_System_Ole",
-    "Win32_UI_Shell",
-    "Win32_UI_Shell_Common",
-    "Win32_UI_WindowsAndMessaging",
-    "Win32_Security",
-    "Win32_Storage_FileSystem",
-    "Win32_System_Threading",
-    "Win32_System_SystemServices",
-    "Win32_System_Diagnostics",
-    "Win32_System_Diagnostics_ToolHelp",
-    "Win32_System_SystemInformation",
-    "Win32_Globalization",
-    "Win32_System_LibraryLoader",
-    "Win32_Graphics_Dwm",
-    "Win32_Graphics_Gdi",
-]
-
 [profile.release]
-opt-level = "s"     # 优化文件大小 (比 "z" 更安全)
-lto = true          # 启用链接时优化
-codegen-units = 1   # 减少代码生成单元以获得更好的优化
-strip = true        # 剥离符号信息
-panic = "abort"     # 安装器无法从 panic 恢复，移除 unwind 运行时
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

@@ -4,7 +4,7 @@ target/*
 .claude
 .idea
 examples/*/.build/
+examples/*/dist/
 tmp/
-examples/*/dist/*.log
 .tmp-docsify-*.log
 screenshot*.png

@@ -127,10 +127,17 @@ pub fn run_builder_cli() -> Result<()> {
     }
 
     let project = project.context("--project is required")?;
-    let output = output.unwrap_or_else(|| project.join("dist").join("Native_Setup.exe"));
+    let output = match output {
+        Some(output) => output,
+        None => default_output_for_project(&project)?,
+    };
     let stub_name = installer_stub_for_project(&project)?;
     let stub = find_native_stub(&stub_name)?;
-    let bundle = pack_project(&project)?;
+    let uninstaller = std::fs::read(find_native_stub("native-uninst-x64.exe")?)?;
+    let bundle = pack_project(
+        &project,
+        Some(("runtime/native-uninst-x64.exe", uninstaller)),
+    )?;
     if let Some(parent) = output.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -142,6 +149,15 @@ pub fn run_builder_cli() -> Result<()> {
     file.write_all(FOOTER_MAGIC)?;
     file.flush()?;
     Ok(())
+}
+
+fn default_output_for_project(project: &Path) -> Result<PathBuf> {
+    let config: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(project.join("installer_config.json"))?)?;
+    let name = config["output"]["installer_name"]
+        .as_str()
+        .context("output.installer_name is required")?;
+    Ok(project.join("dist").join(name))
 }
 
 fn installer_stub_for_project(project: &Path) -> Result<String> {
@@ -178,7 +194,7 @@ fn find_native_stub(name: &str) -> Result<PathBuf> {
         .with_context(|| format!("native runtime stub not found: {name}"))
 }
 
-fn pack_project(project: &Path) -> Result<Vec<u8>> {
+fn pack_project(project: &Path, extra_file: Option<(&str, Vec<u8>)>) -> Result<Vec<u8>> {
     let mut files = Vec::new();
     let config_path = project.join("installer_config.json");
     let config_data = std::fs::read(&config_path)
@@ -202,6 +218,9 @@ fn pack_project(project: &Path) -> Result<Vec<u8>> {
         .as_str()
         .context("resources.payload_file is required")?;
     collect_file(project, &project.join(payload), &mut files)?;
+    if let Some((name, data)) = extra_file {
+        files.push((name.to_string(), data));
+    }
     files.sort_by(|left, right| left.0.cmp(&right.0));
 
     let mut bundle = Vec::new();
@@ -797,7 +816,7 @@ mod tests {
         std::fs::create_dir(project.join("payload"))?;
         std::fs::write(project.join("payload/app.7z"), b"payload")?;
 
-        let packed = pack_project(project)?;
+        let packed = pack_project(project, None)?;
         let files = parse_bundle(&packed)?;
 
         assert_eq!(files.len(), 5);

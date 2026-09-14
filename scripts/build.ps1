@@ -1,29 +1,31 @@
 param(
     [string]$Project = "examples/TapTap",
-    [ValidateSet("lzma", "zlib")]
-    [string]$Compression = "lzma",
-    [switch]$SkipStubs,
-    [string]$SignScript
+    [string]$Toolchain = "nightly-2025-11-08",
+    [string]$Output
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+$targetTriple = "x86_64-win7-windows-msvc"
+$cargoRelease = Join-Path $repoRoot "target/$targetTriple/release"
+$publishRelease = Join-Path $repoRoot "target/release"
 $projectPath = if ([System.IO.Path]::IsPathRooted($Project)) {
     $Project
 } else {
     Join-Path $repoRoot $Project
 }
-$targetRelease = Join-Path $repoRoot "target/release"
-$installerStub = "$Compression-x64.exe"
-$uninstallerStub = "uninst-x64.exe"
-$previousStubDir = $env:NANO_INSTALLER_STUB_DIR
-$previousInstallerStub = $env:NANO_INSTALLER_INSTALLER_STUB
-$previousUninstallerStub = $env:NANO_INSTALLER_UNINSTALLER_STUB
-
-if (-not (Test-Path -LiteralPath (Join-Path $projectPath "installer_config.json"))) {
+$configPath = Join-Path $projectPath "installer_config.json"
+if (-not (Test-Path -LiteralPath $configPath)) {
     throw "Installer project not found: $projectPath"
+}
+
+$config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+$outputPath = if ($Output) {
+    if ([System.IO.Path]::IsPathRooted($Output)) { $Output } else { Join-Path $repoRoot $Output }
+} else {
+    Join-Path $publishRelease $config.output.installer_name
 }
 
 function Invoke-Checked {
@@ -37,45 +39,38 @@ function Invoke-Checked {
 
 Push-Location $repoRoot
 try {
-    if (-not $SkipStubs) {
-        Invoke-Checked {
-            cargo build --locked --release -p nano-installer-lzma
-        } "x64 LZMA runtime stub build"
-        Invoke-Checked {
-            cargo build --locked --release -p nano-installer-zlib
-        } "x64 zlib runtime stub build"
-        Invoke-Checked {
-            cargo build --locked --release -p uninst
-        } "x64 uninstaller stub build"
-        Invoke-Checked {
-            cargo build --locked --release -p nano-installer-cli
-        } "Host CLI build"
-    }
-
-    $cli = Join-Path $repoRoot "target/release/nano-installer.exe"
-    if (-not (Test-Path -LiteralPath $cli)) {
-        throw "CLI not found: $cli. Run without -SkipStubs first."
-    }
-
-    $env:NANO_INSTALLER_STUB_DIR = $targetRelease
-    $env:NANO_INSTALLER_INSTALLER_STUB = $installerStub
-    $env:NANO_INSTALLER_UNINSTALLER_STUB = $uninstallerStub
-
     Invoke-Checked {
-        & $cli validate --config (Join-Path $projectPath "installer_config.json")
-    } "Configuration validation"
-    Invoke-Checked {
-        & $cli harness lint-resources --project $projectPath --format text
-    } "Resource lint"
+        & rustup run $Toolchain cargo build --locked --release `
+            -Z build-std=std,panic_abort `
+            --target $targetTriple `
+            -p nano-installer-native
+    } "Win7+ native toolchain build"
 
-    $buildArgs = @("build", "--project", $projectPath, "--release")
-    if ($SignScript) {
-        $buildArgs += @("--sign-script", $SignScript)
+    New-Item -ItemType Directory -Force -Path $publishRelease | Out-Null
+    foreach ($name in @(
+        "nano-installer-native-x64.exe",
+        "native-lzma-x64.exe",
+        "native-zlib-x64.exe",
+        "native-uninst-x64.exe"
+    )) {
+        Copy-Item -LiteralPath (Join-Path $cargoRelease $name) `
+            -Destination (Join-Path $publishRelease $name) -Force
     }
-    Invoke-Checked { & $cli @buildArgs } "Setup build"
+
+    $builder = Join-Path $publishRelease "nano-installer-native-x64.exe"
+    Invoke-Checked {
+        & $builder build --project $projectPath --output $outputPath
+    } "Native setup build"
+
+    & (Join-Path $PSScriptRoot "audit_win7_imports.ps1") -File @(
+        $builder,
+        (Join-Path $publishRelease "native-lzma-x64.exe"),
+        (Join-Path $publishRelease "native-zlib-x64.exe"),
+        (Join-Path $publishRelease "native-uninst-x64.exe"),
+        $outputPath
+    )
+
+    Write-Output "Native Win7+ setup: $outputPath"
 } finally {
-    $env:NANO_INSTALLER_STUB_DIR = $previousStubDir
-    $env:NANO_INSTALLER_INSTALLER_STUB = $previousInstallerStub
-    $env:NANO_INSTALLER_UNINSTALLER_STUB = $previousUninstallerStub
     Pop-Location
 }

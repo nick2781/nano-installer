@@ -1,7 +1,6 @@
 # Native Win32 builder and runtime stubs
 
-This x64 runtime validates the smallest useful UI slice before the installer engine
-is migrated away from eframe. It uses only:
+This x64/Unicode runtime targets Windows 7 SP1 and later. It uses only:
 
 - a Unicode Win32 window and message loop;
 - Windows Imaging Component (WIC) for PNG decoding;
@@ -28,12 +27,8 @@ stub before appending project data. It never copies the builder into the generat
 ## Run
 
 ```powershell
-cargo build --locked --release -p nano-installer-native
-.\target\release\nano-installer-native-x64.exe build `
-  --project .\examples\TapTap `
-  --output .\target\TapTap_Native_Setup.exe
-
-.\target\TapTap_Native_Setup.exe
+.\scripts\build.ps1 -Project examples\TapTap
+.\target\release\TapTap_Setup.exe
 ```
 
 The builder collects `installer_config.json`, configured layouts/assets/locales, `scripts/`, and
@@ -43,28 +38,17 @@ the configured payload. The generated executable reads its appended bundle, sele
 configured JSON locale and rendered through Unicode `DrawTextW`. Press Escape or close the native
 window to exit.
 
-For the Win7 x64 target, use the same `build-std` flow as the production compatibility build:
-
-```powershell
-$env:RUSTC_BOOTSTRAP = "1" # local validation only; CI must use the pinned nightly toolchain
-cargo build --locked --release `
-  -Z build-std=std,panic_abort `
-  --target x86_64-win7-windows-msvc `
-  -p nano-installer-native
-```
-
 ## Measured result
 
-| Target | Builder | Each current stub | Win7 import audit |
+| Minimum OS target | Builder | Each current stub | Import audit |
 | --- | ---: | ---: | --- |
-| `x86_64-pc-windows-msvc` | 210.5 KiB | 265.5 KiB | Not applicable |
-| `x86_64-win7-windows-msvc` | 274 KiB | 336.5 KiB | Passed |
+| Windows 7 SP1+ x64 | 274.5 KiB | 336.5 KiB | Passed |
 
 The runtime measurements exclude product data. Generated setup size includes the appended TapTap
-layouts, assets, locales, scripts, and 143.69 MiB payload. The current standard setup is
-146.84 MiB and the Win7 SP1 x64 setup is 146.91 MiB. The three stubs are currently the same size
-because payload extraction and uninstall backends have not yet been linked into their now-separate
-binary boundaries.
+layouts, assets, locales, scripts, 143.69 MiB payload, and the native uninstaller stub. The current
+setup is 147.24 MiB versus the previous eframe baseline of 159.14 MiB, a reduction of about
+11.90 MiB. The three stubs are currently the same size because payload extraction and uninstall
+backends have not yet been linked into their now-separate binary boundaries.
 
 ## Next slice
 

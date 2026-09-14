@@ -1,5 +1,0 @@
-* [GitHub](https://github.com/Nick2781/nano-installer)
-* [根 README](../README.md)
-* [TapTap 示例](../examples/TapTap/)
-* [生产接入](PRODUCTION_INTEGRATION.md)
-* [FAQ](FAQ.md)

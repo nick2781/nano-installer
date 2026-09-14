@@ -2,16 +2,14 @@ name: CI
 
 on:
   push:
-    branches:
-      - master
+    branches: [main]
   pull_request:
-    branches:
-      - master
+    branches: [main]
   workflow_dispatch:
 
 jobs:
-  windows-verify:
-    name: Windows Verify
+  native-win7-verify:
+    name: Native Win7+ Verify
     runs-on: windows-latest
 
     steps:
@@ -21,41 +19,23 @@ jobs:
           lfs: true
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.91.1
-          components: rustfmt
+          toolchain: nightly-2025-11-08
+          components: rust-src,rustfmt
 
-      - name: Restore cargo cache
+      - name: Configure MSVC tools
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Restore Cargo cache
         uses: Swatinem/rust-cache@v2
 
       - name: Check formatting
         run: cargo fmt --all -- --check
 
-      - name: Test library
-        run: cargo test --locked -p nano-installer-lib --lib
+      - name: Test native builder and bundle
+        run: cargo test --locked -p nano-installer-native
 
-      - name: Test CLI
-        run: cargo test --locked -p nano-installer-cli
-
-      - name: Check installer crates
-        run: cargo check --locked --workspace
-
-      - name: Lint TapTap UI resources
-        run: cargo run --locked -p nano-installer-cli -- harness lint-resources --project examples/TapTap --format text
-
-      - name: Build release stubs
-        run: |
-          cargo build --locked --release -p nano-installer-lzma
-          cargo build --locked --release -p nano-installer-zlib
-          cargo build --locked --release -p uninst
-          cargo build --locked --release -p nano-installer-cli
-
-      - name: Build TapTap setup
-        run: cargo run --locked --release -p nano-installer-cli -- build --project examples/TapTap --release
-
-      - name: Upload TapTap setup artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: TapTap_Setup
-          path: examples/TapTap/dist/TapTap_Setup.exe
+      - name: Build and audit Win7+ artifacts
+        shell: powershell
+        run: .\scripts\build.ps1 -Project examples\TapTap
