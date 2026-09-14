@@ -12,6 +12,9 @@
 - CI 工具链：Rust 1.91.1；workspace MSRV 为 1.88
 - 示例工程：`examples/TapTap`
 
+`examples/TapTap` 中的 TapTap 品牌和相关资源归易玩（上海）网络科技有限公司及相关
+权利人所有，仅用于本工具的开发、测试和兼容性验证，不属于本项目开源许可范围。
+
 Windows 7 目前不在正式支持范围。原因、证据和可选技术路线见
 [Windows 兼容性](docs/WINDOWS_COMPATIBILITY.md)。
 
@@ -23,6 +26,7 @@ Windows 7 目前不在正式支持范围。原因、证据和可选技术路线�
 | `installer/stubs/lzma` | `lzma-x64.exe` | 7z/LZMA 安装器 stub |
 | `installer/stubs/zlib` | `zlib-x64.exe` | ZIP/Deflate 安装器 stub |
 | `installer/stubs/uninst` | `uninst-x64.exe` | 卸载器 stub |
+| `installer/native` | `nano-installer-native-x64.exe` + native stubs | 实验中的原生 Win32 layout 构建与运行工具 |
 | `installer/lib` | Rust library | 配置、资源、UI、安装和卸载引擎 |
 
 发布工具包中的 CLI 和所选 stubs 应放在同一目录。CLI 也支持通过

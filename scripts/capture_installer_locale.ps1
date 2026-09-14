@@ -103,13 +103,21 @@ function Capture-WindowToFile {
     $bitmap = New-Object System.Drawing.Bitmap $width, $height
     $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
     try {
-        $graphics.CopyFromScreen(
-            $rect.Left,
-            $rect.Top,
-            0,
-            0,
-            (New-Object System.Drawing.Size $width, $height)
-        )
+        $dc = $graphics.GetHdc()
+        try {
+            $captured = [CaptureWin32]::PrintWindow($Handle, $dc, 0)
+        } finally {
+            $graphics.ReleaseHdc($dc)
+        }
+        if (-not $captured) {
+            $graphics.CopyFromScreen(
+                $rect.Left,
+                $rect.Top,
+                0,
+                0,
+                (New-Object System.Drawing.Size $width, $height)
+            )
+        }
     } finally {
         $graphics.Dispose()
     }

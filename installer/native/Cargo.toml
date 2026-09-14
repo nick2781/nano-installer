@@ -1,0 +1,43 @@
+[package]
+name = "nano-installer-native"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+description = "Native Win32/GDI runtime for nano-installer"
+
+[[bin]]
+name = "nano-installer-native-x64"
+path = "cli/main.rs"
+
+[[bin]]
+name = "native-lzma-x64"
+path = "stubs/lzma/main.rs"
+
+[[bin]]
+name = "native-zlib-x64"
+path = "stubs/zlib/main.rs"
+
+[[bin]]
+name = "native-uninst-x64"
+path = "stubs/uninst/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+roxmltree.workspace = true
+serde_json.workspace = true
+
+[dependencies.windows]
+version = "0.58"
+features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Graphics_Imaging",
+    "Win32_System_Com",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+]
+
+[dev-dependencies]
+tempfile.workspace = true

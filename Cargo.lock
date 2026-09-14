@@ -1430,10 +1430,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "nano-installer-native-poc"
+name = "nano-installer-native"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "roxmltree",
+ "serde_json",
+ "tempfile",
  "windows",
 ]
 
