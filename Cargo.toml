@@ -6,6 +6,7 @@ members = [
     "installer/stubs/lzma",
     "installer/stubs/zlib",
     "installer/stubs/uninst",
+    "installer/stubs/native-poc",
 ]
 
 [workspace.package]

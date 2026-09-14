@@ -1430,6 +1430,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nano-installer-native-poc"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "windows",
+]
+
+[[package]]
 name = "nano-installer-zlib"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,25 @@
+[package]
+name = "nano-installer-native-poc"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+description = "Experimental Win32/GDI runtime shell for nano-installer"
+
+[[bin]]
+name = "native-ui-x64"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+
+[dependencies.windows]
+version = "0.58"
+features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Graphics_Imaging",
+    "Win32_System_Com",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_WindowsAndMessaging",
+]
