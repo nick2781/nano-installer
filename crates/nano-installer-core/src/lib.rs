@@ -2522,6 +2522,16 @@ fn edge_attribute(
     int_attribute(node, &attribute).map(|value| scale_value(value, context.dpi.scale))
 }
 
+/// Shrinks `rect` by `insets` on each edge.
+fn inset_rect(rect: LayerRect, insets: Insets) -> LayerRect {
+    LayerRect {
+        left: rect.left + insets.left,
+        top: rect.top + insets.top,
+        width: rect.width - insets.horizontal(),
+        height: rect.height - insets.vertical(),
+    }
+}
+
 fn estimate_text_width(text: &str, font_size: i32) -> i32 {
     visible_text(text)
         .chars()
@@ -2571,6 +2581,18 @@ fn render_flow_item(
     context: &LayoutContext<'_>,
     output: &mut LayoutOutput,
 ) -> Result<()> {
+    // A leaf control's own padding insets what it draws, but not its place in
+    // the flow, which the parent already accounted for. Containers and `Box`
+    // apply their own padding where they lay out their children.
+    let rect = if flow_axis(node).is_none() && !node.has_tag_name("Box") {
+        let inset = inset_rect(rect, insets_for_node(node, "padding", context));
+        if inset.width <= 0 || inset.height <= 0 {
+            return Ok(());
+        }
+        inset
+    } else {
+        rect
+    };
     match node.tag_name().name() {
         "Checkbox" => {
             let checked = checkbox_checked(node, context.interaction);
@@ -3859,7 +3881,7 @@ mod tests {
         button_image, disk_root, flow_widths, format_size_bytes, initial_interaction,
         inspect_project, installer_version_info, load_layout, measure_layout_text_width,
         pack_project, pack_project_with_progress, parse_bundle, parse_color, parse_image_style,
-        parse_text_runs, query_disk_free_bytes, render_flow, render_progress_bar,
+        parse_text_runs, query_disk_free_bytes, render_flow, render_flow_item, render_progress_bar,
         resolve_asset_path, resolved_text_for_node, runtime_layout_path, runtime_layout_path_at,
         runtime_page_count, scale_value, size_attribute, uninstaller_version_info,
         validate_output_filename, BundleIndex, DpiContext, FlowAxis, FlowItem, InteractionState,
@@ -4675,6 +4697,54 @@ mod tests {
         assert_eq!(button.right - button.left, 120);
         assert_eq!(button.top, 10 + 60 + label.height + 16);
         assert_eq!(button.bottom - button.top, 30);
+        Ok(())
+    }
+
+    #[test]
+    fn control_padding_insets_what_the_control_draws() -> anyhow::Result<()> {
+        let files: HashMap<String, Vec<u8>> = HashMap::new();
+        let config = serde_json::json!({});
+        // The pause button pairs a fixed width with `padding="25 0 0 0"`, so its
+        // label must start 25px below the top of its own flow slot.
+        let document = roxmltree::Document::parse(
+            r##"<Page width="400" height="200">
+                  <HBox position="absolute" left="0" top="0" width="400" height="40">
+                    <Label text="hello" padding="25 0 0 0" color="#FFFFFFFF" />
+                  </HBox>
+                </Page>"##,
+        )?;
+        let node = document
+            .descendants()
+            .find(|node| node.has_tag_name("Label"))
+            .context("label missing")?;
+        let context = LayoutContext {
+            dpi: DpiContext {
+                scale: 1.0,
+                use_2x: false,
+            },
+            files: &files,
+            config: &config,
+            locale: "zh-CN",
+            translations: &HashMap::new(),
+            interaction: &InteractionState::default(),
+            language_menu_open: false,
+        };
+        let mut output = LayoutOutput::default();
+        render_flow_item(
+            node,
+            LayerRect {
+                left: 10,
+                top: 0,
+                width: 100,
+                height: 40,
+            },
+            &context,
+            &mut output,
+        )?;
+        let label = output.texts.first().context("label text missing")?;
+        assert_eq!((label.left, label.top), (10, 25));
+        // The padding also caps the height the text may occupy.
+        assert_eq!(label.height, 15);
         Ok(())
     }
 
