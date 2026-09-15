@@ -1,6 +1,13 @@
 [workspace]
 resolver = "2"
-members = ["installer/native"]
+members = [
+    "crates/nano-installer-core",
+    "crates/nano-installer-cli",
+    "crates/nano-installer-gui",
+    "crates/nano-installer-stub-lzma",
+    "crates/nano-installer-stub-zlib",
+    "crates/nano-installer-uninstaller",
+]
 
 [workspace.package]
 version = "0.1.0"
@@ -16,6 +23,12 @@ anyhow = "1.0"
 roxmltree = "0.20"
 serde_json = "1.0"
 tempfile = "3.8"
+winres = "0.1"
+image = { version = "0.25.8", default-features = false, features = ["png"] }
+sevenz-rust = { version = "0.6.1", default-features = false }
+zip = { version = "0.6.6", default-features = false, features = ["deflate"] }
+eframe = { version = "0.33.0", default-features = false, features = ["default_fonts", "glow"] }
+rfd = { version = "0.14.1", default-features = false }
 
 [profile.release]
 opt-level = "s"

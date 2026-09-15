@@ -1,5 +1,5 @@
 param(
-    [string]$Project = "examples/TapTap",
+    [string]$Project,
     [string]$Toolchain = "nightly-2025-11-08",
     [string]$Output
 )
@@ -10,22 +10,12 @@ Set-StrictMode -Version Latest
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $targetTriple = "x86_64-win7-windows-msvc"
 $cargoRelease = Join-Path $repoRoot "target/$targetTriple/release"
+$guiTargetRoot = Join-Path $repoRoot "target/gui-build"
+$guiCargoRelease = Join-Path $guiTargetRoot "release"
 $publishRelease = Join-Path $repoRoot "target/release"
-$projectPath = if ([System.IO.Path]::IsPathRooted($Project)) {
-    $Project
-} else {
-    Join-Path $repoRoot $Project
-}
-$configPath = Join-Path $projectPath "installer_config.json"
-if (-not (Test-Path -LiteralPath $configPath)) {
-    throw "Installer project not found: $projectPath"
-}
-
-$config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
-$outputPath = if ($Output) {
-    if ([System.IO.Path]::IsPathRooted($Output)) { $Output } else { Join-Path $repoRoot $Output }
-} else {
-    Join-Path $publishRelease $config.output.installer_name
+$publishStubs = Join-Path $publishRelease "stubs"
+if ($Output -and -not $Project) {
+    throw "-Output requires -Project"
 }
 
 function Invoke-Checked {
@@ -43,34 +33,85 @@ try {
         & rustup run $Toolchain cargo build --locked --release `
             -Z build-std=std,panic_abort `
             --target $targetTriple `
-            -p nano-installer-native
+            -p nano-installer-native-cli `
+            -p nano-installer-stub-lzma `
+            -p nano-installer-stub-zlib `
+            -p nano-installer-uninstaller
     } "Win7+ native toolchain build"
 
-    New-Item -ItemType Directory -Force -Path $publishRelease | Out-Null
+    $previousRustFlags = $env:RUSTFLAGS
+    try {
+        $env:RUSTFLAGS = "-C target-feature=+crt-static"
+        Invoke-Checked {
+            & rustup run $Toolchain cargo build --locked --release `
+                --target-dir $guiTargetRoot `
+                -p nano-installer-gui
+        } "Windows 10+ GUI build"
+    } finally {
+        $env:RUSTFLAGS = $previousRustFlags
+    }
+
+    if (Test-Path -LiteralPath $publishRelease) {
+        Remove-Item -LiteralPath $publishRelease -Recurse -Force
+    }
+    New-Item -ItemType Directory -Force -Path $publishStubs | Out-Null
+    Copy-Item -LiteralPath (Join-Path $cargoRelease "nano-installer-native-x64.exe") `
+        -Destination (Join-Path $publishRelease "nano-installer-native-x64.exe") -Force
+    Copy-Item -LiteralPath (Join-Path $guiCargoRelease "nano-installer-gui-x64.exe") `
+        -Destination (Join-Path $publishRelease "nano-installer-gui-x64.exe") -Force
     foreach ($name in @(
-        "nano-installer-native-x64.exe",
-        "native-lzma-x64.exe",
-        "native-zlib-x64.exe",
-        "native-uninst-x64.exe"
+        "lzma-stub-native.exe",
+        "zlib-stub-native.exe",
+        "uninst-stub-native.exe"
     )) {
         Copy-Item -LiteralPath (Join-Path $cargoRelease $name) `
-            -Destination (Join-Path $publishRelease $name) -Force
+            -Destination (Join-Path $publishStubs $name) -Force
     }
 
     $builder = Join-Path $publishRelease "nano-installer-native-x64.exe"
-    Invoke-Checked {
-        & $builder build --project $projectPath --output $outputPath
-    } "Native setup build"
-
-    & (Join-Path $PSScriptRoot "audit_win7_imports.ps1") -File @(
+    $auditFiles = @(
         $builder,
-        (Join-Path $publishRelease "native-lzma-x64.exe"),
-        (Join-Path $publishRelease "native-zlib-x64.exe"),
-        (Join-Path $publishRelease "native-uninst-x64.exe"),
-        $outputPath
+        (Join-Path $publishStubs "lzma-stub-native.exe"),
+        (Join-Path $publishStubs "zlib-stub-native.exe"),
+        (Join-Path $publishStubs "uninst-stub-native.exe")
     )
 
-    Write-Output "Native Win7+ setup: $outputPath"
+    & (Join-Path $PSScriptRoot "smoke_backends.ps1") -StubsDirectory $publishStubs
+
+    if ($Project) {
+        $projectPath = if ([System.IO.Path]::IsPathRooted($Project)) {
+            $Project
+        } else {
+            Join-Path $repoRoot $Project
+        }
+        $configPath = Join-Path $projectPath "installer_config.json"
+        if (-not (Test-Path -LiteralPath $configPath)) {
+            throw "Installer project not found: $projectPath"
+        }
+        $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+        $outputPath = if ($Output) {
+            if ([System.IO.Path]::IsPathRooted($Output)) {
+                $Output
+            } else {
+                Join-Path $repoRoot $Output
+            }
+        } else {
+            Join-Path (Join-Path $projectPath "dist") $config.output.installer_name
+        }
+        Invoke-Checked {
+            & $builder build --project $projectPath --output $outputPath
+        } "Native setup build"
+        & (Join-Path $PSScriptRoot "audit_embedded_uninstaller.ps1") `
+            -Setup $outputPath `
+            -ExpectedName $(if ($config.output.uninstaller_name) { $config.output.uninstaller_name } else { "uninst.exe" }) `
+            -ExpectedVersion $(if ($config.project.file_version) { $config.project.file_version } else { $config.project.version })
+        $auditFiles += $outputPath
+        Write-Output "Native Win7+ setup: $outputPath"
+    }
+
+    & (Join-Path $PSScriptRoot "audit_win7_imports.ps1") -File $auditFiles
+    Write-Output "Native Win7+ toolchain: $publishRelease"
+    Write-Output "Windows 10+ GUI: $(Join-Path $publishRelease 'nano-installer-gui-x64.exe')"
 } finally {
     Pop-Location
 }

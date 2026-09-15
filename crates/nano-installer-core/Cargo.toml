@@ -1,26 +1,14 @@
 [package]
-name = "nano-installer-native"
+name = "nano-installer-core"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
-description = "Native Win32/GDI runtime for nano-installer"
+description = "Shared native bundle and Win32 runtime for nano-installer"
 
-[[bin]]
-name = "nano-installer-native-x64"
-path = "cli/main.rs"
-
-[[bin]]
-name = "native-lzma-x64"
-path = "stubs/lzma/main.rs"
-
-[[bin]]
-name = "native-zlib-x64"
-path = "stubs/zlib/main.rs"
-
-[[bin]]
-name = "native-uninst-x64"
-path = "stubs/uninst/main.rs"
+[lib]
+name = "nano_installer_core"
+path = "src/lib.rs"
 
 [dependencies]
 anyhow.workspace = true
@@ -35,6 +23,9 @@ features = [
     "Win32_Graphics_Imaging",
     "Win32_System_Com",
     "Win32_System_LibraryLoader",
+    "Win32_System_Registry",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_WindowsAndMessaging",
 ]

@@ -1,8 +1,10 @@
 # Windows compatibility
 
-All published executables use one target: `x86_64-win7-windows-msvc`. The minimum supported system
-is Windows 7 SP1 x64; the same binaries run on later Windows versions. ANSI, x86, and a separate
-Windows 10 build are not provided.
+The CLI, runtime stubs, and generated setups use `x86_64-win7-windows-msvc`. Their minimum
+supported system is Windows 7 SP1 x64. ANSI and x86 artifacts are not provided.
+
+The optional `nano-installer-gui-x64.exe` authoring tool uses eframe/egui and targets Windows 10+
+x64. It calls the same core build API as the CLI but is not embedded in setup packages.
 
 The release build uses:
 

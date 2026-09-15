@@ -1,0 +1,14 @@
+[package]
+name = "nano-installer-uninstaller"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+description = "Native x64 uninstaller runtime"
+
+[[bin]]
+name = "uninst-stub-native"
+path = "src/main.rs"
+
+[dependencies]
+nano-installer-core = { path = "../nano-installer-core" }

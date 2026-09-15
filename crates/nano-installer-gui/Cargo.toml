@@ -1,0 +1,24 @@
+[package]
+name = "nano-installer-gui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+description = "Visual project builder for nano-installer"
+
+[[bin]]
+name = "nano-installer-gui-x64"
+path = "src/main.rs"
+
+[dependencies]
+eframe.workspace = true
+nano-installer-core = { path = "../nano-installer-core" }
+rfd.workspace = true
+
+[dependencies.windows]
+version = "0.58"
+features = ["Win32_Globalization", "Win32_System_SystemInformation"]
+
+[build-dependencies]
+winres.workspace = true
+image.workspace = true

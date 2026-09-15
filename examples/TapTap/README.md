@@ -29,8 +29,8 @@ TapTap/
 .\scripts\build.ps1 -Project examples\TapTap
 ```
 
-构建脚本总是生成唯一的 Win7 SP1+ x64/Unicode 工具链，输出位于
-`target/release/`。Cargo 的 cross-target 目录只是内部缓存。
+工具链输出位于 `target/release/`，example setup 输出位于
+`examples/TapTap/dist/TapTap_Setup.exe`。后者只用于本地验证，不属于发布文件。
 
 ## 用作产品起点
 

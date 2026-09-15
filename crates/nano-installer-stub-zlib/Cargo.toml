@@ -1,0 +1,19 @@
+[package]
+name = "nano-installer-stub-zlib"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+description = "Native x64 ZIP/Deflate installer runtime stub"
+
+[[bin]]
+name = "zlib-stub-native"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+nano-installer-core = { path = "../nano-installer-core" }
+zip.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

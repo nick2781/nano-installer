@@ -1,32 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Page width="574" height="358" background="#FF181B22" background-image="assets/bg_main.png">
-  <VBox width="100%" height="100%" align-items="center">
-
-    <Spacer height="80" />
-    <Image id="logo" src="assets/logo.png" width="148" height="80" />
-    <Label text="@uninstall_confirm" font-size="14" color="#FFFFFFFF"
-           padding="16 0 0 0" text-align="center" />
-
-    <!-- Buttons -->
-    <HBox padding="40 0 0 0" justify-content="center" gap="25">
-      <Button id="btnNotNow" action="close" text="@not_now" font-size="14" font-weight="bold"
-              width="172" height="40"
-              normal-image="assets/btn_primary.png" hover-image="assets/btn_hover.png"
-              pressed-image="assets/btn_hover.png"
-              color="#FFFFFFFF" cursor="hand" />
-      <Button id="btnUnInstall" action="uninstall" text="@uninstall_button" font-size="14" font-weight="bold"
-              width="172" height="40"
-              normal-image="assets/btn_disabled.png" hover-image="assets/btn_disabled.png"
-              pressed-image="assets/btn_disabled.png"
-              color="#FFFFFFFF" cursor="hand" />
-    </HBox>
-
-    <!-- Reserve Data Checkbox -->
-    <HBox padding="30 0 0 0" justify-content="center">
-      <Checkbox id="chkReserveData" width="96" height="20" text="@reserve_data"
-                font-size="12" color="#FFE4E8EC" checked="true"
-                unchecked-image="assets/checkbox-0.png" checked-image="assets/checkbox-2.png" />
-    </HBox>
-
-  </VBox>
+<Page width="574" height="358" background="#FF181B22"
+      background-image="assets/bg_main.png" border-radius="12">
+  <Image id="logo" src="assets/logo.png" position="absolute"
+         left="213" top="64" width="148" height="80" />
+  <Label id="confirm" text="@uninstall_confirm" position="absolute"
+         left="44" top="167" width="486" height="44" font-size="14"
+         color="#FFFFFFFF" text-align="center" />
+  <Button id="btnNotNow" action="close" text="@not_now"
+          position="absolute" left="105" top="245" width="172" height="40"
+          normal-image="assets/btn_dialog.png" hover-image="assets/btn_hover.png"
+          pressed-image="assets/btn_hover.png" font-size="14"
+          color="#FFFFFFFF" cursor="hand" />
+  <Button id="btnUnInstall" action="uninstall" text="@uninstall_button"
+          position="absolute" left="297" top="245" width="172" height="40"
+          normal-image="assets/btn_primary.png" hover-image="assets/btn_hover.png"
+          pressed-image="assets/btn_hover.png" font-size="14"
+          color="#FFFFFFFF" cursor="hand" />
 </Page>

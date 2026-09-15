@@ -33,16 +33,17 @@ jobs:
 
       - name: Build and audit Win7+ artifacts
         shell: powershell
-        run: .\scripts\build.ps1 -Project examples\TapTap
+        run: .\scripts\build.ps1
 
       - name: Package native toolchain
         shell: powershell
         run: |
           $files = @(
             "target/release/nano-installer-native-x64.exe"
-            "target/release/native-lzma-x64.exe"
-            "target/release/native-zlib-x64.exe"
-            "target/release/native-uninst-x64.exe"
+            "target/release/nano-installer-gui-x64.exe"
+            "target/release/stubs/lzma-stub-native.exe"
+            "target/release/stubs/zlib-stub-native.exe"
+            "target/release/stubs/uninst-stub-native.exe"
           )
           Compress-Archive -LiteralPath $files -DestinationPath nano-installer-native-x64.zip
 

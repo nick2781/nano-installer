@@ -34,8 +34,11 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Test native builder and bundle
-        run: cargo test --locked -p nano-installer-native
+        run: cargo test --locked --workspace
 
       - name: Build and audit Win7+ artifacts
         shell: powershell
-        run: .\scripts\build.ps1 -Project examples\TapTap
+        run: |
+          .\scripts\build.ps1 `
+            -Project examples\TapTap `
+            -Output target\ci\TapTap_Setup.exe
