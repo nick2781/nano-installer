@@ -66,8 +66,9 @@ payload，以及可选 scripts 的目录。所有配置路径都相对于项目�
   最后追加自包含卸载器。它不会把自身复制进 setup，也不会生成中间 `skins.zip`。
 - GUI 通过同一 core API 检查和构建，不启动 CLI 子进程。
 
-`examples/TapTap` 是测试项目，不是已发布的 setup，也不是 GUI 的默认项目。构建它并审计内嵌卸载器的
-Win7 导入与文件版本：
+`examples/TapTap` 是测试项目，不是已发布的 setup，也不是 GUI 的默认项目。它的 payload
+`examples/TapTap/payload/app.7z` 未入库（`.gitignore` 排除 `*.7z`），构建前需要自行放入一个 7z
+归档。构建它并审计内嵌卸载器的 Win7 导入与文件版本：
 
 ```powershell
 .\scripts\build.ps1 -Project examples\TapTap

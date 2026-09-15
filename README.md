@@ -72,8 +72,10 @@ to the project directory.
   copies itself into the setup and never creates an intermediate `skins.zip`.
 - The GUI inspects and builds through the same core API; it does not spawn the CLI.
 
-`examples/TapTap` is a test project, not a published setup or the GUI default. To build it and audit
-the embedded uninstaller's Win7 imports and file version:
+`examples/TapTap` is a test project, not a published setup or the GUI default. Its payload,
+`examples/TapTap/payload/app.7z`, is not tracked, because `.gitignore` excludes `*.7z`; put a 7z
+archive there before building it. To build it and audit the embedded uninstaller's Win7 imports and
+file version:
 
 ```powershell
 .\scripts\build.ps1 -Project examples\TapTap

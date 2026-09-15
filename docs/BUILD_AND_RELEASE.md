@@ -28,8 +28,11 @@ target/release/
 原始 stubs 不含产品资源；生成的 setup 与自包含 uninstaller 的资源由项目 `output` 配置决定。
 
 Release workflow 构建并打包 builder、GUI 与 `stubs/`，不会生成或发布 TapTap setup。
-开发/CI 显式传 `-Project` 时才生成 example setup，用于验证 payload、layout 和 bundle；脚本
+开发侧显式传 `-Project` 时才生成 example setup，用于验证 payload、layout 和 bundle；脚本
 也会从 setup 中取出项目化 `uninst.exe` 并单独审计其 Win7 PE 导入和 VERSIONINFO。
+
+example payload `examples/TapTap/payload/app.7z` 未入库（被 `.gitignore` 的 `*.7z` 排除），
+因此 CI 只构建工具链，不做 setup 端到端验证；真实 payload 的自动化测试计划放在独立的测试 job。
 
 ## Builder 参数
 
