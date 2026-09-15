@@ -10,7 +10,7 @@ let keep_data = get_checkbox_value("keep_data");
 // Step 1: Kill running process
 // (NSIS: nsProcess::_FindProcess + _KillProcess)
 // ═══════════════════════════════════════════
-set_status("Closing application...");
+set_status_key("uninstall.status.closing_app");
 set_progress(5.0);
 if is_process_running(exe_name) {
     kill_process(exe_name);
@@ -22,7 +22,7 @@ if is_process_running(exe_name) {
 // (NSIS: un.DeleteUserData → RMDir /r $APPDATA\TapTap)
 // ═══════════════════════════════════════════
 if !keep_data {
-    set_status("Removing user data...");
+    set_status_key("uninstall.status.removing_user_data");
     set_progress(10.0);
 
     let appdata = get_env("APPDATA");
@@ -35,7 +35,7 @@ if !keep_data {
     // (NSIS: un.DeleteSupportDirs + un.DeleteTapTapDirs)
     // Iterate all HDD drives, delete $DRIVE\TapTap\Support and $DRIVE\TapTap
     // ═══════════════════════════════════════════
-    set_status("Cleaning game data...");
+    set_status_key("uninstall.status.cleaning_game_data");
     set_progress(20.0);
     let drives = get_drives();
     for drive in drives {
@@ -62,7 +62,7 @@ if !keep_data {
 // Step 4: Manifest-driven core uninstall
 // Shortcuts + registry + installed files now follow tracked install artifacts
 // ═══════════════════════════════════════════
-set_status("Removing installed files...");
+set_status_key("uninstall.status.removing_files");
 if !run_tracked_uninstall(55.0, 95.0) {
     show_error("Uninstall Error", "Failed to remove tracked installation artifacts");
     return;
@@ -73,5 +73,5 @@ if !run_tracked_uninstall(55.0, 95.0) {
 // ═══════════════════════════════════════════
 shell_notify();
 
-set_status("Uninstall complete");
+set_status_key("uninstall.status.complete");
 set_progress(100.0);

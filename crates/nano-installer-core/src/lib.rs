@@ -3,6 +3,7 @@ compile_error!("nano-installer-native-x64 must be built for x86_64");
 
 mod icon;
 mod install;
+mod script;
 mod shell;
 mod version;
 
@@ -131,6 +132,9 @@ struct InteractionState {
     progress: Option<u8>,
     /// Locale key describing the running task, published by the worker thread.
     status_key: Option<String>,
+    /// Literal status text a project script published. Takes precedence over
+    /// `status_key`, because a script names its own steps.
+    status_text: Option<String>,
 }
 
 impl InteractionState {
@@ -138,6 +142,16 @@ impl InteractionState {
     /// A bar without a bound worker keeps its authored value.
     fn progress_for(&self, authored: u8) -> u8 {
         self.progress.unwrap_or(authored)
+    }
+
+    /// Records a built-in step, which names its own text from the locale table.
+    ///
+    /// Any literal text a project script published belongs to that script's own
+    /// step, so it is dropped here rather than shown for a library step.
+    fn begin_step(&mut self, percent: u8, status_key: &str) {
+        self.progress = Some(percent.min(100));
+        self.status_key = Some(status_key.to_string());
+        self.status_text = None;
     }
 }
 
@@ -2068,19 +2082,24 @@ fn resolved_text_for_node(
     }
     let (mut text, alignment) = text_for_node(node, context.locale, context.translations)?;
     if let Some(source) = node.attribute("value-source") {
-        // `status` replaces the authored placeholder with the locale entry the
-        // running task published, so a progress page can describe the work.
+        // `status` replaces the authored placeholder with what the running task
+        // published. A project script names its own steps, so its literal text
+        // wins; otherwise the published locale key is looked up.
         if source == "status" {
-            return Some((
-                context
-                    .interaction
-                    .status_key
-                    .as_deref()
-                    .and_then(|key| context.translations.get(key))
-                    .cloned()
-                    .unwrap_or(text),
-                alignment,
-            ));
+            let published = context
+                .interaction
+                .status_text
+                .clone()
+                .or_else(|| {
+                    context
+                        .interaction
+                        .status_key
+                        .as_deref()
+                        .and_then(|key| context.translations.get(key))
+                        .cloned()
+                })
+                .unwrap_or(text);
+            return Some((published, alignment));
         }
         let value = resolve_value_source(source, node.attribute("value-format"), context)
             .unwrap_or_else(|| "--".to_string());
@@ -3614,8 +3633,35 @@ pub(crate) fn show_page(index: usize) -> Result<()> {
 /// Publishes task progress so the progress pages can draw it.
 pub(crate) fn report_progress(percent: u8, status_key: &str) -> Result<()> {
     update_runtime(|state| {
+        state.interaction.begin_step(percent, status_key);
+        Ok(())
+    })
+}
+
+/// Publishes task progress without changing the published status text.
+pub(crate) fn publish_progress(percent: u8) -> Result<()> {
+    update_runtime(|state| {
         state.interaction.progress = Some(percent.min(100));
-        state.interaction.status_key = Some(status_key.to_string());
+        Ok(())
+    })
+}
+
+/// Publishes literal status text written by a project script.
+///
+/// The text is already localized by the script itself, so it is shown as
+/// written instead of being looked up in the locale table.
+pub(crate) fn publish_status_text(text: &str) -> Result<()> {
+    update_runtime(|state| {
+        state.interaction.status_text = Some(text.to_string());
+        Ok(())
+    })
+}
+
+/// Publishes a locale key a project script chose for the running step.
+pub(crate) fn publish_status_key(key: &str) -> Result<()> {
+    update_runtime(|state| {
+        state.interaction.status_key = Some(key.to_string());
+        state.interaction.status_text = None;
         Ok(())
     })
 }
@@ -4981,6 +5027,71 @@ mod tests {
         let (text, _) = resolved_text_for_node(node, &idle).context("label text missing")?;
         assert_eq!(text, "正在安装 0%");
         Ok(())
+    }
+
+    #[test]
+    fn a_script_step_text_wins_over_the_locale_key() -> anyhow::Result<()> {
+        let files: HashMap<String, Vec<u8>> = HashMap::new();
+        let config = serde_json::json!({});
+        let document = roxmltree::Document::parse(
+            r#"<Page width="200" height="100">
+                 <Label text="@installing_text" value-source="status" />
+               </Page>"#,
+        )?;
+        let page = document
+            .descendants()
+            .find(|node| node.has_tag_name("Page"))
+            .context("page missing")?;
+        let node = page
+            .descendants()
+            .find(|node| node.has_tag_name("Label"))
+            .context("label missing")?;
+        let mut translations = HashMap::new();
+        translations.insert("installing_text".to_string(), "正在安装 0%".to_string());
+        translations.insert(
+            "status.extracting".to_string(),
+            "正在解压文件...".to_string(),
+        );
+        // A script that publishes literal text keeps it on screen even while a
+        // locale key from an earlier step is still recorded.
+        let interaction = InteractionState {
+            status_key: Some("status.extracting".to_string()),
+            status_text: Some("Extracting archive files".to_string()),
+            ..Default::default()
+        };
+        let context = LayoutContext {
+            dpi: DpiContext {
+                scale: 1.0,
+                use_2x: false,
+            },
+            files: &files,
+            config: &config,
+            locale: "zh-CN",
+            translations: &translations,
+            interaction: &interaction,
+            language_menu_open: false,
+        };
+        let (text, _) = resolved_text_for_node(node, &context).context("label text missing")?;
+        assert_eq!(text, "Extracting archive files");
+        Ok(())
+    }
+
+    #[test]
+    fn a_built_in_step_clears_a_script_step_text() {
+        // The built-in steps name themselves from the locale table, so text a
+        // project script published must not survive into them.
+        let interaction = InteractionState {
+            status_text: Some("Extracting archive files".to_string()),
+            status_key: Some("status.checking_processes".to_string()),
+            progress: Some(2),
+            ..Default::default()
+        };
+        let mut interaction = interaction;
+        interaction.begin_step(150, "status.deploying");
+        assert_eq!(interaction.status_text, None);
+        assert_eq!(interaction.status_key.as_deref(), Some("status.deploying"));
+        // Progress is clamped, so a script cannot push the bar past its end.
+        assert_eq!(interaction.progress, Some(100));
     }
 
     #[test]

@@ -58,6 +58,11 @@ Payload 选择不依赖扩展名：`PK` 文件头选择 `zlib-stub-native.exe`�
 运行时语言切换只保留布局、图片、配置和 locale 文件，不会为了重新加载页面而把 payload
 长期保留在内存中。Select 的 Option value 必须对应 locales 目录中的 JSON 文件名。
 
+## 脚本
+
+`scripts/install.rhai` 存在时，安装步骤由脚本决定；`scripts/uninstall.rhai` 存在时，卸载同样
+如此。两者缺失时走内置流程。脚本可用的原语见 [脚本 API](SCRIPT_API.md)。
+
 ## 已打包但尚未执行
 
 以下配置会原样进入 setup，但 native runtime 目前不执行：
@@ -66,7 +71,6 @@ Payload 选择不依赖扩展名：`PK` 文件头选择 `zlib-stub-native.exe`�
 - `links.*`、`validation.*`、`advanced.*`
 - `localization.supported_locales`、`localization.show_language_selector`（当前菜单范围和可见性由 XML Select 决定）
 - `advanced.update_mode_support`（升级是按目标目录的既有安装自动识别的，不读该开关）
-- `scripts/install.rhai`、`scripts/uninstall.rhai`（runtime 尚未接入 Rhai 引擎）
 
 因此不要依据“字段存在”判断功能已经完成。生产状态见
 [当前生产状态](PRODUCTION_STATUS.md)。

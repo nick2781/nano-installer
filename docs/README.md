@@ -12,10 +12,11 @@
 3. [配置参考](CONFIG_REFERENCE.md)
 4. [XML 布局指南](XML_LAYOUT_GUIDE.md)
 5. [本地化](LOCALIZATION.md)
-6. [构建与发布](BUILD_AND_RELEASE.md)
-7. [GUI 构建工具](GUI.md)
-8. [测试计划](TEST_PLAN.md)
-9. [当前生产状态](PRODUCTION_STATUS.md)
+6. [脚本 API](SCRIPT_API.md)
+7. [构建与发布](BUILD_AND_RELEASE.md)
+8. [GUI 构建工具](GUI.md)
+9. [测试计划](TEST_PLAN.md)
+10. [当前生产状态](PRODUCTION_STATUS.md)
 
 ## 设计与兼容性
 
@@ -23,6 +24,6 @@
 - [Windows 兼容性](WINDOWS_COMPATIBILITY.md)
 
 当前能够完成项目收集、payload 格式识别、独立 backend、CLI/GUI 构建、单 EXE 打包和
-原生页面渲染、页面流转与进度显示，以及安装/卸载/升级/回滚流程。项目 Rhai 脚本执行、
-代码签名和 Win7 SP1 虚拟机验收尚未完成，生成的 setup 仍只能在隔离测试环境验证，
-不能用于生产发布。
+原生页面渲染、页面流转与进度显示，以及安装/卸载/升级/回滚流程。项目 Rhai 脚本会替代内置
+步骤执行，见 [脚本 API](SCRIPT_API.md)。代码签名和 Win7 SP1 虚拟机验收尚未完成，生成的
+setup 仍只能在隔离测试环境验证，不能用于生产发布。

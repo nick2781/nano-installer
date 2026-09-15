@@ -42,7 +42,8 @@ GUI 与 CLI 共用 core 项目检查和构建 API，可选择项目/输出路径
 当前可验证原生位图/文字、无边框圆角窗口、拖动、最小化和关闭，以及安装/卸载的页面流转
 与进度显示。安装按钮会真的解压并写入文件、快捷方式和注册表：只能在测试 VM 内、指定一个
 尚不存在的测试安装目录操作；不要在本机对 TapTap 生产环境执行。目标目录已有同一项目的
-安装时按升级处理，项目 Rhai 脚本仍未接入。
+安装时按升级处理。项目带有 `scripts/` 时，安装与卸载步骤由其中的 Rhai 脚本决定，
+见 [脚本 API](SCRIPT_API.md)。
 TapTap 默认路径在 `Program Files`；测试该路径必须在隔离 VM 以管理员身份启动 setup，
 当前版本不会自动弹出 UAC。当前示例 XML 的安装目录是只读文本；如需测试用户可写目录，
 先把 `examples/TapTap/installer_config.json` 中的 `install.default_path` 改为 VM 内尚不存在的

@@ -13,7 +13,7 @@ let uninst_path = path_join(install_path, uninst_name);
 // ═══════════════════════════════════════════
 // Step 1: Kill running process (NSIS: nsProcess::_FindProcess + _KillProcess)
 // ═══════════════════════════════════════════
-set_status("Checking for running processes...");
+set_status_key("status.checking_processes");
 set_progress(2.0);
 if is_process_running(exe_name) {
     log_info("Killing running process: " + exe_name);
@@ -26,7 +26,7 @@ if is_cancelled() { return; }
 // ═══════════════════════════════════════════
 // Step 2: Extract payload (NSIS: nsis7z::ExtractWithCallback)
 // ═══════════════════════════════════════════
-set_status("Extracting files...");
+set_status_key("status.extracting");
 
 if !extract_payload_with_progress(5.0, 50.0) {
     show_error("Installation Error", "Failed to extract files");
@@ -49,18 +49,18 @@ if is_cancelled() { return; }
 // ═══════════════════════════════════════════
 // Step 3: Copy uninstaller (NSIS: File uninst.exe)
 // ═══════════════════════════════════════════
-set_status("Installing uninstaller...");
+set_status_key("status.installing_uninstaller");
 set_progress(55.0);
 copy_uninstaller();
 
 // ═══════════════════════════════════════════
 // Step 4: Create shortcuts (NSIS: CreateShortcut, conditional on checkbox)
 // ═══════════════════════════════════════════
-set_status("Creating shortcuts...");
+set_status_key("status.creating_shortcuts");
 set_progress(60.0);
 
 // Desktop shortcut (conditional on checkbox)
-if get_checkbox_value("desktop_shortcut") {
+if get_checkbox_value("chkShotcut") {
     create_desktop_shortcut(app_name, exe_path);
 }
 
@@ -75,7 +75,7 @@ if is_cancelled() { return; }
 // ═══════════════════════════════════════════
 // Step 5: AutoStart registry (NSIS: CreateAppAutoStart, conditional)
 // ═══════════════════════════════════════════
-if get_checkbox_value("autorun") {
+if get_checkbox_value("chkAutoRun") {
     reg_write_string(
         "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run",
         app_name,
@@ -88,7 +88,7 @@ set_progress(70.0);
 // ═══════════════════════════════════════════
 // Step 6: Write registry (NSIS: CreateUninstall)
 // ═══════════════════════════════════════════
-set_status("Writing registry...");
+set_status_key("status.writing_registry");
 
 // App install path
 reg_write_string("HKLM\\Software\\" + app_name, "InstallPath", install_path);
@@ -111,5 +111,5 @@ set_progress(90.0);
 // ═══════════════════════════════════════════
 shell_notify();
 
-set_status("Installation complete");
+set_status_key("status.install_complete");
 set_progress(100.0);

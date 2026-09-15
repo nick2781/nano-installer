@@ -42,8 +42,12 @@ longer ships are dropped, and a failure restores the previous version. Removal t
 product process, deletes the recorded shortcuts and files, and deletes the declared user data
 unless the keep-data option is selected.
 
-The next implementation stages are Rhai script execution, link input, and production validation on
-a real Windows 7 SP1 VM.
+A project that ships `scripts/install.rhai` or `scripts/uninstall.rhai` runs those scripts instead
+of the built-in steps. The engine is embedded in `nano-installer-core`, so every stub carries it;
+the primitives reuse the same deployment, rollback, and manifest code the built-in flow calls, and
+an operation ceiling keeps a runaway script from hanging an installation.
+
+The next implementation stages are link input and production validation on a real Windows 7 SP1 VM.
 
 ## Bundle caveat
 

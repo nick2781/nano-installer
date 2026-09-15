@@ -96,7 +96,11 @@ cargo clippy --locked --workspace --all-targets -- -D warnings
 任务运行期间向导会切到进度页并实时汇报进度，结束后进入完成页，完成页可以启动刚部署的
 应用。
 
-仍未实现：Rhai 脚本执行、自动 UAC、代码签名，以及 Win7 虚拟机验收。
+项目带有 `scripts/install.rhai` 或 `scripts/uninstall.rhai` 时，安装与卸载步骤由脚本决定，
+脚本调用固定原语，复用与内置流程相同的部署、回滚和 manifest 代码；见
+[脚本 API](docs/SCRIPT_API.md)。
+
+仍未实现：自动 UAC、代码签名，以及 Win7 虚拟机验收。
 
 ## 文档
 
@@ -105,6 +109,7 @@ cargo clippy --locked --workspace --all-targets -- -D warnings
 - [配置参考](docs/CONFIG_REFERENCE.md)
 - [XML 布局指南](docs/XML_LAYOUT_GUIDE.md)
 - [本地化](docs/LOCALIZATION.md)
+- [脚本 API](docs/SCRIPT_API.md)
 - [GUI 构建工具](docs/GUI.md)
 - [构建与发布](docs/BUILD_AND_RELEASE.md)
 - [测试计划](docs/TEST_PLAN.md)

@@ -7,16 +7,16 @@ use windows::core::{HSTRING, PCWSTR};
 use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND, HWND};
 use windows::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_DELAY_UNTIL_REBOOT};
 use windows::Win32::System::Registry::{
-    RegCloseKey, RegCreateKeyExW, RegDeleteKeyW, RegDeleteValueW, RegOpenKeyExW, RegQueryValueExW,
-    RegSetValueExW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_QUERY_VALUE, KEY_READ,
-    KEY_SET_VALUE, KEY_WRITE, REG_CREATED_NEW_KEY, REG_CREATE_KEY_DISPOSITION,
+    RegCloseKey, RegCreateKeyExW, RegDeleteKeyW, RegDeleteTreeW, RegDeleteValueW, RegOpenKeyExW,
+    RegQueryValueExW, RegSetValueExW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_QUERY_VALUE,
+    KEY_READ, KEY_SET_VALUE, KEY_WRITE, REG_CREATED_NEW_KEY, REG_CREATE_KEY_DISPOSITION, REG_DWORD,
     REG_OPTION_NON_VOLATILE, REG_SZ, REG_VALUE_TYPE,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     MessageBoxW, MB_ICONERROR, MB_ICONINFORMATION, MB_OK,
 };
 
-use super::{shell, BundleIndex, RuntimeMode, UI};
+use super::{script, shell, BundleIndex, RuntimeMode, UI};
 
 /// Shortcut and autostart preferences gathered from the installer UI.
 #[derive(Default, Clone)]
@@ -29,9 +29,14 @@ impl InstallSelection {
     fn checked(&self, id: &str, fallback: bool) -> bool {
         self.checkboxes.get(id).copied().unwrap_or(fallback)
     }
+
+    /// The checkbox states the installer UI held when the user started the task.
+    pub(super) fn checkboxes(&self) -> &std::collections::HashMap<String, bool> {
+        &self.checkboxes
+    }
 }
 
-const MANIFEST_NAME: &str = "nano-installer-manifest.json";
+pub(super) const MANIFEST_NAME: &str = "nano-installer-manifest.json";
 static BUSY: AtomicBool = AtomicBool::new(false);
 static STAGING_ID: AtomicU64 = AtomicU64::new(0);
 
@@ -39,10 +44,10 @@ pub(super) fn busy() -> bool {
     BUSY.load(Ordering::Acquire)
 }
 
-struct StagingDirectory(PathBuf);
+pub(super) struct StagingDirectory(pub(super) PathBuf);
 
 impl StagingDirectory {
-    fn create() -> Result<Self> {
+    pub(super) fn create() -> Result<Self> {
         for _ in 0..100 {
             let id = STAGING_ID.fetch_add(1, Ordering::Relaxed);
             let path = std::env::temp_dir()
@@ -166,21 +171,144 @@ fn install_setup(setup: &Path, destination: &Path, selection: &InstallSelection)
     super::report_progress(5, "status.preparing")?;
     let bundle = BundleIndex::read(setup)?.context("installer resource bundle missing")?;
     let config = bundle.read_config()?;
-    let payload_name = config["resources"]["payload_file"]
-        .as_str()
-        .context("resources.payload_file is required")?;
-    if !bundle.contains(payload_name) {
-        bail!("payload missing: {payload_name}");
+    let prep = prepare_install(&bundle, &config, destination)?;
+
+    let stage = StagingDirectory::create()?;
+    let extracted = stage.0.join("files");
+    let backups = stage.0.join("rollback");
+    if bundle.contains(script::INSTALL_SCRIPT) {
+        return script::run_install(script::InstallRequest {
+            setup: setup.to_path_buf(),
+            bundle,
+            config,
+            destination: destination.to_path_buf(),
+            selection: selection.clone(),
+            stage: stage.0.clone(),
+            prep,
+        });
     }
+    super::report_progress(15, "status.extracting")?;
+    let files = extract_payload(setup, &bundle, &config, &stage.0, &extracted)?;
+    super::report_progress(50, "status.deploying")?;
+
+    let exe_name = config["install"]["exe_name"]
+        .as_str()
+        .context("install.exe_name is required")?;
+    // A running instance would keep the destination files locked. Both flags
+    // mean "stop the product first"; they differ only in how strictly the
+    // installer treats a failure to do so.
+    if config["install"]["kill_process_on_install"].as_bool() == Some(true)
+        || config["install"]["detect_running_process"].as_bool() == Some(true)
+    {
+        shell::kill_processes(exe_name)
+            .with_context(|| format!("cannot close the running {exe_name}"))?;
+    }
+    let artifacts = InstallArtifacts::plan(
+        &config,
+        selection,
+        destination,
+        exe_name,
+        prep.previous.as_ref().map(|install| &install.manifest),
+    )?;
+    Deployment {
+        extracted: &extracted,
+        destination,
+        files: &files,
+        uninstaller_name: &prep.uninstaller_name,
+        uninstaller: &prep.uninstaller,
+        root: prep.root,
+        registry_path: &prep.registry_path,
+        previous: prep.previous.as_ref(),
+        backup_root: &backups,
+        artifacts: &artifacts,
+        registry_values: &[],
+        registry_keys: &[],
+    }
+    .run(|| {
+        register_uninstaller(
+            prep.root,
+            &prep.registry_path,
+            destination,
+            &prep.uninstaller_name,
+            &config,
+            prep.upgrade,
+        )
+    })?;
+    super::report_progress(95, "status.finishing")?;
+    super::record_installed_app(destination.join(exe_name))?;
+    super::report_progress(100, "status.install_complete")?;
+    Ok(())
+}
+
+/// A previous installation of this project found at the destination.
+pub(super) struct PreviousInstall {
+    pub(super) files: Vec<PathBuf>,
+    /// Shortcut and autostart entries the previous version recorded.
+    pub(super) manifest: Value,
+}
+
+/// Creates the installation directory and opens a rollback journal for it.
+///
+/// A fresh install gets a directory of its own, so a failed attempt can be
+/// removed whole; an upgrade reuses the existing one and relies on the journal
+/// alone. Either way the directory is validated first, so a relative or
+/// drive-root path is rejected before anything is written.
+pub(super) fn begin_deployment(
+    destination: &Path,
+    backup_root: &Path,
+    previous: Option<&PreviousInstall>,
+) -> Result<RollbackJournal> {
+    validate_destination(destination)?;
+    let fresh = if previous.is_some() {
+        fs::create_dir_all(destination)?;
+        None
+    } else {
+        fs::create_dir_all(
+            destination
+                .parent()
+                .context("installation directory has no parent")?,
+        )?;
+        fs::create_dir(destination).with_context(|| {
+            format!(
+                "installation directory must be new: {}",
+                destination.display()
+            )
+        })?;
+        Some(destination.to_path_buf())
+    };
+    Ok(RollbackJournal::new(backup_root.to_path_buf(), fresh))
+}
+
+/// Everything a deployment needs that does not depend on the payload contents:
+/// the uninstaller to embed, the registry target, and the installation this run
+/// replaces, if any.
+pub(super) struct InstallPrep {
+    pub(super) uninstaller_name: String,
+    pub(super) uninstaller: Vec<u8>,
+    pub(super) root: HKEY,
+    pub(super) registry_path: String,
+    pub(super) previous: Option<PreviousInstall>,
+    pub(super) upgrade: bool,
+}
+
+/// Validates the destination and the bundle before any file is written.
+///
+/// A previous installation of this project at the destination is an upgrade.
+/// Anything else at the destination, or a foreign uninstall key, is refused so
+/// an unrelated installation is never overwritten.
+fn prepare_install(
+    bundle: &BundleIndex,
+    config: &Value,
+    destination: &Path,
+) -> Result<InstallPrep> {
     let uninstaller_name = config["output"]["uninstaller_name"]
         .as_str()
-        .unwrap_or("uninst.exe");
-    super::validate_output_filename(uninstaller_name, "output.uninstaller_name")?;
+        .unwrap_or("uninst.exe")
+        .to_string();
+    super::validate_output_filename(&uninstaller_name, "output.uninstaller_name")?;
     let uninstaller = bundle.read_file(&format!("runtime/{uninstaller_name}"))?;
-    let (root, registry_path) = uninstall_registry_key(&config)?;
-    // An installation of this project may already be present; that is an
-    // upgrade, not an error. Anything else at the destination is left alone.
-    let previous = previous_install(destination, &config)?;
+    let (root, registry_path) = uninstall_registry_key(config)?;
+    let previous = previous_install(destination, config)?;
     let upgrade = previous.is_some();
     if !upgrade && registry_key_exists(root, &registry_path)? {
         bail!("uninstall registry key already exists; refusing to overwrite another installation");
@@ -196,19 +324,43 @@ fn install_setup(setup: &Path, destination: &Path, selection: &InstallSelection)
             );
         }
     }
+    Ok(InstallPrep {
+        uninstaller_name,
+        uninstaller,
+        root,
+        registry_path,
+        previous,
+        upgrade,
+    })
+}
 
-    let stage = StagingDirectory::create()?;
-    let archive = stage.0.join("payload.archive");
-    let extracted = stage.0.join("files");
-    let backups = stage.0.join("rollback");
-    // The payload is streamed straight from the setup image; it never has to
-    // fit in the process address space.
-    super::report_progress(15, "status.extracting")?;
+/// Streams the payload out of the setup image and expands it into `target`.
+///
+/// The payload is copied to disk first and expanded by the stub that matches
+/// its format, so a large archive never has to fit in the process address
+/// space. The expanded file list is validated before it is deployed.
+pub(super) fn extract_payload(
+    setup: &Path,
+    bundle: &BundleIndex,
+    config: &Value,
+    scratch: &Path,
+    target: &Path,
+) -> Result<Vec<PathBuf>> {
+    let payload_name = config["resources"]["payload_file"]
+        .as_str()
+        .context("resources.payload_file is required")?;
+    if !bundle.contains(payload_name) {
+        bail!("payload missing: {payload_name}");
+    }
+    let uninstaller_name = config["output"]["uninstaller_name"]
+        .as_str()
+        .unwrap_or("uninst.exe");
+    let archive = scratch.join("payload.archive");
     bundle.copy_file_to(payload_name, &archive)?;
     let output = std::process::Command::new(setup)
         .arg("--extract")
         .arg(&archive)
-        .arg(&extracted)
+        .arg(target)
         .output()
         .context("failed to start installer extraction backend")?;
     if !output.status.success() {
@@ -217,9 +369,7 @@ fn install_setup(setup: &Path, destination: &Path, selection: &InstallSelection)
             String::from_utf8_lossy(&output.stderr)
         );
     }
-    super::report_progress(50, "status.deploying")?;
-
-    let files = collect_staged_files(&extracted)?;
+    let files = collect_staged_files(target)?;
     if files.is_empty() {
         bail!("payload archive contains no files")
     }
@@ -236,55 +386,7 @@ fn install_setup(setup: &Path, destination: &Path, selection: &InstallSelection)
     if !files.iter().any(|path| path == Path::new(exe_name)) {
         bail!("payload does not contain the configured application executable: {exe_name}")
     }
-    // A running instance would keep the destination files locked. Both flags
-    // mean "stop the product first"; they differ only in how strictly the
-    // installer treats a failure to do so.
-    if config["install"]["kill_process_on_install"].as_bool() == Some(true)
-        || config["install"]["detect_running_process"].as_bool() == Some(true)
-    {
-        shell::kill_processes(exe_name)
-            .with_context(|| format!("cannot close the running {exe_name}"))?;
-    }
-    let artifacts = InstallArtifacts::plan(
-        &config,
-        selection,
-        destination,
-        exe_name,
-        previous.as_ref().map(|install| &install.manifest),
-    )?;
-    Deployment {
-        extracted: &extracted,
-        destination,
-        files: &files,
-        uninstaller_name,
-        uninstaller: &uninstaller,
-        root,
-        registry_path: &registry_path,
-        previous: previous.as_ref(),
-        backup_root: &backups,
-        artifacts: &artifacts,
-    }
-    .run(|| {
-        register_uninstaller(
-            root,
-            &registry_path,
-            destination,
-            uninstaller_name,
-            &config,
-            upgrade,
-        )
-    })?;
-    super::report_progress(95, "status.finishing")?;
-    super::record_installed_app(destination.join(exe_name))?;
-    super::report_progress(100, "status.install_complete")?;
-    Ok(())
-}
-
-/// A previous installation of this project found at the destination.
-struct PreviousInstall {
-    files: Vec<PathBuf>,
-    /// Shortcut and autostart entries the previous version recorded.
-    manifest: Value,
+    Ok(files)
 }
 
 /// Inspects `destination` and reports an existing installation of this project.
@@ -330,7 +432,7 @@ fn previous_install(destination: &Path, config: &Value) -> Result<Option<Previou
     }))
 }
 
-fn registry_root_name(root: windows::Win32::System::Registry::HKEY) -> &'static str {
+pub(super) fn registry_root_name(root: windows::Win32::System::Registry::HKEY) -> &'static str {
     if root == HKEY_CURRENT_USER {
         "HKCU"
     } else {
@@ -339,7 +441,7 @@ fn registry_root_name(root: windows::Win32::System::Registry::HKEY) -> &'static 
 }
 
 /// Validates the manifest file list and returns the stored relative paths.
-fn manifest_file_paths(manifest: &Value) -> Result<Vec<PathBuf>> {
+pub(super) fn manifest_file_paths(manifest: &Value) -> Result<Vec<PathBuf>> {
     let files = manifest["files"]
         .as_array()
         .context("manifest file list missing")?;
@@ -374,6 +476,9 @@ struct Deployment<'a> {
     previous: Option<&'a PreviousInstall>,
     backup_root: &'a Path,
     artifacts: &'a InstallArtifacts,
+    /// Registry entries a project script wrote, replayed by the uninstaller.
+    registry_values: &'a [(String, String)],
+    registry_keys: &'a [String],
 }
 
 impl Deployment<'_> {
@@ -381,27 +486,7 @@ impl Deployment<'_> {
     /// previous state: a fresh install is removed, an upgrade is rolled back
     /// from the journal.
     fn run(self, register: impl FnOnce() -> Result<()>) -> Result<()> {
-        validate_destination(self.destination)?;
-        if self.previous.is_some() {
-            fs::create_dir_all(self.destination)?;
-        } else {
-            fs::create_dir_all(
-                self.destination
-                    .parent()
-                    .context("installation directory has no parent")?,
-            )?;
-            fs::create_dir(self.destination).with_context(|| {
-                format!(
-                    "installation directory must be new: {}",
-                    self.destination.display()
-                )
-            })?;
-        }
-        let fresh = self
-            .previous
-            .is_none()
-            .then(|| self.destination.to_path_buf());
-        let mut journal = RollbackJournal::new(self.backup_root.to_path_buf(), fresh);
+        let mut journal = begin_deployment(self.destination, self.backup_root, self.previous)?;
         let result = self.deploy(&mut journal, register);
         if result.is_err() {
             journal.rollback();
@@ -415,53 +500,118 @@ impl Deployment<'_> {
         journal: &mut RollbackJournal,
         register: impl FnOnce() -> Result<()>,
     ) -> Result<()> {
-        // Artifacts outside the installation directory are created before the
-        // manifest so a failure can still undo them.
-        for relative in self.files {
-            let source = self.extracted.join(relative);
-            let target = self.destination.join(relative);
-            fs::create_dir_all(target.parent().context("payload target has no parent")?)?;
-            journal.track(&target)?;
-            fs::copy(source, target)?;
-        }
+        deploy_files(
+            self.extracted,
+            self.destination,
+            self.files,
+            self.previous,
+            journal,
+        )?;
         let uninstaller = self.destination.join(self.uninstaller_name);
         journal.track(&uninstaller)?;
         fs::write(&uninstaller, self.uninstaller)?;
 
-        // Drop files the previous version shipped that the new payload no
-        // longer contains. Files this installer never wrote are left alone.
-        if let Some(previous) = self.previous {
-            for relative in &previous.files {
-                if self.files.iter().any(|path| path == relative) {
-                    continue;
-                }
-                let target = self.destination.join(relative);
-                if !target.is_file() {
-                    continue;
-                }
-                journal.track(&target)?;
-                fs::remove_file(&target)?;
-            }
-        }
-
         self.artifacts.apply(journal)?;
 
-        journal.track(&self.destination.join(MANIFEST_NAME))?;
-        let manifest = json!({
-            "version": 1,
-            "registry_root": registry_root_name(self.root),
-            "registry_path": self.registry_path,
-            "files": self.files.iter().map(|path| path.to_string_lossy().to_string()).collect::<Vec<_>>(),
-            "shortcuts": self.artifacts.shortcut_paths(),
-            "shortcut_dirs": self.artifacts.shortcut_dir_paths(),
-            "autostart": self.artifacts.autostart_json(),
-        });
-        fs::write(
-            self.destination.join(MANIFEST_NAME),
-            serde_json::to_vec_pretty(&manifest)?,
+        write_manifest(
+            self.destination,
+            journal,
+            registry_root_name(self.root),
+            self.registry_path,
+            self.files,
+            &ManifestArtifacts {
+                shortcuts: self.artifacts.shortcut_paths(),
+                shortcut_dirs: self.artifacts.shortcut_dir_paths(),
+                autostart: self.artifacts.autostart_json(),
+                registry_values: self
+                    .registry_values
+                    .iter()
+                    .map(|(path, name)| (path.clone(), name.clone()))
+                    .collect(),
+                registry_keys: self.registry_keys.to_vec(),
+            },
         )?;
         register()
     }
+}
+
+/// The entries beside the deployed files that an uninstall has to replay.
+pub(super) struct ManifestArtifacts {
+    pub(super) shortcuts: Vec<String>,
+    pub(super) shortcut_dirs: Vec<String>,
+    pub(super) autostart: Value,
+    /// Registry values a project script wrote, as `(key, value name)`.
+    pub(super) registry_values: Vec<(String, String)>,
+    /// Registry keys a project script created, including their subkeys.
+    pub(super) registry_keys: Vec<String>,
+}
+
+/// Writes the manifest the uninstaller replays.
+///
+/// `files` holds paths relative to `destination`; the uninstaller joins them
+/// back onto its own directory, so an installation stays relocatable.
+pub(super) fn write_manifest(
+    destination: &Path,
+    journal: &mut RollbackJournal,
+    registry_root: &str,
+    registry_path: &str,
+    files: &[PathBuf],
+    artifacts: &ManifestArtifacts,
+) -> Result<()> {
+    let manifest = json!({
+        "version": 1,
+        "registry_root": registry_root,
+        "registry_path": registry_path,
+        "files": files.iter().map(|path| path.to_string_lossy().to_string()).collect::<Vec<_>>(),
+        "shortcuts": artifacts.shortcuts,
+        "shortcut_dirs": artifacts.shortcut_dirs,
+        "autostart": artifacts.autostart,
+        "registry_values": artifacts
+            .registry_values
+            .iter()
+            .map(|(path, name)| json!({"path": path, "name": name}))
+            .collect::<Vec<_>>(),
+        "registry_keys": artifacts.registry_keys,
+    });
+    let target = destination.join(MANIFEST_NAME);
+    journal.track(&target)?;
+    fs::write(target, serde_json::to_vec_pretty(&manifest)?)?;
+    Ok(())
+}
+
+/// Copies the expanded payload into `destination`, replacing the same relative
+/// paths and dropping files the previous version shipped but this one does not.
+///
+/// Every target is journaled first, so a failure part-way through restores what
+/// was there before. Files this installer never wrote are left alone.
+pub(super) fn deploy_files(
+    extracted: &Path,
+    destination: &Path,
+    files: &[PathBuf],
+    previous: Option<&PreviousInstall>,
+    journal: &mut RollbackJournal,
+) -> Result<()> {
+    for relative in files {
+        let source = extracted.join(relative);
+        let target = destination.join(relative);
+        fs::create_dir_all(target.parent().context("payload target has no parent")?)?;
+        journal.track(&target)?;
+        fs::copy(source, target)?;
+    }
+    if let Some(previous) = previous {
+        for relative in &previous.files {
+            if files.iter().any(|path| path == relative) {
+                continue;
+            }
+            let target = destination.join(relative);
+            if !target.is_file() {
+                continue;
+            }
+            journal.track(&target)?;
+            fs::remove_file(&target)?;
+        }
+    }
+    Ok(())
 }
 
 /// Non-payload artifacts an install creates: shortcuts and an autostart entry.
@@ -717,7 +867,7 @@ impl InstallArtifacts {
 }
 
 /// The shortcut files an earlier install recorded in its manifest.
-fn recorded_shortcuts(manifest: &Value) -> Vec<PathBuf> {
+pub(super) fn recorded_shortcuts(manifest: &Value) -> Vec<PathBuf> {
     manifest["shortcuts"]
         .as_array()
         .map(|shortcuts| {
@@ -778,7 +928,7 @@ impl ShortcutPlan {
 }
 
 /// Records every file a deployment is about to change so it can be undone.
-struct RollbackJournal {
+pub(super) struct RollbackJournal {
     backup_root: PathBuf,
     counter: usize,
     entries: Vec<JournalEntry>,
@@ -794,7 +944,7 @@ struct JournalEntry {
 }
 
 impl RollbackJournal {
-    fn new(backup_root: PathBuf, fresh_destination: Option<PathBuf>) -> Self {
+    pub(super) fn new(backup_root: PathBuf, fresh_destination: Option<PathBuf>) -> Self {
         Self {
             backup_root,
             counter: 0,
@@ -804,7 +954,7 @@ impl RollbackJournal {
     }
 
     /// Records `target` before it is created, overwritten, or removed.
-    fn track(&mut self, target: &Path) -> Result<()> {
+    pub(super) fn track(&mut self, target: &Path) -> Result<()> {
         let backup = if target.is_file() {
             fs::create_dir_all(&self.backup_root)?;
             let backup = self.backup_root.join(format!("entry-{}", self.counter));
@@ -825,7 +975,7 @@ impl RollbackJournal {
 
     /// Undoes the tracked changes in reverse order. Best effort: a partially
     /// restored directory is still better than a half-written install.
-    fn rollback(&self) {
+    pub(super) fn rollback(&self) {
         if let Some(destination) = &self.fresh_destination {
             let _ = fs::remove_dir_all(destination);
         }
@@ -844,7 +994,7 @@ impl RollbackJournal {
     }
 }
 
-fn validate_destination(destination: &Path) -> Result<()> {
+pub(super) fn validate_destination(destination: &Path) -> Result<()> {
     if !destination.is_absolute() || destination.parent().is_none() {
         bail!("install path must be an absolute directory below a drive root")
     }
@@ -863,7 +1013,7 @@ fn validate_destination(destination: &Path) -> Result<()> {
     Ok(())
 }
 
-fn collect_staged_files(root: &Path) -> Result<Vec<PathBuf>> {
+pub(super) fn collect_staged_files(root: &Path) -> Result<Vec<PathBuf>> {
     fn visit(root: &Path, current: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
         for entry in fs::read_dir(current)? {
             let entry = entry?;
@@ -889,7 +1039,7 @@ fn collect_staged_files(root: &Path) -> Result<Vec<PathBuf>> {
 ///
 /// Only paths that expand to a real location below a known user profile are
 /// returned, so a broad pattern can never delete an unrelated directory.
-fn preserved_data_paths(config: &Value) -> Result<Vec<PathBuf>> {
+pub(super) fn preserved_data_paths(config: &Value) -> Result<Vec<PathBuf>> {
     let configured = config["uninstall"]["data_paths"]
         .as_array()
         .map(|paths| {
@@ -912,7 +1062,7 @@ fn preserved_data_paths(config: &Value) -> Result<Vec<PathBuf>> {
 }
 
 /// Reads a single `REG_SZ` value, returning `None` when it is absent.
-fn read_registry_string(root: HKEY, path: &str, name: &str) -> Result<Option<String>> {
+pub(super) fn read_registry_string(root: HKEY, path: &str, name: &str) -> Result<Option<String>> {
     let mut key = Default::default();
     let opened = unsafe {
         RegOpenKeyExW(
@@ -977,7 +1127,7 @@ fn read_registry_string(root: HKEY, path: &str, name: &str) -> Result<Option<Str
 }
 
 /// Writes a single `REG_SZ` value, creating the key when needed.
-fn write_registry_string(root: HKEY, path: &str, name: &str, value: &str) -> Result<()> {
+pub(super) fn write_registry_string(root: HKEY, path: &str, name: &str, value: &str) -> Result<()> {
     let mut key = Default::default();
     unsafe {
         RegCreateKeyExW(
@@ -1005,8 +1155,69 @@ fn write_registry_string(root: HKEY, path: &str, name: &str, value: &str) -> Res
     Ok(())
 }
 
+/// Writes a single `REG_DWORD` value, creating the key when needed.
+pub(super) fn write_registry_dword(root: HKEY, path: &str, name: &str, value: u32) -> Result<()> {
+    let mut key = Default::default();
+    unsafe {
+        RegCreateKeyExW(
+            root,
+            PCWSTR(wide(path).as_ptr()),
+            0,
+            PCWSTR::null(),
+            REG_OPTION_NON_VOLATILE,
+            KEY_SET_VALUE,
+            None,
+            &mut key,
+            None,
+        )
+        .ok()?;
+    }
+    let bytes = value.to_le_bytes();
+    let status =
+        unsafe { RegSetValueExW(key, PCWSTR(wide(name).as_ptr()), 0, REG_DWORD, Some(&bytes)) };
+    unsafe {
+        let _ = RegCloseKey(key);
+    }
+    status.ok()?;
+    Ok(())
+}
+
+/// Deletes a whole key and its subkeys; a missing key is not an error.
+pub(super) fn delete_registry_key(root: HKEY, path: &str) -> Result<()> {
+    let status = unsafe { RegDeleteTreeW(root, PCWSTR(wide(path).as_ptr())) };
+    if status != ERROR_FILE_NOT_FOUND && status != ERROR_PATH_NOT_FOUND {
+        status.ok()?;
+    }
+    Ok(())
+}
+
+/// Removes the registry entries a project script recorded in the manifest.
+///
+/// Values are deleted before keys: a key recorded for a product also holds the
+/// values recorded for it, so removing the key first would make the value
+/// deletion a no-op and leave nothing behind either way.
+fn remove_recorded_registry(manifest: &Value) {
+    if let Some(values) = manifest["registry_values"].as_array() {
+        for value in values {
+            let (Some(path), Some(name)) = (value["path"].as_str(), value["name"].as_str()) else {
+                continue;
+            };
+            if let Ok((root, path)) = registry_path(path) {
+                let _ = delete_registry_value(root, &path, name);
+            }
+        }
+    }
+    if let Some(keys) = manifest["registry_keys"].as_array() {
+        for key in keys.iter().filter_map(Value::as_str) {
+            if let Ok((root, path)) = registry_path(key) {
+                let _ = delete_registry_key(root, &path);
+            }
+        }
+    }
+}
+
 /// Deletes a single value; a missing key or value is not an error.
-fn delete_registry_value(root: HKEY, path: &str, name: &str) -> Result<()> {
+pub(super) fn delete_registry_value(root: HKEY, path: &str, name: &str) -> Result<()> {
     let mut key = Default::default();
     let opened = unsafe {
         RegOpenKeyExW(
@@ -1031,7 +1242,7 @@ fn delete_registry_value(root: HKEY, path: &str, name: &str) -> Result<()> {
     Ok(())
 }
 
-fn uninstall_registry_key(
+pub(super) fn uninstall_registry_key(
     config: &Value,
 ) -> Result<(windows::Win32::System::Registry::HKEY, String)> {
     let configured = config["registry"]["uninstall_key"]
@@ -1048,7 +1259,7 @@ fn uninstall_registry_key(
     registry_path(&configured)
 }
 
-fn registry_path(raw: &str) -> Result<(windows::Win32::System::Registry::HKEY, String)> {
+pub(super) fn registry_path(raw: &str) -> Result<(windows::Win32::System::Registry::HKEY, String)> {
     let mut parts = raw.split('\\').filter(|part| !part.is_empty());
     let root = match parts
         .next()
@@ -1067,11 +1278,14 @@ fn registry_path(raw: &str) -> Result<(windows::Win32::System::Registry::HKEY, S
     Ok((root, path))
 }
 
-fn wide(value: &str) -> Vec<u16> {
+pub(super) fn wide(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
-fn registry_key_exists(root: windows::Win32::System::Registry::HKEY, path: &str) -> Result<bool> {
+pub(super) fn registry_key_exists(
+    root: windows::Win32::System::Registry::HKEY,
+    path: &str,
+) -> Result<bool> {
     let mut key = Default::default();
     let result = unsafe { RegOpenKeyExW(root, PCWSTR(wide(path).as_ptr()), 0, KEY_READ, &mut key) };
     if result == ERROR_FILE_NOT_FOUND || result == ERROR_PATH_NOT_FOUND {
@@ -1084,7 +1298,34 @@ fn registry_key_exists(root: windows::Win32::System::Registry::HKEY, path: &str)
     Ok(true)
 }
 
-fn register_uninstaller(
+pub(super) fn register_uninstaller(
+    root: windows::Win32::System::Registry::HKEY,
+    path: &str,
+    destination: &Path,
+    uninstaller_name: &str,
+    config: &Value,
+    upgrade: bool,
+) -> Result<()> {
+    write_uninstall_registration(root, path, destination, uninstaller_name, config, upgrade)
+}
+
+/// Writes the uninstall registration over a key the project owns already.
+///
+/// A project script may write the same key itself to add its own fields, so the
+/// script path reaches this instead of `register_uninstaller`. The key can only
+/// be this project's: `prepare_install` refused a foreign one before the script
+/// ran, and an upgrade is allowed to replace its own.
+pub(super) fn rewrite_uninstall_registration(
+    root: windows::Win32::System::Registry::HKEY,
+    path: &str,
+    destination: &Path,
+    uninstaller_name: &str,
+    config: &Value,
+) -> Result<()> {
+    write_uninstall_registration(root, path, destination, uninstaller_name, config, true)
+}
+
+fn write_uninstall_registration(
     root: windows::Win32::System::Registry::HKEY,
     path: &str,
     destination: &Path,
@@ -1181,9 +1422,8 @@ fn uninstall(uninstaller: &Path, keep_data: bool) -> Result<()> {
         .file_name()
         .and_then(|name| name.to_str())
         .context("uninstaller filename is not Unicode")?;
-    let config = BundleIndex::read(uninstaller)?
-        .context("uninstaller bundle missing")?
-        .read_config()?;
+    let bundle = BundleIndex::read(uninstaller)?.context("uninstaller bundle missing")?;
+    let config = bundle.read_config()?;
     if configured_name
         != config["output"]["uninstaller_name"]
             .as_str()
@@ -1204,6 +1444,20 @@ fn uninstall(uninstaller: &Path, keep_data: bool) -> Result<()> {
     let exe_name = config["install"]["exe_name"]
         .as_str()
         .context("install.exe_name is required")?;
+    if bundle.contains(script::UNINSTALL_SCRIPT) {
+        let stage = StagingDirectory::create()?;
+        return script::run_uninstall(script::UninstallRequest {
+            uninstaller: uninstaller.to_path_buf(),
+            bundle,
+            config,
+            destination: destination.to_path_buf(),
+            manifest,
+            keep_data,
+            stage: stage.0.clone(),
+            root,
+            registry_path: expected_path,
+        });
+    }
     if config["install"]["kill_process_on_uninstall"].as_bool() == Some(true)
         || config["install"]["detect_running_process"].as_bool() == Some(true)
     {
@@ -1211,25 +1465,45 @@ fn uninstall(uninstaller: &Path, keep_data: bool) -> Result<()> {
             .with_context(|| format!("cannot close the running {exe_name}"))?;
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
-    InstallArtifacts::remove_recorded(&manifest);
     super::report_progress(45, "uninstall.status.removing_shortcuts")?;
+    remove_recorded_artifacts(&manifest);
     if !keep_data {
-        for data_path in preserved_data_paths(&config)? {
-            super::report_progress(60, "uninstall.status.removing_user_data")?;
-            if data_path.is_dir() {
-                fs::remove_dir_all(&data_path)
-                    .with_context(|| format!("failed to remove {}", data_path.display()))?;
-            } else if data_path.is_file() {
-                fs::remove_file(&data_path)?;
-            }
+        super::report_progress(60, "uninstall.status.removing_user_data")?;
+        remove_user_data(&config)?;
+    }
+    super::report_progress(75, "uninstall.status.removing_files")?;
+    remove_installed_files(destination, &manifest)?;
+    super::report_progress(90, "uninstall.status.finishing")?;
+    finish_uninstall(destination, uninstaller, root, &expected_path)?;
+    shell::notify_shell();
+    super::report_progress(100, "uninstall.status.complete")?;
+    Ok(())
+}
+
+/// Removes the shortcut, autostart, and registry entries the manifest records.
+pub(super) fn remove_recorded_artifacts(manifest: &Value) {
+    InstallArtifacts::remove_recorded(manifest);
+    remove_recorded_registry(manifest);
+}
+
+/// Deletes the per-user data directories `uninstall.data_paths` names.
+pub(super) fn remove_user_data(config: &Value) -> Result<()> {
+    for data_path in preserved_data_paths(config)? {
+        if data_path.is_dir() {
+            fs::remove_dir_all(&data_path)
+                .with_context(|| format!("failed to remove {}", data_path.display()))?;
+        } else if data_path.is_file() {
+            fs::remove_file(&data_path)?;
         }
     }
-    let paths = manifest_file_paths(&manifest)?
-        .into_iter()
-        .map(|relative| destination.join(relative))
-        .collect::<Vec<_>>();
-    super::report_progress(75, "uninstall.status.removing_files")?;
-    for path in paths {
+    Ok(())
+}
+
+/// Deletes the deployed files the manifest lists, then the directories that
+/// held only them. Directories that still hold anything are left in place.
+pub(super) fn remove_installed_files(destination: &Path, manifest: &Value) -> Result<()> {
+    for relative in manifest_file_paths(manifest)? {
+        let path = destination.join(relative);
         if path.is_file() {
             fs::remove_file(&path)?;
         }
@@ -1241,24 +1515,37 @@ fn uninstall(uninstaller: &Path, keep_data: bool) -> Result<()> {
             let _ = fs::remove_dir(parent);
         }
     }
-    // The running executable is still locked, so it is deleted on the next
-    // reboot; everything else in the directory is already gone.
+    Ok(())
+}
+
+/// Removes the uninstall registration and the manifest itself.
+///
+/// The running executable is still locked, so it is deleted on the next reboot;
+/// everything else in the directory is already gone by this point.
+pub(super) fn finish_uninstall(
+    destination: &Path,
+    uninstaller: &Path,
+    root: HKEY,
+    registry_path: &str,
+) -> Result<()> {
+    // Scheduling the deletion needs write access to the pending file rename
+    // list, which a non-elevated uninstall does not have. Locking the running
+    // uninstaller out of its own removal is expected; aborting here would be
+    // worse, because the registration below would survive a finished uninstall.
     unsafe {
-        MoveFileExW(
+        let _ = MoveFileExW(
             PCWSTR(wide(&uninstaller.display().to_string()).as_ptr()),
             PCWSTR::null(),
             MOVEFILE_DELAY_UNTIL_REBOOT,
-        )?;
+        );
     }
     unsafe {
-        let status = RegDeleteKeyW(root, PCWSTR(wide(&expected_path).as_ptr()));
+        let status = RegDeleteKeyW(root, PCWSTR(wide(registry_path).as_ptr()));
         if status != ERROR_FILE_NOT_FOUND && status != ERROR_PATH_NOT_FOUND {
             status.ok()?;
         }
     }
-    fs::remove_file(manifest_file)?;
-    shell::notify_shell();
-    super::report_progress(100, "uninstall.status.complete")?;
+    fs::remove_file(destination.join(MANIFEST_NAME))?;
     Ok(())
 }
 
@@ -1323,6 +1610,8 @@ mod tests {
             previous,
             backup_root,
             artifacts: &artifacts,
+            registry_values: &[],
+            registry_keys: &[],
         }
         .run(register)
     }

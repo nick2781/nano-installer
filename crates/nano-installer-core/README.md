@@ -8,8 +8,8 @@ This x64/Unicode runtime targets Windows 7 SP1 and later. It uses only:
 - a self-contained project bundle appended to the generated executable.
 
 It intentionally does not depend on `nano-installer-lib`, eframe, egui, winit, glutin, OpenGL,
-Taffy, Rhai, or the Rust image crate. The native builder currently uses `roxmltree` and
-`serde_json` to validate the first implementation slice.
+Taffy, or the Rust image crate. `roxmltree`, `serde_json`, and `rhai` cover layout parsing,
+configuration, and project script execution.
 
 ```text
 crates/
@@ -55,5 +55,7 @@ tracked as release metrics rather than documented here.
 
 The backend executables securely extract real 7z and ZIP archives for the install action. Core
 records deployed files, shortcuts, and autostart entries in a manifest, backs up replaced files for
-rollback, and writes an uninstall registry key; the uninstaller removes only tracked files. Project
-Rhai script execution, cancellation, automatic UAC, and code signing remain open.
+rollback, and writes an uninstall registry key; the uninstaller removes only tracked files. A
+project that ships `scripts/install.rhai` or `scripts/uninstall.rhai` runs those scripts through
+fixed primitives instead of the built-in steps. Cancellation, automatic UAC, and code signing
+remain open.

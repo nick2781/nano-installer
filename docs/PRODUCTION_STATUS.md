@@ -17,13 +17,13 @@
 - 首屏 XML 位图与 Unicode locale 文字原生渲染。
 - 无边框圆角、拖动、最小化和关闭。
 - 单一 Win7 SP1+ x64 release 和 PE import audit。
+- 项目 `scripts/install.rhai` 与 `scripts/uninstall.rhai` 由内嵌 Rhai 引擎执行，脚本原语复用
+  与内置流程相同的部署、回滚与 manifest 代码；脚本失败回滚，脚本漏调清单删除时由库回退。
 
 生产阻塞项：
 
-1. 项目 Rhai 脚本执行尚未接入。`scripts/install.rhai` 与 `scripts/uninstall.rhai` 会被
-   打包进 setup，但 runtime 不会执行，安装步骤仍由内置流程完成。
-2. Authenticode 双重签名尚未接入，缺少签名证书。
-3. 尚未通过真实 Win7 SP1 VM 端到端验收。
+1. Authenticode 双重签名尚未接入，缺少签名证书。
+2. 尚未通过真实 Win7 SP1 VM 端到端验收。
 
 已完成的门禁（保留在此以便对照）：
 
@@ -36,5 +36,6 @@
   结束后切到完成页，完成页的 `launch_app` 会启动刚部署的 EXE。
 - 流式布局已覆盖 VBox、HBox、Content 的嵌套摆放，以及 `padding`、`margin`、百分比尺寸、
   `justify-content` 与 `align-items`。
+- runtime stub 内嵌 Rhai 引擎，三个 stub 的体积随之增大（约 0.57-0.66 MB 增至约 1.8-1.9 MB）。
 
 完成这些门禁后，生产项目才能按照 `examples/TapTap` 的结构接入。

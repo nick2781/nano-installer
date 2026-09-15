@@ -55,7 +55,8 @@ impl Drop for OwnedHandle {
 /// between the snapshot and the open is skipped: that is the outcome the caller
 /// wanted. A process that cannot be opened at all is reported, because leaving
 /// it running would keep the destination locked.
-pub(super) fn kill_processes(exe_name: &str) -> Result<u32> {
+/// Calls `visit` with the image name and process id of every running process.
+fn for_each_process(mut visit: impl FnMut(&str, u32) -> Result<()>) -> Result<()> {
     let snapshot = OwnedHandle(
         unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) }
             .context("failed to enumerate running processes")?,
@@ -64,7 +65,6 @@ pub(super) fn kill_processes(exe_name: &str) -> Result<u32> {
         dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
         ..Default::default()
     };
-    let mut killed = 0;
     let mut more = unsafe { Process32FirstW(snapshot.0, &mut entry) }.is_ok();
     while more {
         let name = String::from_utf16_lossy(
@@ -74,21 +74,43 @@ pub(super) fn kill_processes(exe_name: &str) -> Result<u32> {
                 .next()
                 .unwrap_or(&[]),
         );
-        if name.eq_ignore_ascii_case(exe_name) {
-            match unsafe { OpenProcess(PROCESS_TERMINATE, FALSE, entry.th32ProcessID) } {
-                Ok(process) => {
-                    let process = OwnedHandle(process);
-                    if unsafe { TerminateProcess(process.0, 1) }.is_ok() {
-                        killed += 1;
-                    }
-                }
-                // The process exited after the snapshot was taken.
-                Err(error) if error.code() != ERROR_ACCESS_DENIED.into() => {}
-                Err(_) => bail!("cannot terminate {name}: access denied"),
-            }
-        }
+        visit(&name, entry.th32ProcessID)?;
         more = unsafe { Process32NextW(snapshot.0, &mut entry) }.is_ok();
     }
+    Ok(())
+}
+
+/// Reports whether a process with an image name matching `exe_name` is running.
+pub(super) fn process_running(exe_name: &str) -> Result<bool> {
+    let mut running = false;
+    for_each_process(|name, _| {
+        if name.eq_ignore_ascii_case(exe_name) {
+            running = true;
+        }
+        Ok(())
+    })?;
+    Ok(running)
+}
+
+pub(super) fn kill_processes(exe_name: &str) -> Result<u32> {
+    let mut killed = 0;
+    for_each_process(|name, process_id| {
+        if !name.eq_ignore_ascii_case(exe_name) {
+            return Ok(());
+        }
+        match unsafe { OpenProcess(PROCESS_TERMINATE, FALSE, process_id) } {
+            Ok(process) => {
+                let process = OwnedHandle(process);
+                if unsafe { TerminateProcess(process.0, 1) }.is_ok() {
+                    killed += 1;
+                }
+            }
+            // The process exited after the snapshot was taken.
+            Err(error) if error.code() != ERROR_ACCESS_DENIED.into() => {}
+            Err(_) => bail!("cannot terminate {name}: access denied"),
+        }
+        Ok(())
+    })?;
     Ok(killed)
 }
 

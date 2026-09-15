@@ -104,7 +104,11 @@ Removal closes the product, deletes only manifest-tracked files, and honors the 
 The wizard switches to its progress page while a task runs and reports live progress, then moves to
 the finish page, which can launch the deployed application.
 
-Still open: Rhai script execution, automatic UAC, code signing, and Windows 7 VM acceptance.
+A project that ships `scripts/install.rhai` or `scripts/uninstall.rhai` runs those scripts instead
+of the built-in steps. The scripts call fixed primitives that reuse the same deployment, rollback,
+and manifest code; see [Script API](docs/SCRIPT_API.md).
+
+Still open: automatic UAC, code signing, and Windows 7 VM acceptance.
 
 ## Documentation
 
@@ -113,6 +117,7 @@ Still open: Rhai script execution, automatic UAC, code signing, and Windows 7 VM
 - [Configuration reference](docs/CONFIG_REFERENCE.md)
 - [XML layout guide](docs/XML_LAYOUT_GUIDE.md)
 - [Localization](docs/LOCALIZATION.md)
+- [Script API](docs/SCRIPT_API.md)
 - [GUI builder](docs/GUI.md)
 - [Build and release](docs/BUILD_AND_RELEASE.md)
 - [Test plan](docs/TEST_PLAN.md)

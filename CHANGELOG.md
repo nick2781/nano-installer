@@ -24,18 +24,23 @@
 - `value-source="status"` 让进度页显示运行时发布的 locale 键，`action="finish"` 与
   `action="launch_app"` 分别对应关闭窗口和启动已安装应用。
 - 11 个 locale 补齐 `status.extracting`、`status.deploying`、`status.finishing`。
+- 接入项目 Rhai 脚本：`scripts/install.rhai` 与 `scripts/uninstall.rhai` 存在时，安装与卸载
+  步骤由脚本决定，原语复用内置流程的部署、回滚与 manifest 代码。脚本失败回滚本次改动；
+  卸载脚本漏调 `run_tracked_uninstall` 时由库回退清理，产品不会残留。
+- `set_status_key` 让脚本步骤文案走 locale，`set_status` 仍显示字面文本；11 个 locale 补齐
+  `status.checking_processes`、`status.installing_uninstaller`、`status.creating_shortcuts`、
+  `status.writing_registry` 与 `uninstall.status.cleaning_game_data`。
 
 ### 已验证
 
 - `cargo fmt --all -- --check`、`cargo clippy --locked --workspace --all-targets -- -D warnings`、
-  `cargo test --locked --workspace`（43 个 core 测试、12 个 GUI 测试、2 个 stub 测试）。
+  `cargo test --locked --workspace`（53 个 core 测试、12 个 GUI 测试、2 个 stub 测试）。
 - `scripts/build.ps1` 全量构建、ZIP/7z backend smoke test 与 Win7 PE 导入审计。
 - CLI 与 GUI 产物内嵌 16/24/32/48/64/128/256 七种尺寸图标，逐尺寸与各自 branding PNG
   缩放结果比对；三个原始 stub 无图标和版本资源。
 
 ### 未完成
 
-- 项目 Rhai 脚本执行。
 - 无代码签名；未通过真实 Windows 7 SP1 虚拟机端到端验收。
 
 ## [2026.9.15]
