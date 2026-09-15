@@ -30,13 +30,18 @@ HBox/Content flex subset, checkbox and expandable-panel interaction, static link
 runtime locale switching, locale key resolution, a borderless rounded window, taskbar icon,
 double-buffered GDI painting, dragging, minimize, and close actions.
 
-The next implementation stages are complete nested layout, link input, page transitions,
-upgrades, task progress, complete rollback, script execution, shortcuts, and production validation
-of the basic manifest-driven installation and removal workflow.
+Installation deploys the payload, writes the manifest and uninstall registration, and creates the
+configured shortcuts and autostart value. A destination that already holds this project is treated
+as an upgrade: replaced files are backed up through a rollback journal, files the new payload no
+longer ships are dropped, and a failure restores the previous version. Removal terminates the
+product process, deletes the recorded shortcuts and files, and deletes the declared user data
+unless the keep-data option is selected.
+
+The next implementation stages are complete nested layout, link input, page transitions, task
+progress, Rhai script execution, and production validation on a real Windows 7 SP1 VM.
 
 ## Bundle caveat
 
-The validation bundle currently stores resources and payload without another compression layer;
-the payload remains in its original ZIP or 7z form. Runtime startup currently reads the complete
-bundle once, then releases payload bytes before entering the UI loop. Before production use,
-payload access should use offsets or memory mapping so startup does not duplicate the full payload.
+The validation bundle stores resources and payload without another compression layer; the payload
+remains in its original ZIP or 7z form. The runtime indexes the bundle footer and reads individual
+entries by offset, so startup no longer loads the full payload into memory.

@@ -7,15 +7,29 @@ use windows::core::{HSTRING, PCWSTR};
 use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND, HWND};
 use windows::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_DELAY_UNTIL_REBOOT};
 use windows::Win32::System::Registry::{
-    RegCloseKey, RegCreateKeyExW, RegDeleteKeyW, RegOpenKeyExW, RegSetValueExW, HKEY_CURRENT_USER,
-    HKEY_LOCAL_MACHINE, KEY_READ, KEY_WRITE, REG_CREATED_NEW_KEY, REG_CREATE_KEY_DISPOSITION,
-    REG_OPTION_NON_VOLATILE, REG_SZ,
+    RegCloseKey, RegCreateKeyExW, RegDeleteKeyW, RegDeleteValueW, RegOpenKeyExW, RegQueryValueExW,
+    RegSetValueExW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_QUERY_VALUE, KEY_READ,
+    KEY_SET_VALUE, KEY_WRITE, REG_CREATED_NEW_KEY, REG_CREATE_KEY_DISPOSITION,
+    REG_OPTION_NON_VOLATILE, REG_SZ, REG_VALUE_TYPE,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     MessageBoxW, PostMessageW, MB_ICONERROR, MB_ICONINFORMATION, MB_OK, WM_CLOSE,
 };
 
-use super::{BundleIndex, RuntimeMode, UI};
+use super::{shell, BundleIndex, RuntimeMode, UI};
+
+/// Shortcut and autostart preferences gathered from the installer UI.
+#[derive(Default, Clone)]
+pub(super) struct InstallSelection {
+    destination: Option<String>,
+    checkboxes: std::collections::HashMap<String, bool>,
+}
+
+impl InstallSelection {
+    fn checked(&self, id: &str, fallback: bool) -> bool {
+        self.checkboxes.get(id).copied().unwrap_or(fallback)
+    }
+}
 
 const MANIFEST_NAME: &str = "nano-installer-manifest.json";
 static BUSY: AtomicBool = AtomicBool::new(false);
@@ -50,15 +64,23 @@ impl Drop for StagingDirectory {
 }
 
 pub(super) fn start_install(window: HWND) {
-    let path = UI
+    let selection = UI
         .get()
         .and_then(|runtime| runtime.lock().ok())
         .and_then(|state| {
-            (matches!(state.mode, RuntimeMode::Installer))
-                .then(|| state.interaction.text_input_values.get("editDir").cloned())
-                .flatten()
+            matches!(state.mode, RuntimeMode::Installer).then(|| InstallSelection {
+                destination: state.interaction.text_input_values.get("editDir").cloned(),
+                checkboxes: state.interaction.checkbox_states.clone(),
+            })
         });
-    let Some(path) = path else {
+    let Some(selection) = selection else {
+        show_result(
+            window,
+            Err(anyhow::anyhow!("installation directory is not configured")),
+        );
+        return;
+    };
+    let Some(destination) = selection.destination.clone() else {
         show_result(
             window,
             Err(anyhow::anyhow!("installation directory is not configured")),
@@ -67,14 +89,31 @@ pub(super) fn start_install(window: HWND) {
     };
     run_worker(window, move || {
         let setup = std::env::current_exe()?;
-        install_setup(&setup, Path::new(&path))
+        install_setup(&setup, Path::new(&destination), &selection)
     });
 }
 
 pub(super) fn start_uninstall(window: HWND) {
+    // Data is preserved unless the user explicitly clears the keep-data box;
+    // an uninstall page without that checkbox therefore never destroys data.
+    let keep_data = UI
+        .get()
+        .and_then(|runtime| runtime.lock().ok())
+        .and_then(|state| {
+            matches!(state.mode, RuntimeMode::Uninstaller)
+                .then(|| {
+                    state
+                        .interaction
+                        .checkbox_states
+                        .get("chkReserveData")
+                        .copied()
+                })
+                .flatten()
+        })
+        .unwrap_or(true);
     run_worker(window, move || {
         let uninstaller = std::env::current_exe()?;
-        uninstall(&uninstaller)
+        uninstall(&uninstaller, keep_data)
     });
 }
 
@@ -112,7 +151,7 @@ fn show_result(window: HWND, result: Result<()>) {
     }
 }
 
-fn install_setup(setup: &Path, destination: &Path) -> Result<()> {
+fn install_setup(setup: &Path, destination: &Path, selection: &InstallSelection) -> Result<()> {
     validate_destination(destination)?;
     let bundle = BundleIndex::read(setup)?.context("installer resource bundle missing")?;
     let config = bundle.read_config()?;
@@ -184,6 +223,22 @@ fn install_setup(setup: &Path, destination: &Path) -> Result<()> {
     if !files.iter().any(|path| path == Path::new(exe_name)) {
         bail!("payload does not contain the configured application executable: {exe_name}")
     }
+    // A running instance would keep the destination files locked. Both flags
+    // mean "stop the product first"; they differ only in how strictly the
+    // installer treats a failure to do so.
+    if config["install"]["kill_process_on_install"].as_bool() == Some(true)
+        || config["install"]["detect_running_process"].as_bool() == Some(true)
+    {
+        shell::kill_processes(exe_name)
+            .with_context(|| format!("cannot close the running {exe_name}"))?;
+    }
+    let artifacts = InstallArtifacts::plan(
+        &config,
+        selection,
+        destination,
+        exe_name,
+        previous.as_ref().map(|install| &install.manifest),
+    )?;
     Deployment {
         extracted: &extracted,
         destination,
@@ -194,6 +249,7 @@ fn install_setup(setup: &Path, destination: &Path) -> Result<()> {
         registry_path: &registry_path,
         previous: previous.as_ref(),
         backup_root: &backups,
+        artifacts: &artifacts,
     }
     .run(|| {
         register_uninstaller(
@@ -210,6 +266,8 @@ fn install_setup(setup: &Path, destination: &Path) -> Result<()> {
 /// A previous installation of this project found at the destination.
 struct PreviousInstall {
     files: Vec<PathBuf>,
+    /// Shortcut and autostart entries the previous version recorded.
+    manifest: Value,
 }
 
 /// Inspects `destination` and reports an existing installation of this project.
@@ -251,6 +309,7 @@ fn previous_install(destination: &Path, config: &Value) -> Result<Option<Previou
     }
     Ok(Some(PreviousInstall {
         files: manifest_file_paths(&manifest)?,
+        manifest,
     }))
 }
 
@@ -297,6 +356,7 @@ struct Deployment<'a> {
     registry_path: &'a str,
     previous: Option<&'a PreviousInstall>,
     backup_root: &'a Path,
+    artifacts: &'a InstallArtifacts,
 }
 
 impl Deployment<'_> {
@@ -328,6 +388,7 @@ impl Deployment<'_> {
         let result = self.deploy(&mut journal, register);
         if result.is_err() {
             journal.rollback();
+            self.artifacts.undo();
         }
         result
     }
@@ -337,6 +398,8 @@ impl Deployment<'_> {
         journal: &mut RollbackJournal,
         register: impl FnOnce() -> Result<()>,
     ) -> Result<()> {
+        // Artifacts outside the installation directory are created before the
+        // manifest so a failure can still undo them.
         for relative in self.files {
             let source = self.extracted.join(relative);
             let target = self.destination.join(relative);
@@ -364,18 +427,336 @@ impl Deployment<'_> {
             }
         }
 
+        self.artifacts.apply(journal)?;
+
         journal.track(&self.destination.join(MANIFEST_NAME))?;
         let manifest = json!({
             "version": 1,
             "registry_root": registry_root_name(self.root),
             "registry_path": self.registry_path,
-            "files": self.files.iter().map(|path| path.to_string_lossy().to_string()).collect::<Vec<_>>()
+            "files": self.files.iter().map(|path| path.to_string_lossy().to_string()).collect::<Vec<_>>(),
+            "shortcuts": self.artifacts.shortcut_paths(),
+            "shortcut_dirs": self.artifacts.shortcut_dir_paths(),
+            "autostart": self.artifacts.autostart_json(),
         });
         fs::write(
             self.destination.join(MANIFEST_NAME),
             serde_json::to_vec_pretty(&manifest)?,
         )?;
         register()
+    }
+}
+
+/// Non-payload artifacts an install creates: shortcuts and an autostart entry.
+///
+/// They live outside the installation directory. Shortcut files go through the
+/// rollback journal like payload files, so they are restored on undo; the
+/// autostart value is overwritten in place, so the value it replaces is
+/// captured up front and written back when the deployment fails.
+#[derive(Default)]
+struct InstallArtifacts {
+    /// The installed application executable the artifacts point at.
+    target: PathBuf,
+    shortcuts: Vec<ShortcutPlan>,
+    /// Directories this run created for shortcuts. Only removed while empty, so
+    /// a shared Start Menu folder that holds other products survives.
+    shortcut_dirs: Vec<PathBuf>,
+    /// Shortcuts an earlier version created and this run no longer wants.
+    stale_shortcuts: Vec<PathBuf>,
+    autostart_changes: Vec<AutostartChange>,
+}
+
+#[derive(Clone)]
+struct AutostartEntry {
+    root: HKEY,
+    path: String,
+    value_name: String,
+}
+
+/// A change to one autostart value, remembering what was there before.
+struct AutostartChange {
+    entry: AutostartEntry,
+    action: AutostartAction,
+    /// The command the value held before this run, when it existed.
+    previous_command: Option<String>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AutostartAction {
+    Write,
+    Delete,
+}
+
+impl InstallArtifacts {
+    /// Resolves the project's shortcut and autostart configuration together
+    /// with what the installer UI selected, discarding anything the previous
+    /// version recorded that this run no longer wants.
+    fn plan(
+        config: &Value,
+        selection: &InstallSelection,
+        destination: &Path,
+        exe_name: &str,
+        previous: Option<&Value>,
+    ) -> Result<Self> {
+        let project_name = config["project"]["name"].as_str().unwrap_or("Application");
+        let target = destination.join(exe_name);
+        let mut artifacts = Self {
+            target: target.clone(),
+            ..Self::default()
+        };
+        let shortcuts = &config["shortcuts"];
+        if shortcuts["desktop_shortcut"].as_bool() == Some(true)
+            && selection.checked(
+                "chkShotcut",
+                shortcuts["desktop_default"].as_bool().unwrap_or(true),
+            )
+        {
+            artifacts.shortcuts.push(ShortcutPlan::new(
+                shell::desktop_directory()?.join(format!("{project_name}.lnk")),
+                target.clone(),
+                destination.to_path_buf(),
+            ));
+        }
+        if shortcuts["start_menu"].as_bool() == Some(true) {
+            let folder = shortcuts["start_menu_folder"]
+                .as_str()
+                .unwrap_or(project_name);
+            let programs = shell::programs_directory()?.join(folder);
+            artifacts.shortcut_dirs.push(programs.clone());
+            artifacts.shortcuts.push(ShortcutPlan::new(
+                programs.join(format!("{project_name}.lnk")),
+                target.clone(),
+                destination.to_path_buf(),
+            ));
+            artifacts.shortcuts.push(ShortcutPlan::new(
+                programs.join(format!("Uninstall {project_name}.lnk")),
+                destination.join(
+                    config["output"]["uninstaller_name"]
+                        .as_str()
+                        .unwrap_or("uninst.exe"),
+                ),
+                destination.to_path_buf(),
+            ));
+        }
+        let planned_autostart = if config["autostart"]["enabled"].as_bool() == Some(true)
+            && selection.checked(
+                "chkAutoRun",
+                config["autostart"]["default"].as_bool().unwrap_or(false),
+            ) {
+            let configured = config["autostart"]["registry_key"]
+                .as_str()
+                .unwrap_or("HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run");
+            let (root, path) = registry_path(configured)?;
+            Some(AutostartEntry {
+                root,
+                path,
+                value_name: config["autostart"]["registry_value_name"]
+                    .as_str()
+                    .unwrap_or(project_name)
+                    .to_string(),
+            })
+        } else {
+            None
+        };
+
+        // A shortcut the previous version created is removed unless this run
+        // creates the same file again; otherwise disabling it in the UI would
+        // leave a dead link behind forever.
+        if let Some(recorded) = previous {
+            for stale in recorded_shortcuts(recorded) {
+                if !artifacts.shortcuts.iter().any(|plan| plan.link == stale) {
+                    artifacts.stale_shortcuts.push(stale);
+                }
+            }
+        }
+
+        // Whatever the previous manifest recorded is dropped unless this run
+        // writes the same value.
+        if let Some(recorded) = previous.and_then(recorded_autostart) {
+            let replaced = planned_autostart.as_ref().is_some_and(|planned| {
+                planned.path == recorded.path && planned.value_name == recorded.value_name
+            });
+            if !replaced {
+                artifacts.push_autostart_change(recorded, AutostartAction::Delete)?;
+            }
+        }
+        if let Some(entry) = planned_autostart {
+            artifacts.push_autostart_change(entry, AutostartAction::Write)?;
+        }
+        Ok(artifacts)
+    }
+
+    fn push_autostart_change(
+        &mut self,
+        entry: AutostartEntry,
+        action: AutostartAction,
+    ) -> Result<()> {
+        let previous_command = read_registry_string(entry.root, &entry.path, &entry.value_name)?;
+        self.autostart_changes.push(AutostartChange {
+            entry,
+            action,
+            previous_command,
+        });
+        Ok(())
+    }
+
+    /// Applies every change; a failure here makes the caller roll back.
+    fn apply(&self, journal: &mut RollbackJournal) -> Result<()> {
+        for change in &self.autostart_changes {
+            match change.action {
+                AutostartAction::Delete => {
+                    delete_registry_value(
+                        change.entry.root,
+                        &change.entry.path,
+                        &change.entry.value_name,
+                    )?;
+                }
+                AutostartAction::Write => {
+                    write_registry_string(
+                        change.entry.root,
+                        &change.entry.path,
+                        &change.entry.value_name,
+                        &format!("\"{}\"", self.target.display()),
+                    )?;
+                }
+            }
+        }
+        for stale in &self.stale_shortcuts {
+            if stale.is_file() {
+                journal.track(stale)?;
+                fs::remove_file(stale)?;
+            }
+        }
+        for shortcut in &self.shortcuts {
+            journal.track(&shortcut.link)?;
+            shell::create_shortcut(&shortcut.link, &shortcut.target, &shortcut.working_dir)?;
+        }
+        shell::notify_shell();
+        Ok(())
+    }
+
+    fn shortcut_paths(&self) -> Vec<String> {
+        self.shortcuts
+            .iter()
+            .map(|shortcut| shortcut.link.to_string_lossy().to_string())
+            .collect()
+    }
+
+    fn shortcut_dir_paths(&self) -> Vec<String> {
+        self.shortcut_dirs
+            .iter()
+            .map(|dir| dir.to_string_lossy().to_string())
+            .collect()
+    }
+
+    /// The autostart value to record in the manifest, if this run installed one.
+    fn autostart_json(&self) -> Value {
+        match self
+            .autostart_changes
+            .iter()
+            .find(|change| change.action == AutostartAction::Write)
+        {
+            Some(change) => json!({
+                "registry_root": registry_root_name(change.entry.root),
+                "registry_path": change.entry.path,
+                "value_name": change.entry.value_name,
+            }),
+            None => Value::Null,
+        }
+    }
+
+    /// Puts every autostart value back the way this run found it.
+    ///
+    /// Shortcut files are already restored by the rollback journal.
+    fn undo(&self) {
+        for change in self.autostart_changes.iter().rev() {
+            let entry = &change.entry;
+            let _ = match &change.previous_command {
+                Some(command) => {
+                    write_registry_string(entry.root, &entry.path, &entry.value_name, command)
+                }
+                None => delete_registry_value(entry.root, &entry.path, &entry.value_name),
+            };
+        }
+    }
+
+    /// Removes the artifacts an earlier install recorded in the manifest.
+    ///
+    /// Only the directories this installer created are candidates, and only
+    /// while they are empty: deleting ancestors instead would walk up into the
+    /// shared Start Menu tree.
+    fn remove_recorded(manifest: &Value) {
+        let created = recorded_shortcut_dirs(manifest);
+        for shortcut in recorded_shortcuts(manifest) {
+            let _ = fs::remove_file(&shortcut);
+        }
+        for dir in created {
+            let _ = fs::remove_dir(dir);
+        }
+        if let Some(recorded) = recorded_autostart(manifest) {
+            let _ = delete_registry_value(recorded.root, &recorded.path, &recorded.value_name);
+        }
+    }
+}
+
+/// The shortcut files an earlier install recorded in its manifest.
+fn recorded_shortcuts(manifest: &Value) -> Vec<PathBuf> {
+    manifest["shortcuts"]
+        .as_array()
+        .map(|shortcuts| {
+            shortcuts
+                .iter()
+                .filter_map(Value::as_str)
+                .map(PathBuf::from)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The directories an earlier install created for its shortcuts.
+///
+/// Manifests written before this field existed report none, so an upgrade over
+/// such an install removes the links but leaves the folder behind.
+fn recorded_shortcut_dirs(manifest: &Value) -> Vec<PathBuf> {
+    manifest["shortcut_dirs"]
+        .as_array()
+        .map(|dirs| {
+            dirs.iter()
+                .filter_map(Value::as_str)
+                .map(PathBuf::from)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Reads the autostart entry an install recorded in its manifest.
+fn recorded_autostart(manifest: &Value) -> Option<AutostartEntry> {
+    let autostart = &manifest["autostart"];
+    Some(AutostartEntry {
+        root: if autostart["registry_root"].as_str()? == "HKLM" {
+            HKEY_LOCAL_MACHINE
+        } else {
+            HKEY_CURRENT_USER
+        },
+        path: autostart["registry_path"].as_str()?.to_string(),
+        value_name: autostart["value_name"].as_str()?.to_string(),
+    })
+}
+
+/// One `.lnk` an install should create, with everything `IShellLinkW` needs.
+struct ShortcutPlan {
+    link: PathBuf,
+    target: PathBuf,
+    working_dir: PathBuf,
+}
+
+impl ShortcutPlan {
+    fn new(link: PathBuf, target: PathBuf, working_dir: PathBuf) -> Self {
+        Self {
+            link,
+            target,
+            working_dir,
+        }
     }
 }
 
@@ -430,8 +811,9 @@ impl RollbackJournal {
     fn rollback(&self) {
         if let Some(destination) = &self.fresh_destination {
             let _ = fs::remove_dir_all(destination);
-            return;
         }
+        // Entries are replayed even for a fresh install: a shortcut may have
+        // existed in the user's profile before this run created it.
         for entry in self.entries.iter().rev() {
             match &entry.backup {
                 Some(backup) => {
@@ -483,6 +865,153 @@ fn collect_staged_files(root: &Path) -> Result<Vec<PathBuf>> {
     visit(root, root, &mut files)?;
     files.sort();
     Ok(files)
+}
+
+/// Directories that belong to the user rather than to the payload: the
+/// per-user data roots the project configures under `uninstall.data_paths`.
+///
+/// Only paths that expand to a real location below a known user profile are
+/// returned, so a broad pattern can never delete an unrelated directory.
+fn preserved_data_paths(config: &Value) -> Result<Vec<PathBuf>> {
+    let configured = config["uninstall"]["data_paths"]
+        .as_array()
+        .map(|paths| {
+            paths
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let mut resolved = Vec::new();
+    for raw in configured {
+        let expanded = shell::expand_environment(&raw)?;
+        let path = PathBuf::from(&expanded);
+        if path.is_absolute() && shell::is_user_data_path(&path) {
+            resolved.push(path);
+        }
+    }
+    Ok(resolved)
+}
+
+/// Reads a single `REG_SZ` value, returning `None` when it is absent.
+fn read_registry_string(root: HKEY, path: &str, name: &str) -> Result<Option<String>> {
+    let mut key = Default::default();
+    let opened = unsafe {
+        RegOpenKeyExW(
+            root,
+            PCWSTR(wide(path).as_ptr()),
+            0,
+            KEY_QUERY_VALUE,
+            &mut key,
+        )
+    };
+    if opened == ERROR_FILE_NOT_FOUND || opened == ERROR_PATH_NOT_FOUND {
+        return Ok(None);
+    }
+    opened.ok()?;
+    let mut kind = REG_VALUE_TYPE::default();
+    let mut size = 0u32;
+    let status = unsafe {
+        RegQueryValueExW(
+            key,
+            PCWSTR(wide(name).as_ptr()),
+            None,
+            Some(&mut kind),
+            None,
+            Some(&mut size),
+        )
+    };
+    if status == ERROR_FILE_NOT_FOUND || status == ERROR_PATH_NOT_FOUND {
+        unsafe {
+            let _ = RegCloseKey(key);
+        }
+        return Ok(None);
+    }
+    if status.is_err() || kind != REG_SZ || size < 2 {
+        unsafe {
+            let _ = RegCloseKey(key);
+        }
+        status.ok()?;
+        return Ok(None);
+    }
+    let mut buffer = vec![0u8; size as usize];
+    let status = unsafe {
+        RegQueryValueExW(
+            key,
+            PCWSTR(wide(name).as_ptr()),
+            None,
+            Some(&mut kind),
+            Some(buffer.as_mut_ptr()),
+            Some(&mut size),
+        )
+    };
+    unsafe {
+        let _ = RegCloseKey(key);
+    }
+    status.ok()?;
+    buffer.truncate(size as usize);
+    let units = buffer
+        .chunks_exact(2)
+        .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+        .take_while(|unit| *unit != 0)
+        .collect::<Vec<_>>();
+    Ok(Some(String::from_utf16(&units)?))
+}
+
+/// Writes a single `REG_SZ` value, creating the key when needed.
+fn write_registry_string(root: HKEY, path: &str, name: &str, value: &str) -> Result<()> {
+    let mut key = Default::default();
+    unsafe {
+        RegCreateKeyExW(
+            root,
+            PCWSTR(wide(path).as_ptr()),
+            0,
+            PCWSTR::null(),
+            REG_OPTION_NON_VOLATILE,
+            KEY_SET_VALUE,
+            None,
+            &mut key,
+            None,
+        )
+        .ok()?;
+    }
+    let encoded = wide(value);
+    let bytes =
+        unsafe { std::slice::from_raw_parts(encoded.as_ptr().cast::<u8>(), encoded.len() * 2) };
+    let status =
+        unsafe { RegSetValueExW(key, PCWSTR(wide(name).as_ptr()), 0, REG_SZ, Some(bytes)) };
+    unsafe {
+        let _ = RegCloseKey(key);
+    }
+    status.ok()?;
+    Ok(())
+}
+
+/// Deletes a single value; a missing key or value is not an error.
+fn delete_registry_value(root: HKEY, path: &str, name: &str) -> Result<()> {
+    let mut key = Default::default();
+    let opened = unsafe {
+        RegOpenKeyExW(
+            root,
+            PCWSTR(wide(path).as_ptr()),
+            0,
+            KEY_SET_VALUE,
+            &mut key,
+        )
+    };
+    if opened == ERROR_FILE_NOT_FOUND || opened == ERROR_PATH_NOT_FOUND {
+        return Ok(());
+    }
+    opened.ok()?;
+    let status = unsafe { RegDeleteValueW(key, PCWSTR(wide(name).as_ptr())) };
+    unsafe {
+        let _ = RegCloseKey(key);
+    }
+    if status != ERROR_FILE_NOT_FOUND && status != ERROR_PATH_NOT_FOUND {
+        status.ok()?;
+    }
+    Ok(())
 }
 
 fn uninstall_registry_key(
@@ -618,7 +1147,7 @@ fn register_uninstaller(
     result
 }
 
-fn uninstall(uninstaller: &Path) -> Result<()> {
+fn uninstall(uninstaller: &Path, keep_data: bool) -> Result<()> {
     let destination = uninstaller
         .parent()
         .context("uninstaller has no parent directory")?;
@@ -655,6 +1184,27 @@ fn uninstall(uninstaller: &Path) -> Result<()> {
     if manifest_root != registry_root_name(root) || manifest_path != expected_path {
         bail!("installation manifest registry target does not match the project")
     }
+    let exe_name = config["install"]["exe_name"]
+        .as_str()
+        .context("install.exe_name is required")?;
+    if config["install"]["kill_process_on_uninstall"].as_bool() == Some(true)
+        || config["install"]["detect_running_process"].as_bool() == Some(true)
+    {
+        shell::kill_processes(exe_name)
+            .with_context(|| format!("cannot close the running {exe_name}"))?;
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+    InstallArtifacts::remove_recorded(&manifest);
+    if !keep_data {
+        for data_path in preserved_data_paths(&config)? {
+            if data_path.is_dir() {
+                fs::remove_dir_all(&data_path)
+                    .with_context(|| format!("failed to remove {}", data_path.display()))?;
+            } else if data_path.is_file() {
+                fs::remove_file(&data_path)?;
+            }
+        }
+    }
     let paths = manifest_file_paths(&manifest)?
         .into_iter()
         .map(|relative| destination.join(relative))
@@ -671,7 +1221,8 @@ fn uninstall(uninstaller: &Path) -> Result<()> {
             let _ = fs::remove_dir(parent);
         }
     }
-    // The running executable cannot be removed directly; schedule only that file for reboot.
+    // The running executable is still locked, so it is deleted on the next
+    // reboot; everything else in the directory is already gone.
     unsafe {
         MoveFileExW(
             PCWSTR(wide(&uninstaller.display().to_string()).as_ptr()),
@@ -686,14 +1237,16 @@ fn uninstall(uninstaller: &Path) -> Result<()> {
         }
     }
     fs::remove_file(manifest_file)?;
+    shell::notify_shell();
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        previous_install, register_uninstaller, registry_key_exists, registry_path,
-        validate_destination, wide, Deployment, PreviousInstall, MANIFEST_NAME,
+        preserved_data_paths, previous_install, register_uninstaller, registry_key_exists,
+        registry_path, validate_destination, wide, Deployment, InstallArtifacts, PreviousInstall,
+        MANIFEST_NAME,
     };
     use anyhow::Result;
     use std::path::{Path, PathBuf};
@@ -736,6 +1289,8 @@ mod tests {
         backup_root: &Path,
         register: impl FnOnce() -> Result<()>,
     ) -> Result<()> {
+        // An empty plan keeps the tests from touching the real desktop.
+        let artifacts = InstallArtifacts::default();
         Deployment {
             extracted,
             destination,
@@ -746,6 +1301,7 @@ mod tests {
             registry_path: "Software\\nano-installer-test",
             previous,
             backup_root,
+            artifacts: &artifacts,
         }
         .run(register)
     }
@@ -930,6 +1486,79 @@ mod tests {
         )
         .is_err());
         assert!(!destination.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn only_expands_data_paths_inside_a_user_profile() -> Result<()> {
+        let appdata = std::env::var_os("APPDATA").expect("APPDATA is set on Windows");
+        let appdata = PathBuf::from(appdata);
+        let config = serde_json::json!({
+            "uninstall": {
+                "data_paths": [
+                    "%APPDATA%\\NanoInstallerTest",
+                    "%APPDATA%",
+                    "%SystemRoot%",
+                    "relative\\path",
+                ]
+            }
+        });
+        assert_eq!(
+            preserved_data_paths(&config)?,
+            vec![appdata.join("NanoInstallerTest")]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn removes_recorded_shortcuts_and_only_their_empty_folder() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let start_menu = temp.path().join("Programs");
+        let product = start_menu.join("TapTapTest");
+        std::fs::create_dir_all(&product)?;
+        let link = product.join("TapTap.lnk");
+        std::fs::write(&link, b"")?;
+        std::fs::write(product.join("kept.txt"), b"user file")?;
+        let manifest = serde_json::json!({
+            "shortcuts": [link.to_string_lossy()],
+            "shortcut_dirs": [product.to_string_lossy()],
+        });
+
+        InstallArtifacts::remove_recorded(&manifest);
+
+        assert!(!link.exists());
+        // The folder still holds a file this installer never wrote.
+        assert!(product.is_dir());
+        assert!(start_menu.is_dir());
+        Ok(())
+    }
+
+    #[test]
+    fn drops_the_shortcut_folder_once_it_is_empty() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let start_menu = temp.path().join("Programs");
+        let product = start_menu.join("TapTapTest");
+        std::fs::create_dir_all(&product)?;
+        let link = product.join("TapTap.lnk");
+        std::fs::write(&link, b"")?;
+        let manifest = serde_json::json!({
+            "shortcuts": [link.to_string_lossy()],
+            "shortcut_dirs": [product.to_string_lossy()],
+        });
+
+        InstallArtifacts::remove_recorded(&manifest);
+
+        assert!(!link.exists());
+        assert!(!product.exists());
+        // The shared Start Menu root is never removed.
+        assert!(start_menu.is_dir());
+        Ok(())
+    }
+
+    #[test]
+    fn ignores_data_paths_when_the_project_declares_none() -> Result<()> {
+        let config = serde_json::json!({ "uninstall": {} });
+        assert!(preserved_data_paths(&config)?.is_empty());
         Ok(())
     }
 

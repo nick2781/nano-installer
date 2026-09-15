@@ -21,7 +21,19 @@ Native builder 读取 `installer_config.json`。当前沿用 TapTap example 的�
 | `install.default_path` | string | 自定义面板中 `TextInput id="editDir"` 的初始安装目录 |
 | `install.required_space_mb` | integer | 通过 XML `value-source` 显示的所需空间，单位 MiB |
 | `install.exe_name` | string | 解压后必须存在的根目录应用 EXE；缺失会中止安装，不部署文件 |
+| `install.kill_process_on_install` | bool | 为 `true` 时安装前终止同名进程，无法终止会导致安装失败 |
+| `install.kill_process_on_uninstall` | bool | 为 `true` 时卸载前终止同名进程 |
+| `install.detect_running_process` | bool | 与上面两个开关取或；为 `true` 时同样会终止进程 |
 | `registry.uninstall_key` | string | 卸载注册表路径，仅支持 HKCU/HKLM；安装前拒绝覆盖现有键 |
+| `shortcuts.desktop_shortcut` | bool | 是否允许创建桌面快捷方式 |
+| `shortcuts.desktop_default` | bool | `chkShotcut` 未出现在布局时的桌面快捷方式默认勾选状态，默认 `true` |
+| `shortcuts.start_menu` | bool | 是否在开始菜单创建产品与卸载快捷方式 |
+| `shortcuts.start_menu_folder` | string | 开始菜单子目录名，默认 `project.name`；只删除本安装创建且已清空的目录 |
+| `autostart.enabled` | bool | 是否允许写入开机自启动项 |
+| `autostart.default` | bool | `chkAutoRun` 未出现在布局时的默认勾选状态，默认 `false` |
+| `autostart.registry_key` | string | 自启动注册表路径，缺省 `HKCU\...\CurrentVersion\Run` |
+| `autostart.registry_value_name` | string | 自启动值名称，默认 `project.name` |
+| `uninstall.data_paths` | string[] | 取消勾选 `chkReserveData` 时要删除的用户数据路径，需要环境变量展开 |
 | `resources.layouts_dir` | string | 要打包的 XML 目录，默认 `layouts` |
 | `resources.assets_dir` | string | 要打包的图片目录，默认 `assets` |
 | `resources.locales_dir` | string | 要打包/读取的 JSON 语言目录，默认 `locales` |
@@ -38,6 +50,9 @@ Unicode `VS_VERSION_INFO` 资源。
 Payload 选择不依赖扩展名：`PK` 文件头选择 `zlib-stub-native.exe`，7z 文件头
 `37 7A BC AF 27 1C` 选择 `lzma-stub-native.exe`。其他格式构建失败。
 
+`chkReserveData` 未出现在布局时，卸载一律保留用户数据；`uninstall.data_paths` 里展开后
+不落在 `%APPDATA%`/`%LOCALAPPDATA%` 之下的条目会被忽略，避免误删。
+
 运行时语言切换只保留布局、图片、配置和 locale 文件，不会为了重新加载页面而把 payload
 长期保留在内存中。Select 的 Option value 必须对应 locales 目录中的 JSON 文件名。
 
@@ -45,10 +60,11 @@ Payload 选择不依赖扩展名：`PK` 文件头选择 `zlib-stub-native.exe`�
 
 以下配置会原样进入 setup，但 native runtime 目前不执行：
 
-- 除上述生效字段外的 `install.*`、`registry.*`，以及 `shortcuts.*`、`autostart.*`
+- 除上述生效字段外的 `install.*`、`registry.*`
 - `links.*`、`validation.*`、`advanced.*`
 - `localization.supported_locales`、`localization.show_language_selector`（当前菜单范围和可见性由 XML Select 决定）
-- `wizard.pages[1..]`、`update_pages`、`uninstall_pages`
+- `wizard.pages[1..]`、`update_pages`、`uninstall_pages`（当前只使用每种模式的第一个页面）
+- `scripts/install.rhai`、`scripts/uninstall.rhai`（runtime 尚未接入 Rhai 引擎）
 
 因此不要依据“字段存在”判断功能已经完成。生产状态见
 [当前生产状态](PRODUCTION_STATUS.md)。

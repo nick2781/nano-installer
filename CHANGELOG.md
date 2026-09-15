@@ -5,6 +5,32 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 版本号使用 CalVer（`YYYY.M.D`），tag 形如 `v2026.9.15`。
 
+## [未发布]
+
+### 变更
+
+- 安装改为按偏移索引读取内嵌 bundle，启动不再把整个 payload 载入内存。
+- 目标目录存在同一项目的先前安装时按升级处理：替换文件、清理旧版遗留文件，注册失败时
+  回滚到先前版本。
+- 安装按 `shortcuts.*` 与 `chkShotcut`/`chkAutoRun` 创建桌面、开始菜单快捷方式和开机
+  自启动项；`autostart.*` 会先记录原值，失败时还原。
+- 卸载会终止运行中的产品进程，按 manifest 清理快捷方式，并按 `uninstall.data_paths`
+  删除用户数据；`chkReserveData` 未勾选保留数据时才会删除，默认保留。
+- 示例 `examples/TapTap` 重新声明 `uninstall.data_paths`，卸载页补回 `chkReserveData`。
+
+### 已验证
+
+- `cargo fmt --all -- --check`、`cargo clippy --locked --workspace --all-targets -- -D warnings`、
+  `cargo test --locked --workspace`（37 个 core 测试、12 个 GUI 测试、2 个 stub 测试）。
+- `scripts/build.ps1` 全量构建、ZIP/7z backend smoke test 与 Win7 PE 导入审计。
+- CLI 与 GUI 产物内嵌 16/24/32/48/64/128/256 七种尺寸图标，逐尺寸与各自 branding PNG
+  缩放结果比对；三个原始 stub 无图标和版本资源。
+
+### 未完成
+
+- 页面切换与任务进度、项目 Rhai 脚本执行。
+- 无代码签名；未通过真实 Windows 7 SP1 虚拟机端到端验收。
+
 ## [2026.9.15]
 
 该版本发布的是构建工具链本身，不含任何产品 setup。

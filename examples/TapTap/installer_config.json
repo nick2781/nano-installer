@@ -117,6 +117,9 @@
       }
     ]
   },
+  "uninstall": {
+    "data_paths": ["%APPDATA%\\TapTapTest", "%LOCALAPPDATA%\\TapTapTest"]
+  },
   "validation": {
     "check_path_legal": true,
     "check_disk_type": "Any",

@@ -3,6 +3,7 @@ compile_error!("nano-installer-native-x64 must be built for x86_64");
 
 mod icon;
 mod install;
+mod shell;
 mod version;
 
 use anyhow::{bail, Context, Result};

@@ -11,6 +11,11 @@
           normal-image="assets/btn_dialog.png" hover-image="assets/btn_hover.png"
           pressed-image="assets/btn_hover.png" font-size="14"
           color="#FFFFFFFF" cursor="hand" />
+  <Checkbox id="chkReserveData" text="@reserve_data"
+            position="absolute" left="44" top="298" width="486" height="20"
+            font-size="12" color="#FFE4E8EC" checked="true" text-align="center"
+            unchecked-image="file='assets/checkbox-0.png' dest='0,1,16,17'"
+            checked-image="file='assets/checkbox-2.png' dest='0,1,16,17'" />
   <Button id="btnUnInstall" action="uninstall" text="@uninstall_button"
           position="absolute" left="297" top="245" width="172" height="40"
           normal-image="assets/btn_primary.png" hover-image="assets/btn_hover.png"

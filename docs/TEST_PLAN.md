@@ -9,7 +9,8 @@ cargo test --locked --workspace
 ```
 
 Native 单元测试覆盖 bundle roundtrip、payload 文件进入 bundle、按钮命中、临时目录部署、
-manifest 写入、已有目录拒绝覆盖和失败回滚。
+manifest 写入、已有目录拒绝覆盖、升级与旧文件清理、失败回滚，以及卸载时的快捷方式
+与用户数据清理规则。
 构建脚本审计 builder、三个 stubs、setup 和内嵌 uninstaller 的 PE imports。受限本机环境
 不允许写 HKCU，`registers_and_cleans_up_scoped_uninstall_key` 默认忽略；在隔离 VM 内显式执行。
 
@@ -35,8 +36,9 @@ UAC、升级、静默模式和完整回滚仍需补充测试。
 
 ## 当前不能通过的生产用例
 
-- 写快捷方式、执行项目脚本和配置的自启动。
+- 执行项目 Rhai 脚本。
 - 页面切换与进度显示。
-- 失败回滚。
-- 升级、数据保留选项与卸载器即时自删除。
+- 卸载器即时自删除（当前安排在重启时删除）。
 - Authenticode 签名链。
+
+升级、失败回滚、快捷方式、自启动和数据保留选项已实现，但尚未在真实 Win7 VM 中验收。

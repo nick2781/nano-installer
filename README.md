@@ -98,13 +98,12 @@ restricted environments.
 
 ## Runtime behaviour and open work
 
-Installation stages the payload, refuses to overwrite an existing destination, records deployed
-files in a manifest, and registers its uninstaller. Removal deletes only manifest-tracked files.
+Installation stages the payload, replaces a previous installation of the same project, records
+deployed files, shortcuts, and autostart entries in a manifest, and registers its uninstaller.
+Removal closes the product, deletes only manifest-tracked files, and honors the keep-data option.
 
-Still open: upgrades, complete cancellation and recovery, task progress and page transitions, Rhai
-script execution, shortcuts and autostart, automatic UAC, code signing, and Windows 7 VM
-acceptance. Runtime startup copies the whole embedded bundle into memory, so offset-based access or
-memory mapping is required before production use.
+Still open: task progress and page transitions, Rhai script execution, automatic UAC, code signing,
+and Windows 7 VM acceptance.
 
 ## Documentation
 
