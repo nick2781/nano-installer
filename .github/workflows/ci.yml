@@ -45,6 +45,10 @@ jobs:
       - name: Test workspace
         run: cargo test --locked --workspace
 
+      # Builds the builder, the three stubs, and the GUI. It deliberately
+      # does not build a setup from examples/TapTap: that example payload is
+      # not tracked, and real end-to-end setup validation belongs to a
+      # dedicated test job.
       - name: Build Win7+ toolchain
         shell: powershell
         run: .\scripts\build.ps1
