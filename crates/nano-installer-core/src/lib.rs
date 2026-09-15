@@ -3847,6 +3847,14 @@ mod tests {
             .join("..")
             .join("examples")
             .join("TapTap");
+        let payload = project.join("payload").join("app.7z");
+        if !payload.is_file() {
+            eprintln!(
+                "skipping TapTap inspection: {} is absent; example payloads are not tracked",
+                payload.display()
+            );
+            return Ok(());
+        }
         let summary = inspect_project(project)?;
         assert_eq!(summary.project_name, "TapTap");
         assert_eq!(summary.project_version, "2026.9.22-rel.1");

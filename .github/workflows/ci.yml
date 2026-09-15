@@ -2,15 +2,21 @@ name: CI
 
 on:
   push:
-    branches: [main]
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  native-win7-verify:
-    name: Native Win7+ Verify
+  native-win7-build:
+    name: Native Win7+ Build
     runs-on: windows-latest
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -22,7 +28,7 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly-2025-11-08
-          components: rust-src,rustfmt
+          components: rust-src,rustfmt,clippy
 
       - name: Configure MSVC tools
         uses: ilammy/msvc-dev-cmd@v1
@@ -33,12 +39,12 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
-      - name: Test native builder and bundle
+      - name: Lint workspace
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+
+      - name: Test workspace
         run: cargo test --locked --workspace
 
-      - name: Build and audit Win7+ artifacts
+      - name: Build Win7+ toolchain
         shell: powershell
-        run: |
-          .\scripts\build.ps1 `
-            -Project examples\TapTap `
-            -Output target\ci\TapTap_Setup.exe
+        run: .\scripts\build.ps1
