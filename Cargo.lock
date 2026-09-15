@@ -1227,7 +1227,7 @@ dependencies = [
 
 [[package]]
 name = "nano-installer-core"
-version = "0.1.0"
+version = "2026.9.15"
 dependencies = [
  "anyhow",
  "roxmltree",
@@ -1238,7 +1238,7 @@ dependencies = [
 
 [[package]]
 name = "nano-installer-gui"
-version = "0.1.0"
+version = "2026.9.15"
 dependencies = [
  "eframe",
  "image",
@@ -1250,7 +1250,7 @@ dependencies = [
 
 [[package]]
 name = "nano-installer-native-cli"
-version = "0.1.0"
+version = "2026.9.15"
 dependencies = [
  "anyhow",
  "image",
@@ -1260,7 +1260,7 @@ dependencies = [
 
 [[package]]
 name = "nano-installer-stub-lzma"
-version = "0.1.0"
+version = "2026.9.15"
 dependencies = [
  "anyhow",
  "nano-installer-core",
@@ -1269,7 +1269,7 @@ dependencies = [
 
 [[package]]
 name = "nano-installer-stub-zlib"
-version = "0.1.0"
+version = "2026.9.15"
 dependencies = [
  "anyhow",
  "nano-installer-core",
@@ -1279,7 +1279,7 @@ dependencies = [
 
 [[package]]
 name = "nano-installer-uninstaller"
-version = "0.1.0"
+version = "2026.9.15"
 dependencies = [
  "nano-installer-core",
 ]
