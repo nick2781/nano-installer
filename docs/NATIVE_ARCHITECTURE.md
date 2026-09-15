@@ -24,11 +24,16 @@ zlib package links only ZIP/Deflate, and the uninstaller links neither archive b
 `nano-installer-cli` and `nano-installer-gui` are thin frontends over the same core inspection and
 build APIs. Argument parsing and eframe UI code remain outside core.
 
-The runtime parses the first configured XML page and renders through Win32, WIC, GDI alpha
-blending, and Unicode `DrawTextW`. It currently supports absolute bitmap/text layers, the first
-HBox/Content flex subset, checkbox and expandable-panel interaction, static link rendering,
-runtime locale switching, locale key resolution, a borderless rounded window, taskbar icon,
-double-buffered GDI painting, dragging, minimize, and close actions.
+The runtime renders through Win32, WIC, GDI alpha blending, and Unicode `DrawTextW`. It currently
+supports absolute bitmap/text layers, nested VBox/HBox/Content flow layout with padding, margins
+and percentage sizing, progress bars, checkbox and expandable-panel interaction, static link
+rendering, runtime locale switching, locale key resolution, a borderless rounded window, taskbar
+icon, double-buffered GDI painting, dragging, minimize, and close actions.
+
+The wizard walks `wizard.pages`, `wizard.update_pages`, or `wizard.uninstall_pages`. A worker
+thread performs the task and publishes progress and page changes through a shared state; the UI
+thread repaints when it receives the posted refresh message, so painting never leaves the thread
+that owns the window.
 
 Installation deploys the payload, writes the manifest and uninstall registration, and creates the
 configured shortcuts and autostart value. A destination that already holds this project is treated
@@ -37,8 +42,8 @@ longer ships are dropped, and a failure restores the previous version. Removal t
 product process, deletes the recorded shortcuts and files, and deletes the declared user data
 unless the keep-data option is selected.
 
-The next implementation stages are complete nested layout, link input, page transitions, task
-progress, Rhai script execution, and production validation on a real Windows 7 SP1 VM.
+The next implementation stages are Rhai script execution, link input, and production validation on
+a real Windows 7 SP1 VM.
 
 ## Bundle caveat
 

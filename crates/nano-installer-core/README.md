@@ -34,12 +34,15 @@ no product resources; the builder injects them into generated executables only.
 ```
 
 The builder collects `installer_config.json`, configured layouts/assets/locales, `scripts/`, and
-the configured payload. The generated executable reads its appended bundle, selects
-`wizard.pages[0].layout`, parses the XML, and draws the visible background, `Image`, `Icon`, and
-`Button` bitmap layers. Absolute `Button`, `Label`, and `Select` text plus the TapTap first-screen
-HBox/Content/Checkbox subset are resolved from the configured JSON locale and rendered through
-Unicode `DrawTextW`. The setup resource icon is also assigned to the Win32 window class for the
-taskbar and Alt+Tab. Press Escape or close the native window to exit.
+the configured payload. The generated executable reads its appended bundle, walks the configured
+page list, parses each XML page, and draws the visible background, `Image`, `Icon`, `Button`, and
+`ProgressBar` layers. Text plus the nested VBox/HBox/Content/Checkbox layout are resolved from the
+configured JSON locale and rendered through Unicode `DrawTextW`. The setup resource icon is also
+assigned to the Win32 window class for the taskbar and Alt+Tab.
+
+Install and uninstall run on a worker thread that publishes progress and page changes, so the
+progress pages advance their bar and status text while the task runs. The finish page can launch
+the deployed application. Press Escape or close the native window to exit.
 
 ## Verification
 
@@ -50,7 +53,7 @@ tracked as release metrics rather than documented here.
 
 ## Next slice
 
-The backend executables securely extract real 7z and ZIP archives for the new-directory install
-action. Core records deployed files in a manifest and writes an uninstall registry key; the
-uninstaller removes only tracked files. Complete task progress, cancellation, script execution,
-shortcuts, upgrades, and production-grade recovery remain open.
+The backend executables securely extract real 7z and ZIP archives for the install action. Core
+records deployed files, shortcuts, and autostart entries in a manifest, backs up replaced files for
+rollback, and writes an uninstall registry key; the uninstaller removes only tracked files. Project
+Rhai script execution, cancellation, automatic UAC, and code signing remain open.

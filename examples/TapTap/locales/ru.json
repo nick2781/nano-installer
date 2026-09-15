@@ -48,6 +48,9 @@
   "button.cancel": "Отмена",
 
   "status.preparing": "Подготовка к установке...",
+  "status.extracting": "Распаковка файлов...",
+  "status.deploying": "Развёртывание файлов...",
+  "status.finishing": "Завершение установки...",
   "status.install_complete": "Установка завершена",
   "uninstall.status.closing_app": "Закрытие приложения...",
   "uninstall.status.removing_shortcuts": "Удаление ярлыков...",

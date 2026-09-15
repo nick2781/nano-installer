@@ -10,6 +10,7 @@
 
     <HBox height="20" padding="25 0 0 0" justify-content="center">
       <Label id="un_progress_pos" width="100" text="@uninstalling_text"
+             value-source="status"
              font-size="14" color="#FFFFFFFF" text-align="center" />
     </HBox>
 

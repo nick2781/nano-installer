@@ -101,9 +101,10 @@ restricted environments.
 Installation stages the payload, replaces a previous installation of the same project, records
 deployed files, shortcuts, and autostart entries in a manifest, and registers its uninstaller.
 Removal closes the product, deletes only manifest-tracked files, and honors the keep-data option.
+The wizard switches to its progress page while a task runs and reports live progress, then moves to
+the finish page, which can launch the deployed application.
 
-Still open: task progress and page transitions, Rhai script execution, automatic UAC, code signing,
-and Windows 7 VM acceptance.
+Still open: Rhai script execution, automatic UAC, code signing, and Windows 7 VM acceptance.
 
 ## Documentation
 

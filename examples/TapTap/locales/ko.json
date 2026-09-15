@@ -46,6 +46,9 @@
   "button.cancel": "취소",
 
   "status.preparing": "설치 준비 중...",
+  "status.extracting": "파일 압축 해제 중...",
+  "status.deploying": "파일 배포 중...",
+  "status.finishing": "설치 마무리 중...",
   "status.install_complete": "설치 완료",
   "uninstall.status.closing_app": "응용 프로그램 종료 중...",
   "uninstall.status.removing_shortcuts": "바로 가기 삭제 중...",

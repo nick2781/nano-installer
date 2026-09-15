@@ -37,6 +37,7 @@
          left="72" top="359"
          width="576" height="18"
          text="@installing_text"
+         value-source="status"
          font-size="14"
          color="#FFFFFFFF"
          text-align="center" />

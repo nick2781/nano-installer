@@ -39,7 +39,9 @@ Native builder 读取 `installer_config.json`。当前沿用 TapTap example 的�
 | `resources.locales_dir` | string | 要打包/读取的 JSON 语言目录，默认 `locales` |
 | `resources.payload_file` | string | 必需；ZIP 或 7z payload 路径 |
 | `localization.default_locale` | string | 默认运行语言，默认 `zh-CN` |
-| `wizard.pages[0].layout` | string | 当前启动时渲染的唯一页面 |
+| `wizard.pages[].layout` | string | 安装页列表；首屏启动显示，安装时切到第二页，完成后切到最后一页 |
+| `wizard.update_pages[].layout` | string | 预留的升级页列表，当前安装流程使用 `wizard.pages` |
+| `wizard.uninstall_pages[].layout` | string | 卸载页列表，按同样的首屏/进度/完成顺序切换 |
 | `ui.dpi_aware` | bool | 是否启用 DPI 感知并缩放布局，默认 `true` |
 | `ui.dpi_threshold` | integer | 选择 `@2x` 图片的 DPI 阈值，默认 `144` |
 
@@ -63,7 +65,7 @@ Payload 选择不依赖扩展名：`PK` 文件头选择 `zlib-stub-native.exe`�
 - 除上述生效字段外的 `install.*`、`registry.*`
 - `links.*`、`validation.*`、`advanced.*`
 - `localization.supported_locales`、`localization.show_language_selector`（当前菜单范围和可见性由 XML Select 决定）
-- `wizard.pages[1..]`、`update_pages`、`uninstall_pages`（当前只使用每种模式的第一个页面）
+- `advanced.update_mode_support`（升级是按目标目录的既有安装自动识别的，不读该开关）
 - `scripts/install.rhai`、`scripts/uninstall.rhai`（runtime 尚未接入 Rhai 引擎）
 
 因此不要依据“字段存在”判断功能已经完成。生产状态见

@@ -46,6 +46,9 @@
   "button.cancel": "取消",
 
   "status.preparing": "準備安裝...",
+  "status.extracting": "正在解壓縮檔案...",
+  "status.deploying": "正在部署檔案...",
+  "status.finishing": "正在完成安裝...",
   "status.install_complete": "安裝完成",
   "uninstall.status.closing_app": "正在關閉應用程式...",
   "uninstall.status.removing_shortcuts": "正在刪除捷徑...",

@@ -43,5 +43,5 @@ TapTap/
 - `scripts/` 中的产品专用安装与卸载行为
 - `payload/app.7z` 中的应用文件
 
-当前 native runtime 尚未实现 payload 解压、安装任务、完整页面流和卸载流程，不能用于
-生产发布。
+当前 native runtime 已完成 payload 解压、安装与卸载任务、页面流与进度显示，但尚未接入
+项目 Rhai 脚本，也没有代码签名，不能用于生产发布。

@@ -46,6 +46,9 @@
   "button.cancel": "キャンセル",
 
   "status.preparing": "インストールの準備中...",
+  "status.extracting": "ファイルを展開中...",
+  "status.deploying": "ファイルを配置中...",
+  "status.finishing": "インストールを完了中...",
   "status.install_complete": "インストール完了",
   "uninstall.status.closing_app": "アプリケーションを終了中...",
   "uninstall.status.removing_shortcuts": "ショートカットを削除中...",

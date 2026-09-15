@@ -40,12 +40,12 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect, GetMessageW,
-    GetSystemMetrics, LoadCursorW, LoadIconW, MessageBoxW, PostQuitMessage, RegisterClassExW,
-    SendMessageW, SetProcessDPIAware, ShowWindow, TranslateMessage, CS_HREDRAW, CS_VREDRAW,
-    HTCAPTION, ICON_BIG, ICON_SMALL, IDC_ARROW, MB_ICONERROR, MB_OK, MSG, SM_CXSCREEN, SM_CYSCREEN,
-    SW_MINIMIZE, SW_SHOW, WM_CLOSE, WM_DESTROY, WM_ERASEBKGND, WM_KEYDOWN, WM_LBUTTONDOWN,
-    WM_LBUTTONUP, WM_MOUSEMOVE, WM_NCLBUTTONDOWN, WM_PAINT, WM_SETICON, WNDCLASSEXW,
-    WS_EX_APPWINDOW, WS_POPUP,
+    GetSystemMetrics, LoadCursorW, LoadIconW, MessageBoxW, PostMessageW, PostQuitMessage,
+    RegisterClassExW, SendMessageW, SetProcessDPIAware, ShowWindow, TranslateMessage, CS_HREDRAW,
+    CS_VREDRAW, HTCAPTION, ICON_BIG, ICON_SMALL, IDC_ARROW, MB_ICONERROR, MB_OK, MSG, SM_CXSCREEN,
+    SM_CYSCREEN, SW_MINIMIZE, SW_SHOW, WM_CLOSE, WM_DESTROY, WM_ERASEBKGND, WM_KEYDOWN,
+    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_NCLBUTTONDOWN, WM_PAINT, WM_SETICON,
+    WNDCLASSEXW, WS_EX_APPWINDOW, WS_POPUP,
 };
 
 const BUNDLE_MAGIC: &[u8; 8] = b"NATVRS01";
@@ -54,6 +54,8 @@ const BUNDLE_VERSION: u16 = 1;
 const BASE_DPI: u32 = 96;
 const DEFAULT_DPI_THRESHOLD: u32 = 144;
 const WM_MOUSELEAVE: u32 = 0x02A3;
+/// Posted by a worker thread when it changed runtime progress or page state.
+const WM_APP_REFRESH: u32 = 0x8001;
 static UI: OnceLock<Mutex<RuntimeState>> = OnceLock::new();
 static TEMP_EXE_ID: AtomicU64 = AtomicU64::new(0);
 
@@ -69,6 +71,9 @@ struct ImageLayer {
     top: i32,
     width: i32,
     height: i32,
+    /// Region of `image` to draw. `None` draws the whole image; a progress bar
+    /// fills by shrinking this region.
+    source: Option<LayerRect>,
     alpha: u8,
 }
 
@@ -101,6 +106,10 @@ struct RuntimeState {
     interaction: InteractionState,
     mode: RuntimeMode,
     ui: RuntimeUi,
+    /// The window the runtime paints into, so worker threads can report back.
+    window: isize,
+    /// Executable an install deployed, launched from the finish page.
+    installed_app: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy)]
@@ -109,13 +118,27 @@ enum RuntimeMode {
     Uninstaller,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct InteractionState {
     checkbox_states: HashMap<String, bool>,
     panel_visibility: HashMap<String, bool>,
     hovered_control: Option<String>,
     pressed_control: Option<String>,
     text_input_values: HashMap<String, String>,
+    /// Wizard page currently rendered, as an index into the mode's page list.
+    page_index: usize,
+    /// Install or uninstall progress, 0-100, published by the worker thread.
+    progress: Option<u8>,
+    /// Locale key describing the running task, published by the worker thread.
+    status_key: Option<String>,
+}
+
+impl InteractionState {
+    /// The progress the UI should draw for a control declared with `progress`.
+    /// A bar without a bound worker keeps its authored value.
+    fn progress_for(&self, authored: u8) -> u8 {
+        self.progress.unwrap_or(authored)
+    }
 }
 
 struct TextLayer {
@@ -166,6 +189,7 @@ enum WindowAction {
     SelectLanguage(String),
     Install,
     Uninstall,
+    LaunchApp,
     ToggleCheckbox { id: String, checked: bool },
     SetPanelVisibility { id: String, visible: bool },
 }
@@ -209,6 +233,7 @@ struct LayoutContext<'a> {
     locale: &'a str,
     translations: &'a HashMap<String, String>,
     interaction: &'a InteractionState,
+    language_menu_open: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -217,6 +242,109 @@ struct FlowItem {
     flex_grow: f32,
     flex_shrink: f32,
     min_width: i32,
+}
+
+/// Direction a flow container stacks its children in. `FlowItem` fields keep
+/// their historical names; width there means the main axis of the container.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FlowAxis {
+    Horizontal,
+    Vertical,
+}
+
+impl FlowAxis {
+    fn main(self, rect: LayerRect) -> i32 {
+        match self {
+            FlowAxis::Horizontal => rect.width,
+            FlowAxis::Vertical => rect.height,
+        }
+    }
+
+    fn cross(self, rect: LayerRect) -> i32 {
+        match self {
+            FlowAxis::Horizontal => rect.height,
+            FlowAxis::Vertical => rect.width,
+        }
+    }
+
+    /// Offsets `rect` by a distance along the container's main axis.
+    fn shift(self, rect: LayerRect, distance: i32) -> LayerRect {
+        match self {
+            FlowAxis::Horizontal => LayerRect {
+                left: rect.left + distance,
+                ..rect
+            },
+            FlowAxis::Vertical => LayerRect {
+                top: rect.top + distance,
+                ..rect
+            },
+        }
+    }
+
+    /// Offsets `rect` by a distance along the container's cross axis.
+    fn shift_cross(self, rect: LayerRect, distance: i32) -> LayerRect {
+        match self {
+            FlowAxis::Horizontal => LayerRect {
+                top: rect.top + distance,
+                ..rect
+            },
+            FlowAxis::Vertical => LayerRect {
+                left: rect.left + distance,
+                ..rect
+            },
+        }
+    }
+
+    /// Builds a child rect from its main and cross extents.
+    fn place(self, rect: LayerRect, main: i32, cross: i32) -> LayerRect {
+        match self {
+            FlowAxis::Horizontal => LayerRect {
+                width: main,
+                height: cross,
+                ..rect
+            },
+            FlowAxis::Vertical => LayerRect {
+                width: cross,
+                height: main,
+                ..rect
+            },
+        }
+    }
+
+    /// The axis that measures a cross-axis extent. An HBox stretches height, so
+    /// its cross sizes measure vertically, and the other way round for a VBox.
+    fn cross_measure(self) -> FlowAxis {
+        match self {
+            FlowAxis::Horizontal => FlowAxis::Vertical,
+            FlowAxis::Vertical => FlowAxis::Horizontal,
+        }
+    }
+}
+
+/// Padding and margin, in device pixels.
+#[derive(Default, Clone, Copy)]
+struct Insets {
+    left: i32,
+    top: i32,
+    right: i32,
+    bottom: i32,
+}
+
+impl Insets {
+    fn horizontal(self) -> i32 {
+        self.left + self.right
+    }
+
+    fn vertical(self) -> i32 {
+        self.top + self.bottom
+    }
+
+    fn along(self, axis: FlowAxis) -> i32 {
+        match axis {
+            FlowAxis::Horizontal => self.horizontal(),
+            FlowAxis::Vertical => self.vertical(),
+        }
+    }
 }
 
 struct ComGuard;
@@ -1260,6 +1388,8 @@ fn run_embedded(bundle: BundleIndex, mode: RuntimeMode) -> Result<()> {
         interaction,
         mode,
         ui,
+        window: 0,
+        installed_app: None,
     }))
     .map_err(|_| anyhow::anyhow!("native UI was already initialized"))?;
     run_window(width, height)
@@ -1389,7 +1519,7 @@ fn load_layout(
             .get("installer_config.json")
             .context("installer_config.json missing from native bundle")?,
     )?;
-    let layout_path = runtime_layout_path(&config, mode)?;
+    let layout_path = runtime_layout_path_at(&config, mode, interaction.page_index)?;
     let xml = std::str::from_utf8(
         files
             .get(layout_path)
@@ -1420,6 +1550,7 @@ fn load_layout(
         locale,
         translations: &translations,
         interaction,
+        language_menu_open,
     };
     let active_panel = interaction
         .panel_visibility
@@ -1459,12 +1590,12 @@ fn load_layout(
         )?;
     }
     for node in page.descendants().filter(|node| node.is_element()) {
-        if is_hidden(node, interaction) || is_inside_absolute_hbox(node) {
+        if is_hidden(node, interaction) || is_inside_render_container(node) {
             continue;
         }
         let (left, top) = absolute_position(node, dpi);
-        let layer_width = scale_value(int_attribute(node, "width").unwrap_or(0), dpi.scale);
-        let layer_height = scale_value(int_attribute(node, "height").unwrap_or(0), dpi.scale);
+        let layer_width = size_attribute(node, "width", width, &context).unwrap_or(0);
+        let layer_height = size_attribute(node, "height", height, &context).unwrap_or(0);
         let rect = LayerRect {
             left,
             top,
@@ -1476,28 +1607,6 @@ fn load_layout(
         }) {
             continue;
         }
-        if node.has_tag_name("HBox")
-            && node.attribute("position") == Some("absolute")
-            && layer_width > 0
-            && layer_height > 0
-        {
-            render_hbox(node, rect, &context, &mut output)?;
-            continue;
-        }
-        if (node.has_tag_name("Box") || node.has_tag_name("Divider"))
-            && node.attribute("position") == Some("absolute")
-            && layer_width > 0
-            && layer_height > 0
-        {
-            if let Some(background) = node.attribute("background") {
-                push_solid_layer(
-                    &mut output.layers,
-                    rect,
-                    background,
-                    scale_value(int_attribute(node, "border-radius").unwrap_or(0), dpi.scale),
-                )?;
-            }
-        }
         if (node.has_tag_name("Button") || node.has_tag_name("Select"))
             && layer_width > 0
             && layer_height > 0
@@ -1505,21 +1614,44 @@ fn load_layout(
             push_action(node, rect, &mut output.actions, interaction);
             push_hover_region(node, rect, &context, &mut output.hover_regions);
         }
+        if node.has_tag_name("ProgressBar") && layer_width > 0 && layer_height > 0 {
+            render_progress_bar(node, rect, &context, &mut output)?;
+            continue;
+        }
+        // Containers own their subtree. `is_inside_render_container` already
+        // skipped their children, so drawing here cannot double-place them.
+        if let Some(axis) = flow_axis(node).filter(|_| layer_width > 0 && layer_height > 0) {
+            render_flow(node, rect, axis, &context, &mut output)?;
+            continue;
+        }
         if layer_width > 0 && layer_height > 0 {
             push_node_text(node, rect, &context, &mut output.texts);
         }
         if node.has_tag_name("Select") && layer_width > 0 && layer_height > 0 {
-            render_language_select(node, rect, &context, language_menu_open, &mut output)?;
+            render_language_select(node, rect, &context, &mut output)?;
         }
-        let style = match node.tag_name().name() {
-            "Image" | "Icon" if node.attribute("position") == Some("absolute") => {
-                node.attribute("src").map(ImageStyle::plain)
+        let has_layer = layer_width > 0 && layer_height > 0;
+        match node.tag_name().name() {
+            "Image" | "Icon" if has_layer => {
+                if let Some(source) = node.attribute("src") {
+                    push_styled_layer(
+                        files,
+                        &mut output.layers,
+                        ImageStyle::plain(source),
+                        rect,
+                        dpi,
+                    )?;
+                }
             }
-            "Button" => button_image(node, interaction).map(parse_image_style),
-            _ => None,
-        };
-        if let Some(style) = style.filter(|_| layer_width > 0 && layer_height > 0) {
-            push_styled_layer(files, &mut output.layers, style, rect, dpi)?;
+            "Button" if has_layer => {
+                if let Some(style) = button_image(node, interaction).map(parse_image_style) {
+                    push_styled_layer(files, &mut output.layers, style, rect, dpi)?;
+                }
+            }
+            "Box" | "Divider" if has_layer => {
+                render_box_contents(node, rect, &context, &mut output)?;
+            }
+            _ => {}
         }
     }
     Ok(RuntimeUi {
@@ -1537,6 +1669,24 @@ fn load_layout(
 }
 
 fn runtime_layout_path(config: &serde_json::Value, mode: RuntimeMode) -> Result<&str> {
+    runtime_layout_path_at(config, mode, 0)
+}
+
+fn runtime_page_count(config: &serde_json::Value, mode: RuntimeMode) -> usize {
+    let pages = match mode {
+        RuntimeMode::Installer => &config["wizard"]["pages"],
+        RuntimeMode::Uninstaller => &config["wizard"]["uninstall_pages"],
+    };
+    pages.as_array().map(Vec::len).unwrap_or(0)
+}
+
+/// The layout of the page at `index`, falling back to the first page so an
+/// out-of-range index can never blank the window.
+fn runtime_layout_path_at(
+    config: &serde_json::Value,
+    mode: RuntimeMode,
+    index: usize,
+) -> Result<&str> {
     let (pages, field) = match mode {
         RuntimeMode::Installer => (&config["wizard"]["pages"], "wizard.pages[0].layout"),
         RuntimeMode::Uninstaller => (
@@ -1544,8 +1694,9 @@ fn runtime_layout_path(config: &serde_json::Value, mode: RuntimeMode) -> Result<
             "wizard.uninstall_pages[0].layout",
         ),
     };
-    pages[0]["layout"]
+    pages[index]["layout"]
         .as_str()
+        .or_else(|| pages[0]["layout"].as_str())
         .with_context(|| format!("{field} is missing"))
 }
 
@@ -1615,10 +1766,19 @@ fn parse_panel_action(action: &str) -> Option<(&str, bool)> {
     }
 }
 
-fn is_inside_absolute_hbox(node: roxmltree::Node<'_, '_>) -> bool {
+/// Whether a container positions its own children. The page-level pass walks a
+/// flat node list, so anything below such a container must be skipped there.
+fn renders_own_children(node: roxmltree::Node<'_, '_>) -> bool {
+    node.has_tag_name("HBox")
+        || node.has_tag_name("VBox")
+        || node.has_tag_name("Content")
+        || node.has_tag_name("Box")
+}
+
+fn is_inside_render_container(node: roxmltree::Node<'_, '_>) -> bool {
     let mut ancestor = node.parent();
     while let Some(current) = ancestor {
-        if current.has_tag_name("HBox") && current.attribute("position") == Some("absolute") {
+        if renders_own_children(current) {
             return true;
         }
         ancestor = current.parent();
@@ -1652,6 +1812,10 @@ fn push_action(
             Some("switch_language") => Some(WindowAction::ToggleLanguageMenu),
             Some("install") => Some(WindowAction::Install),
             Some("uninstall") => Some(WindowAction::Uninstall),
+            Some("launch_app") => Some(WindowAction::LaunchApp),
+            // The finish page closes the wizard; `finish` is that same action
+            // under the name the example layouts use.
+            Some("finish") => Some(WindowAction::Close),
             _ => None,
         }
     };
@@ -1759,9 +1923,9 @@ fn render_language_select(
     node: roxmltree::Node<'_, '_>,
     rect: LayerRect,
     context: &LayoutContext<'_>,
-    menu_open: bool,
     output: &mut LayoutOutput,
 ) -> Result<()> {
+    let menu_open = context.language_menu_open;
     let arrow_source = if menu_open {
         node.attribute("dropdown-open-image")
             .or_else(|| node.attribute("dropdown-image"))
@@ -1904,6 +2068,20 @@ fn resolved_text_for_node(
     }
     let (mut text, alignment) = text_for_node(node, context.locale, context.translations)?;
     if let Some(source) = node.attribute("value-source") {
+        // `status` replaces the authored placeholder with the locale entry the
+        // running task published, so a progress page can describe the work.
+        if source == "status" {
+            return Some((
+                context
+                    .interaction
+                    .status_key
+                    .as_deref()
+                    .and_then(|key| context.translations.get(key))
+                    .cloned()
+                    .unwrap_or(text),
+                alignment,
+            ));
+        }
         let value = resolve_value_source(source, node.attribute("value-format"), context)
             .unwrap_or_else(|| "--".to_string());
         text.push_str(&value);
@@ -2017,12 +2195,36 @@ fn format_size_bytes(bytes: u64) -> String {
     }
 }
 
-fn render_hbox(
+/// The flow direction a container declares. Containers without `layout` are
+/// horizontal, matching the first implementation slice.
+fn flow_axis(node: roxmltree::Node<'_, '_>) -> Option<FlowAxis> {
+    match node.tag_name().name() {
+        "HBox" => Some(FlowAxis::Horizontal),
+        "VBox" => Some(FlowAxis::Vertical),
+        "Content" => match node.attribute("layout") {
+            Some("vertical") => Some(FlowAxis::Vertical),
+            _ => Some(FlowAxis::Horizontal),
+        },
+        _ => None,
+    }
+}
+
+/// Lays out a flow container: padding inset, then children in order along the
+/// main axis with flex sizing, gaps, `justify-content` and `align-items`.
+fn render_flow(
     node: roxmltree::Node<'_, '_>,
     rect: LayerRect,
+    axis: FlowAxis,
     context: &LayoutContext<'_>,
     output: &mut LayoutOutput,
 ) -> Result<()> {
+    let padding = insets_for_node(node, "padding", context);
+    let content = LayerRect {
+        left: rect.left + padding.left,
+        top: rect.top + padding.top,
+        width: (rect.width - padding.horizontal()).max(0),
+        height: (rect.height - padding.vertical()).max(0),
+    };
     let children: Vec<_> = node
         .children()
         .filter(|child| child.is_element() && !is_hidden(*child, context.interaction))
@@ -2036,48 +2238,138 @@ fn render_hbox(
             .unwrap_or(0),
         context.dpi.scale,
     );
+    let available_main = axis.main(content);
     let items: Vec<_> = children
         .iter()
-        .map(|child| flow_item_for_node(*child, context))
+        .map(|child| flow_item_for_node(*child, axis, available_main, context))
         .collect();
-    let widths = flow_widths(&items, rect.width, gap);
-    let center_items = node.attribute("align-items") == Some("center");
-    let mut left = rect.left;
+    let sizes = flow_widths(&items, available_main, gap);
+    let used: i32 = sizes.iter().sum::<i32>()
+        + gap * i32::try_from(children.len().saturating_sub(1)).unwrap_or(0);
+    // `justify-content` places the whole run inside the leftover space; HBox and
+    // Content spell the same idea `horizontal-align`.
+    let offset = match main_alignment(node, axis) {
+        Some("center") => (available_main - used) / 2,
+        Some("end" | "right") => available_main - used,
+        _ => 0,
+    }
+    .max(0);
+    let center_items = cross_alignment(node, axis) == Some("center");
+    let mut cursor = offset;
     for (index, child) in children.into_iter().enumerate() {
-        let width = widths[index];
-        let height = int_attribute(child, "height")
-            .map(|value| scale_value(value, context.dpi.scale))
-            .unwrap_or(rect.height);
-        let top = if center_items {
-            rect.top + (rect.height - height) / 2
+        let margin = insets_for_node(child, "margin", context);
+        let outer_main = sizes[index];
+        let main = (outer_main - margin.along(axis)).max(0);
+        let cross = cross_size_for_node(child, axis, axis.cross(content), context);
+        let cross_offset = if center_items {
+            (axis.cross(content) - cross) / 2
         } else {
-            rect.top
+            0
         };
-        if width > 0 && height > 0 {
-            render_flow_item(
-                child,
-                LayerRect {
-                    left,
-                    top,
-                    width,
-                    height,
-                },
-                context,
-                output,
-            )?;
+        let placed = axis.place(content, main, cross);
+        let placed = axis.shift(placed, cursor + margin_main_start(margin, axis));
+        let placed = axis.shift_cross(
+            placed,
+            cross_offset.max(0) + margin_cross_start(margin, axis),
+        );
+        if main > 0 && cross > 0 {
+            render_flow_item(child, placed, context, output)?;
         }
-        left += width + gap;
+        cursor += outer_main + gap;
     }
     Ok(())
 }
 
-fn flow_item_for_node(node: roxmltree::Node<'_, '_>, context: &LayoutContext<'_>) -> FlowItem {
-    let explicit_width =
-        int_attribute(node, "width").map(|value| scale_value(value, context.dpi.scale));
-    let has_intrinsic_text =
-        node.has_tag_name("Checkbox") || node.has_tag_name("Label") || node.has_tag_name("Button");
-    let intrinsic_width = if has_intrinsic_text {
-        resolved_text_for_node(node, context).map(|(text, _)| {
+/// Main-axis alignment for a container, accepting the spelling each tag uses.
+fn main_alignment<'a>(node: roxmltree::Node<'a, '_>, axis: FlowAxis) -> Option<&'a str> {
+    match axis {
+        FlowAxis::Horizontal => node
+            .attribute("justify-content")
+            .or_else(|| node.attribute("horizontal-align")),
+        FlowAxis::Vertical => node.attribute("justify-content"),
+    }
+}
+
+/// Cross-axis alignment for a container, accepting the spelling each tag uses.
+fn cross_alignment<'a>(node: roxmltree::Node<'a, '_>, axis: FlowAxis) -> Option<&'a str> {
+    match axis {
+        FlowAxis::Horizontal => node
+            .attribute("align-items")
+            .or_else(|| node.attribute("vertical-align")),
+        FlowAxis::Vertical => node
+            .attribute("align-items")
+            .or_else(|| node.attribute("horizontal-align")),
+    }
+}
+
+fn margin_main_start(margin: Insets, axis: FlowAxis) -> i32 {
+    match axis {
+        FlowAxis::Horizontal => margin.left,
+        FlowAxis::Vertical => margin.top,
+    }
+}
+
+fn margin_cross_start(margin: Insets, axis: FlowAxis) -> i32 {
+    match axis {
+        FlowAxis::Horizontal => margin.top,
+        FlowAxis::Vertical => margin.left,
+    }
+}
+
+/// The main-axis size an item claims, including its margins. Items without an
+/// explicit or intrinsic size rely on `flex-grow`, as `Spacer` does.
+fn flow_item_for_node(
+    node: roxmltree::Node<'_, '_>,
+    axis: FlowAxis,
+    available_main: i32,
+    context: &LayoutContext<'_>,
+) -> FlowItem {
+    let margin = insets_for_node(node, "margin", context);
+    let padding = insets_for_node(node, "padding", context);
+    let explicit = size_attribute(node, main_axis_attribute(axis), available_main, context);
+    let intrinsic = intrinsic_size(node, axis, context);
+    let fixed_width = explicit
+        .or(intrinsic)
+        .map(|value| value + padding.along(axis) + margin.along(axis));
+    let min_attribute = match axis {
+        FlowAxis::Horizontal => "min-width",
+        FlowAxis::Vertical => "min-height",
+    };
+    FlowItem {
+        fixed_width,
+        flex_grow: float_attribute(node, "flex-grow").unwrap_or(0.0),
+        flex_shrink: float_attribute(node, "flex-shrink").unwrap_or(1.0),
+        min_width: size_attribute(node, min_attribute, available_main, context).unwrap_or(0),
+    }
+}
+
+fn main_axis_attribute(axis: FlowAxis) -> &'static str {
+    match axis {
+        FlowAxis::Horizontal => "width",
+        FlowAxis::Vertical => "height",
+    }
+}
+
+fn cross_axis_attribute(axis: FlowAxis) -> &'static str {
+    match axis {
+        FlowAxis::Horizontal => "height",
+        FlowAxis::Vertical => "width",
+    }
+}
+
+/// The content size a text control claims when measuring `axis`. Text measures
+/// by width horizontally and by its line box vertically.
+fn intrinsic_size(
+    node: roxmltree::Node<'_, '_>,
+    axis: FlowAxis,
+    context: &LayoutContext<'_>,
+) -> Option<i32> {
+    if !has_intrinsic_text(node) {
+        return None;
+    }
+    match axis {
+        FlowAxis::Vertical => Some(line_height_for_node(node, context)),
+        FlowAxis::Horizontal => resolved_text_for_node(node, context).map(|(text, _)| {
             let font_size = scale_value(
                 int_attribute(node, "font-size").unwrap_or(12),
                 context.dpi.scale,
@@ -2101,19 +2393,133 @@ fn flow_item_for_node(node: roxmltree::Node<'_, '_>, context: &LayoutContext<'_>
             int_attribute(node, "max-width")
                 .map(|maximum| width.min(scale_value(maximum, context.dpi.scale)))
                 .unwrap_or(width)
-        })
-    } else {
-        None
-    };
-    FlowItem {
-        fixed_width: explicit_width.or(intrinsic_width),
-        flex_grow: float_attribute(node, "flex-grow").unwrap_or(0.0),
-        flex_shrink: float_attribute(node, "flex-shrink").unwrap_or(1.0),
-        min_width: scale_value(
-            int_attribute(node, "min-width").unwrap_or(0),
-            context.dpi.scale,
-        ),
+        }),
     }
+}
+
+fn has_intrinsic_text(node: roxmltree::Node<'_, '_>) -> bool {
+    node.tag_name().name() == "Checkbox"
+        || node.tag_name().name() == "Label"
+        || node.tag_name().name() == "Button"
+}
+
+fn line_height_for_node(node: roxmltree::Node<'_, '_>, context: &LayoutContext<'_>) -> i32 {
+    let font_size = scale_value(
+        int_attribute(node, "font-size").unwrap_or(12),
+        context.dpi.scale,
+    );
+    (font_size as f32 * 1.4).round() as i32
+}
+
+/// The cross-axis size of an item: explicit if declared, otherwise its content
+/// size, otherwise the container's own extent (the default stretch).
+fn cross_size_for_node(
+    node: roxmltree::Node<'_, '_>,
+    axis: FlowAxis,
+    available_cross: i32,
+    context: &LayoutContext<'_>,
+) -> i32 {
+    if let Some(explicit) =
+        size_attribute(node, cross_axis_attribute(axis), available_cross, context)
+    {
+        return explicit;
+    }
+    if let Some(intrinsic) = intrinsic_size(node, axis.cross_measure(), context) {
+        return intrinsic.min(available_cross.max(0));
+    }
+    available_cross
+}
+
+/// Reads an extent that may be a pixel count or a percentage of the parent.
+fn size_attribute(
+    node: roxmltree::Node<'_, '_>,
+    name: &str,
+    base: i32,
+    context: &LayoutContext<'_>,
+) -> Option<i32> {
+    let raw = node.attribute(name)?.trim();
+    if let Some(percent) = raw.strip_suffix('%') {
+        let percent: f32 = percent.trim().parse().ok()?;
+        return Some((base as f32 * percent / 100.0).round() as i32);
+    }
+    let value: i32 = raw.parse().ok()?;
+    Some(scale_value(value, context.dpi.scale))
+}
+
+/// Parses the one-to-four-value `padding`/`margin` shorthand, in device pixels.
+fn insets_for_node(
+    node: roxmltree::Node<'_, '_>,
+    name: &str,
+    context: &LayoutContext<'_>,
+) -> Insets {
+    let mut insets = Insets::default();
+    if let Some(raw) = node.attribute(name) {
+        let values: Vec<i32> = raw
+            .split_whitespace()
+            .filter_map(|value| value.parse::<i32>().ok())
+            .map(|value| scale_value(value, context.dpi.scale))
+            .collect();
+        match values.as_slice() {
+            [all] => {
+                insets = Insets {
+                    left: *all,
+                    top: *all,
+                    right: *all,
+                    bottom: *all,
+                }
+            }
+            [vertical, horizontal] => {
+                insets = Insets {
+                    left: *horizontal,
+                    top: *vertical,
+                    right: *horizontal,
+                    bottom: *vertical,
+                }
+            }
+            [top, horizontal, bottom] => {
+                insets = Insets {
+                    left: *horizontal,
+                    top: *top,
+                    right: *horizontal,
+                    bottom: *bottom,
+                }
+            }
+            [top, right, bottom, left] => {
+                insets = Insets {
+                    left: *left,
+                    top: *top,
+                    right: *right,
+                    bottom: *bottom,
+                }
+            }
+            _ => {}
+        }
+    }
+    // `margin-top` and friends override the shorthand, standing alone the way
+    // the example layouts write them.
+    if let Some(value) = edge_attribute(node, name, "top", context) {
+        insets.top = value;
+    }
+    if let Some(value) = edge_attribute(node, name, "right", context) {
+        insets.right = value;
+    }
+    if let Some(value) = edge_attribute(node, name, "bottom", context) {
+        insets.bottom = value;
+    }
+    if let Some(value) = edge_attribute(node, name, "left", context) {
+        insets.left = value;
+    }
+    insets
+}
+
+fn edge_attribute(
+    node: roxmltree::Node<'_, '_>,
+    name: &str,
+    side: &str,
+    context: &LayoutContext<'_>,
+) -> Option<i32> {
+    let attribute = format!("{name}-{side}");
+    int_attribute(node, &attribute).map(|value| scale_value(value, context.dpi.scale))
 }
 
 fn estimate_text_width(text: &str, font_size: i32) -> i32 {
@@ -2218,12 +2624,14 @@ fn render_flow_item(
             if let Some(content) = node.children().find(|child| {
                 child.has_tag_name("Content") && !is_hidden(*child, context.interaction)
             }) {
-                render_horizontal_content(content, rect, context, output)?;
+                render_flow(content, rect, FlowAxis::Horizontal, context, output)?;
             }
         }
         "Label" | "Select" => {
             push_node_text(node, rect, context, &mut output.texts);
         }
+        "TextInput" => push_node_text(node, rect, context, &mut output.texts),
+        "ProgressBar" => render_progress_bar(node, rect, context, output)?,
         "Image" | "Icon" => {
             if let Some(source) = node.attribute("src") {
                 push_styled_layer(
@@ -2235,64 +2643,12 @@ fn render_flow_item(
                 )?;
             }
         }
-        "Box" => render_box_contents(node, rect, context, output)?,
-        _ => {}
-    }
-    Ok(())
-}
-
-fn render_horizontal_content(
-    node: roxmltree::Node<'_, '_>,
-    rect: LayerRect,
-    context: &LayoutContext<'_>,
-    output: &mut LayoutOutput,
-) -> Result<()> {
-    let children: Vec<_> = node
-        .children()
-        .filter(|child| child.is_element() && !is_hidden(*child, context.interaction))
-        .collect();
-    let gap = scale_value(
-        int_attribute(node, "item-spacing").unwrap_or(0),
-        context.dpi.scale,
-    );
-    let widths: Vec<_> = children
-        .iter()
-        .map(|child| {
-            int_attribute(*child, "width")
-                .or_else(|| int_attribute(*child, "max-width"))
-                .map(|value| scale_value(value, context.dpi.scale))
-                .unwrap_or(0)
-        })
-        .collect();
-    let total_width = widths.iter().sum::<i32>()
-        + gap * i32::try_from(children.len().saturating_sub(1)).unwrap_or(0);
-    let mut left = if node.attribute("horizontal-align") == Some("right") {
-        rect.left + (rect.width - total_width).max(0)
-    } else {
-        rect.left
-    };
-    for (index, child) in children.into_iter().enumerate() {
-        let width = widths[index];
-        let height = int_attribute(child, "height")
-            .map(|value| scale_value(value, context.dpi.scale))
-            .unwrap_or(rect.height);
-        let top = if node.attribute("vertical-align") == Some("center") {
-            rect.top + (rect.height - height) / 2
-        } else {
-            rect.top
-        };
-        render_flow_item(
-            child,
-            LayerRect {
-                left,
-                top,
-                width,
-                height,
-            },
-            context,
-            output,
-        )?;
-        left += width + gap;
+        "Box" | "Divider" => render_box_contents(node, rect, context, output)?,
+        _ => {
+            if let Some(axis) = flow_axis(node) {
+                render_flow(node, rect, axis, context, output)?;
+            }
+        }
     }
     Ok(())
 }
@@ -2314,49 +2670,48 @@ fn render_box_contents(
             ),
         )?;
     }
+    let padding = insets_for_node(node, "padding", context);
+    let content = LayerRect {
+        left: rect.left + padding.left,
+        top: rect.top + padding.top,
+        width: (rect.width - padding.horizontal()).max(0),
+        height: (rect.height - padding.vertical()).max(0),
+    };
     for child in node
         .children()
         .filter(|child| child.is_element() && !is_hidden(*child, context.interaction))
     {
-        let width = scale_value(
-            int_attribute(child, "width").unwrap_or(0),
-            context.dpi.scale,
-        );
-        let height = scale_value(
-            int_attribute(child, "height").unwrap_or(0),
-            context.dpi.scale,
-        );
-        let left = if child.attribute("position") == Some("absolute") {
-            rect.left + scale_value(int_attribute(child, "left").unwrap_or(0), context.dpi.scale)
+        let width = size_attribute(child, "width", content.width, context).unwrap_or(0);
+        let height = size_attribute(child, "height", content.height, context).unwrap_or(0);
+        // Children without `position="absolute"` are centered, which is how the
+        // example's single-child wrappers declare their content boxes.
+        let (left, top) = if child.attribute("position") == Some("absolute") {
+            (
+                content.left
+                    + scale_value(int_attribute(child, "left").unwrap_or(0), context.dpi.scale),
+                content.top
+                    + scale_value(int_attribute(child, "top").unwrap_or(0), context.dpi.scale),
+            )
         } else {
-            rect.left + (rect.width - width) / 2
+            (
+                content.left + (content.width - width) / 2,
+                content.top + (content.height - height) / 2,
+            )
         };
-        let top = if child.attribute("position") == Some("absolute") {
-            rect.top + scale_value(int_attribute(child, "top").unwrap_or(0), context.dpi.scale)
-        } else {
-            rect.top + (rect.height - height) / 2
-        };
-        let child_rect = LayerRect {
-            left,
-            top,
-            width,
-            height,
-        };
-        match child.tag_name().name() {
-            "Image" | "Icon" => {
-                if let Some(source) = child.attribute("src") {
-                    push_styled_layer(
-                        context.files,
-                        &mut output.layers,
-                        ImageStyle::plain(source),
-                        child_rect,
-                        context.dpi,
-                    )?;
-                }
-            }
-            "TextInput" => push_node_text(child, child_rect, context, &mut output.texts),
-            _ => {}
+        if width <= 0 || height <= 0 {
+            continue;
         }
+        render_flow_item(
+            child,
+            LayerRect {
+                left,
+                top,
+                width,
+                height,
+            },
+            context,
+            output,
+        )?;
     }
     Ok(())
 }
@@ -2685,6 +3040,61 @@ fn push_solid_layer(
         top: rect.top,
         width: rect.width,
         height: rect.height,
+        source: None,
+        alpha: 255,
+    });
+    Ok(())
+}
+
+/// Draws a progress bar: a rounded track, then the filled portion on top.
+///
+/// `bar-image` is authored as a single full-width sprite, so the filled part is
+/// drawn by clipping the sprite to the completed share of the control.
+fn render_progress_bar(
+    node: roxmltree::Node<'_, '_>,
+    rect: LayerRect,
+    context: &LayoutContext<'_>,
+    output: &mut LayoutOutput,
+) -> Result<()> {
+    let radius = scale_value(
+        int_attribute(node, "border-radius").unwrap_or(0),
+        context.dpi.scale,
+    );
+    if let Some(background) = node.attribute("background") {
+        push_solid_layer(&mut output.layers, rect, background, radius)?;
+    }
+    let authored = int_attribute(node, "progress").unwrap_or(0).clamp(0, 100) as u8;
+    let progress = context.interaction.progress_for(authored);
+    let filled = (rect.width as i64 * progress as i64 / 100) as i32;
+    if filled <= 0 {
+        return Ok(());
+    }
+    let Some(source) = node.attribute("bar-image") else {
+        return Ok(());
+    };
+    let resolved = resolve_asset_path(context.files, source, context.dpi.use_2x)
+        .with_context(|| format!("layout asset missing from native bundle: {source}"))?;
+    let encoded = context
+        .files
+        .get(resolved)
+        .expect("resolved asset path must exist");
+    let image = decode_image(encoded)?;
+    // Clip the sprite horizontally so the bar fills left to right.
+    let source_width =
+        ((image.width as i64 * progress as i64) / 100).clamp(1, image.width as i64) as i32;
+    let source_height = image.height as i32;
+    output.layers.push(ImageLayer {
+        image,
+        left: rect.left,
+        top: rect.top,
+        width: filled,
+        height: rect.height,
+        source: Some(LayerRect {
+            left: 0,
+            top: 0,
+            width: source_width,
+            height: source_height,
+        }),
         alpha: 255,
     });
     Ok(())
@@ -2730,6 +3140,7 @@ fn push_layer(
         top: rect.top,
         width: rect.width,
         height: rect.height,
+        source: None,
         alpha,
     });
     Ok(())
@@ -2839,6 +3250,12 @@ fn run_window(client_width: i32, client_height: i32) -> Result<()> {
                 }
             }
         }
+        // Worker threads post progress updates back to this window.
+        if let Some(state) = UI.get() {
+            if let Ok(mut state) = state.lock() {
+                state.window = window.0 as isize;
+            }
+        }
         let _ = ShowWindow(window, SW_SHOW);
         let _ = UpdateWindow(window);
         let mut message = MSG::default();
@@ -2919,6 +3336,11 @@ unsafe extern "system" fn window_proc(
         }
         WM_KEYDOWN if wparam.0 as u32 == 0x1B && !install::busy() => {
             let _ = DestroyWindow(window);
+            LRESULT(0)
+        }
+        WM_APP_REFRESH => {
+            // The state is already rebuilt by whoever posted this message.
+            let _ = InvalidateRect(window, None, false);
             LRESULT(0)
         }
         WM_CLOSE if install::busy() => LRESULT(0),
@@ -3015,6 +3437,11 @@ unsafe fn handle_window_action(window: HWND, action: WindowAction) {
         }
         WindowAction::Install => install::start_install(window),
         WindowAction::Uninstall => install::start_uninstall(window),
+        WindowAction::LaunchApp => {
+            if let Err(error) = launch_installed_app() {
+                show_runtime_error(&error);
+            }
+        }
         WindowAction::ToggleCheckbox { id, checked } => {
             if let Err(error) = set_checkbox_state(window, id, !checked) {
                 show_runtime_error(&error);
@@ -3128,6 +3555,96 @@ fn rebuild_runtime_ui(state: &mut RuntimeState) -> Result<()> {
         &state.interaction,
         state.mode,
     )?;
+    Ok(())
+}
+
+/// Starts the application an install deployed, from its own directory.
+fn launch_installed_app() -> Result<()> {
+    let app = {
+        let state = UI
+            .get()
+            .context("native UI state is missing")?
+            .lock()
+            .map_err(|_| anyhow::anyhow!("native UI state lock was poisoned"))?;
+        state
+            .installed_app
+            .clone()
+            .context("no installed application is recorded")?
+    };
+    let directory = app
+        .parent()
+        .context("installed application has no parent")?;
+    std::process::Command::new(&app)
+        .current_dir(directory)
+        .spawn()
+        .with_context(|| format!("failed to launch {}", app.display()))?;
+    Ok(())
+}
+
+/// Switches the wizard to `index` and repaints.
+pub(crate) fn show_page(index: usize) -> Result<()> {
+    update_runtime(|state| {
+        state.interaction.page_index = index;
+        Ok(())
+    })
+}
+
+/// Publishes task progress so the progress pages can draw it.
+pub(crate) fn report_progress(percent: u8, status_key: &str) -> Result<()> {
+    update_runtime(|state| {
+        state.interaction.progress = Some(percent.min(100));
+        state.interaction.status_key = Some(status_key.to_string());
+        Ok(())
+    })
+}
+
+/// Records the deployed application so the finish page can launch it.
+pub(crate) fn record_installed_app(app: PathBuf) -> Result<()> {
+    update_runtime(|state| {
+        state.installed_app = Some(app.clone());
+        Ok(())
+    })
+}
+
+/// The page count of the mode the runtime is currently in.
+pub(crate) fn page_count() -> usize {
+    let Some(runtime) = UI.get() else {
+        return 0;
+    };
+    let Ok(state) = runtime.lock() else {
+        return 0;
+    };
+    let Ok(config) = serde_json::from_slice::<serde_json::Value>(
+        state
+            .files
+            .get("installer_config.json")
+            .map(Vec::as_slice)
+            .unwrap_or_default(),
+    ) else {
+        return 0;
+    };
+    runtime_page_count(&config, state.mode)
+}
+
+/// Applies `change` to the runtime state, rebuilds the layout, and repaints.
+///
+/// Worker threads call this; painting itself stays on the UI thread because the
+/// repaint is requested through a posted message.
+fn update_runtime(change: impl FnOnce(&mut RuntimeState) -> Result<()>) -> Result<()> {
+    let runtime = UI.get().context("native UI state is missing")?;
+    let window = {
+        let mut state = runtime
+            .lock()
+            .map_err(|_| anyhow::anyhow!("native UI state lock was poisoned"))?;
+        change(&mut state)?;
+        rebuild_runtime_ui(&mut state)?;
+        state.window
+    };
+    if window != 0 {
+        unsafe {
+            let _ = PostMessageW(HWND(window as *mut _), WM_APP_REFRESH, None, None);
+        }
+    }
     Ok(())
 }
 
@@ -3309,6 +3826,10 @@ unsafe fn draw_layer(destination: HDC, layer: &ImageLayer) {
         layer.image.pixels.len(),
     );
     let previous = SelectObject(source, bitmap);
+    let (source_x, source_y, source_width, source_height) = match layer.source {
+        Some(region) => (region.left, region.top, region.width, region.height),
+        None => (0, 0, layer.image.width as i32, layer.image.height as i32),
+    };
     let _ = GdiAlphaBlend(
         destination,
         layer.left,
@@ -3316,10 +3837,10 @@ unsafe fn draw_layer(destination: HDC, layer: &ImageLayer) {
         layer.width,
         layer.height,
         source,
-        0,
-        0,
-        layer.image.width as i32,
-        layer.image.height as i32,
+        source_x,
+        source_y,
+        source_width,
+        source_height,
         BLENDFUNCTION {
             BlendOp: AC_SRC_OVER as u8,
             BlendFlags: 0,
@@ -3338,10 +3859,12 @@ mod tests {
         button_image, disk_root, flow_widths, format_size_bytes, initial_interaction,
         inspect_project, installer_version_info, load_layout, measure_layout_text_width,
         pack_project, pack_project_with_progress, parse_bundle, parse_color, parse_image_style,
-        parse_text_runs, query_disk_free_bytes, resolve_asset_path, runtime_layout_path,
-        scale_value, uninstaller_version_info, validate_output_filename, BundleIndex, DpiContext,
-        FlowItem, InteractionState, PayloadFormat, RuntimeMode, TextAlignment, WindowAction,
-        FOOTER_MAGIC,
+        parse_text_runs, query_disk_free_bytes, render_flow, render_progress_bar,
+        resolve_asset_path, resolved_text_for_node, runtime_layout_path, runtime_layout_path_at,
+        runtime_page_count, scale_value, size_attribute, uninstaller_version_info,
+        validate_output_filename, BundleIndex, DpiContext, FlowAxis, FlowItem, InteractionState,
+        LayerRect, LayoutContext, LayoutOutput, PayloadFormat, RuntimeMode, RuntimeUi,
+        TextAlignment, WindowAction, FOOTER_MAGIC,
     };
     use anyhow::Context;
     use std::collections::HashMap;
@@ -4055,6 +4578,338 @@ mod tests {
             .find(|region| matches!(region.action, WindowAction::Close))
             .context("cancel button is not clickable")?;
         assert!(uninstall.left >= close.right);
+        Ok(())
+    }
+
+    /// Loads one wizard page of the TapTap example at 96 DPI.
+    fn taptap_page(
+        mode: RuntimeMode,
+        page_index: usize,
+        interaction: &InteractionState,
+    ) -> anyhow::Result<RuntimeUi> {
+        let project = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/TapTap");
+        let bundle = pack_project_with_progress(&project, None, false, |_| {})?;
+        let files = parse_bundle(&bundle)?;
+        let mut interaction = interaction.clone();
+        interaction.page_index = page_index;
+        load_layout(
+            &files,
+            DpiContext {
+                scale: 1.0,
+                use_2x: false,
+            },
+            "zh-CN",
+            false,
+            &interaction,
+            mode,
+        )
+    }
+
+    #[test]
+    fn vbox_stacks_children_vertically_with_padding_and_margins() -> anyhow::Result<()> {
+        let files: HashMap<String, Vec<u8>> = HashMap::new();
+        let config = serde_json::json!({
+            "resources": { "locales_dir": "locales" }
+        });
+        let document = roxmltree::Document::parse(
+            r##"<Page width="400" height="300">
+                  <VBox position="absolute" left="0" top="0" width="100%" height="300"
+                        padding="10 20" align-items="center">
+                    <Spacer height="60" />
+                    <Label text="hello" font-size="14" color="#FFFFFFFF" />
+                    <Button id="ok" action="install" text="ok" width="120" height="30"
+                            margin-top="16" />
+                  </VBox>
+                </Page>"##,
+        )?;
+        let page = document
+            .descendants()
+            .find(|node| node.has_tag_name("Page"))
+            .context("page missing")?;
+        let vbox = page
+            .descendants()
+            .find(|node| node.has_tag_name("VBox"))
+            .context("vbox missing")?;
+        let context = LayoutContext {
+            dpi: DpiContext {
+                scale: 1.0,
+                use_2x: false,
+            },
+            files: &files,
+            config: &config,
+            locale: "zh-CN",
+            translations: &HashMap::new(),
+            interaction: &InteractionState::default(),
+            language_menu_open: false,
+        };
+        let mut output = LayoutOutput::default();
+        render_flow(
+            vbox,
+            LayerRect {
+                left: 0,
+                top: 0,
+                width: 400,
+                height: 300,
+            },
+            FlowAxis::Vertical,
+            &context,
+            &mut output,
+        )?;
+
+        // Padding insets the content box: 20 left/right, 10 top/bottom. The
+        // label follows the 60px spacer, keeping only its own line height.
+        let label = output.texts.first().context("label text missing")?;
+        assert_eq!(label.top, 70);
+        assert_eq!(label.height, 20);
+        // `align-items="center"` centres the cross axis, which a VBox measures
+        // horizontally, so the label sits in the middle of the content box.
+        assert_eq!(label.left, 20 + (360 - label.width) / 2);
+        // The button is centred the same way, and `margin-top` pushes it below
+        // the label instead of overlapping it. A button without artwork still
+        // registers its hit region.
+        let button = output
+            .actions
+            .first()
+            .context("button action region missing")?;
+        assert_eq!(button.left, 20 + (360 - 120) / 2);
+        assert_eq!(button.right - button.left, 120);
+        assert_eq!(button.top, 10 + 60 + label.height + 16);
+        assert_eq!(button.bottom - button.top, 30);
+        Ok(())
+    }
+
+    #[test]
+    fn percentage_and_pixel_extents_scale_with_the_layout() -> anyhow::Result<()> {
+        let files: HashMap<String, Vec<u8>> = HashMap::new();
+        let config = serde_json::json!({});
+        let document = roxmltree::Document::parse(
+            r#"<Page width="200" height="100">
+                 <Box position="absolute" left="0" top="0" width="50%" height="20" />
+               </Page>"#,
+        )?;
+        let page = document
+            .descendants()
+            .find(|node| node.has_tag_name("Page"))
+            .context("page missing")?;
+        let context = LayoutContext {
+            dpi: DpiContext {
+                scale: 1.0,
+                use_2x: false,
+            },
+            files: &files,
+            config: &config,
+            locale: "zh-CN",
+            translations: &HashMap::new(),
+            interaction: &InteractionState::default(),
+            language_menu_open: false,
+        };
+        let node = page
+            .descendants()
+            .find(|node| node.has_tag_name("Box"))
+            .context("box missing")?;
+        // A percentage resolves against the parent extent; the pixel value is
+        // unaffected by the percentage handling.
+        assert_eq!(size_attribute(node, "width", 200, &context), Some(100));
+        assert_eq!(size_attribute(node, "height", 100, &context), Some(20));
+        // At 2x the absolute extent doubles while the percentage stays relative.
+        let scaled = LayoutContext {
+            dpi: DpiContext {
+                scale: 2.0,
+                use_2x: true,
+            },
+            ..context
+        };
+        assert_eq!(size_attribute(node, "width", 400, &scaled), Some(200));
+        assert_eq!(size_attribute(node, "height", 200, &scaled), Some(40));
+        Ok(())
+    }
+
+    #[test]
+    fn progress_bar_clips_its_sprite_to_the_completed_share() -> anyhow::Result<()> {
+        let mut files: HashMap<String, Vec<u8>> = HashMap::new();
+        files.insert(
+            "assets/bar.png".to_string(),
+            include_bytes!("../../../examples/TapTap/assets/bar_installing.png").to_vec(),
+        );
+        let config = serde_json::json!({});
+        let document = roxmltree::Document::parse(
+            r##"<Page width="600" height="100">
+                  <ProgressBar id="bar" position="absolute" left="10" top="20"
+                               width="600" height="10" progress="0"
+                               background="#FF4C5868"
+                               bar-image="assets/bar.png" />
+                </Page>"##,
+        )?;
+        let page = document
+            .descendants()
+            .find(|node| node.has_tag_name("Page"))
+            .context("page missing")?;
+        let node = page
+            .descendants()
+            .find(|node| node.has_tag_name("ProgressBar"))
+            .context("progress bar missing")?;
+        let interaction = InteractionState {
+            progress: Some(25),
+            ..Default::default()
+        };
+        let context = LayoutContext {
+            dpi: DpiContext {
+                scale: 1.0,
+                use_2x: false,
+            },
+            files: &files,
+            config: &config,
+            locale: "zh-CN",
+            translations: &HashMap::new(),
+            interaction: &interaction,
+            language_menu_open: false,
+        };
+        let mut output = LayoutOutput::default();
+        // The track paints first, then the clipped sprite on top of it.
+        let rect = LayerRect {
+            left: 10,
+            top: 20,
+            width: 600,
+            height: 10,
+        };
+        render_progress_bar(node, rect, &context, &mut output)?;
+        assert_eq!(output.layers.len(), 2);
+        let track = &output.layers[0];
+        assert_eq!(
+            (track.left, track.top, track.width, track.height),
+            (10, 20, 600, 10)
+        );
+        let fill = &output.layers[1];
+        // A quarter of the control, drawn from the leading quarter of a 60px sprite.
+        assert_eq!((fill.left, fill.width), (10, 150));
+        let source = fill.source.context("fill must clip the sprite")?;
+        assert_eq!((source.left, source.width), (0, 15));
+        Ok(())
+    }
+
+    #[test]
+    fn out_of_range_pages_fall_back_to_the_first_layout() -> anyhow::Result<()> {
+        let config: serde_json::Value = serde_json::from_slice(include_bytes!(
+            "../../../examples/TapTap/installer_config.json"
+        ))?;
+        assert_eq!(
+            runtime_layout_path_at(&config, RuntimeMode::Installer, 1)?,
+            "layouts/installingpage.xml"
+        );
+        assert_eq!(
+            runtime_layout_path_at(&config, RuntimeMode::Installer, 2)?,
+            "layouts/finishpage.xml"
+        );
+        // Past the end of the list, the first page is the safe fallback.
+        assert_eq!(
+            runtime_layout_path_at(&config, RuntimeMode::Installer, 9)?,
+            "layouts/configpage.xml"
+        );
+        assert_eq!(
+            runtime_layout_path_at(&config, RuntimeMode::Uninstaller, 1)?,
+            "layouts/uninstallingpage.xml"
+        );
+        assert_eq!(
+            runtime_layout_path_at(&config, RuntimeMode::Uninstaller, 7)?,
+            "layouts/uninstallpage.xml"
+        );
+        assert_eq!(runtime_page_count(&config, RuntimeMode::Installer), 3);
+        assert_eq!(runtime_page_count(&config, RuntimeMode::Uninstaller), 3);
+        Ok(())
+    }
+
+    #[test]
+    fn progress_pages_render_every_control_they_declare() -> anyhow::Result<()> {
+        let interaction = {
+            let project = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/TapTap");
+            let bundle = pack_project_with_progress(&project, None, false, |_| {})?;
+            initial_interaction(&parse_bundle(&bundle)?, RuntimeMode::Installer)?
+        };
+        let ui = taptap_page(RuntimeMode::Installer, 1, &interaction)?;
+        // The installing page is fully absolute: a background, two window
+        // buttons, the progress fill and its track.
+        assert!(
+            ui.layers
+                .iter()
+                .any(|layer| layer.top == 326 && layer.height == 10),
+            "progress track is missing: {:?}",
+            ui.layers
+                .iter()
+                .map(|layer| (layer.left, layer.top, layer.width, layer.height))
+                .collect::<Vec<_>>()
+        );
+        assert!(
+            ui.texts.iter().any(|text| text.top == 359),
+            "progress label is missing"
+        );
+
+        // The uninstalling page uses a VBox, which has to stack its children.
+        let uninstall = taptap_page(RuntimeMode::Uninstaller, 1, &interaction)?;
+        assert!(
+            uninstall.layers.iter().any(|layer| layer.height == 6),
+            "uninstall progress bar is missing: {:?}",
+            uninstall
+                .layers
+                .iter()
+                .map(|layer| (layer.left, layer.top, layer.width, layer.height))
+                .collect::<Vec<_>>()
+        );
+        assert!(
+            uninstall.texts.iter().any(|text| text.top > 260),
+            "uninstall progress label is missing"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn status_source_replaces_placeholder_text_with_the_published_step() -> anyhow::Result<()> {
+        let files: HashMap<String, Vec<u8>> = HashMap::new();
+        let config = serde_json::json!({});
+        let document = roxmltree::Document::parse(
+            r#"<Page width="200" height="100">
+                 <Label text="@installing_text" value-source="status" />
+               </Page>"#,
+        )?;
+        let page = document
+            .descendants()
+            .find(|node| node.has_tag_name("Page"))
+            .context("page missing")?;
+        let node = page
+            .descendants()
+            .find(|node| node.has_tag_name("Label"))
+            .context("label missing")?;
+        let mut translations = HashMap::new();
+        translations.insert("installing_text".to_string(), "正在安装 0%".to_string());
+        translations.insert(
+            "status.extracting".to_string(),
+            "正在解压文件...".to_string(),
+        );
+        let interaction = InteractionState {
+            status_key: Some("status.extracting".to_string()),
+            ..Default::default()
+        };
+        let context = LayoutContext {
+            dpi: DpiContext {
+                scale: 1.0,
+                use_2x: false,
+            },
+            files: &files,
+            config: &config,
+            locale: "zh-CN",
+            translations: &translations,
+            interaction: &interaction,
+            language_menu_open: false,
+        };
+        let (text, _) = resolved_text_for_node(node, &context).context("label text missing")?;
+        assert_eq!(text, "正在解压文件...");
+
+        // Without a published step the authored placeholder stays in place.
+        let idle = LayoutContext {
+            interaction: &InteractionState::default(),
+            ..context
+        };
+        let (text, _) = resolved_text_for_node(node, &idle).context("label text missing")?;
+        assert_eq!(text, "正在安装 0%");
         Ok(())
     }
 

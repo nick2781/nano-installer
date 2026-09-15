@@ -46,6 +46,9 @@
   "button.cancel": "Cancelar",
 
   "status.preparing": "Preparando a instalação...",
+  "status.extracting": "Extraindo arquivos...",
+  "status.deploying": "Copiando arquivos...",
+  "status.finishing": "Finalizando a instalacao...",
   "status.install_complete": "Instalação concluída",
   "uninstall.status.closing_app": "Fechando o aplicativo...",
   "uninstall.status.removing_shortcuts": "Removendo atalhos...",

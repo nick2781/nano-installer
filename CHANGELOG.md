@@ -17,18 +17,25 @@
 - 卸载会终止运行中的产品进程，按 manifest 清理快捷方式，并按 `uninstall.data_paths`
   删除用户数据；`chkReserveData` 未勾选保留数据时才会删除，默认保留。
 - 示例 `examples/TapTap` 重新声明 `uninstall.data_paths`，卸载页补回 `chkReserveData`。
+- 安装与卸载会切换到各自的进度页，实时更新进度条和步骤文案，任务结束后切到完成页；
+  完成页的 `launch_app` 启动刚部署的 EXE。
+- 布局引擎支持嵌套 `VBox`/`HBox`/`Content`，新增 `padding`、`margin`（含单边写法）、
+  百分比尺寸、`justify-content` 与 `align-items`；`ProgressBar` 按百分比裁剪 `bar-image`。
+- `value-source="status"` 让进度页显示运行时发布的 locale 键，`action="finish"` 与
+  `action="launch_app"` 分别对应关闭窗口和启动已安装应用。
+- 11 个 locale 补齐 `status.extracting`、`status.deploying`、`status.finishing`。
 
 ### 已验证
 
 - `cargo fmt --all -- --check`、`cargo clippy --locked --workspace --all-targets -- -D warnings`、
-  `cargo test --locked --workspace`（37 个 core 测试、12 个 GUI 测试、2 个 stub 测试）。
+  `cargo test --locked --workspace`（43 个 core 测试、12 个 GUI 测试、2 个 stub 测试）。
 - `scripts/build.ps1` 全量构建、ZIP/7z backend smoke test 与 Win7 PE 导入审计。
 - CLI 与 GUI 产物内嵌 16/24/32/48/64/128/256 七种尺寸图标，逐尺寸与各自 branding PNG
   缩放结果比对；三个原始 stub 无图标和版本资源。
 
 ### 未完成
 
-- 页面切换与任务进度、项目 Rhai 脚本执行。
+- 项目 Rhai 脚本执行。
 - 无代码签名；未通过真实 Windows 7 SP1 虚拟机端到端验收。
 
 ## [2026.9.15]

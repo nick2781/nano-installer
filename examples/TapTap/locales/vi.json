@@ -46,6 +46,9 @@
   "button.cancel": "Hủy",
 
   "status.preparing": "Đang chuẩn bị cài đặt...",
+  "status.extracting": "Đang giải nén tệp...",
+  "status.deploying": "Đang triển khai tệp...",
+  "status.finishing": "Đang hoàn tất cài đặt...",
   "status.install_complete": "Cài đặt hoàn tất",
   "uninstall.status.closing_app": "Đang đóng ứng dụng...",
   "uninstall.status.removing_shortcuts": "Đang xóa lối tắt...",

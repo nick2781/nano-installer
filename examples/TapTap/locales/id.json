@@ -46,6 +46,9 @@
   "button.cancel": "Batal",
 
   "status.preparing": "Mempersiapkan instalasi...",
+  "status.extracting": "Mengekstrak file...",
+  "status.deploying": "Menyalin file...",
+  "status.finishing": "Menyelesaikan instalasi...",
   "status.install_complete": "Instalasi selesai",
   "uninstall.status.closing_app": "Menutup aplikasi...",
   "uninstall.status.removing_shortcuts": "Menghapus pintasan...",

@@ -13,7 +13,7 @@ use windows::Win32::System::Registry::{
     REG_OPTION_NON_VOLATILE, REG_SZ, REG_VALUE_TYPE,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    MessageBoxW, PostMessageW, MB_ICONERROR, MB_ICONINFORMATION, MB_OK, WM_CLOSE,
+    MessageBoxW, MB_ICONERROR, MB_ICONINFORMATION, MB_OK,
 };
 
 use super::{shell, BundleIndex, RuntimeMode, UI};
@@ -121,16 +121,26 @@ fn run_worker(window: HWND, work: impl FnOnce() -> Result<()> + Send + 'static) 
     if BUSY.swap(true, Ordering::AcqRel) {
         return;
     }
+    let pages = super::page_count();
+    // Page 1 is the task page, the last page is the completion page. A layout
+    // list shorter than that leaves the wizard on its first page.
+    if pages > 1 {
+        let _ = super::show_page(1);
+    }
     let window_handle = window.0 as usize;
     std::thread::spawn(move || {
         let window = HWND(window_handle as *mut _);
         let result = work();
         BUSY.store(false, Ordering::Release);
-        let succeeded = result.is_ok();
-        show_result(window, result);
-        if succeeded {
-            unsafe {
-                let _ = PostMessageW(window, WM_CLOSE, None, None);
+        match &result {
+            // The completion page reports the outcome and owns the next action.
+            Ok(()) if pages > 1 => {
+                let _ = super::show_page(pages - 1);
+            }
+            Ok(()) => show_result(window, Ok(())),
+            Err(error) => {
+                let _ = super::show_page(0);
+                show_result(window, Err(anyhow::anyhow!("{error:#}")));
             }
         }
     });
@@ -153,6 +163,7 @@ fn show_result(window: HWND, result: Result<()>) {
 
 fn install_setup(setup: &Path, destination: &Path, selection: &InstallSelection) -> Result<()> {
     validate_destination(destination)?;
+    super::report_progress(5, "status.preparing")?;
     let bundle = BundleIndex::read(setup)?.context("installer resource bundle missing")?;
     let config = bundle.read_config()?;
     let payload_name = config["resources"]["payload_file"]
@@ -192,6 +203,7 @@ fn install_setup(setup: &Path, destination: &Path, selection: &InstallSelection)
     let backups = stage.0.join("rollback");
     // The payload is streamed straight from the setup image; it never has to
     // fit in the process address space.
+    super::report_progress(15, "status.extracting")?;
     bundle.copy_file_to(payload_name, &archive)?;
     let output = std::process::Command::new(setup)
         .arg("--extract")
@@ -205,6 +217,7 @@ fn install_setup(setup: &Path, destination: &Path, selection: &InstallSelection)
             String::from_utf8_lossy(&output.stderr)
         );
     }
+    super::report_progress(50, "status.deploying")?;
 
     let files = collect_staged_files(&extracted)?;
     if files.is_empty() {
@@ -260,7 +273,11 @@ fn install_setup(setup: &Path, destination: &Path, selection: &InstallSelection)
             &config,
             upgrade,
         )
-    })
+    })?;
+    super::report_progress(95, "status.finishing")?;
+    super::record_installed_app(destination.join(exe_name))?;
+    super::report_progress(100, "status.install_complete")?;
+    Ok(())
 }
 
 /// A previous installation of this project found at the destination.
@@ -1195,8 +1212,10 @@ fn uninstall(uninstaller: &Path, keep_data: bool) -> Result<()> {
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
     InstallArtifacts::remove_recorded(&manifest);
+    super::report_progress(45, "uninstall.status.removing_shortcuts")?;
     if !keep_data {
         for data_path in preserved_data_paths(&config)? {
+            super::report_progress(60, "uninstall.status.removing_user_data")?;
             if data_path.is_dir() {
                 fs::remove_dir_all(&data_path)
                     .with_context(|| format!("failed to remove {}", data_path.display()))?;
@@ -1209,6 +1228,7 @@ fn uninstall(uninstaller: &Path, keep_data: bool) -> Result<()> {
         .into_iter()
         .map(|relative| destination.join(relative))
         .collect::<Vec<_>>();
+    super::report_progress(75, "uninstall.status.removing_files")?;
     for path in paths {
         if path.is_file() {
             fs::remove_file(&path)?;
@@ -1238,6 +1258,7 @@ fn uninstall(uninstaller: &Path, keep_data: bool) -> Result<()> {
     }
     fs::remove_file(manifest_file)?;
     shell::notify_shell();
+    super::report_progress(100, "uninstall.status.complete")?;
     Ok(())
 }
 

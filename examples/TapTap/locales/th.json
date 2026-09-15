@@ -46,6 +46,9 @@
   "button.cancel": "ยกเลิก",
 
   "status.preparing": "กำลังเตรียมการติดตั้ง...",
+  "status.extracting": "กำลังแตกไฟล์...",
+  "status.deploying": "กำลังติดตั้งไฟล์...",
+  "status.finishing": "กำลังติดตั้งให้เสร็จสมบูรณ์...",
   "status.install_complete": "ติดตั้งเสร็จสมบูรณ์",
   "uninstall.status.closing_app": "กำลังปิดแอปพลิเคชัน...",
   "uninstall.status.removing_shortcuts": "กำลังลบทางลัด...",
