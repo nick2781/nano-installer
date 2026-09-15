@@ -27,7 +27,8 @@ target/release/
 
 原始 stubs 不含产品资源；生成的 setup 与自包含 uninstaller 的资源由项目 `output` 配置决定。
 
-Release workflow 构建并打包 builder、GUI 与 `stubs/`，不会生成或发布 TapTap setup。
+Release workflow 构建 builder、GUI 与 `stubs/`，并把 5 个 exe 作为独立 release asset 上传，
+不会打包成压缩包，也不会生成或发布 TapTap setup。
 开发侧显式传 `-Project` 时才生成 example setup，用于验证 payload、layout 和 bundle；脚本
 也会从 setup 中取出项目化 `uninst.exe` 并单独审计其 Win7 PE 导入和 VERSIONINFO。
 
