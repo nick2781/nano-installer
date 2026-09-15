@@ -8,7 +8,7 @@ mod version;
 use anyhow::{bail, Context, Result};
 use std::collections::{HashMap, HashSet};
 use std::fs::OpenOptions;
-use std::io::{Cursor, Read, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
@@ -243,7 +243,7 @@ pub fn run_uninstaller_runtime() -> Result<()> {
 
 fn run_runtime(mode: RuntimeMode) -> Result<()> {
     let exe = std::env::current_exe().context("failed to resolve current executable")?;
-    let bundle = read_embedded_bundle(&exe)?.context("native resource bundle is missing")?;
+    let bundle = BundleIndex::read(&exe)?.context("native resource bundle is missing")?;
     run_embedded(bundle, mode)
 }
 
@@ -1031,65 +1031,223 @@ fn collect_file(root: &Path, path: &Path, files: &mut Vec<(String, Vec<u8>)>) ->
     Ok(())
 }
 
-fn read_embedded_bundle(exe: &Path) -> Result<Option<HashMap<String, Vec<u8>>>> {
-    let bytes = std::fs::read(exe)?;
-    if bytes.len() < 16 || &bytes[bytes.len() - 8..] != FOOTER_MAGIC {
-        return Ok(None);
-    }
-    let size = u64::from_le_bytes(bytes[bytes.len() - 16..bytes.len() - 8].try_into()?) as usize;
-    let start = bytes
-        .len()
-        .checked_sub(16 + size)
-        .context("invalid native bundle size")?;
-    parse_bundle(&bytes[start..start + size]).map(Some)
+/// A file stored in the bundle appended to a setup or uninstaller executable.
+///
+/// Only the offset and length are kept; contents are read from the executable
+/// on demand so a large payload never lands in the process address space.
+struct BundleEntry {
+    offset: u64,
+    size: u64,
 }
 
+/// Index of the bundle appended to an executable.
+struct BundleIndex {
+    exe: PathBuf,
+    files: HashMap<String, BundleEntry>,
+}
+
+impl BundleIndex {
+    /// Reads the bundle index from `exe`. Returns `None` when the executable
+    /// carries no bundle footer.
+    fn read(exe: &Path) -> Result<Option<Self>> {
+        let mut file = std::fs::File::open(exe)
+            .with_context(|| format!("failed to open {}", exe.display()))?;
+        let length = file.metadata()?.len();
+        if length < 16 {
+            return Ok(None);
+        }
+        let mut footer = [0u8; 16];
+        file.seek(SeekFrom::Start(length - 16))?;
+        file.read_exact(&mut footer)?;
+        if &footer[8..] != FOOTER_MAGIC {
+            return Ok(None);
+        }
+        let size = u64::from_le_bytes(footer[..8].try_into()?);
+        // checked arithmetic: a corrupt footer can carry a size that overflows
+        // the addition before the subtraction ever applies.
+        let footer_size = 16u64
+            .checked_add(size)
+            .context("invalid native bundle size")?;
+        let start = length
+            .checked_sub(footer_size)
+            .context("invalid native bundle size")?;
+        let files = parse_bundle_index(&mut file, start, size)?;
+        Ok(Some(Self {
+            exe: exe.to_path_buf(),
+            files,
+        }))
+    }
+
+    fn contains(&self, name: &str) -> bool {
+        self.files.contains_key(name)
+    }
+
+    fn read_file(&self, name: &str) -> Result<Vec<u8>> {
+        let entry = self
+            .files
+            .get(name)
+            .with_context(|| format!("missing from native bundle: {name}"))?;
+        let mut file = std::fs::File::open(&self.exe)?;
+        file.seek(SeekFrom::Start(entry.offset))?;
+        let mut contents = vec![0u8; entry.size as usize];
+        file.read_exact(&mut contents)?;
+        Ok(contents)
+    }
+
+    /// Streams one bundle entry to `destination` in fixed-size chunks.
+    fn copy_file_to(&self, name: &str, destination: &Path) -> Result<u64> {
+        let entry = self
+            .files
+            .get(name)
+            .with_context(|| format!("missing from native bundle: {name}"))?;
+        let mut source = std::fs::File::open(&self.exe)?;
+        source.seek(SeekFrom::Start(entry.offset))?;
+        let mut target = std::fs::File::create(destination)
+            .with_context(|| format!("failed to create {}", destination.display()))?;
+        let mut buffer = vec![0u8; 1024 * 1024];
+        let mut remaining = entry.size;
+        while remaining > 0 {
+            let chunk = remaining.min(buffer.len() as u64) as usize;
+            source.read_exact(&mut buffer[..chunk])?;
+            target.write_all(&buffer[..chunk])?;
+            remaining -= chunk as u64;
+        }
+        target.flush()?;
+        Ok(entry.size)
+    }
+
+    /// Parses `installer_config.json` from the bundle.
+    fn read_config(&self) -> Result<serde_json::Value> {
+        serde_json::from_slice(&self.read_file("installer_config.json")?)
+            .context("invalid installer configuration")
+    }
+    /// Reads only the configuration, layout, asset, and locale entries that the
+    /// runtime UI needs, leaving the payload on disk.
+    fn read_ui_files(&self) -> Result<HashMap<String, Vec<u8>>> {
+        let config: serde_json::Value =
+            serde_json::from_slice(&self.read_file("installer_config.json")?)
+                .context("invalid installer configuration")?;
+        let prefixes = [
+            config["resources"]["layouts_dir"]
+                .as_str()
+                .unwrap_or("layouts"),
+            config["resources"]["assets_dir"]
+                .as_str()
+                .unwrap_or("assets"),
+            config["resources"]["locales_dir"]
+                .as_str()
+                .unwrap_or("locales"),
+        ]
+        .map(|directory| format!("{}/", directory.trim_end_matches(['/', '\\'])));
+        let mut files = HashMap::new();
+        files.insert(
+            "installer_config.json".to_string(),
+            self.read_file("installer_config.json")?,
+        );
+        for name in self.files.keys() {
+            if name == "installer_config.json" {
+                continue;
+            }
+            if prefixes.iter().any(|prefix| name.starts_with(prefix)) {
+                files.insert(name.clone(), self.read_file(name)?);
+            }
+        }
+        Ok(files)
+    }
+}
+
+/// Reads the bundle directory without loading any file contents.
+fn parse_bundle_index(
+    file: &mut std::fs::File,
+    start: u64,
+    size: u64,
+) -> Result<HashMap<String, BundleEntry>> {
+    let end = start
+        .checked_add(size)
+        .context("invalid native bundle size")?;
+    let mut header = [0u8; 14];
+    file.seek(SeekFrom::Start(start))?;
+    file.read_exact(&mut header)?;
+    if &header[..8] != BUNDLE_MAGIC {
+        bail!("invalid native bundle magic");
+    }
+    if u16::from_le_bytes(header[8..10].try_into()?) != BUNDLE_VERSION {
+        bail!("unsupported native bundle version");
+    }
+    let count = u32::from_le_bytes(header[10..14].try_into()?);
+    let mut cursor = start + 14;
+    let mut files = HashMap::with_capacity(count as usize);
+    for _ in 0..count {
+        let mut length = [0u8; 2];
+        file.seek(SeekFrom::Start(cursor))?;
+        file.read_exact(&mut length)?;
+        let name_length = u16::from_le_bytes(length) as u64;
+        cursor += 2;
+        let mut name = vec![0u8; name_length as usize];
+        file.seek(SeekFrom::Start(cursor))?;
+        file.read_exact(&mut name)?;
+        cursor += name_length;
+        let mut length = [0u8; 8];
+        file.seek(SeekFrom::Start(cursor))?;
+        file.read_exact(&mut length)?;
+        let entry_size = u64::from_le_bytes(length);
+        cursor += 8;
+        let offset = cursor;
+        cursor = cursor
+            .checked_add(entry_size)
+            .context("native bundle entry size overflow")?;
+        if cursor > end {
+            bail!("native bundle entry exceeds the bundle boundary");
+        }
+        files.insert(
+            String::from_utf8(name)?,
+            BundleEntry {
+                offset,
+                size: entry_size,
+            },
+        );
+    }
+    Ok(files)
+}
+
+/// In-memory bundle parser used by tests to inspect a freshly packed bundle.
+#[cfg(test)]
 fn parse_bundle(data: &[u8]) -> Result<HashMap<String, Vec<u8>>> {
-    let mut cursor = Cursor::new(data);
+    let mut cursor = std::io::Cursor::new(data);
     let mut magic = [0u8; 8];
     cursor.read_exact(&mut magic)?;
     if &magic != BUNDLE_MAGIC {
         bail!("invalid native bundle magic");
     }
-    if read_u16(&mut cursor)? != BUNDLE_VERSION {
+    let mut version = [0u8; 2];
+    cursor.read_exact(&mut version)?;
+    if u16::from_le_bytes(version) != BUNDLE_VERSION {
         bail!("unsupported native bundle version");
     }
-    let count = read_u32(&mut cursor)?;
+    let mut count = [0u8; 4];
+    cursor.read_exact(&mut count)?;
+    let count = u32::from_le_bytes(count);
     let mut files = HashMap::with_capacity(count as usize);
     for _ in 0..count {
-        let name_len = read_u16(&mut cursor)? as usize;
-        let mut name = vec![0u8; name_len];
+        let mut length = [0u8; 2];
+        cursor.read_exact(&mut length)?;
+        let mut name = vec![0u8; u16::from_le_bytes(length) as usize];
         cursor.read_exact(&mut name)?;
-        let size = read_u64(&mut cursor)? as usize;
-        let mut contents = vec![0u8; size];
+        let mut length = [0u8; 8];
+        cursor.read_exact(&mut length)?;
+        let mut contents = vec![0u8; u64::from_le_bytes(length) as usize];
         cursor.read_exact(&mut contents)?;
         files.insert(String::from_utf8(name)?, contents);
     }
     Ok(files)
 }
 
-fn read_u16(cursor: &mut Cursor<&[u8]>) -> Result<u16> {
-    let mut bytes = [0; 2];
-    cursor.read_exact(&mut bytes)?;
-    Ok(u16::from_le_bytes(bytes))
-}
-
-fn read_u32(cursor: &mut Cursor<&[u8]>) -> Result<u32> {
-    let mut bytes = [0; 4];
-    cursor.read_exact(&mut bytes)?;
-    Ok(u32::from_le_bytes(bytes))
-}
-
-fn read_u64(cursor: &mut Cursor<&[u8]>) -> Result<u64> {
-    let mut bytes = [0; 8];
-    cursor.read_exact(&mut bytes)?;
-    Ok(u64::from_le_bytes(bytes))
-}
-
-fn run_embedded(mut files: HashMap<String, Vec<u8>>, mode: RuntimeMode) -> Result<()> {
+fn run_embedded(bundle: BundleIndex, mode: RuntimeMode) -> Result<()> {
+    // Only the configuration, layout, asset, and locale entries are read; the
+    // payload stays on disk and is streamed when the install action runs.
+    let files = bundle.read_ui_files()?;
     let dpi = configure_dpi(&files)?;
     let locale = initial_locale(&files)?;
-    retain_ui_files(&mut files)?;
     let interaction = initial_interaction(&files, mode)?;
     let ui = load_layout(&files, dpi, &locale, false, &interaction, mode)?;
     let (width, height) = (ui.width, ui.height);
@@ -1121,30 +1279,6 @@ fn initial_locale(files: &HashMap<String, Vec<u8>>) -> Result<String> {
         .as_str()
         .unwrap_or("zh-CN")
         .to_string())
-}
-
-fn retain_ui_files(files: &mut HashMap<String, Vec<u8>>) -> Result<()> {
-    let config: serde_json::Value = serde_json::from_slice(
-        files
-            .get("installer_config.json")
-            .context("installer_config.json missing from native bundle")?,
-    )?;
-    let prefixes = [
-        config["resources"]["layouts_dir"]
-            .as_str()
-            .unwrap_or("layouts"),
-        config["resources"]["assets_dir"]
-            .as_str()
-            .unwrap_or("assets"),
-        config["resources"]["locales_dir"]
-            .as_str()
-            .unwrap_or("locales"),
-    ]
-    .map(|directory| format!("{}/", directory.trim_end_matches(['/', '\\'])));
-    files.retain(|name, _| {
-        name == "installer_config.json" || prefixes.iter().any(|prefix| name.starts_with(prefix))
-    });
-    Ok(())
 }
 
 fn initial_interaction(
@@ -3204,8 +3338,9 @@ mod tests {
         inspect_project, installer_version_info, load_layout, measure_layout_text_width,
         pack_project, pack_project_with_progress, parse_bundle, parse_color, parse_image_style,
         parse_text_runs, query_disk_free_bytes, resolve_asset_path, runtime_layout_path,
-        scale_value, uninstaller_version_info, validate_output_filename, DpiContext, FlowItem,
-        InteractionState, PayloadFormat, RuntimeMode, TextAlignment, WindowAction,
+        scale_value, uninstaller_version_info, validate_output_filename, BundleIndex, DpiContext,
+        FlowItem, InteractionState, PayloadFormat, RuntimeMode, TextAlignment, WindowAction,
+        FOOTER_MAGIC,
     };
     use anyhow::Context;
     use std::collections::HashMap;
@@ -3240,6 +3375,88 @@ mod tests {
         assert!(files.contains_key("assets/background.png"));
         assert!(files.contains_key("locales/zh-CN.json"));
         assert_eq!(files.get("payload/app.7z").unwrap(), b"payload");
+        Ok(())
+    }
+
+    fn write_setup_image(path: &Path, bundle: &[u8]) -> anyhow::Result<()> {
+        use std::io::Write;
+
+        let mut file = std::fs::File::create(path)?;
+        file.write_all(b"stub-image")?;
+        file.write_all(bundle)?;
+        file.write_all(&(bundle.len() as u64).to_le_bytes())?;
+        file.write_all(FOOTER_MAGIC)?;
+        file.flush()?;
+        Ok(())
+    }
+
+    #[test]
+    fn bundle_index_streams_entries_without_loading_the_payload() -> anyhow::Result<()> {
+        let temp = tempfile::tempdir()?;
+        let project = temp.path().join("project");
+        for directory in ["layouts", "assets", "locales", "payload"] {
+            std::fs::create_dir_all(project.join(directory))?;
+        }
+        std::fs::write(
+            project.join("installer_config.json"),
+            br#"{"resources":{"payload_file":"payload/app.7z"}}"#,
+        )?;
+        std::fs::write(project.join("layouts/config.xml"), b"layout")?;
+        std::fs::write(project.join("assets/background.png"), b"png")?;
+        std::fs::write(project.join("locales/zh-CN.json"), b"{}")?;
+        // Larger than the streaming chunk size, so the copy loop wraps.
+        let payload = vec![0xABu8; 3 * 1024 * 1024 + 7];
+        std::fs::write(project.join("payload/app.7z"), &payload)?;
+
+        let bundle = pack_project(&project, None)?;
+        let image = temp.path().join("setup.exe");
+        write_setup_image(&image, &bundle)?;
+
+        let index = BundleIndex::read(&image)?.context("setup image carries a bundle")?;
+        assert!(index.contains("payload/app.7z"));
+
+        // Reading one entry returns exactly the packed bytes.
+        assert_eq!(index.read_file("payload/app.7z")?, payload);
+
+        // The UI file set excludes the payload, which is the whole point of the
+        // change: the payload is never materialized in memory.
+        let ui = index.read_ui_files()?;
+        assert_eq!(ui.len(), 4);
+        assert!(ui.contains_key("installer_config.json"));
+        assert!(ui.contains_key("layouts/config.xml"));
+        assert!(ui.contains_key("assets/background.png"));
+        assert!(ui.contains_key("locales/zh-CN.json"));
+        assert!(!ui.contains_key("payload/app.7z"));
+
+        // Streaming copy reproduces the payload byte for byte.
+        let streamed = temp.path().join("streamed.7z");
+        assert_eq!(
+            index.copy_file_to("payload/app.7z", &streamed)?,
+            payload.len() as u64
+        );
+        assert_eq!(std::fs::read(&streamed)?, payload);
+
+        let missing = temp.path().join("missing.7z");
+        assert!(index.copy_file_to("payload/absent.7z", &missing).is_err());
+        assert!(!missing.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn bundle_index_ignores_images_without_a_footer() -> anyhow::Result<()> {
+        let temp = tempfile::tempdir()?;
+        let plain = temp.path().join("plain.exe");
+        std::fs::write(&plain, b"not a setup image")?;
+        assert!(BundleIndex::read(&plain)?.is_none());
+
+        // A footer marker whose length field is larger than the file must not
+        // be accepted as a valid bundle.
+        let truncated = temp.path().join("truncated.exe");
+        let mut bytes = b"stub".to_vec();
+        bytes.extend_from_slice(&u64::MAX.to_le_bytes());
+        bytes.extend_from_slice(FOOTER_MAGIC);
+        std::fs::write(&truncated, &bytes)?;
+        assert!(BundleIndex::read(&truncated).is_err());
         Ok(())
     }
 

@@ -15,7 +15,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     MessageBoxW, PostMessageW, MB_ICONERROR, MB_ICONINFORMATION, MB_OK, WM_CLOSE,
 };
 
-use super::{read_embedded_bundle, RuntimeMode, UI};
+use super::{BundleIndex, RuntimeMode, UI};
 
 const MANIFEST_NAME: &str = "nano-installer-manifest.json";
 static BUSY: AtomicBool = AtomicBool::new(false);
@@ -120,21 +120,19 @@ fn install_setup(setup: &Path, destination: &Path) -> Result<()> {
             destination.display()
         );
     }
-    let bundle = read_embedded_bundle(setup)?.context("installer resource bundle missing")?;
-    let config = project_config(&bundle)?;
+    let bundle = BundleIndex::read(setup)?.context("installer resource bundle missing")?;
+    let config = bundle.read_config()?;
     let payload_name = config["resources"]["payload_file"]
         .as_str()
         .context("resources.payload_file is required")?;
-    let payload = bundle
-        .get(payload_name)
-        .with_context(|| format!("payload missing: {payload_name}"))?;
+    if !bundle.contains(payload_name) {
+        bail!("payload missing: {payload_name}");
+    }
     let uninstaller_name = config["output"]["uninstaller_name"]
         .as_str()
         .unwrap_or("uninst.exe");
     super::validate_output_filename(uninstaller_name, "output.uninstaller_name")?;
-    let uninstaller = bundle
-        .get(&format!("runtime/{uninstaller_name}"))
-        .context("self-contained uninstaller missing")?;
+    let uninstaller = bundle.read_file(&format!("runtime/{uninstaller_name}"))?;
     let (root, registry_path) = uninstall_registry_key(&config)?;
     if registry_key_exists(root, &registry_path)? {
         bail!("uninstall registry key already exists; refusing to overwrite another installation");
@@ -154,7 +152,9 @@ fn install_setup(setup: &Path, destination: &Path) -> Result<()> {
     let stage = StagingDirectory::create()?;
     let archive = stage.0.join("payload.archive");
     let extracted = stage.0.join("files");
-    fs::write(&archive, payload)?;
+    // The payload is streamed straight from the setup image; it never has to
+    // fit in the process address space.
+    bundle.copy_file_to(payload_name, &archive)?;
     let output = std::process::Command::new(setup)
         .arg("--extract")
         .arg(&archive)
@@ -189,7 +189,7 @@ fn install_setup(setup: &Path, destination: &Path) -> Result<()> {
         &extracted,
         destination,
         &files,
-        (uninstaller_name, uninstaller),
+        (uninstaller_name, &uninstaller),
         (root, &registry_path),
         || register_uninstaller(root, &registry_path, destination, uninstaller_name, &config),
     )
@@ -280,15 +280,6 @@ fn collect_staged_files(root: &Path) -> Result<Vec<PathBuf>> {
     visit(root, root, &mut files)?;
     files.sort();
     Ok(files)
-}
-
-fn project_config(bundle: &std::collections::HashMap<String, Vec<u8>>) -> Result<Value> {
-    serde_json::from_slice(
-        bundle
-            .get("installer_config.json")
-            .context("project configuration missing")?,
-    )
-    .context("invalid installer configuration")
 }
 
 fn uninstall_registry_key(
@@ -440,8 +431,9 @@ fn uninstall(uninstaller: &Path) -> Result<()> {
         .file_name()
         .and_then(|name| name.to_str())
         .context("uninstaller filename is not Unicode")?;
-    let config =
-        project_config(&read_embedded_bundle(uninstaller)?.context("uninstaller bundle missing")?)?;
+    let config = BundleIndex::read(uninstaller)?
+        .context("uninstaller bundle missing")?
+        .read_config()?;
     if configured_name
         != config["output"]["uninstaller_name"]
             .as_str()
