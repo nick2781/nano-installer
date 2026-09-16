@@ -30,14 +30,19 @@ Start `examples/TapTap/dist/TapTap_Setup.exe` and confirm:
 - The empty area at the top drags the window.
 - Minimize and close respond.
 - Chinese, English, and Russian text render without mojibake.
+- The path field supports drag selection, double-click word selection, copy/paste, and undo, and
+  the folder icon picks a directory and writes it back into the field.
+- The installation directory is gone as soon as the uninstall finishes, while files the user added
+  are still kept.
 
 ## Windows 7 SP1 gate
 
 Before claiming Windows 7 support, verify WIC PNG decoding, GDI text, mouse input, and window
 behaviour on a clean Windows 7 SP1 x64 VM. In an isolated VM, test ZIP and 7z extraction, the
 manifest, the uninstall entry, and the uninstall button using a fresh directory; then check
-installed files, preservation of user-created files, failure rollback, and uninstaller cleanup
-after a restart.
+installed files, preservation of user-created files, failure rollback, and that the installation
+directory is gone as soon as the uninstall finishes and the cleaner copy in the temporary directory
+has exited.
 
 Never test the TapTap install action on a daily workstation. When the default path is under
 `Program Files`, start the setup as an administrator; this version does not request elevation.
@@ -46,7 +51,6 @@ repack the setup.
 
 ## Production cases that cannot pass yet
 
-- Immediate uninstaller self-deletion; the file is currently removed at the next restart.
 - Authenticode signing chain.
 
 Upgrades, failure rollback, shortcuts, autostart, the keep-data option, page transitions, and

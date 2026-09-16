@@ -41,6 +41,7 @@ Paths are relative to the project folder.
 | `install.kill_process_on_uninstall` | bool | Close running copies of the product before uninstalling |
 | `install.detect_running_process` | bool | Combined with the two switches above; any of them closes the process |
 | `registry.uninstall_key` | string | Uninstall entry location, `HKCU` or `HKLM` only; an existing key is never overwritten |
+| `links.*` | string | URLs a layout reaches through `[label](key)` markup or `action="open_url:key"` |
 
 ## Shortcuts and autostart
 
@@ -140,7 +141,7 @@ These settings are packaged into the setup but are not read at runtime. Do not t
 presence as a working feature:
 
 - `install.*` and `registry.*` fields other than the ones listed above
-- `links.*`, `validation.*`, `advanced.*`
+- `validation.*` and `advanced.*`; `links.*` is read by link clicks and `open_url:` actions
 - `localization.supported_locales` and `localization.show_language_selector`; the language list
   and its visibility come from the XML `Select` control
 - `advanced.update_mode_support`; upgrades are detected from an existing installation in the

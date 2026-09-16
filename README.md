@@ -2,9 +2,10 @@
 
 <p align="center"><b>English</b> | <a href="README.zh-CN.md">简体中文</a> | <a href="docs/en/">Docs</a></p>
 
-Nano Installer turns a folder of configuration, images, and a compressed payload into a single
-Windows setup executable. No installer framework to host, no runtime to install on the target
-machine: the generated `.exe` carries its own UI, unpacking engine, and uninstaller.
+Hand someone a single `.exe` and they have your product installed. Nano Installer turns a folder of
+configuration, artwork, and your packaged application into one Windows setup file with your own
+logo, your own interface, and your own wording — no installer framework to host, and nothing for
+your users to install first.
 
 > **Status:** early implementation, not ready for production distribution. Install actions write
 > files and registry entries, so test only inside a disposable VM. See
@@ -14,12 +15,14 @@ machine: the generated `.exe` carries its own UI, unpacking engine, and uninstal
 
 | | |
 | --- | --- |
-| One self-contained setup | A single signed-ready `.exe` with your icon, version info, and branding |
-| No prerequisites on the target | Windows 7 SP1 x64 or later; nothing else to install |
-| Your own interface | Arrange pages and controls with XML, using your own background and button images |
-| 11 languages out of the box | Ship translated UI text, or add your own locale files |
-| Safe upgrades and clean removal | Re-installing upgrades in place with rollback; uninstalling removes only what it installed |
-| Automation when you need it | The optional GUI covers everyday use; a CLI drives builds in CI |
+| One file to ship | A single setup `.exe` carrying your icon, version info, and branding |
+| Nothing to install first | Runs on a clean Windows 7 SP1 x64 machine or later |
+| Your interface, not ours | Pages and controls described in XML, using your own backgrounds and buttons |
+| Every language you need | Eleven UI languages included; add your own in plain JSON |
+| Upgrades that behave | Re-running the setup upgrades in place, and rolls back if anything fails |
+| Clean removal | Uninstalling takes back exactly what it put down, and keeps user data by default |
+| Clear, friendly screens | Live progress with the current step named, plus a finish page that can start your app |
+| Fits your process | Click through the visual builder, or drive the same engine from a command line in CI |
 
 ## Get started
 
@@ -53,27 +56,37 @@ MyApp/
 Every path in the configuration is relative to the project folder, so a project stays portable.
 Start by copying `examples/TapTap` and replacing its content.
 
-## What is supported today
+## What your setup does today
 
-- Setup and uninstaller in a single executable, targeting Windows 7 SP1 x64 and later.
-- ZIP and 7z payloads, detected automatically from the file signature.
-- Install, upgrade, rollback, and uninstall, with progress pages and a finish page that can launch
-  the installed application.
-- Desktop shortcuts, Start menu entries, and autostart, each optional at install time and cleaned
-  up on removal.
-- User data kept by default on uninstall, unless the user clears the keep-data option.
-- Localized UI text for 11 languages, switchable at runtime.
-- Custom install and uninstall steps written in [Rhai](docs/en/SCRIPT_API.md) when the built-in
-  steps are not enough.
-- A visual builder for Windows 10 and later that shares the same build engine as the CLI.
+- Installs and uninstalls from one executable, on Windows 7 SP1 x64 and later.
+- Accepts a ZIP or 7z payload and detects which one by looking at the file itself, so you never
+  pick a format setting.
+- Shows live progress with the current step, then a finish page that can launch what it installed.
+- Upgrades in place when run again, and returns the machine to its previous state if a step fails.
+- Creates desktop, Start menu, and autostart entries only when the user asks for them, and removes
+  them again on uninstall.
+- Lets the user keep their data on uninstall unless they explicitly clear that option.
+- Ships eleven UI languages that switch instantly, and lets a page click through to your terms of
+  service or privacy policy.
+- Lets you pick the install directory with the standard Windows folder chooser, and lets the user
+  edit the path by hand: select with the mouse or a double click, copy and paste, and undo a typo.
+- Asks a localized question before closing, so nobody loses an install by accident.
+- Takes back the installation folder as soon as an uninstall finishes, so no empty directory is
+  left behind; files your users added there keep the folder, as they should.
+- Paints the colours, rounded corners, and outlines your layout asks for, and turns the pointer
+  into a hand over anything clickable.
+- Supports custom install and uninstall steps from a small scripting file when the built-in steps
+  are not enough; a failing script rolls back and never leaves a half-installed product.
+- Offers a visual builder for Windows 10 and later that produces byte-for-byte the same result as
+  the command line.
 
 ## Not there yet
 
-- Installers are not code-signed; Windows SmartScreen will warn about an unknown publisher.
-- No automatic elevation prompt. An installer writing to `Program Files` must be started as an
-  administrator.
-- Windows 7 support is verified by static import checks, not yet by a full run on a real
-  Windows 7 SP1 machine.
+- Setups are not code-signed, so Windows SmartScreen warns about an unknown publisher.
+- Setup files do not ask for administrator rights by themselves. One that writes to
+  `Program Files` has to be started as an administrator.
+- Windows 7 support is checked automatically against the system calls each build uses, but has not
+  yet been signed off on a real Windows 7 SP1 machine.
 
 ## Documentation
 

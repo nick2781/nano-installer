@@ -18,7 +18,8 @@ files and registry entries; validate them in a disposable virtual machine only.
 - Reinstalling over an existing installation upgrades in place, drops files the new payload no
   longer ships, and restores the previous version if anything fails.
 - The first page renders background bitmaps and Unicode text natively, in a borderless rounded
-  window that can be dragged, minimized, and closed.
+  window that can be dragged, minimized, and closed, and shows a hand cursor over clickable
+  controls.
 - Windows 7 SP1 x64 compatibility is checked by PE import audit for every artifact.
 - Progress pages report live status, and the finish page can launch the deployed application.
 - Shortcuts and autostart entries are created during install and restored on uninstall, including
@@ -30,6 +31,24 @@ files and registry entries; validate them in a disposable virtual machine only.
   back, and a script that skips manifest cleanup falls back to the library removal.
 - Flow layout covers nested `VBox`, `HBox`, and `Content` containers with padding, margins,
   percentage sizing, `justify-content`, and `align-items`.
+- Markdown link markup in a label opens its configured URL, `close_confirm` asks the localized
+  question before closing, and the folder picker writes the chosen directory back into the layout's
+  TextInput.
+- Controls paint the `background`, `border-color`, and `border-radius` a layout declares, and the
+  language menu takes Up/Down/Enter/Escape while it is open.
+- A text field can be edited in place: clicking places a blinking caret, typing inserts, Backspace
+  and Delete remove, and the arrow keys/Home/End move the caret. Dragging or double-clicking selects
+  text with a highlight, Ctrl+A selects all, Ctrl+C/X/V copy, cut, and paste, Ctrl+Z/Y undo and redo
+  with a run of typing collapsed into one step, and Ctrl+Backspace/Delete plus Ctrl+Left/Right work a
+  word at a time. `readonly` fields stay display-only.
+- Flow layout resolves `flex-basis` by sharing free space from that basis, honours `align-self` per
+  item, lets a nested container size itself from its own children, and positions an absolutely
+  placed element from `right`/`bottom` or the `inset` shorthand.
+- A container that declares `flex-wrap` moves items onto the next line when a row is full; without
+  it, an overflowing row still compresses its shrinkable items.
+- A finished uninstall leaves a cleaner copy in the temporary directory that immediately deletes the
+  uninstaller and the emptied installation directory. A directory that still holds files the user
+  added is kept, and the cleaner removes itself once it is done.
 
 ## Blocking a release
 
@@ -41,10 +60,10 @@ files and registry entries; validate them in a disposable virtual machine only.
 
 - Installers do not request elevation. Writing to `Program Files` requires starting the setup as an
   administrator.
-- The running uninstaller removes its own file at the next restart rather than immediately.
 - The runtime stubs embed the Rhai engine, which raised each stub from roughly 0.57-0.66 MB to
   about 1.8-1.9 MB.
-- Link clicks, the folder picker, and Select keyboard handling are not implemented.
+- Text fields have no IME composition window, so typing East Asian text relies on the system IME's
+  own inline display.
 
 Once signing and the Windows 7 acceptance run are done, a product can be onboarded using the
 `examples/TapTap` structure.

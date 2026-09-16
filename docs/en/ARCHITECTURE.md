@@ -36,9 +36,10 @@ starts.
 
 **Interface.** Pages come from `wizard.pages` (install) and `wizard.uninstall_pages` (uninstall).
 Each page is drawn with Win32, WIC for PNG decoding, and GDI alpha blending. Supported today:
-absolute bitmap and text layers, nested `VBox`/`HBox`/`Content` flow layout with padding, margins
-and percentage sizing, progress bars, checkbox and expandable-panel interaction, static link
-rendering, runtime locale switching, a borderless rounded window, a taskbar icon, double-buffered
+absolute bitmap and text layers, nested `VBox`/`HBox`/`Content` flow layout with padding, margins,
+percentage sizing and `flex-wrap`, progress bars, checkbox and expandable-panel interaction,
+clickable links, in-place text editing with selection, clipboard, and an undo stack, the folder
+chooser, runtime locale switching, a borderless rounded window, a taskbar icon, double-buffered
 painting, dragging, minimize, and close.
 
 **Tasks.** Install and uninstall run on a worker thread that publishes progress and page changes
@@ -51,8 +52,11 @@ project is treated as an upgrade: replaced files are backed up in a rollback jou
 new payload no longer ships are removed, and a failure restores the previous version.
 
 **Uninstall.** The product process is terminated, recorded shortcuts and files are deleted, and
-the declared user data is removed only when the user clears the keep-data option. A running
-uninstaller schedules its own file for deletion at the next restart.
+the declared user data is removed only when the user clears the keep-data option. Windows refuses
+to let a process delete the image it is running from, so the uninstall finishes by copying itself
+into a cleaner in the temporary directory. The cleaner waits for the uninstaller to exit, deletes
+it, and removes the emptied installation directory; it then hands its own removal to a short-lived
+`cmd` script. A directory that still holds files the user added is kept.
 
 **Custom steps.** A project that ships `scripts/install.rhai` or `scripts/uninstall.rhai` runs
 those scripts instead of the built-in steps. The engine is embedded in `nano-installer-core`, so
@@ -67,5 +71,4 @@ winit dependencies never reach a stub or a setup.
 
 ## Next stages
 
-Link input (the rendered links are not clickable yet, and the folder picker is not wired), and
-production validation on a real Windows 7 SP1 machine.
+Production validation on a real Windows 7 SP1 machine, plus code signing and setup elevation.

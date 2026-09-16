@@ -39,6 +39,7 @@
 | `install.kill_process_on_uninstall` | bool | 卸载前关闭正在运行的产品 |
 | `install.detect_running_process` | bool | 与上面两个开关取或；任一为 `true` 都会关闭进程 |
 | `registry.uninstall_key` | string | 卸载项注册表路径，只支持 HKCU/HKLM；已有同名键不会被覆盖 |
+| `links.*` | string | 布局通过 `[文字](键)` 标记或 `action="open_url:键"` 打开的网址 |
 
 ## 快捷方式与自启动
 
@@ -134,7 +135,7 @@ payload 就是你的应用文件，预先压成 ZIP 或 7z。格式按文件头�
 以下设置会原样打包进安装包，但运行时不会读取。不要因为字段存在就认为功能已完成：
 
 - 上表未列出的 `install.*` 与 `registry.*` 字段
-- `links.*`、`validation.*`、`advanced.*`
+- `validation.*` 与 `advanced.*`；`links.*` 会被链接点击和 `open_url:` 动作读取
 - `localization.supported_locales` 与 `localization.show_language_selector`；语言列表与可见性由
   XML 中的 `Select` 控件决定
 - `advanced.update_mode_support`；升级是按目标目录中的既有安装自动识别的，不读该开关

@@ -51,10 +51,21 @@ What you can check today:
   entry. Progress is reported while it runs, and the finish page can launch the installed program.
 - Install a second time to see the upgrade path, and use the uninstall entry to check removal and
   the keep-data option.
-- Switch the language to confirm translated text renders correctly.
+- Switch the language to confirm translated text renders correctly; the open menu also responds to
+  Up, Down, Enter, and Escape.
+- Hover the folder icon, the install button, and the agreement links: the pointer becomes a hand,
+  and the agreement links open their configured pages in your browser.
+- Click the close button: it asks the localized confirmation question from `close_confirm_message`
+  before the window closes.
+- Drag or double-click inside the path field to select text, then copy, paste, and undo with
+  Ctrl+C, Ctrl+V, and Ctrl+Z; the folder icon next to it picks a directory and writes it back into
+  the field.
+- The installation directory is gone as soon as the uninstall finishes; a directory you added your
+  own files to is kept.
 
-To test a different install path, change `install.default_path` in
-`examples/TapTap/installer_config.json` and rebuild the setup. The path shown on the first page is
-read-only in this version, so clicking the folder image does not open a picker yet.
+To test a different install path, either click the folder icon next to the path field to pick a
+directory, or change `install.default_path` in `examples/TapTap/installer_config.json` and rebuild
+the setup. A picked directory replaces the configured default for that run and updates the free
+space reading next to it.
 
 Do not run the sample's install action on your workstation: it writes files and registry entries.
