@@ -1,0 +1,16 @@
+* [Home](README.md)
+* Guides
+  * [Quick start](QUICK_START.md)
+  * [Visual builder](GUI.md)
+  * [Configuration](CONFIG_REFERENCE.md)
+  * [Page layout](XML_LAYOUT_GUIDE.md)
+  * [Languages](LOCALIZATION.md)
+  * [Custom steps](SCRIPT_API.md)
+* Technical notes
+  * [Architecture](ARCHITECTURE.md)
+  * [Project layout](PROJECT_STRUCTURE.md)
+  * [Windows compatibility](WINDOWS_COMPATIBILITY.md)
+  * [Build and release](BUILD_AND_RELEASE.md)
+  * [Test plan](TEST_PLAN.md)
+  * [Production status](PRODUCTION_STATUS.md)
+* [中文文档](../zh-CN/README.md)

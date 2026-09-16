@@ -119,7 +119,7 @@
 - 尚未实现快捷方式、开机自启动、静默安装与项目 Rhai 脚本执行。
 - 无代码签名；未通过真实 Windows 7 SP1 虚拟机端到端验收。
 
-详见 [当前生产状态](docs/PRODUCTION_STATUS.md)。
+详见 [当前生产状态](docs/zh-CN/PRODUCTION_STATUS.md)。
 ## 如何贡献
 
 见 [AGENTS.md](AGENTS.md)。

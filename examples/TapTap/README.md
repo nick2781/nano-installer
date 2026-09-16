@@ -1,48 +1,54 @@
-# TapTap 示例安装器
+# TapTap sample project
 
-这是 native 分支唯一的端到端输入项目，用于直接验证 XML 布局、多语言、图片资源、
-payload 打包和 Win7 SP1+ 原生运行时。
+This is the repository's end-to-end sample: a complete installer project used to validate XML
+pages, translations, image assets, payload packaging, and the Windows 7 SP1 runtime.
 
-## 资源权属
+## Asset ownership
 
-`examples/TapTap` 下的 TapTap 名称、商标、图片、文案及相关素材归易玩（上海）网络
-科技有限公司及相关权利人所有，仅用于 `nano-installer` 工具的开发、测试和兼容性验证。
-这些资源不属于本项目开源许可范围，不得视为对外授权的产品素材。
+The TapTap name, trademarks, images, and copy under `examples/TapTap` belong to
+易玩（上海）网络科技有限公司 and their respective rights holders. They are used only to develop,
+test, and validate `nano-installer`, are outside this project's open-source license, and are not
+product assets you may reuse.
 
-## 目录
+## Contents
 
 ```text
 TapTap/
 ├── installer_config.json
-├── assets/
-├── layouts/
-├── locales/
-├── scripts/
-└── payload/app.7z
+├── assets/                     backgrounds, buttons, icons
+├── layouts/                    XML pages
+├── locales/                    one JSON file per language
+├── scripts/                    install.rhai and uninstall.rhai
+└── payload/app.7z              not stored in the repository
 ```
 
-## 构建
+The payload is excluded by `.gitignore` (`*.7z`). Put a 7z archive at
+`examples/TapTap/payload/app.7z` before building.
 
-从仓库根目录执行：
+## Build it
+
+From the repository root:
 
 ```powershell
 .\scripts\build.ps1 -Project examples\TapTap
 ```
 
-工具链输出位于 `target/release/`，example setup 输出位于
-`examples/TapTap/dist/TapTap_Setup.exe`。后者只用于本地验证，不属于发布文件。
+The toolbar tools land in `target/release/`; the sample setup lands in
+`examples/TapTap/dist/TapTap_Setup.exe` and is for local validation only, never a release artifact.
 
-## 用作产品起点
+## Use it as a starting point
 
-复制目录后至少替换：
+Copy the directory and replace at least:
 
-- `installer_config.json` 中的产品信息、安装路径、EXE、注册表键和输出名
-- `assets/` 中的图标与品牌资源
-- `layouts/` 中的页面文案键、链接和产品交互
-- `locales/` 中的全部用户可见文案
-- `scripts/` 中的产品专用安装与卸载行为
-- `payload/app.7z` 中的应用文件
+- product information, install path, executable, registry key, and output names in
+  `installer_config.json`
+- icons and brand assets in `assets/`
+- page text keys, links, and product interactions in `layouts/`
+- all user-visible strings in `locales/`
+- product-specific install and uninstall behaviour in `scripts/`
+- your application files in `payload/app.7z`
 
-当前 native runtime 已完成 payload 解压、安装与卸载任务、页面流与进度显示，并会执行
-`scripts/install.rhai` 与 `scripts/uninstall.rhai`；脚本原语见
-[脚本 API](../../docs/SCRIPT_API.md)。仍没有代码签名，不能用于生产发布。
+The runtime already unpacks the payload, runs install and uninstall tasks with progress pages, and
+executes `scripts/install.rhai` and `scripts/uninstall.rhai`; see the
+[script API](../../docs/en/SCRIPT_API.md). There is no code signing yet, so it cannot be used for a
+production release.

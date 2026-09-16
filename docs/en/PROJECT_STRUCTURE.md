@@ -1,0 +1,52 @@
+# Project layout
+
+## Repository
+
+```text
+crates/
+├── nano-installer-core/        # bundling, XML layout, WIC/GDI rendering, shared runtime
+├── nano-installer-cli/         # command-line builder
+├── nano-installer-gui/         # Windows 10+ visual builder
+├── nano-installer-stub-lzma/   # 7z runtime, links only sevenz-rust
+├── nano-installer-stub-zlib/   # ZIP runtime, links only zip/deflate
+└── nano-installer-uninstaller/ # uninstaller runtime, no archive backend
+docs/
+├── en/                         # English documentation
+└── zh-CN/                      # Chinese documentation
+examples/TapTap/                # validation project
+scripts/                        # build, smoke test, PE audit
+```
+
+The raw runtime stubs carry no product resources. Icons, version info, and branding are injected by
+the builder from your project configuration, so one runtime can produce setups for any product.
+
+## A product project
+
+```text
+product-installer/
+├── installer_config.json
+├── layouts/                    # XML pages
+├── assets/                     # backgrounds, buttons, icons
+├── locales/                    # one JSON file per language
+├── scripts/                    # optional install/uninstall logic
+└── payload/app.7z              # or a ZIP archive
+```
+
+Every configured path is resolved relative to the project folder. The builder collects the whole
+`layouts`, `assets`, and `locales` directories, the optional `scripts` directory, and the payload
+named in the configuration.
+
+## Build outputs
+
+```text
+target/release/
+├── nano-installer-native-x64.exe
+├── nano-installer-gui-x64.exe
+└── stubs/
+    ├── lzma-stub-native.exe
+    ├── zlib-stub-native.exe
+    └── uninst-stub-native.exe
+```
+
+`target/x86_64-win7-windows-msvc/` is Cargo's cross-target cache, not a second set of release
+files. Example setups land in `examples/TapTap/dist/` and are not part of a release.

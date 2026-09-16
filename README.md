@@ -1,136 +1,103 @@
 <h1 align="center"><img src="assets/nano-technology.png" width="48" height="48" align="texttop" alt="Nano Installer icon"> Nano Installer</h1>
 
-<p align="center"><b>English</b> | <a href="README.zh-CN.md">简体中文</a></p>
+<p align="center"><b>English</b> | <a href="README.zh-CN.md">简体中文</a> | <a href="docs/en/">Docs</a></p>
 
-Configuration-driven Windows x64 installer builder. The CLI builder and every setup it generates
-share one native Win32 runtime with a Windows 7 SP1+ Unicode baseline. The optional authoring GUI
-is a separate Windows 10+ crate; egui/eframe never reach a stub or a setup.
+Nano Installer turns a folder of configuration, images, and a compressed payload into a single
+Windows setup executable. No installer framework to host, no runtime to install on the target
+machine: the generated `.exe` carries its own UI, unpacking engine, and uninstaller.
 
-> **Status:** experimental native implementation, not production-ready. Validate installations only
-> in an isolated VM, and read [production status](docs/PRODUCTION_STATUS.md) before integrating a
-> product.
+> **Status:** early implementation, not ready for production distribution. Install actions write
+> files and registry entries, so test only inside a disposable VM. See
+> [production status](docs/en/PRODUCTION_STATUS.md) before you plan a release.
 
-## Crates and artifacts
+## What you get
 
-| Crate | Artifact | Scope |
-| --- | --- | --- |
-| `nano-installer-core` | library | Project inspection, bundle assembly, XML layout parsing, Win32 UI, install/uninstall orchestration |
-| `nano-installer-cli` | `nano-installer-native-x64.exe` | CLI frontend over the core build API |
-| `nano-installer-gui` | `nano-installer-gui-x64.exe` | Windows 10+ egui frontend over the same core API |
-| `nano-installer-stub-lzma` | `stubs/lzma-stub-native.exe` | 7z/LZMA extraction; links only `sevenz-rust` |
-| `nano-installer-stub-zlib` | `stubs/zlib-stub-native.exe` | ZIP/Deflate extraction; links only `zip` |
-| `nano-installer-uninstaller` | `stubs/uninst-stub-native.exe` | Manifest-driven removal; links no archive backend |
+| | |
+| --- | --- |
+| One self-contained setup | A single signed-ready `.exe` with your icon, version info, and branding |
+| No prerequisites on the target | Windows 7 SP1 x64 or later; nothing else to install |
+| Your own interface | Arrange pages and controls with XML, using your own background and button images |
+| 11 languages out of the box | Ship translated UI text, or add your own locale files |
+| Safe upgrades and clean removal | Re-installing upgrades in place with rollback; uninstalling removes only what it installed |
+| Automation when you need it | The optional GUI covers everyday use; a CLI drives builds in CI |
 
-All published executables target `x86_64-win7-windows-msvc`. The GUI is the only Windows 10+ binary
-and is never embedded in a setup.
+## Get started
 
-## Build
-
-Requirements: Windows x64, MSVC and a Windows SDK (Visual Studio 2022 Build Tools), and the pinned
-`nightly-2025-11-08` toolchain with the components declared in `rust-toolchain.toml`.
+You need Windows x64 with the MSVC build tools, plus the Rust toolchain pinned in this repository.
 
 ```powershell
+# 1. Build the tools (once per checkout)
 .\scripts\build.ps1
+
+# 2. Build a setup from a project folder
+.\target\release\nano-installer-native-x64.exe build --project .\examples\TapTap
 ```
 
-The script builds CLI and stubs for `x86_64-win7-windows-msvc` with `-Z build-std=std,panic_abort`,
-static CRT, and `panic=abort`, builds the GUI against the host target with `+crt-static`,
-smoke-tests real ZIP and 7z extraction with SHA-256 checks, audits PE imports against the Windows 7
-baseline, and writes:
+The setup lands in `dist/<installer_name>` inside your project. Prefer clicking to typing? Launch
+`target/release/nano-installer-gui-x64.exe` and pick the project folder there.
 
-```text
-target/release/
-  nano-installer-native-x64.exe
-  nano-installer-gui-x64.exe
-  stubs/
-    lzma-stub-native.exe
-    zlib-stub-native.exe
-    uninst-stub-native.exe
+Full walkthrough: [Quick start](docs/en/QUICK_START.md).
+
+## A project folder
+
+```
+MyApp/
+  installer_config.json     product name, version, install path, shortcuts, output name
+  layouts/                  XML pages: welcome, progress, finish, uninstall
+  assets/                   backgrounds, buttons, icons (1x and @2x variants)
+  locales/                  one JSON file per language
+  scripts/                  optional install/uninstall logic
+  payload/app.7z            your application files, zipped or 7z-compressed
 ```
 
-`target/x86_64-win7-windows-msvc/` and `target/gui-build/` are Cargo caches, not additional release
-outputs. Measure the released binaries after each build; their sizes are release metrics, not part
-of this document.
+Every path in the configuration is relative to the project folder, so a project stays portable.
+Start by copying `examples/TapTap` and replacing its content.
 
-## Build a project
+## What is supported today
 
-A project is a directory with `installer_config.json`, XML layouts, bitmap assets, JSON locales, an
-already-compressed ZIP or 7z payload, and optional scripts. Every configured path resolves relative
-to the project directory.
+- Setup and uninstaller in a single executable, targeting Windows 7 SP1 x64 and later.
+- ZIP and 7z payloads, detected automatically from the file signature.
+- Install, upgrade, rollback, and uninstall, with progress pages and a finish page that can launch
+  the installed application.
+- Desktop shortcuts, Start menu entries, and autostart, each optional at install time and cleaned
+  up on removal.
+- User data kept by default on uninstall, unless the user clears the keep-data option.
+- Localized UI text for 11 languages, switchable at runtime.
+- Custom install and uninstall steps written in [Rhai](docs/en/SCRIPT_API.md) when the built-in
+  steps are not enough.
+- A visual builder for Windows 10 and later that shares the same build engine as the CLI.
 
-```powershell
-.\target\release\nano-installer-native-x64.exe build `
-  --project .\examples\TapTap `
-  --output .\examples\TapTap\dist\TapTap_Setup.exe
-```
+## Not there yet
 
-- `--output` defaults to `dist/<output.installer_name>` inside the project.
-- `--stubs <directory>` overrides the sibling `stubs/` lookup; `NANO_INSTALLER_NATIVE_STUB_DIR`
-  overrides both.
-- The builder reads the payload signature, copies the matching stub, injects the configured setup
-  icon and `VERSIONINFO`, appends the bundle, and appends a self-contained uninstaller. It never
-  copies itself into the setup and never creates an intermediate `skins.zip`.
-- The GUI inspects and builds through the same core API; it does not spawn the CLI.
-
-`examples/TapTap` is a test project, not a published setup or the GUI default. Its payload,
-`examples/TapTap/payload/app.7z`, is not tracked, because `.gitignore` excludes `*.7z`; put a 7z
-archive there before building it. To build it and audit the embedded uninstaller's Win7 imports and
-file version:
-
-```powershell
-.\scripts\build.ps1 -Project examples\TapTap
-```
-
-Do not run its install action on a workstation: it writes files and an uninstall registry key, and
-its default destination is under `Program Files` with no automatic UAC request.
-
-## Verification
-
-```powershell
-cargo fmt --all -- --check
-cargo test --locked --workspace
-cargo clippy --locked --workspace --all-targets -- -D warnings
-```
-
-The release script adds the archive extraction checks and the PE import audit. Neither replaces an
-end-to-end install/remove run on a clean Windows 7 SP1 VM; one HKCU write test is ignored in
-restricted environments.
-
-## Runtime behaviour and open work
-
-Installation stages the payload, replaces a previous installation of the same project, records
-deployed files, shortcuts, and autostart entries in a manifest, and registers its uninstaller.
-Removal closes the product, deletes only manifest-tracked files, and honors the keep-data option.
-The wizard switches to its progress page while a task runs and reports live progress, then moves to
-the finish page, which can launch the deployed application.
-
-A project that ships `scripts/install.rhai` or `scripts/uninstall.rhai` runs those scripts instead
-of the built-in steps. The scripts call fixed primitives that reuse the same deployment, rollback,
-and manifest code; see [Script API](docs/SCRIPT_API.md).
-
-Still open: automatic UAC, code signing, and Windows 7 VM acceptance.
+- Installers are not code-signed; Windows SmartScreen will warn about an unknown publisher.
+- No automatic elevation prompt. An installer writing to `Program Files` must be started as an
+  administrator.
+- Windows 7 support is verified by static import checks, not yet by a full run on a real
+  Windows 7 SP1 machine.
 
 ## Documentation
 
-- [Quick start](docs/QUICK_START.md)
-- [Project structure](docs/PROJECT_STRUCTURE.md)
-- [Configuration reference](docs/CONFIG_REFERENCE.md)
-- [XML layout guide](docs/XML_LAYOUT_GUIDE.md)
-- [Localization](docs/LOCALIZATION.md)
-- [Script API](docs/SCRIPT_API.md)
-- [GUI builder](docs/GUI.md)
-- [Build and release](docs/BUILD_AND_RELEASE.md)
-- [Test plan](docs/TEST_PLAN.md)
-- [Native architecture](docs/NATIVE_ARCHITECTURE.md)
-- [Windows compatibility](docs/WINDOWS_COMPATIBILITY.md)
-- [Production status](docs/PRODUCTION_STATUS.md)
-- [Documentation index](docs/README.md)
+Product guides: [Quick start](docs/en/QUICK_START.md) &middot;
+[Visual builder](docs/en/GUI.md) &middot;
+[Configuration](docs/en/CONFIG_REFERENCE.md) &middot;
+[Page layout](docs/en/XML_LAYOUT_GUIDE.md) &middot;
+[Languages](docs/en/LOCALIZATION.md) &middot;
+[Custom steps](docs/en/SCRIPT_API.md)
+
+Technical notes: [Architecture](docs/en/ARCHITECTURE.md) &middot;
+[Build and release](docs/en/BUILD_AND_RELEASE.md) &middot;
+[Windows compatibility](docs/en/WINDOWS_COMPATIBILITY.md) &middot;
+[Test plan](docs/en/TEST_PLAN.md) &middot;
+[Production status](docs/en/PRODUCTION_STATUS.md) &middot;
+[Project layout](docs/en/PROJECT_STRUCTURE.md)
+
+Chinese documentation lives in [docs/zh-CN](docs/zh-CN/).
 
 ## Rights and license
 
-- Rust source code in this repository is licensed under the [MIT License](LICENSE).
-- `examples/TapTap` is a validation project only. The TapTap trademarks, images, and copy there
-  belong to **易玩（上海）网络科技有限公司** and their respective rights holders, and are not
+- The Rust source in this repository is licensed under the [MIT License](LICENSE).
+- `examples/TapTap` is a validation project. The TapTap trademarks, images, and copy in it belong
+  to **易玩（上海）网络科技有限公司** and their respective rights holders; they are not
   MIT-licensed.
-- Generated setups and uninstallers carry the product resources configured for that project, under
-  that product's own licensing.
+- Setups you generate carry the resources you configure for your own product, under your own
+  licensing.

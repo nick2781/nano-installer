@@ -1,29 +1,29 @@
-<h1 align="center"><img src="assets/nano-technology.png" width="48" height="48" align="texttop" alt="nano-installer 工具图标"> nano-installer native 文档</h1>
+<h1 align="center"><img src="assets/nano-technology.png" width="48" height="48" align="texttop" alt="Nano Installer icon"> Nano Installer</h1>
 
-<p align="center"><a href="../README.md">English README</a> | <a href="../README.zh-CN.md">中文 README</a></p>
+<p align="center"><a href="en/README.md">English documentation</a> &middot; <a href="zh-CN/README.md">中文文档</a></p>
 
-本分支的 installer runtime 是原生 Win32 实现，最低支持 Windows 7 SP1 x64。可视化构建
-工具是隔离的 Windows 10+ eframe crate，不进入 setup。旧 eframe runtime 保留在 `main`。
+Nano Installer builds a single Windows setup executable from a project folder. The generated
+program carries its own interface, unpacking engine, and uninstaller, so it runs on a clean
+Windows 7 SP1 x64 machine with nothing else installed.
 
-## 使用顺序
+Nano Installer 把一个装着配置、图片和压缩包 payload 的目录，变成单个 Windows 安装程序 exe。
+生成的程序自带界面、解压能力和卸载程序，在干净的 Windows 7 SP1 x64 上无需额外安装任何东西。
 
-1. [快速开始](QUICK_START.md)
-2. [项目结构](PROJECT_STRUCTURE.md)
-3. [配置参考](CONFIG_REFERENCE.md)
-4. [XML 布局指南](XML_LAYOUT_GUIDE.md)
-5. [本地化](LOCALIZATION.md)
-6. [脚本 API](SCRIPT_API.md)
-7. [构建与发布](BUILD_AND_RELEASE.md)
-8. [GUI 构建工具](GUI.md)
-9. [测试计划](TEST_PLAN.md)
-10. [当前生产状态](PRODUCTION_STATUS.md)
+> **Status / 状态:** early implementation, not ready for production distribution. Test install
+> actions only in a disposable VM.
+>
+> 早期实现，尚不适合对外发布产品。安装动作请只在一次性虚拟机中测试。
 
-## 设计与兼容性
+## Start here / 从这里开始
 
-- [Native 架构](NATIVE_ARCHITECTURE.md)
-- [Windows 兼容性](WINDOWS_COMPATIBILITY.md)
+| English | 中文 |
+| --- | --- |
+| [Quick start](en/QUICK_START.md) | [快速开始](zh-CN/QUICK_START.md) |
+| [Visual builder](en/GUI.md) | [可视化构建](zh-CN/GUI.md) |
+| [Configuration](en/CONFIG_REFERENCE.md) | [配置参考](zh-CN/CONFIG_REFERENCE.md) |
+| [Page layout](en/XML_LAYOUT_GUIDE.md) | [页面布局](zh-CN/XML_LAYOUT_GUIDE.md) |
+| [Languages](en/LOCALIZATION.md) | [多语言](zh-CN/LOCALIZATION.md) |
+| [Custom steps](en/SCRIPT_API.md) | [自定义步骤](zh-CN/SCRIPT_API.md) |
+| [Production status](en/PRODUCTION_STATUS.md) | [当前生产状态](zh-CN/PRODUCTION_STATUS.md) |
 
-当前能够完成项目收集、payload 格式识别、独立 backend、CLI/GUI 构建、单 EXE 打包和
-原生页面渲染、页面流转与进度显示，以及安装/卸载/升级/回滚流程。项目 Rhai 脚本会替代内置
-步骤执行，见 [脚本 API](SCRIPT_API.md)。代码签名和 Win7 SP1 虚拟机验收尚未完成，生成的
-setup 仍只能在隔离测试环境验证，不能用于生产发布。
+Repository README: [English](../README.md) &middot; [简体中文](../README.zh-CN.md)

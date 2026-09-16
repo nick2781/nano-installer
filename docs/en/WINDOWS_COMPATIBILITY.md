@@ -1,0 +1,27 @@
+# Windows compatibility
+
+Everything you ship targets `x86_64-win7-windows-msvc`, with Windows 7 SP1 x64 as the minimum
+supported system. There are no 32-bit or ANSI variants to keep in sync.
+
+The visual builder (`nano-installer-gui-x64.exe`) runs on Windows 10 x64 and later because it uses
+eframe/egui. It only creates installers; the setup it produces still runs on Windows 7 SP1.
+
+## What the runtime relies on
+
+- Win32 Unicode APIs for windows, controls, and text
+- WIC for PNG decoding and GDI for alpha-blended drawing
+- Registry, shell, and process APIs that exist on Windows 7 SP1
+
+Release builds use the pinned `nightly-2025-11-08` toolchain with `rust-src`,
+`-Z build-std=std,panic_abort`, a statically linked CRT, and `panic=abort`.
+
+## How compatibility is checked
+
+Every build audits the PE imports of the builder, all three stubs, and each generated setup, and
+fails if a blocked Windows 8 or Windows 10 API appears. This proves the files do not statically
+depend on newer system APIs.
+
+Static checks do not prove the installer works. A formal Windows 7 SP1 x64 support statement still
+requires a run on a clean machine covering PNG decoding, text rendering, mouse input, window
+behaviour, extraction, installation, and uninstallation. Machines should also have update
+KB3033929 (SHA-2 code signing support) installed.
