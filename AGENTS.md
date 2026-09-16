@@ -38,4 +38,4 @@ All published executables target `x86_64-win7-windows-msvc`. Do not introduce a 
 - Run the Win7 PE import audit for the builder, every stub, and each generated setup.
 - Test archive extraction with real ZIP and 7z files after changing a backend.
 - Treat generated setup size and per-stub size as release metrics; update documentation when they materially change.
-- Preserve unrelated worktree changes and the untracked `docs/superpowers/` content.
+- Preserve unrelated worktree changes in the working tree.
