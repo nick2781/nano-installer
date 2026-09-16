@@ -29,6 +29,8 @@ target/release/
 
 Release workflow 构建 builder、GUI 与 `stubs/`，并把 5 个 exe 作为独立 release asset 上传，
 不会打包成压缩包，也不会生成或发布 TapTap setup。
+release notes 由 `scripts/changelog_notes.ps1` 从 `CHANGELOG.md` 抽取同 tag 版本段落生成，
+因此打 tag 前必须先在 `CHANGELOG.md` 写好该版本的 `## [YYYY.M.D]` 段落；找不到或缺段时发布步骤直接失败。
 开发侧显式传 `-Project` 时才生成 example setup，用于验证 payload、layout 和 bundle；脚本
 也会从 setup 中取出项目化 `uninst.exe` 并单独审计其 Win7 PE 导入和 VERSIONINFO。
 

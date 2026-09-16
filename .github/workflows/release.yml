@@ -46,10 +46,16 @@ jobs:
             target/release/stubs/zlib-stub-native.exe
             target/release/stubs/uninst-stub-native.exe
 
+      - name: Build release notes from CHANGELOG.md
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: powershell
+        run: .\scripts\changelog_notes.ps1 -Tag $env:GITHUB_REF_NAME -OutputPath tmp\release-notes.md
+
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          body_path: tmp/release-notes.md
           files: |
             target/release/nano-installer-native-x64.exe
             target/release/nano-installer-gui-x64.exe
