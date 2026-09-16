@@ -37,6 +37,16 @@ if ($end -le $start) {
 
 $body = ($lines[$start..($end - 1)] -join "`n").TrimEnd()
 $repo = $env:GITHUB_REPOSITORY
+
+# Release bodies are not rendered next to the checkout, so relative links such as
+# docs/PRODUCTION_STATUS.md must be promoted to absolute repository links.
+if (-not [string]::IsNullOrEmpty($repo)) {
+    $body = [regex]::Replace($body, '\]\((?![a-zA-Z][a-zA-Z0-9+.-]*:|#)([^)]+)\)', {
+        param($match)
+        "]($('https://github.com/' + $repo + '/blob/main/' + $match.Groups[1].Value))"
+    })
+}
+
 $changelogLink = if ([string]::IsNullOrEmpty($repo)) { "CHANGELOG.md" } else { "https://github.com/$repo/blob/main/CHANGELOG.md" }
 $body += "`n`n完整更新日志见 [CHANGELOG.md]($changelogLink)。`n"
 
