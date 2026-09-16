@@ -67,8 +67,11 @@ files and registry entries; validate them in a disposable virtual machine only.
   about 1.8-1.9 MB.
 - An elevated setup and its uninstaller run at high integrity, so a product that writes only to
   `%LOCALAPPDATA%` should leave `install.require_admin` off.
-- The manifest asks for the legacy `dpiAware` flag; per-monitor awareness is not requested yet, so a
-  setup dragged between monitors with different scaling is rescaled by Windows.
+- Display scaling on a multi-monitor desktop: a setup declares both `dpiAware` (read by
+  Windows 7/8.1) and `dpiAwareness` (read by Windows 10 1607 and later, set to
+  `PerMonitorV2, PerMonitor`). A window dragged to a display with a different scaling factor is laid
+  out again for that display, so text and artwork stay sharp; on Windows 7 the system still scales
+  the window for the primary display.
 
 Once signing and the Windows 7 acceptance run are done, a product can be onboarded using the
 `examples/TapTap` structure.

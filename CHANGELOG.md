@@ -5,6 +5,67 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 版本号使用 CalVer（`YYYY.M.D`），tag 形如 `v2026.9.16`。
 
+## [2026.9.20]
+
+安装窗口现在跟着显示器走。把窗口拖到另一块缩放比例不同的屏幕上，界面的字号、间距和图片会按那块
+屏幕重新排一遍，而不是被 Windows 拉伸成一张发虚的位图。以前只有 Windows 7/8.1 能读的那种写法，
+现在换成了 Windows 10 起的逐显示器感知。
+
+### 改进
+
+- 安装界面支持逐显示器 DPI：窗口在哪块屏幕上，就按哪块屏幕的缩放比例重新排版。高分辨率屏幕上
+  文字与图标保持锐利，混用 100%、150%、200% 的多屏环境不再出现糊成一片的界面。
+- 窗口被移到另一块屏幕后仍完整可见：新位置超出该屏幕可用范围时会被拉回屏幕内，比屏幕还大的
+  布局则收缩到可用范围，不会露在屏幕外。
+- 圆角在尺寸变化后依然是圆角：页面变高变宽时窗口形状会跟着重算，不再留下旧尺寸的直角缺口。
+
+### 已知限制
+
+- 安装包尚未签名，Windows SmartScreen 仍会提示「未知发布者」。
+- 尚未在真实 Windows 7 SP1 虚拟机上完成端到端验收。
+
+<!-- release-notes:end -->
+
+### 技术细节
+
+- 清单同时声明两个元素：`dpiAware`（Windows 7/8/8.1 读）与 `dpiAwareness`（Windows 10 1607 起
+  优先读）。后者取值 `PerMonitorV2, PerMonitor`：1607-1703 只认 `PerMonitor`，1703 及以后取第一个
+  认识的值，因此每个受支持的版本都拿到它能提供的最清晰行为。项目关闭缩放时写 `unaware`，避免
+  新版 Windows 又替它缩放。
+- `DpiContext::for_dpi` 由 DPI 与 `DpiSettings { aware, threshold }` 推出布局比例与 `@2x` 选择；
+  `DpiSettings` 与解析结果一起存进 `RuntimeState`，因此收到 DPI 变化时可以重新推导。
+- 新增 `WM_DPICHANGED` 处理：`wparam` 低字是 X 轴 DPI，据此重建 `DpiContext`，调用
+  `rebuild_runtime_ui` 重新排版整页，再按 Windows 建议的矩形（`lparam` 指向的 `RECT`）或居中结果
+  重新放置窗口。缩放比例未变时直接返回，不做无谓重排。
+- 该消息由 Windows 同步投递，运行时的测试钩子也必须用 `SendMessageW`：`PostMessageW` 会拒绝携带
+  指针的消息（`0x80070487`）。
+- 新增 `clamped_bounds`（把 `left`/`top` 夹进工作区，窗口大于工作区时收缩）与 `place_window`
+  （`SetWindowPos` + 重算圆角区域）。`center_window` 改为复用两者，窗口形状不再只在创建时设置一次。
+- `CreateRectRgn` 加入导入表，用于项目声明直角时清掉上一块区域。
+- 验证钩子 `NANO_INSTALLER_TEST_DPI_CHANGE`（配合可选的 `NANO_INSTALLER_TEST_DPI_RECT`）让单显示器
+  机器也能驱动真实处理函数，与既有的 `NANO_INSTALLER_TEST_DPI` 同一风格，未设置时完全不生效。
+- `scripts/audit_application_manifest.ps1` 现在校验 `dpiAwareness`：缺失、模式名非法、关闭缩放却
+  仍声明、或第一个模式不是 `PerMonitorV2` 都会导致构建失败。
+- 新增测试：`a_display_scales_the_layout_by_its_own_dpi`（96/120/144/192/384 的换算与 `@2x` 选择、
+  关闭缩放时保持基准）、`a_placed_window_is_pulled_back_inside_its_work_area`（建议位置在范围内时
+  保留、越界时拉回、负坐标副屏、大于工作区时收缩）。
+
+### 已验证
+
+- `cargo fmt --all -- --check`、`cargo clippy --locked --workspace --all-targets -- -D warnings`、
+  `cargo test --locked --workspace`（83 个 core 测试通过、1 个忽略，12 个 GUI 测试，2 个 stub 测试）。
+- 清单审计：`examples/TapTap/dist/TapTap_Setup.exe` 与内嵌卸载程序均为
+  `level=requireAdministrator, dpiAware=true, dpiAwareness=PerMonitorV2, PerMonitor`。
+- 实测 DPI 切换：DPI 由 192 变为 384 时窗口从 `720,462,2160,1362`（1440x900）变为
+  `0,12,2880,1812`（2880x1800，工作区 `0,0,2880,1824`），即整页按新比例重新排版；
+  带建议矩形 `100,50` 时窗口落在 `0,24,2880,1824`，仍完整位于工作区内。
+- `PrintWindow` 截图确认 2880x1800 下界面按 2 倍比例重排，文字与图标清晰。
+- 构建审计恢复全套通过：Win7 PE 导入审计、ZIP/7z backend smoke test、脚本编码审计。
+
+### 未完成
+
+- 无代码签名；未通过真实 Windows 7 SP1 虚拟机端到端验收。
+
 ## [2026.9.19]
 
 退出安装的确认框终于和安装界面是一套皮肤了，不再突然跳出一个系统灰框。安装窗口也老老实实待在

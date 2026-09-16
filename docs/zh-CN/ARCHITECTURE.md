@@ -67,6 +67,10 @@ eframe 界面代码留在 core 之外，因此 GUI 的 egui、eframe、winit 依
 系统窗口自行缩放。Windows 在进程启动前就会读取清单，这也是这两项必须写成资源而不是运行时选项的
 原因。
 
+缩放同时声明在两个元素里：`dpiAware` 供 Windows 7/8/8.1 读取，`dpiAwareness` 供 Windows 10
+1607 及以后读取，后者取值 `PerMonitorV2, PerMonitor`，让每个受支持的版本都拿到它能提供的最清晰
+行为。运行时收到 `WM_DPICHANGED` 后按新显示器的比例重新排版整页，而不是让系统拉伸一张位图。
+
 ## 后续阶段
 
 真实 Windows 7 SP1 机器上的生产验证，以及代码签名。

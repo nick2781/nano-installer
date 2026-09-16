@@ -84,7 +84,13 @@ restores the machine to its previous state.
 | `ui.dialog_layout` | string | Layout used for the confirmation dialog, defaults to `layouts/msgBox.xml` |
 
 `ui.dpi_aware` is also written into the setup's application manifest, so Windows knows the window
-scales itself rather than rescaling a blurry bitmap of it.
+scales itself rather than rescaling a blurry bitmap of it. With it on, the manifest asks for
+per-monitor awareness: a window moved onto a display with a different scaling factor is laid out
+again for that display, so text and artwork stay sharp. With it off the manifest declares
+`unaware`, and the shell scales the window instead.
+
+`ui.dpi_threshold` decides when `@2x` artwork is preferred. It applies to whichever DPI is in
+effect, so moving the window to another display re-evaluates it.
 
 `ui.dialog_layout` names the layout drawn inside the window for questions such as "exit the
 installer?" and for notices the user has to acknowledge. The dialog therefore wears the product's

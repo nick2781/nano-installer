@@ -52,7 +52,8 @@
 - 运行时内嵌 Rhai 引擎，每个运行时体积从约 0.57-0.66 MB 增至约 1.8-1.9 MB。
 - 提权后的安装包与卸载程序都以高完整性运行，只写 `%LOCALAPPDATA%` 的产品应关闭
   `install.require_admin`。
-- 清单申请的是旧版 `dpiAware`。尚未申请逐显示器感知，把安装窗口拖到缩放比例不同的显示器上由
-  Windows 负责缩放。
+- 多显示器环境下的缩放：安装包同时申请 `dpiAware`（Windows 7/8.1 读取）与 `dpiAwareness`
+  （Windows 10 1607 起读取，取值 `PerMonitorV2, PerMonitor`）。把窗口拖到缩放比例不同的显示器
+  上，界面按新显示器重新排版，字号与图片保持清晰；Windows 7 上仍由系统按主显示器缩放。
 
 完成签名与 Windows 7 验收后，产品即可按 `examples/TapTap` 的结构接入。

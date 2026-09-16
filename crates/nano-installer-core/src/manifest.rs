@@ -4,6 +4,13 @@
 //! to ask for administrator rights and to tell the shell the window scales its
 //! own pixels. Both settings come from the project configuration; anything the
 //! project does not ask for keeps the Windows default behaviour.
+//!
+//! DPI awareness is declared twice on purpose. `dpiAware` is the setting
+//! Windows 7, 8, and 8.1 read, where the only choice is whether the whole
+//! process scales with the primary display. `dpiAwareness` is the setting
+//! Windows 10 1607 and later prefer, where a window can follow the scaling of
+//! the display it is actually on. Windows 7 ignores the newer element because
+//! it is in a namespace that did not exist yet.
 
 use anyhow::{Context, Result};
 use std::path::Path;
@@ -42,6 +49,16 @@ impl ManifestSettings {
             "asInvoker"
         };
         let dpi_aware = if self.dpi_aware { "true" } else { "false" };
+        // Per-monitor and PerMonitorV2 are declared as a list: Windows 10 1607
+        // through 1703 understand PerMonitor, and 1703 and later take the
+        // first entry they know, so this asks for the sharpest behaviour each
+        // supported release can deliver. A project that turns scaling off asks
+        // for it by name so a later release cannot silently scale it anyway.
+        let dpi_awareness = if self.dpi_aware {
+            "PerMonitorV2, PerMonitor"
+        } else {
+            "unaware"
+        };
         // Built as lines rather than as one continued literal: a Rust string
         // continuation eats the indentation of the next line, which would run
         // two attributes together and produce a manifest Windows rejects.
@@ -66,6 +83,9 @@ impl ManifestSettings {
             r#"    <windowsSettings>"#.to_string(),
             format!(
                 r#"      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">{dpi_aware}</dpiAware>"#
+            ),
+            format!(
+                r#"      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">{dpi_awareness}</dpiAwareness>"#
             ),
             r#"    </windowsSettings>"#.to_string(),
             r#"  </application>"#.to_string(),
@@ -183,6 +203,9 @@ mod tests {
         let written = manifest_in_image(&image).expect("manifest resource is missing");
         assert!(written.contains("requireAdministrator"));
         assert!(written.contains(">false</dpiAware>"));
+        // Turning scaling off has to say so in the newer element too, or
+        // Windows 10 would scale the window anyway.
+        assert!(written.contains(">unaware</dpiAwareness>"));
         // The image must stay loadable: Windows rejects an executable whose
         // manifest is malformed rather than starting it.
         assert!(roxmltree::Document::parse(&written).is_ok());
@@ -197,6 +220,12 @@ mod tests {
         assert!(quiet.xml().contains("level=\"asInvoker\""));
         assert!(quiet.xml().contains("<dpiAware"));
 
+        // Scaling on: both elements agree, and the newer one names the sharpest
+        // mode Windows 10 1607 through 1703 knows before 1703 takes over.
+        let xml = quiet.xml();
+        assert!(xml.contains(">true</dpiAware>"));
+        assert!(xml.contains(">PerMonitorV2, PerMonitor</dpiAwareness>"));
+
         let loud = ManifestSettings::from_config(&serde_json::json!({
             "install": { "require_admin": true },
             "ui": { "dpi_aware": false },
@@ -206,6 +235,7 @@ mod tests {
         let xml = loud.xml();
         assert!(xml.contains("level=\"requireAdministrator\""));
         assert!(xml.contains(">false</dpiAware>"));
+        assert!(xml.contains(">unaware</dpiAwareness>"));
         // The manifest must stay well-formed XML for the Windows loader.
         assert_eq!(xml.matches("<assembly ").count(), 1);
         assert_eq!(xml.matches("</assembly>").count(), 1);

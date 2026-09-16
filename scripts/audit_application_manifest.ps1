@@ -109,9 +109,40 @@ foreach ($path in $File) {
         $failures += "$resolved declares dpiAware '$($dpi.InnerText.Trim())' but the project resolves to '$ExpectDpiAware'"
     }
 
+    # dpiAware is the Windows 7-8.1 setting; Windows 10 1607 and later read
+    # dpiAwareness first. A manifest carrying only the legacy element loses
+    # per-monitor scaling, so the newer one has to be there and has to name
+    # PerMonitorV2 before PerMonitor.
+    $awareness = $document.SelectSingleNode("//*[local-name()='dpiAwareness']")
+    if (-not $awareness) {
+        $failures += "$resolved does not declare dpiAwareness, so Windows 10 and 11 have no per-monitor scaling to apply"
+    }
+    else {
+        $declared = $awareness.InnerText.Trim()
+        $modes = @($declared.Split(",") | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+        $known = @("unaware", "system", "permonitor", "permonitorv2")
+        foreach ($mode in $modes) {
+            if ($known -notcontains $mode.ToLowerInvariant()) {
+                $failures += "$resolved declares an unknown dpiAwareness mode: $mode"
+            }
+        }
+        if ($ExpectDpiAware -eq "false" -and $modes.Count -ne 1) {
+            $failures += "$resolved turns scaling off but still declares dpiAwareness '$declared'"
+        }
+        if ($ExpectDpiAware -eq "true") {
+            if ($modes.Count -gt 0 -and $modes[0].ToLowerInvariant() -ne "permonitorv2") {
+                $failures += "$resolved declares dpiAwareness '$declared' but the first mode Windows understands must be PerMonitorV2"
+            }
+            if ($modes.ToLowerInvariant() -notcontains "permonitorv2") {
+                $failures += "$resolved does not request per-monitor scaling"
+            }
+        }
+    }
+
     $described = if ($level) { $level.GetAttribute("level") } else { "?" }
     $aware = if ($dpi) { $dpi.InnerText.Trim() } else { "?" }
-    Write-Output "Application manifest audit inspected: $resolved (level=$described, dpiAware=$aware)"
+    $monitor = if ($awareness) { $awareness.InnerText.Trim() } else { "?" }
+    Write-Output "Application manifest audit inspected: $resolved (level=$described, dpiAware=$aware, dpiAwareness=$monitor)"
 }
 
 if ($failures.Count -gt 0) {

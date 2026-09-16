@@ -37,8 +37,11 @@ files are decoded to PBGRA by WIC and drawn with GDI alpha blending.
 
 ## DPI and image density
 
-Coordinates in a layout assume 96 DPI. With `ui.dpi_aware` enabled, the runtime reads the system DPI
-and scales the window, coordinates, fonts, hit areas, and corner radius together.
+Coordinates in a layout assume 96 DPI. With `ui.dpi_aware` enabled, the runtime reads the DPI of the
+display the window is on and scales the window, coordinates, fonts, hit areas, and corner radius
+together. A setup asks for per-monitor awareness, so dragging the window to a display with a
+different scaling factor lays the page out again for that display; there is no need for a separate
+layout per scaling level.
 
 Provide a 1x name and let the runtime pick the density:
 

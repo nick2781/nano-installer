@@ -81,6 +81,11 @@ The manifest is generated from `install.require_admin` and `ui.dpi_aware`, so a 
 for the rights it needs and tells the shell it scales its own pixels. Windows reads the manifest
 before the process starts, which is why the settings are resources rather than runtime options.
 
+Scaling is declared in two elements: `dpiAware` for Windows 7/8/8.1 and `dpiAwareness` for Windows 10
+1607 and later, set to `PerMonitorV2, PerMonitor` so each supported release gets the sharpest
+behaviour it offers. On `WM_DPICHANGED` the runtime lays the page out again for the new display
+rather than letting the shell stretch a bitmap.
+
 ## Next stages
 
 Production validation on a real Windows 7 SP1 machine, plus code signing.

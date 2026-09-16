@@ -22,14 +22,14 @@ use windows::Win32::Foundation::{
 };
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, BitBlt, ClientToScreen, CreateCompatibleBitmap, CreateCompatibleDC,
-    CreateDIBSection, CreateFontW, CreateRoundRectRgn, DeleteDC, DeleteObject, DrawTextW, EndPaint,
-    GdiAlphaBlend, GetDC, GetDeviceCaps, GetMonitorInfoW, GetTextExtentPoint32W, InvalidateRect,
-    MonitorFromWindow, ReleaseDC, ScreenToClient, SelectObject, SetBkMode, SetTextColor,
-    SetWindowRgn, UpdateWindow, AC_SRC_ALPHA, AC_SRC_OVER, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
-    BLENDFUNCTION, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, DEFAULT_CHARSET, DEFAULT_PITCH,
-    DIB_RGB_COLORS, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, FW_BOLD, FW_NORMAL, HDC,
-    HFONT, LOGPIXELSX, MONITORINFO, MONITOR_DEFAULTTONEAREST, OUT_DEFAULT_PRECIS, PAINTSTRUCT,
-    SRCCOPY, TRANSPARENT,
+    CreateDIBSection, CreateFontW, CreateRectRgn, CreateRoundRectRgn, DeleteDC, DeleteObject,
+    DrawTextW, EndPaint, GdiAlphaBlend, GetDC, GetDeviceCaps, GetMonitorInfoW,
+    GetTextExtentPoint32W, InvalidateRect, MonitorFromWindow, ReleaseDC, ScreenToClient,
+    SelectObject, SetBkMode, SetTextColor, SetWindowRgn, UpdateWindow, AC_SRC_ALPHA, AC_SRC_OVER,
+    BITMAPINFO, BITMAPINFOHEADER, BI_RGB, BLENDFUNCTION, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS,
+    DEFAULT_CHARSET, DEFAULT_PITCH, DIB_RGB_COLORS, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE,
+    DT_VCENTER, FW_BOLD, FW_NORMAL, HDC, HFONT, LOGPIXELSX, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    OUT_DEFAULT_PRECIS, PAINTSTRUCT, SRCCOPY, TRANSPARENT,
 };
 use windows::Win32::Graphics::Imaging::{
     CLSID_WICImagingFactory, GUID_WICPixelFormat32bppPBGRA, IWICImagingFactory, IWICPalette,
@@ -64,9 +64,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
     RegisterClassExW, SendMessageW, SetProcessDPIAware, SetTimer, SetWindowPos, ShowWindow,
     TranslateMessage, CS_HREDRAW, CS_VREDRAW, HTCAPTION, HTCLIENT, HWND_TOP, ICON_BIG, ICON_SMALL,
     IDC_ARROW, IDC_HAND, MB_ICONERROR, MB_OK, MSG, SWP_NOACTIVATE, SWP_NOZORDER, SW_MINIMIZE,
-    SW_SHOW, SW_SHOWNORMAL, WM_CHAR, WM_CLOSE, WM_DESTROY, WM_ERASEBKGND, WM_KEYDOWN,
-    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_NCLBUTTONDOWN, WM_PAINT, WM_SETCURSOR,
-    WM_SETICON, WM_TIMER, WNDCLASSEXW, WS_EX_APPWINDOW, WS_POPUP,
+    SW_SHOW, SW_SHOWNORMAL, WM_CHAR, WM_CLOSE, WM_DESTROY, WM_DPICHANGED, WM_ERASEBKGND,
+    WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_NCLBUTTONDOWN, WM_PAINT,
+    WM_SETCURSOR, WM_SETICON, WM_TIMER, WNDCLASSEXW, WS_EX_APPWINDOW, WS_POPUP,
 };
 use windows::Win32::UI::WindowsAndMessaging::{SetCursor, IDC_IBEAM};
 
@@ -157,7 +157,11 @@ struct RuntimeUi {
 
 struct RuntimeState {
     files: HashMap<String, Vec<u8>>,
+    /// Scale the current page was measured at. Replaced when the window moves
+    /// to a display with a different scaling factor.
     dpi: DpiContext,
+    /// The scaling a project asked for, kept so a new context can be derived.
+    dpi_settings: DpiSettings,
     locale: String,
     language_menu_open: bool,
     interaction: InteractionState,
@@ -467,6 +471,30 @@ enum WindowAction {
 struct DpiContext {
     scale: f32,
     use_2x: bool,
+}
+
+impl DpiContext {
+    /// The layout scale and image variant a given display DPI resolves to.
+    ///
+    /// A project that turns awareness off keeps the 96 DPI baseline, so the
+    /// shell does the scaling instead.
+    fn for_dpi(dpi: u32, settings: DpiSettings) -> Self {
+        let dpi = if settings.aware { dpi } else { BASE_DPI };
+        Self {
+            scale: dpi as f32 / BASE_DPI as f32,
+            use_2x: settings.aware && dpi >= settings.threshold,
+        }
+    }
+}
+
+/// What a project asked for when it comes to display scaling.
+///
+/// Kept beside the resolved [`DpiContext`] so the runtime can work out a new
+/// context when Windows moves the window to a differently scaled display.
+#[derive(Clone, Copy)]
+struct DpiSettings {
+    aware: bool,
+    threshold: u32,
 }
 
 struct ImageStyle<'a> {
@@ -1966,7 +1994,7 @@ fn run_embedded(bundle: BundleIndex, mode: RuntimeMode) -> Result<()> {
     // Only the configuration, layout, asset, and locale entries are read; the
     // payload stays on disk and is streamed when the install action runs.
     let files = bundle.read_ui_files()?;
-    let dpi = configure_dpi(&files)?;
+    let (dpi_settings, dpi) = configure_dpi(&files)?;
     let locale = initial_locale(&files)?;
     let interaction = initial_interaction(&files, mode)?;
     let ui = load_layout(&files, dpi, &locale, false, &interaction, mode)?;
@@ -1974,6 +2002,7 @@ fn run_embedded(bundle: BundleIndex, mode: RuntimeMode) -> Result<()> {
     UI.set(Mutex::new(RuntimeState {
         files,
         dpi,
+        dpi_settings,
         locale,
         language_menu_open: false,
         interaction,
@@ -2052,7 +2081,15 @@ fn initial_interaction(
     Ok(interaction)
 }
 
-fn configure_dpi(files: &HashMap<String, Vec<u8>>) -> Result<DpiContext> {
+/// Reads the scaling a project asked for and measures the current display.
+///
+/// The application manifest normally settled awareness before `main` ran. The
+/// call below only covers a raw stub executed without a manifest: Windows then
+/// starts the process unaware, and this is the only chance to ask for scaling
+/// before the first window exists. It is a no-op when the manifest already
+/// declared it, and it never fights the manifest because awareness can only be
+/// set once per process.
+fn configure_dpi(files: &HashMap<String, Vec<u8>>) -> Result<(DpiSettings, DpiContext)> {
     let config: serde_json::Value = serde_json::from_slice(
         files
             .get("installer_config.json")
@@ -2064,16 +2101,61 @@ fn configure_dpi(files: &HashMap<String, Vec<u8>>) -> Result<DpiContext> {
             let _ = SetProcessDPIAware();
         }
     }
-    let dpi = if aware { system_dpi() } else { BASE_DPI };
     let threshold = config["ui"]["dpi_threshold"]
         .as_u64()
         .and_then(|value| u32::try_from(value).ok())
         .filter(|value| *value > 0)
         .unwrap_or(DEFAULT_DPI_THRESHOLD);
-    Ok(DpiContext {
-        scale: dpi as f32 / BASE_DPI as f32,
-        use_2x: aware && dpi >= threshold,
-    })
+    let settings = DpiSettings { aware, threshold };
+    // The first window is created on the primary display, so the primary
+    // display is what its first page has to be measured against. Windows sends
+    // WM_DPICHANGED if the window then lands anywhere else.
+    Ok((settings, DpiContext::for_dpi(system_dpi(), settings)))
+}
+
+/// A verification hook for display scaling.
+///
+/// Windows drives per-monitor scaling when the user moves the window onto a
+/// display with a different factor, which a machine with a single display
+/// cannot produce. Setting `NANO_INSTALLER_TEST_DPI_CHANGE` makes the window
+/// deliver the same message to itself once it is on screen, so the real handler
+/// can be exercised end to end. It does nothing unless the variable is set, and
+/// it runs in-process, which is what lets the message carry a rectangle: a
+/// pointer in a message from another process would not be readable.
+fn test_dpi_change() -> Option<(u32, *const RECT)> {
+    let dpi = std::env::var("NANO_INSTALLER_TEST_DPI_CHANGE")
+        .ok()?
+        .trim()
+        .parse::<u32>()
+        .ok()?;
+    if dpi == 0 {
+        return None;
+    }
+    // Without a suggestion the window is re-centred, which is what Windows
+    // offers for a window it moved itself.
+    Some((dpi, test_dpi_change_rect().unwrap_or(std::ptr::null())))
+}
+
+/// The suggested window position for the scaling hook, if one was given.
+///
+/// The value is stored once and never moved, so the pointer handed to the
+/// message stays valid for as long as the window can receive it.
+fn test_dpi_change_rect() -> Option<*const RECT> {
+    static SUGGESTION: OnceLock<Option<RECT>> = OnceLock::new();
+    SUGGESTION
+        .get_or_init(|| {
+            let raw = std::env::var("NANO_INSTALLER_TEST_DPI_RECT").ok()?;
+            let mut parts = raw.split(',').map(|part| part.trim().parse::<i32>().ok());
+            let left = parts.next().flatten()?;
+            let top = parts.next().flatten()?;
+            Some(RECT {
+                left,
+                top,
+                ..Default::default()
+            })
+        })
+        .as_ref()
+        .map(|rect| rect as *const RECT)
 }
 
 fn system_dpi() -> u32 {
@@ -4814,21 +4896,6 @@ fn run_window(client_width: i32, client_height: i32) -> Result<()> {
             WPARAM(ICON_SMALL as usize),
             LPARAM(project_icon.0 as isize),
         );
-        if let Some(state) = UI.get().and_then(|state| state.lock().ok()) {
-            if state.ui.corner_radius > 0 {
-                let region = CreateRoundRectRgn(
-                    0,
-                    0,
-                    client_width + 1,
-                    client_height + 1,
-                    state.ui.corner_radius * 2,
-                    state.ui.corner_radius * 2,
-                );
-                if !region.is_invalid() {
-                    let _ = SetWindowRgn(window, region, true);
-                }
-            }
-        }
         // Worker threads post progress updates back to this window.
         if let Some(state) = UI.get() {
             if let Ok(mut state) = state.lock() {
@@ -4837,6 +4904,20 @@ fn run_window(client_width: i32, client_height: i32) -> Result<()> {
         }
         let _ = ShowWindow(window, SW_SHOW);
         let _ = UpdateWindow(window);
+        if let Some((dpi, suggestion)) = test_dpi_change() {
+            // Both axes carry the same factor, which is what Windows reports
+            // for every display it drives.
+            let packed = ((dpi as usize) << 16) | dpi as usize;
+            // Windows delivers this message synchronously, and the rectangle
+            // it carries means it has to: a pointer cannot cross a posted
+            // message, which Windows rejects outright.
+            SendMessageW(
+                window,
+                WM_DPICHANGED,
+                WPARAM(packed),
+                LPARAM(suggestion as isize),
+            );
+        }
         let mut message = MSG::default();
         while GetMessageW(&mut message, None, 0, 0).0 > 0 {
             let _ = TranslateMessage(&message);
@@ -4875,6 +4956,14 @@ unsafe fn center_window(window: HWND) {
         return;
     };
     let (left, top, width, height) = centered_bounds(work, width, height);
+    place_window(window, left, top, width, height);
+}
+
+/// Moves and resizes the window without touching z-order or focus.
+///
+/// The rounded region has to be rebuilt with the window: a region outlives the
+/// size it was cut for, so a page that grows would keep its old corners.
+unsafe fn place_window(window: HWND, left: i32, top: i32, width: i32, height: i32) {
     let _ = SetWindowPos(
         window,
         HWND_TOP,
@@ -4884,6 +4973,72 @@ unsafe fn center_window(window: HWND) {
         height,
         SWP_NOZORDER | SWP_NOACTIVATE,
     );
+    let radius = UI
+        .get()
+        .and_then(|state| state.lock().ok())
+        .map(|state| state.ui.corner_radius)
+        .unwrap_or(0);
+    apply_window_shape(window, width, height, radius);
+}
+
+/// Cuts the window into its rounded rectangle, or clears the region when the
+/// layout asks for square corners.
+unsafe fn apply_window_shape(window: HWND, width: i32, height: i32, radius: i32) {
+    let region = if radius > 0 {
+        CreateRoundRectRgn(0, 0, width + 1, height + 1, radius * 2, radius * 2)
+    } else {
+        CreateRectRgn(0, 0, width + 1, height + 1)
+    };
+    if !region.is_invalid() {
+        // The window owns the region from here, so it must not be deleted.
+        let _ = SetWindowRgn(window, region, true);
+    }
+}
+
+/// Re-measures the current page for a display with a different scaling factor.
+///
+/// Windows sends the new DPI and a rectangle it suggests for the window. The
+/// suggestion is honoured as a position so a window the user dragged between
+/// displays does not jump, but the size comes from the re-measured layout: the
+/// layout engine knows how much room the page needs at the new scale.
+unsafe fn handle_dpi_changed(window: HWND, dpi: u32, suggested: *const RECT) {
+    let Some(runtime) = UI.get() else {
+        return;
+    };
+    let Ok(mut state) = runtime.lock() else {
+        return;
+    };
+    let context = DpiContext::for_dpi(dpi, state.dpi_settings);
+    if context.scale == state.dpi.scale {
+        // Windows reports the DPI again for events that do not change the
+        // scale, and re-measuring the page for those would be wasted work.
+        return;
+    }
+    state.dpi = context;
+    if rebuild_runtime_ui(&mut state).is_err() {
+        return;
+    }
+    let (width, height) = (state.ui.width, state.ui.height);
+    state.window_size = (width, height);
+    drop(state);
+
+    let (left, top) = if suggested.is_null() {
+        (i32::MIN, i32::MIN)
+    } else {
+        let suggestion = &*suggested;
+        (suggestion.left, suggestion.top)
+    };
+    let Some(work) = monitor_work_area(window) else {
+        return;
+    };
+    let (left, top, width, height) = if left == i32::MIN {
+        centered_bounds(work, width, height)
+    } else {
+        clamped_bounds(work, left, top, width, height)
+    };
+    place_window(window, left, top, width, height);
+    let _ = InvalidateRect(window, None, false);
+    let _ = UpdateWindow(window);
 }
 
 /// The `(left, top, right, bottom)` of the work area of the monitor a window is
@@ -4918,9 +5073,35 @@ fn centered_bounds(work: (i32, i32, i32, i32), width: i32, height: i32) -> (i32,
     let work_height = (bottom - top).max(1);
     let width = width.clamp(1, work_width);
     let height = height.clamp(1, work_height);
-    (
+    clamped_bounds(
+        work,
         left + (work_width - width) / 2,
         top + (work_height - height) / 2,
+        width,
+        height,
+    )
+}
+
+/// Keeps a window of `width` by `height` inside a work area.
+///
+/// A window the user has placed keeps that place as far as the work area allows;
+/// one that would hang off an edge is pulled back in, and a window larger than
+/// the work area is shrunk to it so every edge stays reachable.
+fn clamped_bounds(
+    work: (i32, i32, i32, i32),
+    left: i32,
+    top: i32,
+    width: i32,
+    height: i32,
+) -> (i32, i32, i32, i32) {
+    let (work_left, work_top, work_right, work_bottom) = work;
+    let work_width = (work_right - work_left).max(1);
+    let work_height = (work_bottom - work_top).max(1);
+    let width = width.clamp(1, work_width);
+    let height = height.clamp(1, work_height);
+    (
+        left.clamp(work_left, work_right - width),
+        top.clamp(work_top, work_bottom - height),
         width,
         height,
     )
@@ -5075,6 +5256,17 @@ unsafe extern "system" fn window_proc(
         }
         WM_KEYDOWN if wparam.0 as u32 == VK_ESCAPE.0 as u32 && !install::busy() => {
             let _ = DestroyWindow(window);
+            LRESULT(0)
+        }
+        // Windows moved the window to a display that scales differently. The
+        // page is measured in layout units and painted at the scale the display
+        // asks for, so it has to be laid out again rather than stretched.
+        WM_DPICHANGED => {
+            // The X-axis DPI is in the low word of wParam; the high word holds
+            // the Y axis, which is the same value on every display Windows
+            // reports, and the scale is derived from one number.
+            let dpi = u32::from(wparam.0 as u16);
+            handle_dpi_changed(window, dpi, lparam.0 as *const RECT);
             LRESULT(0)
         }
         WM_APP_REFRESH => {
@@ -6858,19 +7050,20 @@ unsafe fn draw_layer(destination: HDC, layer: &ImageLayer) {
 #[cfg(test)]
 mod tests {
     use super::{
-        button_image, byte_index, caret_layer, centered_bounds, container_intrinsic_size,
-        disk_root, flow_axis, flow_widths, format_size_bytes, initial_interaction, inspect_project,
-        installer_version_info, load_layout, measure_layout_text_width, pack_project,
-        pack_project_with_progress, parse_bundle, parse_color, parse_image_style, parse_text_runs,
-        pick_directory_target, push_action, push_border_layer, push_node_border,
-        query_disk_free_bytes, render_flow, render_flow_item, render_progress_bar,
-        resolve_asset_path, resolve_link_target, resolved_text_for_node, restore_snapshot,
-        runtime_layout_path, runtime_layout_path_at, runtime_page_count, scale_value,
-        selection_layers, size_attribute, uninstaller_version_info, validate_output_filename,
-        word_end_after, word_range, word_start_before, wrap_lines, wraps, BundleIndex, DialogKind,
-        DialogState, DpiContext, FlowAxis, FlowItem, InteractionState, LayerRect, LayoutContext,
-        LayoutOutput, PayloadFormat, RuntimeMode, RuntimeUi, TextAlignment, TextHit,
-        TextInputRegion, TextSnapshot, WindowAction, COLORREF, FOOTER_MAGIC,
+        button_image, byte_index, caret_layer, centered_bounds, clamped_bounds,
+        container_intrinsic_size, disk_root, flow_axis, flow_widths, format_size_bytes,
+        initial_interaction, inspect_project, installer_version_info, load_layout,
+        measure_layout_text_width, pack_project, pack_project_with_progress, parse_bundle,
+        parse_color, parse_image_style, parse_text_runs, pick_directory_target, push_action,
+        push_border_layer, push_node_border, query_disk_free_bytes, render_flow, render_flow_item,
+        render_progress_bar, resolve_asset_path, resolve_link_target, resolved_text_for_node,
+        restore_snapshot, runtime_layout_path, runtime_layout_path_at, runtime_page_count,
+        scale_value, selection_layers, size_attribute, uninstaller_version_info,
+        validate_output_filename, word_end_after, word_range, word_start_before, wrap_lines, wraps,
+        BundleIndex, DialogKind, DialogState, DpiContext, DpiSettings, FlowAxis, FlowItem,
+        InteractionState, LayerRect, LayoutContext, LayoutOutput, PayloadFormat, RuntimeMode,
+        RuntimeUi, TextAlignment, TextHit, TextInputRegion, TextSnapshot, WindowAction, COLORREF,
+        FOOTER_MAGIC,
     };
     use anyhow::Context;
     use std::collections::HashMap;
@@ -7528,6 +7721,68 @@ mod tests {
             "the question overlaps the buttons"
         );
         Ok(())
+    }
+
+    #[test]
+    fn a_display_scales_the_layout_by_its_own_dpi() {
+        let aware = DpiSettings {
+            aware: true,
+            threshold: 144,
+        };
+        let base = DpiContext::for_dpi(96, aware);
+        assert_eq!(base.scale, 1.0);
+        assert!(!base.use_2x);
+
+        // 150% and 200% displays, the two the runtime has to look right on.
+        let middle = DpiContext::for_dpi(144, aware);
+        assert_eq!(middle.scale, 1.5);
+        assert!(middle.use_2x);
+        let large = DpiContext::for_dpi(192, aware);
+        assert_eq!(large.scale, 2.0);
+        assert!(large.use_2x);
+
+        // Below the threshold the 1x artwork is still the sharper choice.
+        let just_under = DpiContext::for_dpi(120, aware);
+        assert_eq!(just_under.scale, 1.25);
+        assert!(!just_under.use_2x);
+
+        // A project that turned scaling off stays on the 96 DPI baseline
+        // whichever display it lands on, so the shell does the scaling.
+        let unaware = DpiSettings {
+            aware: false,
+            threshold: 144,
+        };
+        let off = DpiContext::for_dpi(384, unaware);
+        assert_eq!(off.scale, 1.0);
+        assert!(!off.use_2x);
+    }
+
+    #[test]
+    fn a_placed_window_is_pulled_back_inside_its_work_area() {
+        let work = (0, 0, 1920, 1080);
+        // A suggestion that already fits is left where it is, so a window the
+        // user dragged to a second display does not jump back to a corner.
+        assert_eq!(
+            clamped_bounds(work, 400, 200, 720, 450),
+            (400, 200, 720, 450)
+        );
+        // A window hanging off the right and bottom edges is pulled in.
+        assert_eq!(
+            clamped_bounds(work, 1800, 1000, 720, 450),
+            (1200, 630, 720, 450)
+        );
+        // A negative suggestion, as a monitor left of the primary produces.
+        let left_monitor = (-1920, 0, 0, 1080);
+        assert_eq!(
+            clamped_bounds(left_monitor, -2000, -50, 720, 450),
+            (-1920, 0, 720, 450)
+        );
+        // A window larger than the work area is shrunk to it rather than
+        // sticking out of an edge.
+        assert_eq!(
+            clamped_bounds(work, 100, 100, 4000, 3000),
+            (0, 0, 1920, 1080)
+        );
     }
 
     #[test]
