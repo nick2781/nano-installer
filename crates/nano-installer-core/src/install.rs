@@ -1520,25 +1520,17 @@ pub(super) fn remove_installed_files(destination: &Path, manifest: &Value) -> Re
 
 /// Removes the uninstall registration and the manifest itself.
 ///
-/// The running executable is still locked, so it is deleted on the next reboot;
-/// everything else in the directory is already gone by this point.
+/// The uninstaller cannot delete its own file while it runs, so a helper copy
+/// finishes that afterwards; see `spawn_cleanup_helper`. Everything else in the
+/// directory is already gone by this point.
 pub(super) fn finish_uninstall(
     destination: &Path,
     uninstaller: &Path,
     root: HKEY,
     registry_path: &str,
 ) -> Result<()> {
-    // Scheduling the deletion needs write access to the pending file rename
-    // list, which a non-elevated uninstall does not have. Locking the running
-    // uninstaller out of its own removal is expected; aborting here would be
-    // worse, because the registration below would survive a finished uninstall.
-    unsafe {
-        let _ = MoveFileExW(
-            PCWSTR(wide(&uninstaller.display().to_string()).as_ptr()),
-            PCWSTR::null(),
-            MOVEFILE_DELAY_UNTIL_REBOOT,
-        );
-    }
+    // The registration is dropped first. A helper that removed the directory
+    // but failed here would leave an entry that uninstalls nothing.
     unsafe {
         let status = RegDeleteKeyW(root, PCWSTR(wide(registry_path).as_ptr()));
         if status != ERROR_FILE_NOT_FOUND && status != ERROR_PATH_NOT_FOUND {
@@ -1546,7 +1538,80 @@ pub(super) fn finish_uninstall(
         }
     }
     fs::remove_file(destination.join(MANIFEST_NAME))?;
+    spawn_cleanup_helper(destination, uninstaller);
     Ok(())
+}
+
+/// Starts the copy that deletes the finished installation's own directory.
+///
+/// The running uninstaller keeps a lock on its own image, so a second process
+/// has to remove it. The helper is a copy in the temporary directory, so
+/// nothing in the installation is left holding the directory open.
+fn spawn_cleanup_helper(destination: &Path, uninstaller: &Path) {
+    if let Err(error) = try_spawn_cleanup_helper(destination, uninstaller) {
+        // Without a helper the directory can only be emptied and then removed on
+        // the next restart, which is the older behaviour, and a failed cleanup
+        // must never fail the uninstall the user already completed.
+        let _ = error;
+        schedule_removal_at_reboot(uninstaller);
+    }
+}
+
+fn try_spawn_cleanup_helper(destination: &Path, uninstaller: &Path) -> Result<()> {
+    use std::os::windows::process::CommandExt;
+    use std::process::Command;
+    use windows::Win32::System::Threading::CREATE_NO_WINDOW;
+
+    let source = std::env::current_exe().context("cannot locate the running uninstaller")?;
+    let mut helper = None;
+    for attempt in 0..100 {
+        let candidate = std::env::temp_dir().join(format!(
+            "nano-installer-cleanup-{}-{attempt}.exe",
+            std::process::id()
+        ));
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
+            Ok(file) => {
+                drop(file);
+                helper = Some(candidate);
+                break;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error).context("cannot create the cleanup helper"),
+        }
+    }
+    let helper = helper.context("cannot allocate a cleanup helper path")?;
+    fs::copy(&source, &helper).context("cannot copy the cleanup helper")?;
+    let spawned = Command::new(&helper)
+        .arg(super::CLEANUP_FLAG)
+        .arg(destination)
+        .arg(uninstaller)
+        .creation_flags(CREATE_NO_WINDOW.0)
+        .spawn();
+    match spawned {
+        Ok(_) => Ok(()),
+        Err(error) => {
+            let _ = fs::remove_file(&helper);
+            Err(error).context("cannot start the cleanup helper")
+        }
+    }
+}
+
+/// Asks Windows to delete `path` the next time the machine starts.
+///
+/// Writing the pending-rename list needs administrator rights, so this is the
+/// fallback rather than the normal path.
+fn schedule_removal_at_reboot(path: &Path) {
+    unsafe {
+        let _ = MoveFileExW(
+            PCWSTR(wide(&path.display().to_string()).as_ptr()),
+            PCWSTR::null(),
+            MOVEFILE_DELAY_UNTIL_REBOOT,
+        );
+    }
 }
 
 #[cfg(test)]

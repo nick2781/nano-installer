@@ -14,13 +14,16 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
-use windows::core::{w, HSTRING, PCWSTR};
-use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, RECT, SIZE, WPARAM};
+use windows::core::{w, HSTRING, PCWSTR, PWSTR};
+use windows::Win32::Foundation::GlobalFree;
+use windows::Win32::Foundation::{
+    COLORREF, HANDLE, HGLOBAL, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM,
+};
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreateDIBSection, CreateFontW,
     CreateRoundRectRgn, DeleteDC, DeleteObject, DrawTextW, EndPaint, GdiAlphaBlend, GetDC,
-    GetDeviceCaps, GetTextExtentPoint32W, InvalidateRect, ReleaseDC, SelectObject, SetBkMode,
-    SetTextColor, SetWindowRgn, UpdateWindow, AC_SRC_ALPHA, AC_SRC_OVER, BITMAPINFO,
+    GetDeviceCaps, GetTextExtentPoint32W, InvalidateRect, ReleaseDC, ScreenToClient, SelectObject,
+    SetBkMode, SetTextColor, SetWindowRgn, UpdateWindow, AC_SRC_ALPHA, AC_SRC_OVER, BITMAPINFO,
     BITMAPINFOHEADER, BI_RGB, BLENDFUNCTION, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS,
     DEFAULT_CHARSET, DEFAULT_PITCH, DIB_RGB_COLORS, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE,
     DT_VCENTER, FW_BOLD, FW_NORMAL, HDC, HFONT, LOGPIXELSX, OUT_DEFAULT_PRECIS, PAINTSTRUCT,
@@ -32,22 +35,34 @@ use windows::Win32::Graphics::Imaging::{
 };
 use windows::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
 use windows::Win32::System::Com::{
-    CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER,
+    CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, CLSCTX_INPROC_SERVER,
     COINIT_APARTMENTTHREADED,
 };
+use windows::Win32::System::DataExchange::{
+    CloseClipboard, EmptyClipboard, GetClipboardData, OpenClipboard, SetClipboardData,
+};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
+use windows::Win32::System::Ole::CF_UNICODETEXT;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    ReleaseCapture, TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT,
+    GetDoubleClickTime, GetKeyState, ReleaseCapture, SetCapture, TrackMouseEvent, TME_LEAVE,
+    TRACKMOUSEEVENT, VIRTUAL_KEY, VK_A, VK_BACK, VK_C, VK_CONTROL, VK_DELETE, VK_END, VK_HOME,
+    VK_LEFT, VK_RIGHT, VK_SHIFT, VK_V, VK_X, VK_Y, VK_Z,
+};
+use windows::Win32::UI::Shell::{
+    FileOpenDialog, IFileOpenDialog, IShellItem, ShellExecuteW, FOS_PICKFOLDERS, SIGDN_FILESYSPATH,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect, GetMessageW,
-    GetSystemMetrics, LoadCursorW, LoadIconW, MessageBoxW, PostMessageW, PostQuitMessage,
-    RegisterClassExW, SendMessageW, SetProcessDPIAware, ShowWindow, TranslateMessage, CS_HREDRAW,
-    CS_VREDRAW, HTCAPTION, ICON_BIG, ICON_SMALL, IDC_ARROW, MB_ICONERROR, MB_OK, MSG, SM_CXSCREEN,
-    SM_CYSCREEN, SW_MINIMIZE, SW_SHOW, WM_CLOSE, WM_DESTROY, WM_ERASEBKGND, WM_KEYDOWN,
-    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_NCLBUTTONDOWN, WM_PAINT, WM_SETICON,
-    WNDCLASSEXW, WS_EX_APPWINDOW, WS_POPUP,
+    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect, GetCursorPos,
+    GetMessageW, GetSystemMetrics, KillTimer, LoadCursorW, LoadIconW, MessageBoxW, PostMessageW,
+    PostQuitMessage, RegisterClassExW, SendMessageW, SetProcessDPIAware, SetTimer, ShowWindow,
+    TranslateMessage, CS_HREDRAW, CS_VREDRAW, HTCAPTION, HTCLIENT, ICON_BIG, ICON_SMALL, IDC_ARROW,
+    IDC_HAND, IDYES, MB_ICONERROR, MB_ICONQUESTION, MB_OK, MB_YESNO, MSG, SM_CXSCREEN, SM_CYSCREEN,
+    SW_MINIMIZE, SW_SHOW, SW_SHOWNORMAL, WM_CHAR, WM_CLOSE, WM_DESTROY, WM_ERASEBKGND, WM_KEYDOWN,
+    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_NCLBUTTONDOWN, WM_PAINT, WM_SETCURSOR,
+    WM_SETICON, WM_TIMER, WNDCLASSEXW, WS_EX_APPWINDOW, WS_POPUP,
 };
+use windows::Win32::UI::WindowsAndMessaging::{SetCursor, IDC_IBEAM};
 
 const BUNDLE_MAGIC: &[u8; 8] = b"NATVRS01";
 const FOOTER_MAGIC: &[u8; 8] = b"NATVEND1";
@@ -55,6 +70,10 @@ const BUNDLE_VERSION: u16 = 1;
 const BASE_DPI: u32 = 96;
 const DEFAULT_DPI_THRESHOLD: u32 = 144;
 const WM_MOUSELEAVE: u32 = 0x02A3;
+/// Timer that blinks the caret of the focused text field.
+const CARET_TIMER: usize = 1;
+/// Caret blink period in milliseconds, the usual Windows cadence.
+const CARET_BLINK_MS: u32 = 530;
 /// Posted by a worker thread when it changed runtime progress or page state.
 const WM_APP_REFRESH: u32 = 0x8001;
 static UI: OnceLock<Mutex<RuntimeState>> = OnceLock::new();
@@ -96,7 +115,24 @@ struct RuntimeUi {
     overlay_layers: Vec<ImageLayer>,
     overlay_texts: Vec<TextLayer>,
     actions: Vec<ActionRegion>,
+    text_hits: Vec<TextHit>,
     hover_regions: Vec<HoverRegion>,
+    /// Editable text fields, so a click can focus one and place its caret.
+    text_inputs: Vec<TextInputRegion>,
+    /// Caret for the focused text field, positioned with the layout.
+    caret: Option<ImageLayer>,
+    /// Highlight bands for the focused field's selection, drawn under the text.
+    selection: Vec<ImageLayer>,
+    /// Whether the caret is in the visible half of its blink cycle.
+    caret_drawn: bool,
+    /// Locale code of every option the language menu offers, in layout order.
+    /// Keyboard navigation walks this list, which is why it is kept even while
+    /// the menu is closed.
+    language_options: Vec<String>,
+    /// Localized question a `close_confirm` button asks before closing.
+    close_confirm_message: String,
+    /// Title for runtime dialogs, taken from `project.name`.
+    product_name: String,
 }
 
 struct RuntimeState {
@@ -135,7 +171,43 @@ struct InteractionState {
     /// Literal status text a project script published. Takes precedence over
     /// `status_key`, because a script names its own steps.
     status_text: Option<String>,
+    /// Option the open language menu highlights for keyboard selection.
+    highlighted_option: Option<usize>,
+    /// Text field that takes typed characters, if any.
+    focused_text_input: Option<String>,
+    /// Caret position inside the focused field, counted in characters.
+    caret_index: usize,
+    /// The other end of a selection, when the user has one. The caret is always
+    /// the moving end, so dragging or holding Shift grows the range from here.
+    selection_anchor: Option<usize>,
+    /// Earlier values of the focused field, newest last, so Ctrl+Z can walk back
+    /// over the edits of this run.
+    undo_stack: Vec<TextSnapshot>,
+    /// Values undone with Ctrl+Z, newest last, so Ctrl+Y can replay them.
+    redo_stack: Vec<TextSnapshot>,
+    /// Whether the caret is in the visible half of its blink cycle.
+    caret_visible: bool,
+    /// Set between a press inside a text field and the matching release, so a
+    /// drag extends the selection instead of doing nothing.
+    dragging_text_selection: bool,
+    /// Whether the last edit was typing, so a run of keystrokes undoes in one
+    /// step instead of one character at a time.
+    typing_run: bool,
+    /// The field and character index of the last press, so a second press on the
+    /// same character within the double-click time selects the word under it.
+    last_press: Option<(String, usize, std::time::Instant)>,
 }
+
+/// One remembered text field value, paired with the caret that goes with it.
+#[derive(Clone)]
+struct TextSnapshot {
+    id: String,
+    text: String,
+    caret: usize,
+}
+
+/// How many edits a single text field remembers for undo.
+const UNDO_DEPTH: usize = 64;
 
 impl InteractionState {
     /// The progress the UI should draw for a control declared with `progress`.
@@ -144,7 +216,79 @@ impl InteractionState {
         self.progress.unwrap_or(authored)
     }
 
-    /// Records a built-in step, which names its own text from the locale table.
+    /// The selected range inside the focused field, as `(start, end)` in
+    /// characters, or `None` when nothing is selected. The caret is the moving
+    /// end, so the range is ordered before it is handed out.
+    fn selection_range(&self) -> Option<(usize, usize)> {
+        let anchor = self.selection_anchor?;
+        if anchor == self.caret_index {
+            return None;
+        }
+        Some(if anchor < self.caret_index {
+            (anchor, self.caret_index)
+        } else {
+            (self.caret_index, anchor)
+        })
+    }
+
+    /// Drops the selection without moving the caret, which is what an edit or a
+    /// plain arrow key does once it has consumed the range.
+    fn clear_selection(&mut self) {
+        self.selection_anchor = None;
+    }
+
+    /// Removes the selected text and parks the caret where it started.
+    ///
+    /// Returns whether there was a selection, so a caller can tell an edit that
+    /// replaced a range from one that should fall back to a single character.
+    fn remove_selection(&mut self) -> bool {
+        let Some((start, end)) = self.selection_range() else {
+            return false;
+        };
+        if let Some(id) = self.focused_text_input.clone() {
+            if let Some(text) = self.text_input_values.get_mut(&id) {
+                let (start_byte, end_byte) = (byte_index(text, start), byte_index(text, end));
+                text.replace_range(start_byte..end_byte, "");
+            }
+        }
+        self.caret_index = start;
+        self.clear_selection();
+        true
+    }
+
+    /// Remembers the current value so `undo` can come back to it.
+    ///
+    /// `typing` marks a keystroke that inserts a character: consecutive ones
+    /// share the snapshot taken before the run started, so Ctrl+Z undoes a word
+    /// typed in one go rather than one letter. The redo stack belongs to the
+    /// edit that is about to happen, so any fresh edit clears it.
+    fn remember_for_undo(&mut self, typing: bool) {
+        let Some(id) = self.focused_text_input.clone() else {
+            return;
+        };
+        let coalesce = typing && self.typing_run;
+        self.typing_run = typing;
+        if coalesce {
+            return;
+        }
+        let text = self.text_input_values.get(&id).cloned().unwrap_or_default();
+        if self
+            .undo_stack
+            .last()
+            .is_some_and(|snapshot| snapshot.id == id && snapshot.text == text)
+        {
+            return;
+        }
+        self.undo_stack.push(TextSnapshot {
+            id,
+            text,
+            caret: self.caret_index,
+        });
+        if self.undo_stack.len() > UNDO_DEPTH {
+            self.undo_stack.remove(0);
+        }
+        self.redo_stack.clear();
+    }
     ///
     /// Any literal text a project script published belongs to that script's own
     /// step, so it is dropped here rather than shown for a library step.
@@ -170,6 +314,9 @@ struct TextLayer {
 struct TextRun {
     text: String,
     color: COLORREF,
+    /// Repository URL a rendered Markdown link points at, when the run came
+    /// from `[label](target)` markup. Clicking such a run opens the target.
+    link: Option<String>,
 }
 
 #[derive(Clone, Copy)]
@@ -177,6 +324,25 @@ enum TextAlignment {
     Left,
     Center,
     Right,
+}
+
+/// Product name from `project.name`, used as the title of dialogs the runtime
+/// opens so a user never sees an internal binary name.
+fn product_name(files: &HashMap<String, Vec<u8>>) -> String {
+    files
+        .get("installer_config.json")
+        .and_then(|encoded| serde_json::from_slice::<serde_json::Value>(encoded).ok())
+        .and_then(|config| config["project"]["name"].as_str().map(str::to_string))
+        .unwrap_or_else(|| "nano-installer".to_string())
+}
+
+/// A clickable span inside a text layer.
+struct TextHit {
+    action: WindowAction,
+    left: i32,
+    top: i32,
+    right: i32,
+    bottom: i32,
 }
 
 struct ActionRegion {
@@ -198,12 +364,15 @@ struct HoverRegion {
 #[derive(Clone)]
 enum WindowAction {
     Close,
+    CloseConfirm,
     Minimize,
     ToggleLanguageMenu,
     SelectLanguage(String),
     Install,
     Uninstall,
     LaunchApp,
+    OpenLink(String),
+    PickDirectory { id: String },
     ToggleCheckbox { id: String, checked: bool },
     SetPanelVisibility { id: String, visible: bool },
 }
@@ -234,10 +403,29 @@ impl ImageStyle<'_> {
 struct LayoutOutput {
     layers: Vec<ImageLayer>,
     texts: Vec<TextLayer>,
+    /// Runs that respond to a click, resolved while text is laid out because
+    /// only there is the exact glyph position known.
+    text_hits: Vec<TextHit>,
+    /// Editable text fields, so a click can put the caret in the one under it.
+    text_inputs: Vec<TextInputRegion>,
     overlay_layers: Vec<ImageLayer>,
     overlay_texts: Vec<TextLayer>,
     actions: Vec<ActionRegion>,
     hover_regions: Vec<HoverRegion>,
+}
+
+/// An editable text field placed on the page.
+#[derive(Clone)]
+struct TextInputRegion {
+    id: String,
+    text: String,
+    color: COLORREF,
+    font_size: i32,
+    bold: bool,
+    left: i32,
+    top: i32,
+    width: i32,
+    height: i32,
 }
 
 struct LayoutContext<'a> {
@@ -256,6 +444,16 @@ struct FlowItem {
     flex_grow: f32,
     flex_shrink: f32,
     min_width: i32,
+    /// Main-axis size a flexible item starts from before `flex-grow` is shared
+    /// out. Zero for items that do not declare `flex-basis`.
+    flex_basis: i32,
+}
+
+impl FlowItem {
+    /// The room an item asks for on its own, before free space is shared out.
+    fn basis_size(&self) -> i32 {
+        self.fixed_width.unwrap_or(self.flex_basis).max(0)
+    }
 }
 
 /// Direction a flow container stacks its children in. `FlowItem` fields keep
@@ -371,8 +569,13 @@ impl Drop for ComGuard {
 
 pub fn show_runtime_error(error: &anyhow::Error) {
     let message = HSTRING::from(format!("Native runtime failed:\n{error:#}"));
+    let title = UI
+        .get()
+        .and_then(|state| state.lock().ok())
+        .map(|state| HSTRING::from(state.ui.product_name.clone()))
+        .unwrap_or_else(|| HSTRING::from("nano-installer"));
     unsafe {
-        let _ = MessageBoxW(None, &message, w!("nano-installer"), MB_OK | MB_ICONERROR);
+        let _ = MessageBoxW(None, &message, &title, MB_OK | MB_ICONERROR);
     }
 }
 
@@ -380,8 +583,105 @@ pub fn run_installer_runtime() -> Result<()> {
     run_runtime(RuntimeMode::Installer)
 }
 
+/// The argument that turns the uninstaller into the post-uninstall cleaner.
+pub(crate) const CLEANUP_FLAG: &str = "--cleanup";
+
 pub fn run_uninstaller_runtime() -> Result<()> {
+    // A finished uninstall leaves a copy of this executable in the temporary
+    // directory to remove what the running process cannot remove about itself,
+    // so the argument is handled before any window is created.
+    let arguments: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+    if arguments.first().map(std::ffi::OsString::as_os_str)
+        == Some(std::ffi::OsStr::new(CLEANUP_FLAG))
+    {
+        run_cleanup_helper(&arguments);
+        return Ok(());
+    }
     run_runtime(RuntimeMode::Uninstaller)
+}
+
+/// Removes what a completed uninstall could not remove about itself.
+///
+/// The uninstaller holds an exclusive lock on its own image, and the user may
+/// still be looking at the finish page, so this runs as a separate copy. It
+/// waits for that image to become deletable, deletes it, and then removes the
+/// installation directory if nothing else is left in it, so files the user
+/// added keep the directory alive.
+///
+/// Nothing here reports an error: by the time it runs the uninstall the user
+/// asked for is already done, and a second dialog would only worry them.
+fn run_cleanup_helper(arguments: &[std::ffi::OsString]) {
+    let Some(directory) = arguments.get(1).map(PathBuf::from) else {
+        return;
+    };
+    let Some(uninstaller) = arguments.get(2).map(PathBuf::from) else {
+        return;
+    };
+    cleanup_after_uninstall(&directory, &uninstaller);
+    self_delete_current_image();
+}
+
+/// Deletes a finished installation's uninstaller, then its directory.
+///
+/// The directory only goes when nothing else is left in it, so a file the user
+/// put there keeps it, which is the same promise the manifest cleanup makes.
+fn cleanup_after_uninstall(directory: &Path, uninstaller: &Path) {
+    wait_until_deletable(uninstaller);
+    let _ = std::fs::remove_file(uninstaller);
+    let _ = std::fs::remove_dir(directory);
+}
+
+/// Deletes this helper copy once the process has ended.
+///
+/// Windows refuses to delete the image a running process was started from, and
+/// it ignores a delete-on-close request for that image too, so the file is
+/// handed to a short-lived command script instead. The script waits for this
+/// process to end, deletes the copy, and then deletes itself, which leaves the
+/// temporary directory as clean as the installation directory.
+///
+/// A script that cannot be written or started only costs a stale copy in the
+/// temporary directory, so nothing here reports an error.
+fn self_delete_current_image() {
+    use std::os::windows::process::CommandExt;
+    use windows::Win32::System::Threading::CREATE_NO_WINDOW;
+
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
+    let script =
+        std::env::temp_dir().join(format!("nano-installer-cleanup-{}.cmd", std::process::id()));
+    let body = format!(
+        "@echo off\r\n\
+         :wait\r\n\
+         del /f /q \"{image}\" >nul 2>&1\r\n\
+         if exist \"{image}\" (ping -n 2 127.0.0.1 >nul 2>&1 & goto wait)\r\n\
+         del /f /q \"%~f0\" >nul 2>&1\r\n",
+        image = exe.display()
+    );
+    if std::fs::write(&script, body).is_err() {
+        return;
+    }
+    let _ = std::process::Command::new("cmd.exe")
+        .raw_arg(format!("/c \"{}\"", script.display()))
+        .creation_flags(CREATE_NO_WINDOW.0)
+        .spawn();
+}
+
+/// Waits for a locked file to become deletable, up to ten minutes.
+///
+/// The uninstaller window stays open until the user closes it; the wait ends as
+/// soon as the file can go, so a quick user pays nothing for the ceiling.
+fn wait_until_deletable(path: &Path) {
+    const ATTEMPTS: u32 = 2_400;
+    const INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
+    for _ in 0..ATTEMPTS {
+        match std::fs::remove_file(path) {
+            Ok(()) => return,
+            // A file that is already gone needs no further waiting.
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
+            Err(_) => std::thread::sleep(INTERVAL),
+        }
+    }
 }
 
 fn run_runtime(mode: RuntimeMode) -> Result<()> {
@@ -1566,6 +1866,17 @@ fn load_layout(
         interaction,
         language_menu_open,
     };
+    // The language menu is drawn only on the page that declares the Select, so
+    // its option list is read from this layout.
+    let language_options: Vec<String> = page
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("Select") && node.attribute("action") == Some("switch_language")
+        })
+        .flat_map(|select| select.children())
+        .filter(|option| option.has_tag_name("Option") && !is_hidden(*option, interaction))
+        .map(|option| option.attribute("value").unwrap_or_default().to_string())
+        .collect();
     let active_panel = interaction
         .panel_visibility
         .iter()
@@ -1588,6 +1899,21 @@ fn load_layout(
             )
         });
 
+    // The page fill sits under its background image, so a layout can paint a
+    // base colour and still lay artwork over it.
+    if let Some(background) = page.attribute("background") {
+        push_solid_layer(
+            &mut output.layers,
+            LayerRect {
+                left: 0,
+                top: 0,
+                width,
+                height,
+            },
+            background,
+            corner_radius,
+        )?;
+    }
     if let Some(path) = page.attribute("background-image") {
         push_layer(
             files,
@@ -1603,6 +1929,17 @@ fn load_layout(
             255,
         )?;
     }
+    push_node_border(
+        page,
+        LayerRect {
+            left: 0,
+            top: 0,
+            width,
+            height,
+        },
+        &context,
+        &mut output.layers,
+    )?;
     for node in page.descendants().filter(|node| node.is_element()) {
         if is_hidden(node, interaction) || is_inside_render_container(node) {
             continue;
@@ -1610,9 +1947,11 @@ fn load_layout(
         let (left, top) = absolute_position(node, dpi);
         let layer_width = size_attribute(node, "width", width, &context).unwrap_or(0);
         let layer_height = size_attribute(node, "height", height, &context).unwrap_or(0);
+        let own_left = scale_value(int_attribute(node, "left").unwrap_or(0), dpi.scale);
+        let own_top = scale_value(int_attribute(node, "top").unwrap_or(0), dpi.scale);
         let rect = LayerRect {
-            left,
-            top,
+            left: anchored_left(node, left - own_left, layer_width, width, &context),
+            top: anchored_top(node, top - own_top, layer_height, height, &context),
             width: layer_width,
             height: layer_height,
         };
@@ -1621,11 +1960,15 @@ fn load_layout(
         }) {
             continue;
         }
-        if (node.has_tag_name("Button") || node.has_tag_name("Select"))
+        // Buttons, selects, and any element that declares an `action` respond to
+        // clicks, so a project can make an icon or a label clickable that way.
+        if (node.has_tag_name("Button")
+            || node.has_tag_name("Select")
+            || node.attribute("action").is_some())
             && layer_width > 0
             && layer_height > 0
         {
-            push_action(node, rect, &mut output.actions, interaction);
+            push_action(node, rect, &mut output.actions, &context);
             push_hover_region(node, rect, &context, &mut output.hover_regions);
         }
         if node.has_tag_name("ProgressBar") && layer_width > 0 && layer_height > 0 {
@@ -1639,7 +1982,7 @@ fn load_layout(
             continue;
         }
         if layer_width > 0 && layer_height > 0 {
-            push_node_text(node, rect, &context, &mut output.texts);
+            push_node_text(node, rect, &context, &mut output);
         }
         if node.has_tag_name("Select") && layer_width > 0 && layer_height > 0 {
             render_language_select(node, rect, &context, &mut output)?;
@@ -1661,6 +2004,9 @@ fn load_layout(
                 if let Some(style) = button_image(node, interaction).map(parse_image_style) {
                     push_styled_layer(files, &mut output.layers, style, rect, dpi)?;
                 }
+                if node.attribute("normal-image").is_none() {
+                    push_node_border(node, rect, &context, &mut output.layers)?;
+                }
             }
             "Box" | "Divider" if has_layer => {
                 render_box_contents(node, rect, &context, &mut output)?;
@@ -1668,6 +2014,17 @@ fn load_layout(
             _ => {}
         }
     }
+    // The caret and the selection follow the focused field, so they are built
+    // here where the font measurement helpers are available.
+    let focused_field = interaction
+        .focused_text_input
+        .as_deref()
+        .and_then(|focused| output.text_inputs.iter().find(|field| field.id == focused));
+    let caret = focused_field.map(|field| caret_layer(field, interaction.caret_index));
+    let selection = match (focused_field, interaction.selection_range()) {
+        (Some(field), Some((start, end))) => selection_layers(field, start, end),
+        _ => Vec::new(),
+    };
     Ok(RuntimeUi {
         width,
         height,
@@ -1678,7 +2035,18 @@ fn load_layout(
         overlay_layers: output.overlay_layers,
         overlay_texts: output.overlay_texts,
         actions: output.actions,
+        text_hits: output.text_hits,
         hover_regions: output.hover_regions,
+        text_inputs: output.text_inputs,
+        caret,
+        selection,
+        caret_drawn: interaction.caret_visible,
+        language_options,
+        close_confirm_message: translations
+            .get("close_confirm_message")
+            .cloned()
+            .unwrap_or_else(|| "Exit the installer?".to_string()),
+        product_name: product_name(files),
     })
 }
 
@@ -1770,6 +2138,114 @@ fn node_is_visible(node: roxmltree::Node<'_, '_>, interaction: &InteractionState
     node.attribute("visible") != Some("false")
 }
 
+/// Positions a node along the horizontal axis.
+///
+/// `left` measures from the near edge, `right` from the far one, and `inset`
+/// is the shorthand that sets all four edges. A near edge wins when both are
+/// declared, because a declared width already fixes the extent.
+fn anchored_left(
+    node: roxmltree::Node<'_, '_>,
+    base: i32,
+    size: i32,
+    parent_width: i32,
+    context: &LayoutContext<'_>,
+) -> i32 {
+    if let Some(left) = int_attribute(node, "left") {
+        return base + scale_value(left, context.dpi.scale);
+    }
+    let inset = insets_for_node(node, "inset", context);
+    if let Some(left) = int_attribute(node, "inset-left") {
+        return base + scale_value(left, context.dpi.scale);
+    }
+    if let Some(right) = int_attribute(node, "right") {
+        return base + parent_width - scale_value(right, context.dpi.scale) - size;
+    }
+    if node.attribute("inset").is_some() {
+        return base + inset.left;
+    }
+    base
+}
+
+/// Vertical counterpart of [`anchored_left`].
+fn anchored_top(
+    node: roxmltree::Node<'_, '_>,
+    base: i32,
+    size: i32,
+    parent_height: i32,
+    context: &LayoutContext<'_>,
+) -> i32 {
+    if let Some(top) = int_attribute(node, "top") {
+        return base + scale_value(top, context.dpi.scale);
+    }
+    let inset = insets_for_node(node, "inset", context);
+    if let Some(top) = int_attribute(node, "inset-top") {
+        return base + scale_value(top, context.dpi.scale);
+    }
+    if let Some(bottom) = int_attribute(node, "bottom") {
+        return base + parent_height - scale_value(bottom, context.dpi.scale) - size;
+    }
+    if node.attribute("inset").is_some() {
+        return base + inset.top;
+    }
+    base
+}
+
+/// Resolves `[label](target)` markup to a URL the shell can open.
+///
+/// A target that is already a URL or an absolute path is used as is. A bare
+/// name such as `agreement` is looked up in the project's `links` table, which
+/// keeps the localizable text free of raw URLs. The historical `agreement` and
+/// `policy` names map onto the reference project's keys.
+fn resolve_link_target(target: &str, context: &LayoutContext<'_>) -> Option<String> {
+    let trimmed = target.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if trimmed.contains("://") || trimmed.starts_with("mailto:") {
+        return Some(trimmed.to_string());
+    }
+    config_link(trimmed, context.config).or_else(|| {
+        let fallback = match trimmed {
+            "agreement" => "terms_of_service",
+            "policy" => "privacy_policy",
+            _ => return None,
+        };
+        config_link(fallback, context.config)
+    })
+}
+
+fn config_link(key: &str, config: &serde_json::Value) -> Option<String> {
+    config["links"]
+        .get(key)
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+}
+
+/// The TextInput a `pick_directory` control edits.
+///
+/// A control may name its target, otherwise the layout's first writable
+/// TextInput is used, because a page normally has exactly one path field.
+fn pick_directory_target(
+    node: roxmltree::Node<'_, '_>,
+    interaction: &InteractionState,
+) -> Option<String> {
+    if let Some(id) = node.attribute("target") {
+        return Some(id.to_string());
+    }
+    let document = node.document();
+    document
+        .descendants()
+        .filter(|candidate| candidate.has_tag_name("TextInput"))
+        .find(|candidate| candidate.attribute("readonly") != Some("true"))
+        .or_else(|| {
+            document
+                .descendants()
+                .find(|candidate| candidate.has_tag_name("TextInput"))
+        })
+        .and_then(|candidate| candidate.attribute("id").map(str::to_string))
+        .or_else(|| interaction.text_input_values.keys().next().cloned())
+}
+
 fn parse_panel_action(action: &str) -> Option<(&str, bool)> {
     let value = action.strip_prefix("toggle_panel:")?;
     let (id, mode) = value.rsplit_once(':')?;
@@ -1804,8 +2280,9 @@ fn push_action(
     node: roxmltree::Node<'_, '_>,
     rect: LayerRect,
     actions: &mut Vec<ActionRegion>,
-    interaction: &InteractionState,
+    context: &LayoutContext<'_>,
 ) {
+    let interaction = context.interaction;
     if node.has_tag_name("Button") && !button_enabled(node, interaction) {
         return;
     }
@@ -1822,7 +2299,16 @@ fn push_action(
     } else {
         match node.attribute("action") {
             Some("minimize") => Some(WindowAction::Minimize),
-            Some("close") | Some("close_confirm") => Some(WindowAction::Close),
+            Some("close") => Some(WindowAction::Close),
+            Some("close_confirm") => Some(WindowAction::CloseConfirm),
+            Some("pick_directory") => pick_directory_target(node, interaction)
+                .map(|id| WindowAction::PickDirectory { id }),
+            // `open_url:` takes either a `links` key or a URL written out in
+            // full, so a layout can link somewhere the config does not name.
+            Some(action) if action.starts_with("open_url:") => {
+                let target = action.trim_start_matches("open_url:");
+                resolve_link_target(target, context).map(WindowAction::OpenLink)
+            }
             Some("switch_language") => Some(WindowAction::ToggleLanguageMenu),
             Some("install") => Some(WindowAction::Install),
             Some("uninstall") => Some(WindowAction::Uninstall),
@@ -1940,6 +2426,16 @@ fn render_language_select(
     output: &mut LayoutOutput,
 ) -> Result<()> {
     let menu_open = context.language_menu_open;
+    // Background first, then the outline, so the ring sits on top of the fill
+    // and grows inwards from the control edge.
+    let radius = scale_value(
+        int_attribute(node, "border-radius").unwrap_or(0),
+        context.dpi.scale,
+    );
+    if let Some(background) = node.attribute("background") {
+        push_solid_layer(&mut output.layers, rect, background, radius)?;
+    }
+    push_node_border(node, rect, context, &mut output.layers)?;
     let arrow_source = if menu_open {
         node.attribute("dropdown-open-image")
             .or_else(|| node.attribute("dropdown-image"))
@@ -2004,12 +2500,23 @@ fn render_language_select(
             height: row_height,
         };
         let option_locale = option.attribute("value").unwrap_or_default();
-        if option_locale == context.locale {
+        // A keyboard highlight wins over the current locale, so arrow keys stay
+        // visible while they walk past the selected entry.
+        let background = if context.interaction.highlighted_option == Some(index) {
+            node.attribute("popup-highlight-background")
+                .or_else(|| node.attribute("popup-selected-background"))
+                .unwrap_or("#FF495A68")
+        } else if option_locale == context.locale {
+            node.attribute("popup-selected-background")
+                .unwrap_or("#FF42515E")
+        } else {
+            ""
+        };
+        if !background.is_empty() {
             push_solid_layer(
                 &mut output.overlay_layers,
                 row,
-                node.attribute("popup-selected-background")
-                    .unwrap_or("#FF42515E"),
+                background,
                 scale_value(3, context.dpi.scale),
             )?;
         }
@@ -2020,6 +2527,7 @@ fn render_language_select(
                     .unwrap_or(option_locale)
                     .to_string(),
                 color: parse_color(node.attribute("color").unwrap_or("#FFFFFFFF")),
+                link: None,
             }],
             left: row.left + scale_value(10, context.dpi.scale),
             top: row.top,
@@ -2049,14 +2557,14 @@ fn push_node_text(
     node: roxmltree::Node<'_, '_>,
     rect: LayerRect,
     context: &LayoutContext<'_>,
-    texts: &mut Vec<TextLayer>,
+    output: &mut LayoutOutput,
 ) {
     let Some((text, alignment)) = resolved_text_for_node(node, context) else {
         return;
     };
     let color = parse_color(node.attribute("color").unwrap_or("#FFFFFFFF"));
     let link_color = node.attribute("linkcolor").map(parse_color);
-    texts.push(TextLayer {
+    output.texts.push(TextLayer {
         runs: parse_text_runs(&text, color, link_color),
         left: rect.left,
         top: rect.top,
@@ -2071,6 +2579,39 @@ fn push_node_text(
         alignment,
         wrap: node.has_tag_name("Checkbox") || node.attribute("wrap") == Some("true"),
     });
+    // Link markup only becomes clickable when the layout asks for a link colour,
+    // which is how a project opts a label into clickable text.
+    let layer = output.texts.last_mut().expect("text layer was just pushed");
+    for run in &mut layer.runs {
+        if let Some(target) = run.link.take() {
+            run.link = resolve_link_target(&target, context);
+        }
+    }
+    let layer = output.texts.last().expect("text layer was just pushed");
+    output.text_hits.extend(unsafe { text_layer_hits(layer) });
+    if node.has_tag_name("TextInput") && !is_readonly_text_input(node) {
+        output.text_inputs.push(TextInputRegion {
+            id: node.attribute("id").unwrap_or_default().to_string(),
+            text,
+            color: layer
+                .runs
+                .first()
+                .map(|run| run.color)
+                .unwrap_or(COLORREF(0)),
+            font_size: layer.font_size,
+            bold: layer.bold,
+            left: rect.left,
+            top: rect.top,
+            width: rect.width,
+            height: rect.height,
+        });
+    }
+}
+
+/// A `readonly` field shows a value the user cannot type into.
+fn is_readonly_text_input(node: roxmltree::Node<'_, '_>) -> bool {
+    node.attribute("readonly")
+        .is_some_and(|value| value != "false")
 }
 
 fn resolved_text_for_node(
@@ -2262,41 +2803,110 @@ fn render_flow(
         .iter()
         .map(|child| flow_item_for_node(*child, axis, available_main, context))
         .collect();
-    let sizes = flow_widths(&items, available_main, gap);
-    let used: i32 = sizes.iter().sum::<i32>()
-        + gap * i32::try_from(children.len().saturating_sub(1)).unwrap_or(0);
-    // `justify-content` places the whole run inside the leftover space; HBox and
-    // Content spell the same idea `horizontal-align`.
-    let offset = match main_alignment(node, axis) {
-        Some("center") => (available_main - used) / 2,
-        Some("end" | "right") => available_main - used,
-        _ => 0,
-    }
-    .max(0);
-    let center_items = cross_alignment(node, axis) == Some("center");
-    let mut cursor = offset;
-    for (index, child) in children.into_iter().enumerate() {
-        let margin = insets_for_node(child, "margin", context);
-        let outer_main = sizes[index];
-        let main = (outer_main - margin.along(axis)).max(0);
-        let cross = cross_size_for_node(child, axis, axis.cross(content), context);
-        let cross_offset = if center_items {
-            (axis.cross(content) - cross) / 2
-        } else {
-            0
-        };
-        let placed = axis.place(content, main, cross);
-        let placed = axis.shift(placed, cursor + margin_main_start(margin, axis));
-        let placed = axis.shift_cross(
-            placed,
-            cross_offset.max(0) + margin_cross_start(margin, axis),
-        );
-        if main > 0 && cross > 0 {
-            render_flow_item(child, placed, context, output)?;
+    let cross_sizes: Vec<i32> = children
+        .iter()
+        .map(|child| cross_size_for_node(*child, axis, axis.cross(content), context))
+        .collect();
+    // A container that does not wrap keeps every item on one line, which is what
+    // free space is shared across.
+    let lines = if wraps(node) {
+        wrap_lines(&items, available_main, gap)
+    } else {
+        vec![(0..items.len()).collect()]
+    };
+    let single_line = lines.len() == 1 && !wraps(node);
+    let mut cross_cursor = 0;
+    for line in lines {
+        let line_items: Vec<FlowItem> = line.iter().map(|index| items[*index]).collect();
+        let sizes = flow_widths(&line_items, available_main, gap);
+        let used: i32 = sizes.iter().sum::<i32>()
+            + gap * i32::try_from(line.len().saturating_sub(1)).unwrap_or(0);
+        // `justify-content` places the whole run inside the leftover space; HBox
+        // and Content spell the same idea `horizontal-align`.
+        let offset = match main_alignment(node, axis) {
+            Some("center") => (available_main - used) / 2,
+            Some("end" | "right") => available_main - used,
+            _ => 0,
         }
-        cursor += outer_main + gap;
+        .max(0);
+        // A line of a wrapping container is only as tall as its tallest item, so
+        // the next line starts right below it. A container that does not wrap
+        // aligns inside its own cross extent, as it always has.
+        let line_cross = if single_line {
+            axis.cross(content)
+        } else {
+            line.iter()
+                .map(|index| cross_sizes[*index])
+                .max()
+                .unwrap_or(0)
+        };
+        let mut cursor = offset;
+        for (position, index) in line.iter().enumerate() {
+            let child = children[*index];
+            let margin = insets_for_node(child, "margin", context);
+            let outer_main = sizes[position];
+            let main = (outer_main - margin.along(axis)).max(0);
+            let cross = cross_sizes[*index];
+            // `align-self` overrides the container's `align-items` for one item.
+            let cross_offset = match cross_alignment_for_item(child, node, axis) {
+                Some("center") => (line_cross - cross) / 2,
+                Some("end" | "bottom" | "right") => line_cross - cross,
+                _ => 0,
+            };
+            let placed = axis.place(content, main, cross);
+            let placed = axis.shift(placed, cursor + margin_main_start(margin, axis));
+            let placed = axis.shift_cross(
+                placed,
+                cross_cursor + cross_offset.max(0) + margin_cross_start(margin, axis),
+            );
+            if main > 0 && cross > 0 {
+                render_flow_item(child, placed, context, output)?;
+            }
+            cursor += outer_main + gap;
+        }
+        cross_cursor += line_cross + gap;
     }
     Ok(())
+}
+
+/// Whether a container asks its items to move onto another line when they run
+/// out of room.
+fn wraps(node: roxmltree::Node<'_, '_>) -> bool {
+    matches!(
+        node.attribute("flex-wrap"),
+        Some("true" | "wrap" | "wrap-reverse")
+    )
+}
+
+/// Splits items into the lines a wrapping container draws them on.
+///
+/// Items are added while they still fit and the item that no longer does starts
+/// the next line, which is the behaviour a row of cards or tags needs. The size
+/// used here is the one an item claims before free space is shared out, because
+/// that is the room it needs to stay on the current line.
+fn wrap_lines(items: &[FlowItem], available_main: i32, gap: i32) -> Vec<Vec<usize>> {
+    let mut lines: Vec<Vec<usize>> = Vec::new();
+    let mut current: Vec<usize> = Vec::new();
+    let mut used = 0;
+    for (index, item) in items.iter().enumerate() {
+        let natural = item.basis_size();
+        let with_gap = if current.is_empty() {
+            natural
+        } else {
+            used + gap + natural
+        };
+        if !current.is_empty() && with_gap > available_main {
+            lines.push(std::mem::take(&mut current));
+            used = natural;
+        } else {
+            used = with_gap;
+        }
+        current.push(index);
+    }
+    if !current.is_empty() {
+        lines.push(current);
+    }
+    lines
 }
 
 /// Main-axis alignment for a container, accepting the spelling each tag uses.
@@ -2307,6 +2917,18 @@ fn main_alignment<'a>(node: roxmltree::Node<'a, '_>, axis: FlowAxis) -> Option<&
             .or_else(|| node.attribute("horizontal-align")),
         FlowAxis::Vertical => node.attribute("justify-content"),
     }
+}
+
+/// Cross-axis alignment for one item: its own `align-self` when set, otherwise
+/// the container's `align-items`.
+fn cross_alignment_for_item<'a>(
+    child: roxmltree::Node<'a, '_>,
+    container: roxmltree::Node<'a, '_>,
+    axis: FlowAxis,
+) -> Option<&'a str> {
+    child
+        .attribute("align-self")
+        .or_else(|| cross_alignment(container, axis))
 }
 
 /// Cross-axis alignment for a container, accepting the spelling each tag uses.
@@ -2345,20 +2967,31 @@ fn flow_item_for_node(
 ) -> FlowItem {
     let margin = insets_for_node(node, "margin", context);
     let padding = insets_for_node(node, "padding", context);
+    let inset = padding.along(axis) + margin.along(axis);
     let explicit = size_attribute(node, main_axis_attribute(axis), available_main, context);
     let intrinsic = intrinsic_size(node, axis, context);
-    let fixed_width = explicit
-        .or(intrinsic)
-        .map(|value| value + padding.along(axis) + margin.along(axis));
+    let flex_grow = float_attribute(node, "flex-grow").unwrap_or(0.0);
+    // `flex-basis` is the size an item starts from before free space is shared
+    // out, so an item that declares it keeps growing instead of freezing at the
+    // basis the way a plain width would.
+    let basis = size_attribute(node, "flex-basis", available_main, context);
+    let (fixed_width, flex_basis) = match basis {
+        Some(basis) => (
+            (flex_grow <= 0.0).then(|| basis + inset),
+            (basis + inset).max(0),
+        ),
+        None => (explicit.or(intrinsic).map(|value| value + inset), 0),
+    };
     let min_attribute = match axis {
         FlowAxis::Horizontal => "min-width",
         FlowAxis::Vertical => "min-height",
     };
     FlowItem {
         fixed_width,
-        flex_grow: float_attribute(node, "flex-grow").unwrap_or(0.0),
+        flex_grow,
         flex_shrink: float_attribute(node, "flex-shrink").unwrap_or(1.0),
         min_width: size_attribute(node, min_attribute, available_main, context).unwrap_or(0),
+        flex_basis,
     }
 }
 
@@ -2383,11 +3016,16 @@ fn intrinsic_size(
     axis: FlowAxis,
     context: &LayoutContext<'_>,
 ) -> Option<i32> {
+    // A nested container reports the extent its own children need, so an outer
+    // flow can size it without the layout declaring a fixed size.
+    if renders_own_children(node) {
+        return Some(container_intrinsic_size(node, axis, context));
+    }
     if !has_intrinsic_text(node) {
         return None;
     }
     match axis {
-        FlowAxis::Vertical => Some(line_height_for_node(node, context)),
+        FlowAxis::Vertical => Some(text_intrinsic_height(node, context)),
         FlowAxis::Horizontal => resolved_text_for_node(node, context).map(|(text, _)| {
             let font_size = scale_value(
                 int_attribute(node, "font-size").unwrap_or(12),
@@ -2414,6 +3052,111 @@ fn intrinsic_size(
                 .unwrap_or(width)
         }),
     }
+}
+
+/// The height a text control needs: its line box, or the wrapped line count
+/// when the layout asks it to wrap inside a declared width.
+fn text_intrinsic_height(node: roxmltree::Node<'_, '_>, context: &LayoutContext<'_>) -> i32 {
+    let line_height = line_height_for_node(node, context);
+    if node.attribute("wrap") != Some("true") {
+        return line_height;
+    }
+    let Some(width) = size_attribute(node, "width", 0, context).filter(|width| *width > 0) else {
+        return line_height;
+    };
+    let Some((text, _)) = resolved_text_for_node(node, context) else {
+        return line_height;
+    };
+    let font_size = scale_value(
+        int_attribute(node, "font-size").unwrap_or(12),
+        context.dpi.scale,
+    );
+    let bold = node.attribute("font-weight") == Some("bold");
+    let lines = wrapped_line_count(&visible_text(&text), font_size, bold, width);
+    line_height * lines
+}
+
+/// Counts the lines `text` occupies when wrapped at `width`.
+///
+/// The runtime breaks between any two characters, so this counts the same way
+/// and mixed CJK and Latin text measures the same here as when it is drawn.
+fn wrapped_line_count(text: &str, font_size: i32, bold: bool, width: i32) -> i32 {
+    let mut lines = 1;
+    let mut line_width = 0;
+    for character in text.chars() {
+        if character == '\n' {
+            lines += 1;
+            line_width = 0;
+            continue;
+        }
+        let measured = measure_layout_text_width(&character.to_string(), font_size, bold);
+        if line_width > 0 && line_width + measured > width {
+            lines += 1;
+            line_width = 0;
+        }
+        line_width += measured;
+    }
+    lines
+}
+
+/// The extent a container needs for `axis`, measured from its children.
+///
+/// Along its own flow direction the children add up with their gaps; across it
+/// the largest child wins. Padding is added on both sides, which is what lets a
+/// nested panel size itself from the controls it holds.
+fn container_intrinsic_size(
+    node: roxmltree::Node<'_, '_>,
+    axis: FlowAxis,
+    context: &LayoutContext<'_>,
+) -> i32 {
+    let padding = insets_for_node(node, "padding", context);
+    let children: Vec<_> = node
+        .children()
+        .filter(|child| child.is_element() && !is_hidden(*child, context.interaction))
+        .collect();
+    if children.is_empty() {
+        return padding.along(axis);
+    }
+    let declared_main = size_attribute(node, main_axis_attribute(axis), 0, context).unwrap_or(0);
+    let declared_cross = size_attribute(node, cross_axis_attribute(axis), 0, context).unwrap_or(0);
+    let content = if flow_axis(node) == Some(axis) {
+        let gap = scale_value(
+            int_attribute(node, "item-spacing")
+                .or_else(|| int_attribute(node, "gap"))
+                .unwrap_or(0),
+            context.dpi.scale,
+        );
+        let items: Vec<FlowItem> = children
+            .iter()
+            .map(|child| flow_item_for_node(*child, axis, declared_main, context))
+            .collect();
+        if wraps(node) && declared_main > 0 {
+            // A wrapping container is only as wide as its widest line, which is
+            // what an outer flow needs to place it.
+            wrap_lines(&items, declared_main, gap)
+                .iter()
+                .map(|line| {
+                    let widths: i32 = line.iter().map(|index| items[*index].basis_size()).sum();
+                    widths + gap * i32::try_from(line.len().saturating_sub(1)).unwrap_or(0)
+                })
+                .max()
+                .unwrap_or(0)
+        } else {
+            let widths: i32 = items.iter().map(|item| item.basis_size()).sum();
+            widths + gap * i32::try_from(children.len().saturating_sub(1)).unwrap_or(0)
+        }
+    } else {
+        children
+            .iter()
+            .map(|child| {
+                let margin = insets_for_node(*child, "margin", context);
+                cross_size_for_node(*child, axis, declared_cross, context)
+                    + margin.along(axis.cross_measure())
+            })
+            .max()
+            .unwrap_or(0)
+    };
+    (content + padding.along(axis)).max(0)
 }
 
 fn has_intrinsic_text(node: roxmltree::Node<'_, '_>) -> bool {
@@ -2636,7 +3379,7 @@ fn render_flow_item(
                 }
                 push_styled_layer(context.files, &mut output.layers, style, rect, context.dpi)?;
             }
-            push_action(node, rect, &mut output.actions, context.interaction);
+            push_action(node, rect, &mut output.actions, context);
             push_node_text(
                 node,
                 LayerRect {
@@ -2646,11 +3389,11 @@ fn render_flow_item(
                     height: rect.height,
                 },
                 context,
-                &mut output.texts,
+                output,
             );
         }
         "Button" => {
-            push_action(node, rect, &mut output.actions, context.interaction);
+            push_action(node, rect, &mut output.actions, context);
             push_hover_region(node, rect, context, &mut output.hover_regions);
             if let Some(value) = button_image(node, context.interaction) {
                 push_styled_layer(
@@ -2661,7 +3404,7 @@ fn render_flow_item(
                     context.dpi,
                 )?;
             }
-            push_node_text(node, rect, context, &mut output.texts);
+            push_node_text(node, rect, context, output);
             if let Some(content) = node.children().find(|child| {
                 child.has_tag_name("Content") && !is_hidden(*child, context.interaction)
             }) {
@@ -2669,11 +3412,15 @@ fn render_flow_item(
             }
         }
         "Label" | "Select" => {
-            push_node_text(node, rect, context, &mut output.texts);
+            push_action(node, rect, &mut output.actions, context);
+            push_hover_region(node, rect, context, &mut output.hover_regions);
+            push_node_text(node, rect, context, output);
         }
-        "TextInput" => push_node_text(node, rect, context, &mut output.texts),
+        "TextInput" => push_node_text(node, rect, context, output),
         "ProgressBar" => render_progress_bar(node, rect, context, output)?,
         "Image" | "Icon" => {
+            push_action(node, rect, &mut output.actions, context);
+            push_hover_region(node, rect, context, &mut output.hover_regions);
             if let Some(source) = node.attribute("src") {
                 push_styled_layer(
                     context.files,
@@ -2711,6 +3458,7 @@ fn render_box_contents(
             ),
         )?;
     }
+    push_node_border(node, rect, context, &mut output.layers)?;
     let padding = insets_for_node(node, "padding", context);
     let content = LayerRect {
         left: rect.left + padding.left,
@@ -2728,10 +3476,8 @@ fn render_box_contents(
         // example's single-child wrappers declare their content boxes.
         let (left, top) = if child.attribute("position") == Some("absolute") {
             (
-                content.left
-                    + scale_value(int_attribute(child, "left").unwrap_or(0), context.dpi.scale),
-                content.top
-                    + scale_value(int_attribute(child, "top").unwrap_or(0), context.dpi.scale),
+                anchored_left(child, content.left, width, content.width, context),
+                anchored_top(child, content.top, height, content.height, context),
             )
         } else {
             (
@@ -2786,7 +3532,9 @@ fn flow_widths(items: &[FlowItem], available_width: i32, gap: i32) -> Vec<i32> {
             .enumerate()
             .map(|(index, item)| {
                 let Some(width) = item.fixed_width else {
-                    return 0;
+                    // A flexible item that overflows still keeps the basis it
+                    // asked for; it simply gets no share of the free space.
+                    return item.flex_basis;
                 };
                 let capacity = ((width - item.min_width).max(0) as f32 * item.flex_shrink.max(0.0))
                     .round() as i32;
@@ -2805,7 +3553,14 @@ fn flow_widths(items: &[FlowItem], available_width: i32, gap: i32) -> Vec<i32> {
             })
             .collect();
     }
-    let remaining = available_for_items - fixed_width;
+    // Basis sizes are reserved before free space is shared, which is what lets
+    // `flex-basis` and `flex-grow` work together.
+    let basis_total = items
+        .iter()
+        .filter(|item| item.fixed_width.is_none())
+        .map(|item| item.flex_basis)
+        .sum::<i32>();
+    let remaining = available_for_items - fixed_width - basis_total;
     let total_flex = items
         .iter()
         .filter(|item| item.fixed_width.is_none())
@@ -2823,16 +3578,16 @@ fn flow_widths(items: &[FlowItem], available_width: i32, gap: i32) -> Vec<i32> {
                 return width;
             }
             if total_flex <= 0.0 || item.flex_grow <= 0.0 {
-                return 0;
+                return item.flex_basis;
             }
-            let width = if Some(index) == last_flexible {
-                remaining - distributed
+            let share = if Some(index) == last_flexible {
+                (remaining - distributed).max(0)
             } else {
                 ((remaining as f32 * item.flex_grow / total_flex).round() as i32)
-                    .min(remaining - distributed)
+                    .min((remaining - distributed).max(0))
             };
-            distributed += width;
-            width
+            distributed += share;
+            item.flex_basis + share
         })
         .collect()
 }
@@ -2877,6 +3632,7 @@ fn parse_text_runs(text: &str, color: COLORREF, link_color: Option<COLORREF>) ->
         return vec![TextRun {
             text: text.to_string(),
             color,
+            link: None,
         }];
     };
     let mut runs = Vec::new();
@@ -2896,11 +3652,13 @@ fn parse_text_runs(text: &str, color: COLORREF, link_color: Option<COLORREF>) ->
             runs.push(TextRun {
                 text: remaining[..open].to_string(),
                 color,
+                link: None,
             });
         }
         runs.push(TextRun {
             text: remaining[label_start..label_end].to_string(),
             color: link_color,
+            link: Some(remaining[target_start..target_end].to_string()),
         });
         remaining = &remaining[target_end + 1..];
     }
@@ -2908,15 +3666,135 @@ fn parse_text_runs(text: &str, color: COLORREF, link_color: Option<COLORREF>) ->
         runs.push(TextRun {
             text: remaining.to_string(),
             color,
+            link: None,
         });
     }
     if runs.is_empty() {
         runs.push(TextRun {
             text: text.to_string(),
             color,
+            link: None,
         });
     }
     runs
+}
+
+/// How far into `field` the character at `index` starts, in device pixels.
+///
+/// The caret, the selection bands, and a click all measure the same prefix, so
+/// they all agree on where a character begins.
+fn text_offset_for_index(field: &TextInputRegion, index: usize) -> i32 {
+    let visible = visible_text(&field.text);
+    let prefix: String = visible.chars().take(index).collect();
+    unsafe {
+        let dc = GetDC(None);
+        if dc.is_invalid() {
+            return 0;
+        }
+        let font = create_ui_font(field.font_size, field.bold);
+        let width = if font.is_invalid() {
+            0
+        } else {
+            let previous = SelectObject(dc, font);
+            let utf16: Vec<u16> = prefix.encode_utf16().collect();
+            let width = measure_text_width(dc, &utf16);
+            let _ = SelectObject(dc, previous);
+            let _ = DeleteObject(font);
+            width
+        };
+        let _ = ReleaseDC(None, dc);
+        width
+    }
+}
+
+/// The highlight a selected range draws, as one band per covered line.
+///
+/// The band is a solid premultiplied layer, so it blends through the same path
+/// as the rest of the page and never hides the glyphs drawn on top of it.
+fn selection_layers(field: &TextInputRegion, start: usize, end: usize) -> Vec<ImageLayer> {
+    let visible = visible_text(&field.text);
+    let count = visible.chars().count();
+    let start = start.min(count);
+    let end = end.min(count);
+    if start >= end {
+        return Vec::new();
+    }
+    let left = field.left + text_offset_for_index(field, start);
+    let right = field.left + text_offset_for_index(field, end);
+    let band_left = left.max(field.left);
+    let band_right = right.min(field.left + field.width).max(band_left);
+    let width = band_right - band_left;
+    // The band is inset vertically so the field keeps a little of its own
+    // background above and below the highlight.
+    let inset = (field.height as f32 * 0.15).round() as i32;
+    let top = field.top + inset;
+    let height = (field.height - inset * 2).max(1);
+    if width <= 0 || height <= 0 {
+        return Vec::new();
+    }
+    // A light wash reads as a selection on both dark and light backgrounds.
+    let (alpha, red, green, blue) = (96u8, 120u8, 190u8, 255u8);
+    let premultiply = |component: u8| ((component as u16 * alpha as u16) / 255) as u8;
+    let mut pixels = vec![0u8; width as usize * height as usize * 4];
+    for pixel in pixels.chunks_exact_mut(4) {
+        pixel[0] = premultiply(blue);
+        pixel[1] = premultiply(green);
+        pixel[2] = premultiply(red);
+        pixel[3] = alpha;
+    }
+    vec![ImageLayer {
+        image: NativeImage {
+            width: width as u32,
+            height: height as u32,
+            pixels,
+        },
+        left: band_left,
+        top,
+        width,
+        height,
+        source: None,
+        alpha: 255,
+    }]
+}
+
+/// The caret for `field`, placed after `caret_index` characters.
+///
+/// The blink is a timer elsewhere; this only computes where the bar stands, so
+/// the caret lines up with the glyphs the user sees.
+fn caret_layer(field: &TextInputRegion, caret_index: usize) -> ImageLayer {
+    let offset = text_offset_for_index(field, caret_index);
+    // One device pixel wide, so a caret never looks like a selection handle.
+    let caret_width = 1;
+    let caret_height = (field.height as f32 * 0.7).round().max(1.0) as i32;
+    let left = (field.left + offset).min(field.left + field.width - caret_width);
+    // COLORREF is 0x00BBGGRR and the layer format is BGRA, so the components
+    // already read in the order the pixel buffer wants them.
+    let (blue, green, red) = (
+        (field.color.0 >> 16) as u8,
+        (field.color.0 >> 8) as u8,
+        field.color.0 as u8,
+    );
+    let pixel_count = caret_width as usize * caret_height as usize;
+    let mut pixels = vec![0u8; pixel_count * 4];
+    for pixel in pixels.chunks_exact_mut(4) {
+        pixel[0] = blue;
+        pixel[1] = green;
+        pixel[2] = red;
+        pixel[3] = 255;
+    }
+    ImageLayer {
+        image: NativeImage {
+            width: caret_width as u32,
+            height: caret_height as u32,
+            pixels,
+        },
+        left: left.max(field.left),
+        top: field.top + (field.height - caret_height) / 2,
+        width: caret_width,
+        height: caret_height,
+        source: None,
+        alpha: 255,
+    }
 }
 
 fn parse_color(value: &str) -> COLORREF {
@@ -3087,6 +3965,106 @@ fn push_solid_layer(
     Ok(())
 }
 
+/// Paints the outline a control declares, if it declares one.
+///
+/// Returned before any work when `border-color` is absent, so controls that do
+/// not want an outline pay nothing for the feature.
+fn push_node_border(
+    node: roxmltree::Node<'_, '_>,
+    rect: LayerRect,
+    context: &LayoutContext<'_>,
+    layers: &mut Vec<ImageLayer>,
+) -> Result<()> {
+    let Some(color) = node.attribute("border-color") else {
+        return Ok(());
+    };
+    let width = int_attribute(node, "border-width").unwrap_or(1);
+    if width <= 0 {
+        return Ok(());
+    }
+    let radius = scale_value(
+        int_attribute(node, "border-radius").unwrap_or(0),
+        context.dpi.scale,
+    );
+    push_border_layer(
+        layers,
+        rect,
+        color,
+        scale_value(width, context.dpi.scale),
+        radius,
+    )
+}
+
+/// Draws a rounded-rectangle outline.
+///
+/// The ring is a solid layer whose pixels survive only between the outer and
+/// the inner rounded rectangle, so it blends with the same code path as fills
+/// and needs no extra drawing primitive.
+fn push_border_layer(
+    layers: &mut Vec<ImageLayer>,
+    rect: LayerRect,
+    color: &str,
+    width: i32,
+    radius: i32,
+) -> Result<()> {
+    let width = width.max(1).min(rect.width / 2).min(rect.height / 2);
+    if width <= 0 || rect.width <= 0 || rect.height <= 0 {
+        return Ok(());
+    }
+    let pixel_width = u32::try_from(rect.width).context("border width must be positive")?;
+    let pixel_height = u32::try_from(rect.height).context("border height must be positive")?;
+    let pixel_count = (pixel_width as usize)
+        .checked_mul(pixel_height as usize)
+        .context("border size overflow")?;
+    let mut pixels = vec![0u8; pixel_count.checked_mul(4).context("border size overflow")?];
+    let (alpha, red, green, blue) = parse_argb(color);
+    let premultiply = |component: u8| ((component as u16 * alpha as u16) / 255) as u8;
+    let outer_radius = radius.min(rect.width / 2).min(rect.height / 2).max(0);
+    let inner_width = rect.width - width * 2;
+    let inner_height = rect.height - width * 2;
+    let inner_radius = (outer_radius - width).max(0);
+    for y in 0..rect.height {
+        for x in 0..rect.width {
+            if !inside_rounded_rect(x, y, rect.width, rect.height, outer_radius) {
+                continue;
+            }
+            // The inner rectangle is tested in its own coordinates, which is
+            // why the bounds are checked before the corner test.
+            let inner_x = x - width;
+            let inner_y = y - width;
+            if inner_width > 0
+                && inner_height > 0
+                && inner_x >= 0
+                && inner_y >= 0
+                && inner_x < inner_width
+                && inner_y < inner_height
+                && inside_rounded_rect(inner_x, inner_y, inner_width, inner_height, inner_radius)
+            {
+                continue;
+            }
+            let offset = ((y as usize * pixel_width as usize) + x as usize) * 4;
+            pixels[offset] = premultiply(blue);
+            pixels[offset + 1] = premultiply(green);
+            pixels[offset + 2] = premultiply(red);
+            pixels[offset + 3] = alpha;
+        }
+    }
+    layers.push(ImageLayer {
+        image: NativeImage {
+            width: pixel_width,
+            height: pixel_height,
+            pixels,
+        },
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+        source: None,
+        alpha: 255,
+    });
+    Ok(())
+}
+
 /// Draws a progress bar: a rounded track, then the filled portion on top.
 ///
 /// `bar-image` is authored as a single full-width sprite, so the filled part is
@@ -3226,6 +4204,13 @@ fn decode_image(encoded: &[u8]) -> Result<NativeImage> {
 }
 
 fn run_window(client_width: i32, client_height: i32) -> Result<()> {
+    // Taskbar, Alt+Tab, and any crash dialog show this title, so it is the
+    // product name rather than an internal identifier.
+    let title = UI
+        .get()
+        .and_then(|state| state.lock().ok())
+        .map(|state| HSTRING::from(state.ui.product_name.clone()))
+        .unwrap_or_else(|| HSTRING::from("nano-installer"));
     unsafe {
         let module = GetModuleHandleW(None)?;
         let instance = HINSTANCE(module.0);
@@ -3253,7 +4238,7 @@ fn run_window(client_width: i32, client_height: i32) -> Result<()> {
         let window = CreateWindowExW(
             WS_EX_APPWINDOW,
             class_name,
-            w!("nano-installer native Win32"),
+            &title,
             style,
             left,
             top,
@@ -3334,15 +4319,28 @@ unsafe extern "system" fn window_proc(
         WM_LBUTTONUP => {
             let (x, y) = client_point(lparam);
             let _ = set_pressed_control(window, None);
-            if let Some(action) = window_action_at(x, y) {
+            if end_text_selection_drag(window) {
+                // A drag inside a field only ends the selection gesture.
+            } else if text_input_at(x, y).is_some() {
+                // The press already moved the caret into this field.
+            } else if let Some(action) = window_action_at(x, y) {
                 handle_window_action(window, action);
             } else {
                 let _ = set_language_menu_open(window, false);
+                // A click outside every field takes the keyboard focus away,
+                // which is what hides the caret again.
+                let _ = focus_text_input(window, None, 0);
             }
             LRESULT(0)
         }
         WM_LBUTTONDOWN => {
             let (x, y) = client_point(lparam);
+            if let Some((id, index)) = text_input_at(x, y) {
+                let extend = key_down(VK_SHIFT);
+                let _ = begin_text_selection_drag(window, id, index, extend);
+                let _ = SetCapture(window);
+                return LRESULT(0);
+            }
             if let Some(id) = hover_control_at(x, y) {
                 let _ = set_pressed_control(window, Some(id));
                 return LRESULT(0);
@@ -3360,6 +4358,10 @@ unsafe extern "system" fn window_proc(
         }
         WM_MOUSEMOVE => {
             let (x, y) = client_point(lparam);
+            if extend_text_selection_drag(x) {
+                // Dragging a selection owns the pointer until it is released.
+                return LRESULT(0);
+            }
             let _ = set_hovered_control(window, hover_control_at(x, y));
             let mut tracking = TRACKMOUSEEVENT {
                 cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
@@ -3373,6 +4375,45 @@ unsafe extern "system" fn window_proc(
         WM_MOUSELEAVE => {
             let _ = set_hovered_control(window, None);
             let _ = set_pressed_control(window, None);
+            LRESULT(0)
+        }
+        // Layouts mark interactive controls with `cursor="hand"`; showing the
+        // hand only over things that actually respond to a click matches that.
+        WM_SETCURSOR if lparam.0 as u16 as u32 == HTCLIENT => {
+            let mut point = POINT::default();
+            if GetCursorPos(&mut point).is_ok() && ScreenToClient(window, &mut point).as_bool() {
+                let editable = text_input_at(point.x, point.y).is_some();
+                let clickable = window_action_at(point.x, point.y).is_some()
+                    || hover_control_at(point.x, point.y).is_some();
+                let cursor = if editable {
+                    IDC_IBEAM
+                } else if clickable {
+                    IDC_HAND
+                } else {
+                    IDC_ARROW
+                };
+                if let Ok(handle) = LoadCursorW(None, cursor) {
+                    let _ = SetCursor(handle);
+                }
+            }
+            LRESULT(1)
+        }
+        // The language menu takes the keyboard while it is open: arrows move the
+        // highlight, Enter confirms, and Escape closes only the menu.
+        WM_CHAR if text_input_is_focused() => {
+            handle_text_input_char(window, wparam.0 as u32);
+            LRESULT(0)
+        }
+        WM_KEYDOWN if text_input_is_focused() => {
+            handle_text_input_key(window, wparam.0 as u32);
+            LRESULT(0)
+        }
+        WM_TIMER if wparam.0 == CARET_TIMER => {
+            let _ = toggle_caret_blink();
+            LRESULT(0)
+        }
+        WM_KEYDOWN if language_menu_is_open() => {
+            handle_language_menu_key(window, wparam.0 as u32);
             LRESULT(0)
         }
         WM_KEYDOWN if wparam.0 as u32 == 0x1B && !install::busy() => {
@@ -3419,6 +4460,10 @@ unsafe fn draw_ui_frame(destination: HDC, ui: &RuntimeUi) {
     for layer in &ui.layers {
         draw_layer(destination, layer);
     }
+    // Selection bands sit above the page art but under the glyphs they cover.
+    for layer in &ui.selection {
+        draw_layer(destination, layer);
+    }
     for text in &ui.texts {
         draw_text(destination, text);
     }
@@ -3428,10 +4473,26 @@ unsafe fn draw_ui_frame(destination: HDC, ui: &RuntimeUi) {
     for text in &ui.overlay_texts {
         draw_text(destination, text);
     }
+    if ui.caret_drawn {
+        if let Some(caret) = &ui.caret {
+            draw_layer(destination, caret);
+        }
+    }
 }
 
 fn window_action_at(x: i32, y: i32) -> Option<WindowAction> {
     let state = UI.get()?.lock().ok()?;
+    // Text hits are checked first: a link sits inside a label that may itself
+    // overlap a panel, and the innermost target is the one the user aimed at.
+    if let Some(hit) = state
+        .ui
+        .text_hits
+        .iter()
+        .rev()
+        .find(|hit| x >= hit.left && x < hit.right && y >= hit.top && y < hit.bottom)
+    {
+        return Some(hit.action.clone());
+    }
     state
         .ui
         .actions
@@ -3439,6 +4500,774 @@ fn window_action_at(x: i32, y: i32) -> Option<WindowAction> {
         .rev()
         .find(|region| x >= region.left && x < region.right && y >= region.top && y < region.bottom)
         .map(|region| region.action.clone())
+}
+
+/// Focuses a field and starts a selection gesture from the press position.
+///
+/// A Shift-click extends the existing selection instead of starting a new one,
+/// which is how a range is grown without dragging. A second press on the same
+/// character within the system double-click time selects the word under it and
+/// starts no gesture, so the press that follows does not wipe the word again.
+unsafe fn begin_text_selection_drag(
+    window: HWND,
+    id: String,
+    index: usize,
+    extend: bool,
+) -> Result<()> {
+    focus_text_input(window, Some(id.clone()), index)?;
+    update_runtime(|state| {
+        let double_click = !extend && is_double_click(&state.interaction, &id, index);
+        state.interaction.last_press = if double_click {
+            None
+        } else {
+            Some((id.clone(), index, std::time::Instant::now()))
+        };
+        if double_click {
+            select_word_at(state, index)?;
+        } else {
+            let extending = extend
+                && state.interaction.selection_anchor.is_some()
+                && state.interaction.focused_text_input.as_deref() == Some(id.as_str());
+            if !extending {
+                state.interaction.selection_anchor = Some(index);
+            }
+            state.interaction.caret_index = index;
+        }
+        // The gesture flag stays set either way: the release that follows has to
+        // give the capture taken on this press back.
+        state.interaction.dragging_text_selection = true;
+        state.interaction.typing_run = false;
+        Ok(())
+    })
+}
+
+/// Whether this press repeats the previous one closely enough to be a double
+/// click, which is measured with the same interval Windows uses elsewhere.
+fn is_double_click(interaction: &InteractionState, id: &str, index: usize) -> bool {
+    let Some((last_id, last_index, at)) = interaction.last_press.as_ref() else {
+        return false;
+    };
+    if last_id != id || *last_index != index {
+        return false;
+    }
+    let interval = unsafe { GetDoubleClickTime() }.max(1);
+    at.elapsed() <= std::time::Duration::from_millis(u64::from(interval))
+}
+
+/// Selects the word around `index`, the way double-clicking a native edit
+/// control does. A press beyond the last character selects nothing.
+fn select_word_at(state: &mut RuntimeState, index: usize) -> Result<()> {
+    let Some(id) = state.interaction.focused_text_input.clone() else {
+        return Ok(());
+    };
+    let text = state
+        .interaction
+        .text_input_values
+        .get(&id)
+        .cloned()
+        .unwrap_or_default();
+    let (start, end) = word_range(&text, index);
+    state.interaction.selection_anchor = Some(start);
+    state.interaction.caret_index = end;
+    state.interaction.caret_visible = true;
+    Ok(())
+}
+
+/// The character range of the word that contains `index`.
+///
+/// Characters are grouped the way Windows groups them for word selection:
+/// letters, digits, and underscore form a word, whitespace forms a run of its
+/// own, and every other character stands alone, so double-clicking a path
+/// separator selects just that separator.
+fn word_range(text: &str, index: usize) -> (usize, usize) {
+    let characters: Vec<char> = text.chars().collect();
+    if characters.is_empty() || index >= characters.len() {
+        return (characters.len(), characters.len());
+    }
+    let mut start = index;
+    while start > 0 && same_selection_run(characters[start - 1], characters[index]) {
+        start -= 1;
+    }
+    let mut end = index + 1;
+    while end < characters.len() && same_selection_run(characters[index], characters[end]) {
+        end += 1;
+    }
+    (start, end)
+}
+
+/// Whether two neighbouring characters are selected as one run.
+///
+/// Words join up with words and whitespace with whitespace; anything else is a
+/// separator, and separators never merge, not even two different ones, so `C:\`
+/// selects either the colon or the backslash but never both.
+fn same_selection_run(left: char, right: char) -> bool {
+    (left.is_whitespace() && right.is_whitespace())
+        || (is_word_character(left) && is_word_character(right))
+}
+
+/// Whether a character is part of a word for selection purposes.
+fn is_word_character(character: char) -> bool {
+    character.is_alphanumeric() || character == '_'
+}
+
+/// Drags the selection end to the pointer while the button stays down.
+///
+/// Returns whether a drag was in progress, so the caller stops treating the
+/// motion as hovering.
+fn extend_text_selection_drag(x: i32) -> bool {
+    if !UI
+        .get()
+        .and_then(|state| state.lock().ok())
+        .is_some_and(|state| state.interaction.dragging_text_selection)
+    {
+        return false;
+    }
+    let _ = update_runtime(|state| {
+        let Some(id) = state.interaction.focused_text_input.clone() else {
+            state.interaction.dragging_text_selection = false;
+            return Ok(());
+        };
+        let field = state
+            .ui
+            .text_inputs
+            .iter()
+            .find(|field| field.id == id)
+            .cloned();
+        if let Some(field) = field {
+            let visible = visible_text(&field.text);
+            // Dragging past either edge keeps extending to that end, so the
+            // selection does not stall when the pointer leaves the field.
+            let clamped = x.clamp(field.left, field.left + field.width);
+            let index = unsafe { caret_index_for_x(&field, &visible, clamped) };
+            state.interaction.caret_index = index;
+        }
+        state.interaction.caret_visible = true;
+        Ok(())
+    });
+    true
+}
+
+/// Ends a selection gesture, if one was running.
+fn end_text_selection_drag(window: HWND) -> bool {
+    let dragging = UI
+        .get()
+        .and_then(|state| state.lock().ok())
+        .is_some_and(|state| state.interaction.dragging_text_selection);
+    if !dragging {
+        return false;
+    }
+    let _ = update_runtime(|state| {
+        // A press and release at the same spot is a plain click: the caret
+        // stays, and nothing stays selected.
+        if state.interaction.selection_anchor == Some(state.interaction.caret_index) {
+            state.interaction.clear_selection();
+        }
+        state.interaction.dragging_text_selection = false;
+        Ok(())
+    });
+    unsafe {
+        let _ = ReleaseCapture();
+        let _ = InvalidateRect(window, None, false);
+    }
+    true
+}
+
+/// The editable field under a point, with the caret index that point implies.
+///
+/// Clicking between two glyphs puts the caret on the nearer side, so a click
+/// lands where the user aimed rather than always at the end of the text.
+fn text_input_at(x: i32, y: i32) -> Option<(String, usize)> {
+    let state = UI.get()?.lock().ok()?;
+    let field = state.ui.text_inputs.iter().rev().find(|field| {
+        x >= field.left
+            && x < field.left + field.width
+            && y >= field.top
+            && y < field.top + field.height
+    })?;
+    let visible: String = visible_text(&field.text);
+    let index = unsafe { caret_index_for_x(field, &visible, x) };
+    Some((field.id.clone(), index))
+}
+
+/// The caret index a click at `x` selects inside `field`.
+unsafe fn caret_index_for_x(field: &TextInputRegion, visible: &str, x: i32) -> usize {
+    let dc = GetDC(None);
+    if dc.is_invalid() {
+        return visible.chars().count();
+    }
+    let font = create_ui_font(field.font_size, field.bold);
+    if font.is_invalid() {
+        let _ = ReleaseDC(None, dc);
+        return visible.chars().count();
+    }
+    let previous = SelectObject(dc, font);
+    let mut best = 0;
+    let mut best_distance = i32::MAX;
+    let mut prefix = String::new();
+    for (index, character) in visible.chars().enumerate() {
+        let utf16: Vec<u16> = prefix.encode_utf16().collect();
+        let distance = (field.left + measure_text_width(dc, &utf16) - x).abs();
+        if distance < best_distance {
+            best_distance = distance;
+            best = index;
+        }
+        prefix.push(character);
+    }
+    // The trailing position is only nearer than the last glyph when the click
+    // is past the end of the text.
+    let utf16: Vec<u16> = visible.encode_utf16().collect();
+    if (field.left + measure_text_width(dc, &utf16) - x).abs() <= best_distance {
+        best = visible.chars().count();
+    }
+    let _ = SelectObject(dc, previous);
+    let _ = DeleteObject(font);
+    let _ = ReleaseDC(None, dc);
+    best
+}
+
+fn text_input_is_focused() -> bool {
+    UI.get()
+        .and_then(|state| state.lock().ok())
+        .and_then(|state| state.interaction.focused_text_input.clone())
+        .is_some()
+}
+
+/// Focuses `id` at `caret_index`, or clears the focus when `id` is `None`.
+unsafe fn focus_text_input(window: HWND, id: Option<String>, caret_index: usize) -> Result<()> {
+    let runtime = UI.get().context("native UI state is missing")?;
+    let mut state = runtime
+        .lock()
+        .map_err(|_| anyhow::anyhow!("native UI state lock was poisoned"))?;
+    let focused = id.as_deref().filter(|_| {
+        state
+            .ui
+            .text_inputs
+            .iter()
+            .any(|field| Some(field.id.as_str()) == id.as_deref())
+    });
+    if state.interaction.focused_text_input.as_deref() == focused
+        && (focused.is_none() || state.interaction.caret_index == caret_index)
+    {
+        return Ok(());
+    }
+    if state.interaction.focused_text_input.as_deref() != focused {
+        // A new field starts without a selection carried over from the old one.
+        state.interaction.clear_selection();
+        state.interaction.typing_run = false;
+    }
+    state.interaction.focused_text_input = focused.map(str::to_string);
+    state.interaction.caret_index = caret_index;
+    state.interaction.caret_visible = true;
+    rebuild_runtime_ui(&mut state)?;
+    drop(state);
+    // The blink timer only runs while a field owns the focus.
+    let _ = KillTimer(window, CARET_TIMER);
+    if focused.is_some() {
+        let _ = SetTimer(window, CARET_TIMER, CARET_BLINK_MS, None);
+    }
+    let _ = InvalidateRect(window, None, false);
+    let _ = UpdateWindow(window);
+    Ok(())
+}
+
+/// Flips the caret between drawn and hidden, the way an edit control blinks.
+///
+/// Only the flag changes, so the page is not laid out again on every blink.
+unsafe fn toggle_caret_blink() -> Result<()> {
+    let runtime = UI.get().context("native UI state is missing")?;
+    let mut state = runtime
+        .lock()
+        .map_err(|_| anyhow::anyhow!("native UI state lock was poisoned"))?;
+    if state.interaction.focused_text_input.is_none() {
+        return Ok(());
+    }
+    state.interaction.caret_visible = !state.interaction.caret_visible;
+    state.ui.caret_drawn = state.interaction.caret_visible;
+    let window = state.window;
+    drop(state);
+    if window != 0 {
+        let _ = InvalidateRect(HWND(window as *mut _), None, false);
+    }
+    Ok(())
+}
+
+/// Applies a typed character to the focused field.
+unsafe fn handle_text_input_char(window: HWND, character: u32) {
+    // Control characters arrive as their own `WM_CHAR` values; editing keys are
+    // handled in `WM_KEYDOWN`, so they are dropped here.
+    if character < 0x20 || character == 0x7F {
+        return;
+    }
+    let Some(character) = char::from_u32(character) else {
+        return;
+    };
+    let result = edit_focused_text(true, |text, caret| {
+        let index = byte_index(text, caret);
+        text.insert(index, character);
+        caret + 1
+    });
+    if let Err(error) = result {
+        show_runtime_error(&error);
+    } else {
+        let _ = InvalidateRect(window, None, false);
+        let _ = UpdateWindow(window);
+    }
+}
+
+/// Applies an editing key to the focused field.
+///
+/// Shift extends the selection, Ctrl drives the clipboard and undo instead of
+/// moving the caret, and Escape hands the keyboard back to the window.
+unsafe fn handle_text_input_key(window: HWND, key: u32) {
+    let control = key_down(VK_CONTROL);
+    let shift = key_down(VK_SHIFT);
+    let result = match key {
+        value if value == VK_BACK.0 as u32 => delete_before_caret(control),
+        value if value == VK_DELETE.0 as u32 => delete_after_caret(control),
+        value if value == VK_LEFT.0 as u32 => move_caret(-1, shift, control),
+        value if value == VK_RIGHT.0 as u32 => move_caret(1, shift, control),
+        value if value == VK_HOME.0 as u32 => move_caret_to(0, shift),
+        value if value == VK_END.0 as u32 => move_caret_to(usize::MAX, shift),
+        value if control && value == VK_A.0 as u32 => select_all_focused_text(),
+        value if control && value == VK_C.0 as u32 => copy_focused_selection(false),
+        value if control && value == VK_X.0 as u32 => copy_focused_selection(true),
+        value if control && value == VK_V.0 as u32 => paste_into_focused_text(),
+        value if control && value == VK_Z.0 as u32 => undo_focused_text(),
+        value if control && value == VK_Y.0 as u32 => redo_focused_text(),
+        // Escape gives the keyboard back to the window, so the next one closes
+        // the wizard the way it does everywhere else.
+        0x1B => focus_text_input(window, None, 0),
+        _ => Ok(()),
+    };
+    if let Err(error) = result {
+        show_runtime_error(&error);
+    } else {
+        let _ = InvalidateRect(window, None, false);
+        let _ = UpdateWindow(window);
+    }
+}
+
+/// Whether `key` is held down right now, which is how a modifier arrives.
+fn key_down(key: VIRTUAL_KEY) -> bool {
+    unsafe { GetKeyState(key.0 as i32) as u16 & 0x8000 != 0 }
+}
+
+/// Runs `edit` against the focused field's text and caret, then republishes it.
+///
+/// A selection is removed first and the caret moves to its start, so whatever
+/// the caller inserts replaces the selected text the way any edit control
+/// behaves. `typing` marks a keystroke that inserts a character, which lets a
+/// run of them undo together.
+fn edit_focused_text(typing: bool, edit: impl FnOnce(&mut String, usize) -> usize) -> Result<()> {
+    update_runtime(|state| {
+        let Some(id) = state.interaction.focused_text_input.clone() else {
+            return Ok(());
+        };
+        state.interaction.remember_for_undo(typing);
+        state.interaction.remove_selection();
+        let caret = state.interaction.caret_index;
+        let text = state.interaction.text_input_values.entry(id).or_default();
+        let caret = edit(text, caret);
+        state.interaction.caret_index = caret;
+        // Typing restarts the blink so the caret is visible while keys arrive.
+        state.interaction.caret_visible = true;
+        Ok(())
+    })
+}
+
+/// Removes the selection, or the text before the caret when none is set.
+///
+/// A selection is removed on its own: backspacing into it must not also eat the
+/// character that was sitting in front of the range. With `whole_word` the key
+/// takes the word before the caret, which is what Ctrl+Backspace does.
+fn delete_before_caret(whole_word: bool) -> Result<()> {
+    update_runtime(|state| {
+        state.interaction.remember_for_undo(false);
+        if state.interaction.remove_selection() {
+            state.interaction.caret_visible = true;
+            return Ok(());
+        }
+        let Some(id) = state.interaction.focused_text_input.clone() else {
+            return Ok(());
+        };
+        let caret = state.interaction.caret_index;
+        if caret == 0 {
+            return Ok(());
+        }
+        let text = state.interaction.text_input_values.entry(id).or_default();
+        let index = byte_index(text, caret);
+        let start_at = if whole_word {
+            word_start_before(text, caret)
+        } else {
+            caret - 1
+        };
+        let start = byte_index(text, start_at);
+        text.replace_range(start..index, "");
+        state.interaction.caret_index = start_at;
+        state.interaction.caret_visible = true;
+        Ok(())
+    })
+}
+
+/// Where Ctrl+Backspace starts removing: the whitespace in front of the caret
+/// first, and then the run before it.
+///
+/// A separator stands alone the same way it does for `word_range`, so the key
+/// removes one path separator rather than the punctuation around it.
+fn word_start_before(text: &str, caret: usize) -> usize {
+    let characters: Vec<char> = text.chars().collect();
+    let mut index = caret.min(characters.len());
+    while index > 0 && characters[index - 1].is_whitespace() {
+        index -= 1;
+    }
+    if index == 0 {
+        return 0;
+    }
+    if !is_word_character(characters[index - 1]) {
+        return index - 1;
+    }
+    while index > 0 && is_word_character(characters[index - 1]) {
+        index -= 1;
+    }
+    index
+}
+
+/// Where Ctrl+Delete stops removing, mirroring `word_start_before`.
+fn word_end_after(text: &str, caret: usize) -> usize {
+    let characters: Vec<char> = text.chars().collect();
+    let count = characters.len();
+    let mut index = caret.min(count);
+    while index < count && characters[index].is_whitespace() {
+        index += 1;
+    }
+    if index == count {
+        return count;
+    }
+    if !is_word_character(characters[index]) {
+        return index + 1;
+    }
+    while index < count && is_word_character(characters[index]) {
+        index += 1;
+    }
+    index
+}
+
+/// Removes the selection, or the text after the caret when none is set.
+///
+/// With `whole_word` the key takes the word after the caret and the whitespace
+/// in front of it, which is what Ctrl+Delete does.
+fn delete_after_caret(whole_word: bool) -> Result<()> {
+    update_runtime(|state| {
+        state.interaction.remember_for_undo(false);
+        if state.interaction.remove_selection() {
+            state.interaction.caret_visible = true;
+            return Ok(());
+        }
+        let Some(id) = state.interaction.focused_text_input.clone() else {
+            return Ok(());
+        };
+        let caret = state.interaction.caret_index;
+        let text = state.interaction.text_input_values.entry(id).or_default();
+        let count = text.chars().count();
+        if caret >= count {
+            return Ok(());
+        }
+        let end_at = if whole_word {
+            word_end_after(text, caret)
+        } else {
+            caret + 1
+        };
+        let (start, end) = (byte_index(text, caret), byte_index(text, end_at));
+        text.replace_range(start..end, "");
+        state.interaction.caret_visible = true;
+        Ok(())
+    })
+}
+
+/// Selects the whole focused field, the way Ctrl+A does everywhere else.
+fn select_all_focused_text() -> Result<()> {
+    update_runtime(|state| {
+        let Some(id) = state.interaction.focused_text_input.clone() else {
+            return Ok(());
+        };
+        let count = state
+            .interaction
+            .text_input_values
+            .get(&id)
+            .map(|text| text.chars().count())
+            .unwrap_or(0);
+        state.interaction.selection_anchor = Some(0);
+        state.interaction.caret_index = count;
+        state.interaction.caret_visible = true;
+        state.interaction.typing_run = false;
+        Ok(())
+    })
+}
+
+/// Moves the caret, extending the selection when asked.
+///
+/// A plain arrow key that meets an existing selection collapses it to the end
+/// the key points at instead of moving past it, which is what a native edit
+/// control does. With `whole_word` the caret jumps over a word instead of one
+/// character, which is what Ctrl+Left and Ctrl+Right do.
+fn move_caret(delta: i32, extend: bool, whole_word: bool) -> Result<()> {
+    update_runtime(|state| {
+        let Some(id) = state.interaction.focused_text_input.clone() else {
+            return Ok(());
+        };
+        let text = state
+            .interaction
+            .text_input_values
+            .get(&id)
+            .cloned()
+            .unwrap_or_default();
+        let count = text.chars().count();
+        if !extend {
+            if let Some((start, end)) = state.interaction.selection_range() {
+                state.interaction.clear_selection();
+                state.interaction.caret_index = if delta < 0 { start } else { end };
+                state.interaction.caret_visible = true;
+                state.interaction.typing_run = false;
+                return Ok(());
+            }
+        }
+        let caret = state.interaction.caret_index;
+        let moved = if whole_word {
+            if delta < 0 {
+                word_start_before(&text, caret)
+            } else {
+                word_end_after(&text, caret)
+            }
+        } else {
+            (caret as i32 + delta).clamp(0, count as i32) as usize
+        };
+        extend_selection_to(state, moved, extend);
+        Ok(())
+    })
+}
+
+/// Moves the caret to `index`, extending the selection when asked.
+fn move_caret_to(index: usize, extend: bool) -> Result<()> {
+    update_runtime(|state| {
+        let Some(id) = state.interaction.focused_text_input.clone() else {
+            return Ok(());
+        };
+        let count = state
+            .interaction
+            .text_input_values
+            .get(&id)
+            .map(|text| text.chars().count())
+            .unwrap_or(0);
+        if !extend {
+            if let Some((start, end)) = state.interaction.selection_range() {
+                state.interaction.clear_selection();
+                state.interaction.caret_index = if index == 0 { start } else { end };
+                state.interaction.caret_visible = true;
+                state.interaction.typing_run = false;
+                return Ok(());
+            }
+        }
+        extend_selection_to(state, index.min(count), extend);
+        Ok(())
+    })
+}
+
+/// Moves the caret, remembering where the selection started when extending.
+fn extend_selection_to(state: &mut RuntimeState, caret: usize, extend: bool) {
+    if extend {
+        state
+            .interaction
+            .selection_anchor
+            .get_or_insert(state.interaction.caret_index);
+    } else {
+        state.interaction.clear_selection();
+    }
+    state.interaction.caret_index = caret;
+    state.interaction.caret_visible = true;
+    state.interaction.typing_run = false;
+}
+
+/// Byte offset of character `index`, so multi-byte text edits in the right place.
+fn byte_index(text: &str, index: usize) -> usize {
+    text.char_indices()
+        .nth(index)
+        .map(|(offset, _)| offset)
+        .unwrap_or(text.len())
+}
+
+/// The selected text of the focused field, if there is a selection.
+fn focused_selection() -> Option<String> {
+    let state = UI.get()?.lock().ok()?;
+    let id = state.interaction.focused_text_input.as_deref()?;
+    let (start, end) = state.interaction.selection_range()?;
+    let text = state.interaction.text_input_values.get(id)?;
+    Some(
+        text.chars()
+            .skip(start)
+            .take(end - start)
+            .collect::<String>(),
+    )
+}
+
+/// Puts the selected text on the clipboard, and removes it for a cut.
+fn copy_focused_selection(cut: bool) -> Result<()> {
+    let Some(selected) = focused_selection() else {
+        return Ok(());
+    };
+    if selected.is_empty() {
+        return Ok(());
+    }
+    // The clipboard is written first: a cut that cannot reach the clipboard
+    // must not lose the text it was supposed to copy.
+    unsafe { write_clipboard_text(&selected)? };
+    if cut {
+        edit_focused_text(false, |_, caret| caret)?;
+    }
+    Ok(())
+}
+
+/// Appends the clipboard text to the focused field, if the clipboard holds text.
+fn paste_into_focused_text() -> Result<()> {
+    let Some(pasted) = (unsafe { read_clipboard_text() }) else {
+        return Ok(());
+    };
+    if pasted.is_empty() {
+        return Ok(());
+    }
+    edit_focused_text(false, |text, caret| {
+        let index = byte_index(text, caret);
+        text.insert_str(index, &pasted);
+        caret + pasted.chars().count()
+    })
+}
+
+/// Steps back through the edits of this run, newest first.
+fn undo_focused_text() -> Result<()> {
+    update_runtime(|state| {
+        let Some(id) = state.interaction.focused_text_input.clone() else {
+            return Ok(());
+        };
+        let Some(previous) = state.interaction.undo_stack.pop() else {
+            return Ok(());
+        };
+        let current = state
+            .interaction
+            .text_input_values
+            .get(&id)
+            .cloned()
+            .unwrap_or_default();
+        state.interaction.redo_stack.push(TextSnapshot {
+            id: id.clone(),
+            text: current,
+            caret: state.interaction.caret_index,
+        });
+        restore_snapshot(&mut state.interaction, &previous);
+        Ok(())
+    })
+}
+
+/// Replays an edit that Ctrl+Z took back.
+fn redo_focused_text() -> Result<()> {
+    update_runtime(|state| {
+        let Some(id) = state.interaction.focused_text_input.clone() else {
+            return Ok(());
+        };
+        let Some(next) = state.interaction.redo_stack.pop() else {
+            return Ok(());
+        };
+        let current = state
+            .interaction
+            .text_input_values
+            .get(&id)
+            .cloned()
+            .unwrap_or_default();
+        state.interaction.undo_stack.push(TextSnapshot {
+            id: id.clone(),
+            text: current,
+            caret: state.interaction.caret_index,
+        });
+        restore_snapshot(&mut state.interaction, &next);
+        Ok(())
+    })
+}
+
+/// Puts a remembered value and caret back into the focused field.
+fn restore_snapshot(interaction: &mut InteractionState, snapshot: &TextSnapshot) {
+    interaction
+        .text_input_values
+        .insert(snapshot.id.clone(), snapshot.text.clone());
+    let count = snapshot.text.chars().count();
+    // The remembered caret is clamped, not trusted: the field may have been
+    // shortened by an edit that happened after the snapshot was taken.
+    interaction.caret_index = snapshot.caret.min(count);
+    interaction.clear_selection();
+    interaction.caret_visible = true;
+    interaction.typing_run = false;
+}
+
+unsafe fn read_clipboard_text() -> Option<String> {
+    let window = UI
+        .get()
+        .and_then(|state| state.lock().ok())
+        .map(|state| state.window)
+        .unwrap_or(0);
+    OpenClipboard(HWND(window as *mut _)).ok()?;
+    let text = (|| {
+        let handle = GetClipboardData(CF_UNICODETEXT.0 as u32).ok()?;
+        if handle.is_invalid() {
+            return None;
+        }
+        // The clipboard owns this memory until it is closed, so the handle is
+        // locked and read but never freed here.
+        let pointer = GlobalLock(HGLOBAL(handle.0)) as *const u16;
+        if pointer.is_null() {
+            return None;
+        }
+        let mut length = 0usize;
+        while *pointer.add(length) != 0 {
+            length += 1;
+        }
+        let text = String::from_utf16_lossy(std::slice::from_raw_parts(pointer, length));
+        let _ = GlobalUnlock(HGLOBAL(handle.0));
+        Some(text)
+    })();
+    let _ = CloseClipboard();
+    text
+}
+
+/// Replaces the clipboard with `text`.
+///
+/// The buffer is handed to the clipboard, which owns it from then on; the
+/// handle is only freed here when the handover fails.
+unsafe fn write_clipboard_text(text: &str) -> Result<()> {
+    if text.is_empty() {
+        return Ok(());
+    }
+    let window = UI
+        .get()
+        .and_then(|state| state.lock().ok())
+        .map(|state| state.window)
+        .unwrap_or(0);
+    let utf16: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+    OpenClipboard(HWND(window as *mut _)).context("failed to open the clipboard")?;
+    let result = (|| -> Result<()> {
+        EmptyClipboard()?;
+        let handle = GlobalAlloc(GMEM_MOVEABLE, utf16.len() * std::mem::size_of::<u16>())?;
+        let pointer = GlobalLock(handle);
+        if pointer.is_null() {
+            let _ = GlobalFree(handle);
+            bail!("failed to lock the clipboard buffer");
+        }
+        std::ptr::copy_nonoverlapping(utf16.as_ptr(), pointer.cast::<u16>(), utf16.len());
+        let _ = GlobalUnlock(handle);
+        if SetClipboardData(CF_UNICODETEXT.0 as u32, HANDLE(handle.0)).is_err() {
+            let _ = GlobalFree(handle);
+            bail!("failed to place text on the clipboard");
+        }
+        Ok(())
+    })();
+    let _ = CloseClipboard();
+    result
 }
 
 fn hover_control_at(x: i32, y: i32) -> Option<String> {
@@ -3459,6 +5288,15 @@ unsafe fn handle_window_action(window: HWND, action: WindowAction) {
                 let _ = DestroyWindow(window);
             }
         }
+        WindowAction::CloseConfirm => match confirm_close() {
+            Ok(true) => {
+                if !install::busy() {
+                    let _ = DestroyWindow(window);
+                }
+            }
+            Ok(false) => {}
+            Err(error) => show_runtime_error(&error),
+        },
         WindowAction::Minimize => {
             let _ = ShowWindow(window, SW_MINIMIZE);
         }
@@ -3483,6 +5321,20 @@ unsafe fn handle_window_action(window: HWND, action: WindowAction) {
                 show_runtime_error(&error);
             }
         }
+        WindowAction::OpenLink(target) => {
+            if let Err(error) = open_link(&target) {
+                show_runtime_error(&error);
+            }
+        }
+        WindowAction::PickDirectory { id } => match pick_directory() {
+            Ok(Some(directory)) => {
+                if let Err(error) = set_text_input_value(window, id, directory) {
+                    show_runtime_error(&error);
+                }
+            }
+            Ok(None) => {}
+            Err(error) => show_runtime_error(&error),
+        },
         WindowAction::ToggleCheckbox { id, checked } => {
             if let Err(error) = set_checkbox_state(window, id, !checked) {
                 show_runtime_error(&error);
@@ -3528,6 +5380,68 @@ unsafe fn set_pressed_control(window: HWND, id: Option<String>) -> Result<()> {
     Ok(())
 }
 
+fn language_menu_is_open() -> bool {
+    UI.get()
+        .and_then(|state| state.lock().ok())
+        .is_some_and(|state| state.language_menu_open)
+}
+
+/// Moves the highlight, confirms a choice, or dismisses the open language menu.
+unsafe fn handle_language_menu_key(window: HWND, key: u32) {
+    // Virtual-key codes, spelled here so the message handler stays free of
+    // another namespace-wide import.
+    const VK_RETURN: u32 = 0x0D;
+    const VK_ESCAPE: u32 = 0x1B;
+    const VK_UP: u32 = 0x26;
+    const VK_DOWN: u32 = 0x28;
+
+    match key {
+        VK_ESCAPE => {
+            let _ = set_language_menu_open(window, false);
+        }
+        VK_UP | VK_DOWN => {
+            let _ = move_language_highlight(window, key == VK_DOWN);
+        }
+        VK_RETURN => {
+            let locale = highlighted_language();
+            if let Some(locale) = locale {
+                let _ = select_language(window, locale);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn highlighted_language() -> Option<String> {
+    let state = UI.get()?.lock().ok()?;
+    let index = state.interaction.highlighted_option?;
+    state.ui.language_options.get(index).cloned()
+}
+
+/// Walks the highlight one row, wrapping at both ends.
+unsafe fn move_language_highlight(window: HWND, forward: bool) -> Result<()> {
+    let runtime = UI.get().context("native UI state is missing")?;
+    let mut state = runtime
+        .lock()
+        .map_err(|_| anyhow::anyhow!("native UI state lock was poisoned"))?;
+    let count = state.ui.language_options.len();
+    if count == 0 {
+        return Ok(());
+    }
+    let current = state.interaction.highlighted_option.unwrap_or(0);
+    let next = if forward {
+        (current + 1) % count
+    } else {
+        (current + count - 1) % count
+    };
+    state.interaction.highlighted_option = Some(next);
+    rebuild_runtime_ui(&mut state)?;
+    drop(state);
+    let _ = InvalidateRect(window, None, false);
+    let _ = UpdateWindow(window);
+    Ok(())
+}
+
 unsafe fn set_language_menu_open(window: HWND, open: bool) -> Result<()> {
     let Some(runtime) = UI.get() else {
         return Ok(());
@@ -3539,6 +5453,16 @@ unsafe fn set_language_menu_open(window: HWND, open: bool) -> Result<()> {
         return Ok(());
     }
     state.language_menu_open = open;
+    // Opening starts on the language in use, so the first arrow key moves one
+    // step from what the user is reading.
+    state.interaction.highlighted_option = open.then(|| {
+        state
+            .ui
+            .language_options
+            .iter()
+            .position(|option| *option == state.locale)
+            .unwrap_or(0)
+    });
     rebuild_runtime_ui(&mut state)?;
     drop(state);
     let _ = InvalidateRect(window, None, false);
@@ -3553,6 +5477,7 @@ unsafe fn select_language(window: HWND, locale: String) -> Result<()> {
         .map_err(|_| anyhow::anyhow!("native UI state lock was poisoned"))?;
     state.locale = locale;
     state.language_menu_open = false;
+    state.interaction.highlighted_option = None;
     rebuild_runtime_ui(&mut state)?;
     drop(state);
     let _ = InvalidateRect(window, None, false);
@@ -3566,6 +5491,19 @@ unsafe fn set_checkbox_state(window: HWND, id: String, checked: bool) -> Result<
         .lock()
         .map_err(|_| anyhow::anyhow!("native UI state lock was poisoned"))?;
     state.interaction.checkbox_states.insert(id, checked);
+    rebuild_runtime_ui(&mut state)?;
+    drop(state);
+    let _ = InvalidateRect(window, None, false);
+    let _ = UpdateWindow(window);
+    Ok(())
+}
+
+unsafe fn set_text_input_value(window: HWND, id: String, value: String) -> Result<()> {
+    let runtime = UI.get().context("native UI state is missing")?;
+    let mut state = runtime
+        .lock()
+        .map_err(|_| anyhow::anyhow!("native UI state lock was poisoned"))?;
+    state.interaction.text_input_values.insert(id, value);
     rebuild_runtime_ui(&mut state)?;
     drop(state);
     let _ = InvalidateRect(window, None, false);
@@ -3597,6 +5535,80 @@ fn rebuild_runtime_ui(state: &mut RuntimeState) -> Result<()> {
         state.mode,
     )?;
     Ok(())
+}
+
+/// Asks the localized close question a `close_confirm` control declares.
+unsafe fn confirm_close() -> Result<bool> {
+    let (question, title) = UI
+        .get()
+        .and_then(|state| state.lock().ok())
+        .map(|state| {
+            (
+                state.ui.close_confirm_message.clone(),
+                state.ui.product_name.clone(),
+            )
+        })
+        .unwrap_or_else(|| {
+            (
+                "Exit the installer?".to_string(),
+                "nano-installer".to_string(),
+            )
+        });
+    let message = HSTRING::from(question);
+    let title = HSTRING::from(title);
+    let answer = unsafe { MessageBoxW(None, &message, &title, MB_YESNO | MB_ICONQUESTION) };
+    Ok(answer == IDYES)
+}
+
+/// Opens a resolved URL in the user's default browser.
+fn open_link(target: &str) -> Result<()> {
+    let operation = w!("open");
+    let file = HSTRING::from(target);
+    let result = unsafe {
+        ShellExecuteW(
+            None,
+            operation,
+            &file,
+            PCWSTR::null(),
+            PCWSTR::null(),
+            SW_SHOWNORMAL,
+        )
+    };
+    // ShellExecuteW reports values above 32 on success; anything at or below is
+    // an error code rather than a handle.
+    if result.0 as usize <= 32 {
+        bail!("failed to open {target}");
+    }
+    Ok(())
+}
+
+/// Shows the shell folder picker and returns the chosen directory.
+fn pick_directory() -> Result<Option<String>> {
+    unsafe {
+        CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok()?;
+        let _guard = ComGuard;
+        let dialog: IFileOpenDialog = CoCreateInstance(&FileOpenDialog, None, CLSCTX_INPROC_SERVER)
+            .context("failed to create the folder picker")?;
+        let options = dialog.GetOptions().unwrap_or_default();
+        dialog
+            .SetOptions(options | FOS_PICKFOLDERS)
+            .context("failed to configure the folder picker")?;
+        // A cancelled dialog is a normal outcome, not an error.
+        if dialog.Show(None).is_err() {
+            return Ok(None);
+        }
+        let item: IShellItem = dialog
+            .GetResult()
+            .context("the folder picker returned no folder")?;
+        let raw: PWSTR = item
+            .GetDisplayName(SIGDN_FILESYSPATH)
+            .context("the chosen folder has no filesystem path")?;
+        let path = raw
+            .to_string()
+            .context("the chosen folder path is not Unicode");
+        CoTaskMemFree(Some(raw.as_ptr().cast()));
+        Ok(Some(path?))
+    }
 }
 
 /// Starts the application an install deployed, from its own directory.
@@ -3761,43 +5773,71 @@ unsafe fn create_ui_font(font_size: i32, bold: bool) -> HFONT {
     )
 }
 
-unsafe fn draw_single_line_text(destination: HDC, layer: &TextLayer) {
-    let mut measured_runs = Vec::with_capacity(layer.runs.len());
+/// A run of glyphs measured but not yet placed on a wrapped line: colour, link
+/// target, encoded text, and advance width.
+type MeasuredRun = (COLORREF, Option<String>, Vec<u16>, i32);
+
+/// One run positioned on screen. Drawing and hit testing both consume this, so
+/// a click always lands on the run the user sees.
+struct PositionedRun {
+    color: COLORREF,
+    text: Vec<u16>,
+    left: i32,
+    top: i32,
+    right: i32,
+    bottom: i32,
+    link: Option<String>,
+}
+
+/// Lays out the runs of a text layer into screen positions.
+///
+/// A layer that wraps breaks at the layer width, one character at a time, which
+/// is what mixed CJK and Latin text needs. A single-line layer keeps its runs on
+/// one row and aligns the row inside the layer.
+unsafe fn layout_text_runs(destination: HDC, layer: &TextLayer) -> Vec<PositionedRun> {
+    if layer.wrap {
+        layout_wrapped_runs(destination, layer)
+    } else {
+        layout_single_line_runs(destination, layer)
+    }
+}
+
+unsafe fn layout_single_line_runs(destination: HDC, layer: &TextLayer) -> Vec<PositionedRun> {
+    let mut measured = Vec::with_capacity(layer.runs.len());
     let mut total_width = 0;
     for run in &layer.runs {
         let text: Vec<u16> = run.text.encode_utf16().collect();
         let width = measure_text_width(destination, &text);
         total_width += width;
-        measured_runs.push((run, text, width));
+        measured.push((run, text, width));
     }
     let mut left = match layer.alignment {
         TextAlignment::Left => layer.left,
         TextAlignment::Center => layer.left + (layer.width - total_width) / 2,
         TextAlignment::Right => layer.left + layer.width - total_width,
     };
-    for (run, mut text, width) in measured_runs {
+    let mut positioned = Vec::with_capacity(measured.len());
+    for (run, text, width) in measured {
         if left >= layer.left + layer.width {
             break;
         }
-        let _ = SetTextColor(destination, run.color);
-        let mut bounds = RECT {
+        let right = (left + width).min(layer.left + layer.width);
+        positioned.push(PositionedRun {
+            color: run.color,
+            text,
             left,
             top: layer.top,
-            right: layer.left + layer.width,
+            right,
             bottom: layer.top + layer.height,
-        };
-        let _ = DrawTextW(
-            destination,
-            &mut text,
-            &mut bounds,
-            DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
-        );
+            link: run.link.clone(),
+        });
         left += width;
     }
+    positioned
 }
 
-unsafe fn draw_wrapped_text(destination: HDC, layer: &TextLayer) {
-    let mut lines: Vec<Vec<(COLORREF, Vec<u16>, i32)>> = vec![Vec::new()];
+unsafe fn layout_wrapped_runs(destination: HDC, layer: &TextLayer) -> Vec<PositionedRun> {
+    let mut lines: Vec<Vec<MeasuredRun>> = vec![Vec::new()];
     let mut line_widths = vec![0i32];
     for run in &layer.runs {
         for character in run.text.chars() {
@@ -3815,12 +5855,13 @@ unsafe fn draw_wrapped_text(destination: HDC, layer: &TextLayer) {
             }
             let line_index = lines.len() - 1;
             line_widths[line_index] += width;
-            lines[line_index].push((run.color, text, width));
+            lines[line_index].push((run.color, run.link.clone(), text, width));
         }
     }
     let line_height = (layer.font_size * 3 / 2).max(layer.font_size);
     let total_height = line_height * i32::try_from(lines.len()).unwrap_or(1);
     let mut top = layer.top + (layer.height - total_height).max(0) / 2;
+    let mut positioned = Vec::new();
     for (line, line_width) in lines.into_iter().zip(line_widths) {
         if top >= layer.top + layer.height {
             break;
@@ -3830,24 +5871,104 @@ unsafe fn draw_wrapped_text(destination: HDC, layer: &TextLayer) {
             TextAlignment::Center => layer.left + (layer.width - line_width) / 2,
             TextAlignment::Right => layer.left + layer.width - line_width,
         };
-        for (color, mut text, width) in line {
-            let _ = SetTextColor(destination, color);
-            let mut bounds = RECT {
+        for (color, link, text, width) in line {
+            positioned.push(PositionedRun {
+                color,
+                text,
                 left,
                 top,
-                right: layer.left + layer.width,
+                right: left + width,
                 bottom: (top + line_height).min(layer.top + layer.height),
-            };
-            let _ = DrawTextW(
-                destination,
-                &mut text,
-                &mut bounds,
-                DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
-            );
+                link,
+            });
             left += width;
         }
         top += line_height;
     }
+    positioned
+}
+
+/// Clickable spans of a text layer, in layer-rectangle coordinates.
+///
+/// Wrapped text lays a link out one glyph at a time, so neighbouring glyphs of
+/// the same target are merged back into one region. That keeps the highlight
+/// and the hit test aligned with the words the user sees.
+unsafe fn text_layer_hits(layer: &TextLayer) -> Vec<TextHit> {
+    if !layer.runs.iter().any(|run| run.link.is_some()) {
+        return Vec::new();
+    }
+    let dc = GetDC(None);
+    if dc.is_invalid() {
+        return Vec::new();
+    }
+    let font = create_ui_font(layer.font_size, layer.bold);
+    let hits = if font.is_invalid() {
+        Vec::new()
+    } else {
+        let previous = SelectObject(dc, font);
+        let mut hits: Vec<TextHit> = Vec::new();
+        for run in layout_text_runs(dc, layer) {
+            let Some(target) = run.link else {
+                continue;
+            };
+            match hits.last_mut() {
+                // Same target, same line, touching boxes: extend the region.
+                Some(previous)
+                    if previous.right == run.left
+                        && previous.bottom == run.bottom
+                        && matches!(&previous.action, WindowAction::OpenLink(previous_target) if *previous_target == target) =>
+                {
+                    previous.right = run.right;
+                }
+                _ => hits.push(TextHit {
+                    action: WindowAction::OpenLink(target),
+                    left: run.left,
+                    top: run.top,
+                    right: run.right,
+                    bottom: run.bottom,
+                }),
+            }
+        }
+        let _ = SelectObject(dc, previous);
+        hits
+    };
+    if !font.is_invalid() {
+        let _ = DeleteObject(font);
+    }
+    let _ = ReleaseDC(None, dc);
+    hits
+}
+
+unsafe fn draw_single_line_text(destination: HDC, layer: &TextLayer) {
+    for run in layout_text_runs(destination, layer) {
+        draw_positioned_run(destination, layer, &run);
+    }
+}
+
+unsafe fn draw_wrapped_text(destination: HDC, layer: &TextLayer) {
+    for run in layout_text_runs(destination, layer) {
+        draw_positioned_run(destination, layer, &run);
+    }
+}
+
+unsafe fn draw_positioned_run(destination: HDC, layer: &TextLayer, run: &PositionedRun) {
+    if run.left >= layer.left + layer.width {
+        return;
+    }
+    let _ = SetTextColor(destination, run.color);
+    let mut text = run.text.clone();
+    let mut bounds = RECT {
+        left: run.left,
+        top: run.top,
+        right: layer.left + layer.width,
+        bottom: run.bottom,
+    };
+    let _ = DrawTextW(
+        destination,
+        &mut text,
+        &mut bounds,
+        DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
+    );
 }
 
 unsafe fn measure_text_width(destination: HDC, text: &[u16]) -> i32 {
@@ -3924,15 +6045,19 @@ unsafe fn draw_layer(destination: HDC, layer: &ImageLayer) {
 #[cfg(test)]
 mod tests {
     use super::{
-        button_image, disk_root, flow_widths, format_size_bytes, initial_interaction,
-        inspect_project, installer_version_info, load_layout, measure_layout_text_width,
-        pack_project, pack_project_with_progress, parse_bundle, parse_color, parse_image_style,
-        parse_text_runs, query_disk_free_bytes, render_flow, render_flow_item, render_progress_bar,
-        resolve_asset_path, resolved_text_for_node, runtime_layout_path, runtime_layout_path_at,
-        runtime_page_count, scale_value, size_attribute, uninstaller_version_info,
-        validate_output_filename, BundleIndex, DpiContext, FlowAxis, FlowItem, InteractionState,
-        LayerRect, LayoutContext, LayoutOutput, PayloadFormat, RuntimeMode, RuntimeUi,
-        TextAlignment, WindowAction, FOOTER_MAGIC,
+        button_image, byte_index, caret_layer, disk_root, flow_axis, flow_widths,
+        format_size_bytes, initial_interaction, inspect_project, installer_version_info,
+        load_layout, measure_layout_text_width, pack_project, pack_project_with_progress,
+        parse_bundle, parse_color, parse_image_style, parse_text_runs, pick_directory_target,
+        push_action, push_border_layer, push_node_border, query_disk_free_bytes, render_flow,
+        render_flow_item, render_progress_bar, resolve_asset_path, resolve_link_target,
+        resolved_text_for_node, restore_snapshot, runtime_layout_path, runtime_layout_path_at,
+        runtime_page_count, scale_value, selection_layers, size_attribute,
+        uninstaller_version_info, validate_output_filename, word_end_after, word_range,
+        word_start_before, wrap_lines, wraps, BundleIndex, DpiContext, FlowAxis, FlowItem,
+        InteractionState, LayerRect, LayoutContext, LayoutOutput, PayloadFormat, RuntimeMode,
+        RuntimeUi, TextAlignment, TextHit, TextInputRegion, TextSnapshot, WindowAction, COLORREF,
+        FOOTER_MAGIC,
     };
     use anyhow::Context;
     use std::collections::HashMap;
@@ -4156,18 +6281,21 @@ mod tests {
                     flex_grow: 1.0,
                     flex_shrink: 1.0,
                     min_width: 0,
+                    flex_basis: 0,
                 },
                 FlowItem {
                     fixed_width: None,
                     flex_grow: 1.0,
                     flex_shrink: 1.0,
                     min_width: 0,
+                    flex_basis: 0,
                 },
                 FlowItem {
                     fixed_width: Some(184),
                     flex_grow: 0.0,
                     flex_shrink: 0.0,
                     min_width: 0,
+                    flex_basis: 0,
                 },
             ],
             640,
@@ -4185,24 +6313,241 @@ mod tests {
                     flex_grow: 1.0,
                     flex_shrink: 1.0,
                     min_width: 0,
+                    flex_basis: 0,
                 },
                 FlowItem {
                     fixed_width: None,
                     flex_grow: 1.0,
                     flex_shrink: 1.0,
                     min_width: 0,
+                    flex_basis: 0,
                 },
                 FlowItem {
                     fixed_width: Some(184),
                     flex_grow: 0.0,
                     flex_shrink: 0.0,
                     min_width: 0,
+                    flex_basis: 0,
                 },
             ],
             640,
             32,
         );
         assert_eq!(widths, [392, 0, 184]);
+    }
+
+    #[test]
+    fn a_border_layer_paints_a_ring_and_leaves_the_center_empty() {
+        let mut layers = Vec::new();
+        push_border_layer(
+            &mut layers,
+            LayerRect {
+                left: 10,
+                top: 20,
+                width: 12,
+                height: 12,
+            },
+            "#FF00C4B2",
+            2,
+            0,
+        )
+        .expect("border draws");
+        assert_eq!(layers.len(), 1);
+        let layer = &layers[0];
+        assert_eq!(
+            (layer.left, layer.top, layer.width, layer.height),
+            (10, 20, 12, 12)
+        );
+        let alpha_at = |x: usize, y: usize| layer.image.pixels[(y * 12 + x) * 4 + 3];
+        // Edge pixels are painted, the interior is untouched.
+        assert_eq!(alpha_at(0, 0), 255);
+        assert_eq!(alpha_at(11, 11), 255);
+        assert_eq!(alpha_at(6, 6), 0);
+        assert_eq!(alpha_at(2, 5), 0);
+
+        // A control with no `border-color` must not add any layer at all.
+        let document = roxmltree::Document::parse(r#"<Page><Box width="10" height="10" /></Page>"#)
+            .expect("layout parses");
+        let box_node = document
+            .descendants()
+            .find(|node| node.has_tag_name("Box"))
+            .expect("box exists");
+        let files = HashMap::new();
+        let translations = HashMap::new();
+        let config = serde_json::json!({});
+        let interaction = InteractionState::default();
+        let context = LayoutContext {
+            dpi: DpiContext {
+                scale: 1.0,
+                use_2x: false,
+            },
+            files: &files,
+            config: &config,
+            locale: "zh-CN",
+            translations: &translations,
+            interaction: &interaction,
+            language_menu_open: false,
+        };
+        let mut layers = Vec::new();
+        push_node_border(
+            box_node,
+            LayerRect {
+                left: 0,
+                top: 0,
+                width: 10,
+                height: 10,
+            },
+            &context,
+            &mut layers,
+        )
+        .expect("no border is not an error");
+        assert!(layers.is_empty());
+    }
+
+    #[test]
+    fn action_attributes_map_to_window_actions() {
+        let document = roxmltree::Document::parse(
+            r#"<Page>
+                 <Button id="close" action="close_confirm" />
+                 <Button id="terms" action="open_url:terms_of_service" />
+                 <Button id="direct" action="open_url:https://example.test/help" />
+                 <Button id="missing" action="open_url:not_configured" />
+                 <Button id="browse" action="pick_directory" target="editDir" />
+               </Page>"#,
+        )
+        .expect("layout parses");
+        let config = serde_json::json!({
+            "links": { "terms_of_service": "https://example.test/terms" }
+        });
+        let files = HashMap::new();
+        let translations = HashMap::new();
+        let interaction = InteractionState::default();
+        let context = LayoutContext {
+            dpi: DpiContext {
+                scale: 1.0,
+                use_2x: false,
+            },
+            files: &files,
+            config: &config,
+            locale: "zh-CN",
+            translations: &translations,
+            interaction: &interaction,
+            language_menu_open: false,
+        };
+        let action_for = |id: &str| {
+            let node = document
+                .descendants()
+                .find(|node| node.attribute("id") == Some(id))
+                .expect("control exists");
+            let mut actions = Vec::new();
+            push_action(
+                node,
+                LayerRect {
+                    left: 0,
+                    top: 0,
+                    width: 10,
+                    height: 10,
+                },
+                &mut actions,
+                &context,
+            );
+            actions.into_iter().next().map(|region| region.action)
+        };
+        assert!(matches!(
+            action_for("close"),
+            Some(WindowAction::CloseConfirm)
+        ));
+        assert!(matches!(
+            action_for("terms"),
+            Some(WindowAction::OpenLink(ref target)) if target == "https://example.test/terms"
+        ));
+        assert!(matches!(
+            action_for("direct"),
+            Some(WindowAction::OpenLink(ref target)) if target == "https://example.test/help"
+        ));
+        // A key that is not configured stays inert instead of opening nothing.
+        assert!(action_for("missing").is_none());
+        assert!(matches!(
+            action_for("browse"),
+            Some(WindowAction::PickDirectory { ref id }) if id == "editDir"
+        ));
+    }
+
+    #[test]
+    fn agreement_links_resolve_through_the_project_links_table() {
+        let config: serde_json::Value = serde_json::from_str(
+            r#"{"links":{"terms_of_service":"https://example.test/terms","privacy_policy":"https://example.test/privacy"}}"#,
+        )
+        .expect("config parses");
+        let files = HashMap::new();
+        let translations = HashMap::new();
+        let interaction = InteractionState::default();
+        let context = LayoutContext {
+            dpi: DpiContext {
+                scale: 1.0,
+                use_2x: false,
+            },
+            files: &files,
+            config: &config,
+            locale: "zh-CN",
+            translations: &translations,
+            interaction: &interaction,
+            language_menu_open: false,
+        };
+        // The example locales name their links `agreement` and `policy`, so both
+        // spellings must reach the configured URLs.
+        assert_eq!(
+            resolve_link_target("agreement", &context).as_deref(),
+            Some("https://example.test/terms")
+        );
+        assert_eq!(
+            resolve_link_target("policy", &context).as_deref(),
+            Some("https://example.test/privacy")
+        );
+        assert_eq!(
+            resolve_link_target("terms_of_service", &context).as_deref(),
+            Some("https://example.test/terms")
+        );
+        // Absolute targets bypass the table, and unknown names stay inert.
+        assert_eq!(
+            resolve_link_target("https://example.test/help", &context).as_deref(),
+            Some("https://example.test/help")
+        );
+        assert!(resolve_link_target("missing", &context).is_none());
+    }
+
+    #[test]
+    fn pick_directory_falls_back_to_the_layout_text_input() {
+        let interaction = InteractionState::default();
+        let document = roxmltree::Document::parse(
+            r#"<Page>
+                 <TextInput id="readOnly" readonly="true" />
+                 <TextInput id="editDir" />
+                 <Button id="browse" action="pick_directory" />
+               </Page>"#,
+        )
+        .expect("layout parses");
+        let button = document
+            .descendants()
+            .find(|node| node.has_tag_name("Button"))
+            .expect("button exists");
+        assert_eq!(
+            pick_directory_target(button, &interaction).as_deref(),
+            Some("editDir")
+        );
+    }
+
+    #[test]
+    fn link_runs_carry_their_target_and_plain_runs_do_not() {
+        let runs = parse_text_runs(
+            "agree to [Terms](agreement) now",
+            COLORREF(0),
+            Some(COLORREF(1)),
+        );
+        assert_eq!(runs.len(), 3);
+        assert!(runs[0].link.is_none());
+        assert_eq!(runs[1].link.as_deref(), Some("agreement"));
+        assert!(runs[2].link.is_none());
     }
 
     #[test]
@@ -4326,38 +6671,93 @@ mod tests {
         )?;
 
         assert_eq!((ui.width, ui.height), (1440, 900));
-        assert_eq!(ui.layers.len(), 10);
-        let minimize = &ui.layers[2];
+        // In order: the page fill, the page background image, the page outline,
+        // then each control as the document lists it.
+        assert_eq!(ui.layers.len(), 13);
+        let page_fill = &ui.layers[0];
+        assert_eq!(
+            (
+                page_fill.left,
+                page_fill.top,
+                page_fill.width,
+                page_fill.height
+            ),
+            (0, 0, 1440, 900)
+        );
+        let select_border = &ui.layers[3];
+        assert_eq!(
+            (
+                select_border.left,
+                select_border.top,
+                select_border.width,
+                select_border.height
+            ),
+            (1056, 32, 192, 52)
+        );
+        let minimize = &ui.layers[5];
         assert_eq!(
             (minimize.left, minimize.top, minimize.width, minimize.height),
             (1294, 38, 40, 40)
         );
         assert_eq!(minimize.alpha, 160);
-        let close = &ui.layers[3];
+        let close = &ui.layers[6];
         assert_eq!(
             (close.left, close.top, close.width, close.height),
             (1362, 38, 40, 40)
         );
         assert_eq!(close.alpha, 160);
-        let checkbox = &ui.layers[7];
+        let checkbox = &ui.layers[10];
         assert_eq!(
             (checkbox.left, checkbox.top, checkbox.width, checkbox.height),
             (80, 796, 32, 32)
         );
-        let badge = &ui.layers[8];
+        let badge = &ui.layers[11];
         assert_eq!(
             (badge.left, badge.top, badge.width, badge.height),
             (1312, 788, 48, 48)
         );
-        let arrow = &ui.layers[9];
+        let arrow = &ui.layers[12];
         assert_eq!(
             (arrow.left, arrow.top, arrow.width, arrow.height),
             (1324, 800, 24, 24)
         );
         assert_eq!(ui.texts.len(), 5);
         assert!(ui.texts[3].wrap);
+        // The agreement control grows and measures to its own text, so it keeps
+        // the whole sentence on one line while the spacer absorbs what is left.
         assert!(ui.texts[3].width > 450);
         assert!(matches!(ui.texts[4].alignment, TextAlignment::Right));
+        // The agreement label renders two links, and each one registers a click
+        // region carrying the URL its `links` key resolves to.
+        let link_hits: Vec<&TextHit> = ui
+            .text_hits
+            .iter()
+            .filter(|hit| matches!(hit.action, WindowAction::OpenLink(_)))
+            .collect();
+        assert_eq!(link_hits.len(), 2);
+        let targets: Vec<&str> = link_hits
+            .iter()
+            .filter_map(|hit| match &hit.action {
+                WindowAction::OpenLink(target) => Some(target.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            targets,
+            [
+                "https://www.taptap.cn/doc/terms/",
+                "https://www.taptap.cn/doc/privacy-policy/"
+            ]
+        );
+        // A hit is the link run's own box, inside the label and smaller than it.
+        let label = &ui.texts[3];
+        for hit in &link_hits {
+            assert!(hit.left >= label.left && hit.right <= label.left + label.width);
+            assert!(hit.top >= label.top && hit.bottom <= label.top + label.height);
+            assert!(hit.right - hit.left < label.width);
+        }
+        // The two links do not overlap and read left to right.
+        assert!(link_hits[0].right <= link_hits[1].left);
         assert!(ui.overlay_layers.is_empty());
         assert!(ui.overlay_texts.is_empty());
         assert!(ui.actions.iter().any(|region| matches!(
@@ -4671,6 +7071,410 @@ mod tests {
             &interaction,
             mode,
         )
+    }
+
+    #[test]
+    fn editable_text_fields_are_recorded_and_readonly_ones_are_not() -> anyhow::Result<()> {
+        let files: HashMap<String, Vec<u8>> = HashMap::new();
+        let config = serde_json::json!({ "resources": { "locales_dir": "locales" } });
+        let document = roxmltree::Document::parse(
+            r##"<Page width="400" height="300">
+                  <TextInput id="path" value="AppsDir" />
+                  <TextInput id="hint" value="read only" readonly="true" />
+                </Page>"##,
+        )?;
+        let page = document
+            .descendants()
+            .find(|node| node.has_tag_name("Page"))
+            .context("page missing")?;
+        let context = LayoutContext {
+            dpi: DpiContext {
+                scale: 1.0,
+                use_2x: false,
+            },
+            files: &files,
+            config: &config,
+            locale: "zh-CN",
+            translations: &HashMap::new(),
+            interaction: &InteractionState::default(),
+            language_menu_open: false,
+        };
+        let mut output = LayoutOutput::default();
+        for node in page.children().filter(|node| node.is_element()) {
+            render_flow_item(
+                node,
+                LayerRect {
+                    left: 10,
+                    top: 10,
+                    width: 200,
+                    height: 20,
+                },
+                &context,
+                &mut output,
+            )?;
+        }
+
+        // Only the writable field takes typed text, so only it is recorded.
+        assert_eq!(output.text_inputs.len(), 1);
+        assert_eq!(output.text_inputs[0].id, "path");
+        assert_eq!(output.text_inputs[0].text, "AppsDir");
+        Ok(())
+    }
+
+    /// An interaction state with a populated, focused text field.
+    fn focused_field(id: &str, text: &str, caret: usize) -> InteractionState {
+        let mut values = HashMap::new();
+        values.insert(id.to_string(), text.to_string());
+        InteractionState {
+            focused_text_input: Some(id.to_string()),
+            text_input_values: values,
+            caret_index: caret,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_selection_is_ordered_from_whichever_end_the_caret_is_at() {
+        let mut interaction = InteractionState {
+            caret_index: 2,
+            selection_anchor: Some(6),
+            ..Default::default()
+        };
+        assert_eq!(interaction.selection_range(), Some((2, 6)));
+
+        // Dragging the other way selects the same range, not an inverted one.
+        interaction.caret_index = 6;
+        interaction.selection_anchor = Some(2);
+        assert_eq!(interaction.selection_range(), Some((2, 6)));
+
+        // A caret sitting on its anchor is not a selection at all.
+        interaction.selection_anchor = Some(6);
+        assert_eq!(interaction.selection_range(), None);
+
+        interaction.clear_selection();
+        assert_eq!(interaction.selection_range(), None);
+    }
+
+    #[test]
+    fn typing_coalesces_into_one_undo_step() {
+        let mut interaction = focused_field("path", "C:", 2);
+
+        // The first keystroke of a run is remembered.
+        interaction.remember_for_undo(true);
+        assert_eq!(interaction.undo_stack.len(), 1);
+        assert_eq!(interaction.undo_stack[0].text, "C:");
+        assert_eq!(interaction.undo_stack[0].caret, 2);
+
+        // Later keystrokes of the same run share that snapshot, so Ctrl+Z comes
+        // back to the value the run started from.
+        interaction
+            .text_input_values
+            .insert("path".to_string(), "C:\\Apps".to_string());
+        interaction.remember_for_undo(true);
+        assert_eq!(interaction.undo_stack.len(), 1);
+
+        // A different kind of edit starts its own step.
+        interaction.remember_for_undo(false);
+        assert_eq!(interaction.undo_stack.len(), 2);
+    }
+
+    #[test]
+    fn undo_remembers_the_caret_that_belongs_to_the_value() {
+        let mut interaction = focused_field("path", "C:\\Apps", 7);
+        interaction.remember_for_undo(false);
+        let snapshot = interaction.undo_stack.remove(0);
+
+        // The caret of a later value does not survive the restore, and a caret
+        // past the end of the restored text is pulled back into it.
+        interaction.caret_index = 99;
+        interaction.selection_anchor = Some(0);
+        restore_snapshot(&mut interaction, &snapshot);
+        assert_eq!(
+            interaction
+                .text_input_values
+                .get("path")
+                .map(String::as_str),
+            Some("C:\\Apps")
+        );
+        assert_eq!(interaction.caret_index, 7);
+        assert_eq!(interaction.selection_range(), None);
+
+        // A snapshot whose caret is past a shortened value comes back in range.
+        let shortened = TextSnapshot {
+            id: "path".to_string(),
+            text: "C:".to_string(),
+            caret: 7,
+        };
+        restore_snapshot(&mut interaction, &shortened);
+        assert_eq!(interaction.caret_index, 2);
+    }
+
+    #[test]
+    fn removing_a_selection_keeps_the_text_around_it() {
+        let mut interaction = focused_field("path", "C:\\Apps\\Game", 0);
+        // Nothing is selected yet, so there is nothing to remove.
+        assert!(!interaction.remove_selection());
+        assert_eq!(
+            interaction
+                .text_input_values
+                .get("path")
+                .map(String::as_str),
+            Some("C:\\Apps\\Game")
+        );
+
+        // Selecting the "Apps" in `C:\\Apps\\Game` leaves the separators.
+        interaction.selection_anchor = Some(3);
+        interaction.caret_index = 7;
+        assert!(interaction.remove_selection());
+        assert_eq!(
+            interaction
+                .text_input_values
+                .get("path")
+                .map(String::as_str),
+            Some("C:\\\\Game")
+        );
+        assert_eq!(interaction.caret_index, 3);
+        assert_eq!(interaction.selection_range(), None);
+    }
+
+    #[test]
+    fn a_selection_band_covers_the_characters_it_selects() {
+        let field = TextInputRegion {
+            id: "path".to_string(),
+            text: "C:\\Apps".to_string(),
+            color: COLORREF(0x00FF_FFFF),
+            font_size: 12,
+            bold: false,
+            left: 100,
+            top: 50,
+            width: 200,
+            height: 20,
+        };
+        // A collapsed range draws nothing, so a plain click leaves no band.
+        assert!(selection_layers(&field, 3, 3).is_empty());
+        assert!(selection_layers(&field, 5, 2).is_empty());
+
+        let bands = selection_layers(&field, 0, 7);
+        assert_eq!(bands.len(), 1);
+        let band = &bands[0];
+        assert_eq!(band.left, 100);
+        // The band stops inside the field even when the range runs past its end
+        // and spans fewer pixels than the text does.
+        assert!(band.left + band.width <= 300);
+        assert!(band.width > 0);
+        assert!(band.top > field.top);
+        assert!(band.top + band.height <= field.top + field.height);
+    }
+
+    #[test]
+    fn a_double_click_selects_the_word_under_the_pointer() {
+        let words = "C:\\Program Files\\TapTap";
+        // A word: letters and digits run together, so the directory name is one
+        // selection rather than one character.
+        assert_eq!(word_range(words, 3), (3, 10));
+        assert_eq!(word_range(words, 12), (11, 16));
+        // A path separator stands alone, which is what a user clicking it means.
+        assert_eq!(word_range(words, 2), (2, 3));
+        assert_eq!(word_range(words, 10), (10, 11));
+        // Whitespace groups with whitespace, so the gap between names is one run.
+        assert_eq!(word_range("a  b", 1), (1, 3));
+        // An underscore is part of the word it joins.
+        assert_eq!(word_range("install_dir", 4), (0, 11));
+        // Presses outside the text have nothing to select.
+        assert_eq!(word_range(words, words.chars().count()), (23, 23));
+        assert_eq!(word_range("", 0), (0, 0));
+    }
+
+    #[test]
+    fn word_keys_stop_at_the_boundaries_they_delete() {
+        let text = "C:\\Program Files\\TapTap";
+        // Ctrl+Backspace from the end takes the last name and stops at the
+        // separator, leaving the separator in place.
+        assert_eq!(word_start_before(text, 23), 17);
+        // A second one takes the separator on its own.
+        assert_eq!(word_start_before(text, 17), 16);
+        // Repeated presses walk the whole path down to its start and stop there.
+        assert_eq!(word_start_before(text, 16), 11);
+        assert_eq!(word_start_before("abc", 0), 0);
+        // Trailing whitespace is skipped before the word itself is taken.
+        assert_eq!(word_start_before("one two ", 8), 4);
+
+        // Ctrl+Delete removes the word after the caret, keeping the separator.
+        assert_eq!(word_end_after(text, 3), 10);
+        // A caret sitting in front of a name first takes the gap, then the name.
+        assert_eq!(word_end_after(text, 10), 16);
+        // Whitespace alone is consumed when the caret sits in front of it.
+        assert_eq!(word_end_after("one   two", 3), 9);
+        assert_eq!(word_end_after("abc", 3), 3);
+    }
+
+    #[test]
+    fn a_caret_sits_after_the_characters_before_it() {
+        let field = TextInputRegion {
+            id: "path".to_string(),
+            text: "C:\\Apps".to_string(),
+            color: COLORREF(0x00FF_FFFF),
+            font_size: 12,
+            bold: false,
+            left: 100,
+            top: 50,
+            width: 200,
+            height: 20,
+        };
+        let at_start = caret_layer(&field, 0);
+        let at_end = caret_layer(&field, 7);
+
+        assert_eq!(at_start.left, 100);
+        assert!(at_end.left > at_start.left);
+        // The caret stays inside the field even when the index runs past the
+        // end of the text.
+        assert!(caret_layer(&field, 99).left <= 300);
+        assert_eq!(at_start.height, 14);
+    }
+
+    #[test]
+    fn byte_index_walks_characters_not_bytes() {
+        // Editing a multi-byte field has to split on character boundaries or the
+        // inserted text would corrupt the surrounding characters.
+        let text = "C:\\安装";
+        assert_eq!(byte_index(text, 0), 0);
+        assert_eq!(byte_index(text, 3), 3);
+        assert_eq!(byte_index(text, 4), 3 + "安".len());
+        assert_eq!(byte_index(text, 99), text.len());
+    }
+
+    #[test]
+    fn a_wrapping_row_starts_a_new_line_when_the_next_item_does_not_fit() {
+        let item = |width: i32| FlowItem {
+            fixed_width: Some(width),
+            flex_grow: 0.0,
+            flex_shrink: 1.0,
+            min_width: 0,
+            flex_basis: 0,
+        };
+        // Three 40px cards and an 8px gap fit two per 100px line.
+        let items = [item(40), item(40), item(40), item(40)];
+        assert_eq!(wrap_lines(&items, 100, 8), vec![vec![0, 1], vec![2, 3]]);
+
+        // Everything fits, so nothing wraps.
+        assert_eq!(wrap_lines(&items, 400, 8), vec![vec![0, 1, 2, 3]]);
+
+        // An item wider than the line gets a line of its own instead of being
+        // dropped, so an oversized control is still drawn.
+        let wide = [item(400), item(10)];
+        assert_eq!(wrap_lines(&wide, 100, 8), vec![vec![0], vec![1]]);
+
+        // An empty container has no lines at all.
+        assert!(wrap_lines(&[], 100, 8).is_empty());
+    }
+
+    #[test]
+    fn flex_wrap_is_opt_in_per_container() {
+        let document = roxmltree::Document::parse(
+            r##"<Page>
+                  <HBox id="wrapped" flex-wrap="true" />
+                  <HBox id="plain" />
+                  <HBox id="spelled" flex-wrap="wrap" />
+                  <HBox id="off" flex-wrap="false" />
+                </Page>"##,
+        )
+        .unwrap();
+        let named = |id: &str| {
+            document
+                .descendants()
+                .find(|node| node.attribute("id") == Some(id))
+                .expect("node missing")
+        };
+        assert!(wraps(named("wrapped")));
+        assert!(wraps(named("spelled")));
+        assert!(!wraps(named("plain")));
+        assert!(!wraps(named("off")));
+    }
+
+    #[test]
+    fn flow_items_honour_align_self_basis_and_anchored_edges() -> anyhow::Result<()> {
+        let files: HashMap<String, Vec<u8>> = HashMap::new();
+        let config = serde_json::json!({ "resources": { "locales_dir": "locales" } });
+        let document = roxmltree::Document::parse(
+            r##"<Page width="400" height="300">
+                  <HBox position="absolute" left="0" top="0" width="400" height="100"
+                        align-items="center" item-spacing="10">
+                    <Button id="tall" text="a" action="minimize" width="80" height="60" />
+                    <Button id="short" text="b" action="close" width="80" height="20"
+                            align-self="start" />
+                    <Spacer flex-grow="1" />
+                  </HBox>
+                  <Button id="pinned" text="c" action="finish" right="10" bottom="20"
+                          width="60" height="30" />
+                </Page>"##,
+        )?;
+        let page = document
+            .descendants()
+            .find(|node| node.has_tag_name("Page"))
+            .context("page missing")?;
+        let context = LayoutContext {
+            dpi: DpiContext {
+                scale: 1.0,
+                use_2x: false,
+            },
+            files: &files,
+            config: &config,
+            locale: "zh-CN",
+            translations: &HashMap::new(),
+            interaction: &InteractionState::default(),
+            language_menu_open: false,
+        };
+        let mut output = LayoutOutput::default();
+        for node in page.children().filter(|node| node.is_element()) {
+            let rect = LayerRect {
+                left: 0,
+                top: 0,
+                width: 400,
+                height: 100,
+            };
+            match flow_axis(node) {
+                Some(axis) => render_flow(node, rect, axis, &context, &mut output)?,
+                None => {
+                    let rect = LayerRect {
+                        height: 300,
+                        ..rect
+                    };
+                    // `render_flow_item` applies the anchoring rules itself.
+                    let left = super::anchored_left(node, rect.left, 60, rect.width, &context);
+                    let top = super::anchored_top(node, rect.top, 30, rect.height, &context);
+                    let placed = LayerRect {
+                        left,
+                        top,
+                        width: 60,
+                        height: 30,
+                    };
+                    render_flow_item(node, placed, &context, &mut output)?;
+                }
+            }
+        }
+
+        // `align-items="center"` centres the 60px button in the 100px row,
+        // while `align-self="start"` pins the second one to the top edge.
+        let centred = output
+            .actions
+            .iter()
+            .find(|region| region.bottom - region.top == 60)
+            .context("centred button missing")?;
+        assert_eq!(centred.top, 20);
+        let to_start = output
+            .actions
+            .iter()
+            .find(|region| region.bottom - region.top == 20)
+            .context("start-aligned button missing")?;
+        assert_eq!(to_start.top, 0);
+        // `right` and `bottom` measure from the far edges of the page.
+        let pinned = output
+            .actions
+            .iter()
+            .find(|region| region.right - region.left == 60)
+            .context("pinned button missing")?;
+        assert_eq!((pinned.left, pinned.top), (330, 250));
+        Ok(())
     }
 
     #[test]

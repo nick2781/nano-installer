@@ -95,11 +95,14 @@
                    width="410"
                    height="18"
                    padding="0 0 0 0"
-                   readonly="true"
                    value-source="config:install.default_path"
                    font-size="14"
-                   color="#CCFFFFFF" />
+                   color="#CCFFFFFF"
+                   cursor="text" />
         <Image id="editDirIcon"
+               action="pick_directory"
+               target="editDir"
+               cursor="hand"
                position="absolute"
                left="436"
                top="12"
@@ -151,7 +154,7 @@
   <HBox position="absolute" left="40" top="378" width="640" height="56"
         align-items="center" item-spacing="32">
     <Checkbox id="chkAgree"
-              flex-grow="1" flex-basis="0" min-width="0" height="36"
+              flex-grow="1" min-width="0" height="36"
               font-size="12"
               text="@agree_full" color="#CCFFFFFF" checked="false"
               linkcolor="#00C4B2"
