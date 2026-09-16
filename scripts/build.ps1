@@ -88,7 +88,9 @@ try {
         if (-not (Test-Path -LiteralPath $configPath)) {
             throw "Installer project not found: $projectPath"
         }
-        $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+        # A project file is UTF-8 and may hold non-ASCII product names; without
+        # the named encoding Windows PowerShell reads it with the ANSI code page.
+        $config = Get-Content -LiteralPath $configPath -Raw -Encoding UTF8 | ConvertFrom-Json
         $outputPath = if ($Output) {
             if ([System.IO.Path]::IsPathRooted($Output)) {
                 $Output

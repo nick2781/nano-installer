@@ -11,7 +11,10 @@ Set-StrictMode -Version Latest
 $version = $Tag -replace '^v', ''
 $heading = "## [$version]"
 
-$lines = Get-Content -LiteralPath $ChangelogPath
+# Windows PowerShell reads a file with no byte-order mark using the ANSI code
+# page, which turns the Chinese changelog into mojibake on an English runner, so
+# the encoding is named explicitly instead of left to the host.
+$lines = Get-Content -LiteralPath $ChangelogPath -Encoding UTF8
 $start = -1
 for ($i = 0; $i -lt $lines.Count; $i++) {
     if ($lines[$i].Trim() -eq $heading) {
