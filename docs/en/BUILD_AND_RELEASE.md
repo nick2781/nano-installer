@@ -53,6 +53,12 @@ Within a section, everything after `<!-- release-notes:end -->` is technical det
 the repository changelog. The published notes carry the product-facing summary above the marker.
 Pass `-Full` to publish the whole section.
 
+`scripts/changelog_notes.ps1` is saved with a UTF-8 BOM because it contains a Chinese footer and
+Windows PowerShell decodes a BOM-less script with the ANSI code page. Without the BOM the footer
+looks correct on a UTF-8 development machine and reaches the published notes as mojibake.
+`scripts/audit_script_encoding.ps1` runs at the start of every build and fails if a script carrying
+non-ASCII text has no BOM.
+
 ## Builder arguments
 
 ```text

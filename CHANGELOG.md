@@ -37,6 +37,10 @@
 
 ### 技术细节
 
+- 修复 `scripts/changelog_notes.ps1` 的发布正文尾注乱码：该文件含一行中文，而 Windows
+  PowerShell 会用 ANSI 代码页解码没有 BOM 的脚本，因此开发机上看不出问题、英文 runner 上却发出
+  乱码。脚本改为保存为带 UTF-8 BOM，并新增 `scripts/audit_script_encoding.ps1` 在每次构建开始时
+  拦截「含非 ASCII 却无 BOM」的脚本：`scripts/build.ps1` 开头与 CI 都会执行它。
 - 新增 `scripts/audit_application_manifest.ps1`：从生成的安装包与内嵌卸载程序中读回 `RT_MANIFEST`
   资源，校验 `requestedExecutionLevel` 与 `dpiAware` 是否和项目配置推导出的结果一致，由
   `scripts/build.ps1` 与 `scripts/audit_embedded_uninstaller.ps1` 调用；`install.require_admin`
@@ -75,6 +79,8 @@
   返回 740（`ERROR_ELEVATION_REQUIRED`）；`asInvoker` 则正常启动。
 - `scripts/build.ps1 -Project examples\TapTap` 全量构建、ZIP/7z backend smoke test、Win7 PE
   导入审计（含新增的 `imm32.dll`，Windows 7 自带），以及新增的清单审计。
+- 在英文 runner 的等价解码路径（把同一份脚本按 cp1252 解码）下复现并验证修复：加 BOM 前尾注
+  变成乱码，加 BOM 后完整可读；`v2026.9.18` 的 release 正文尾注已重新生成并确认正常。
 - 用 Python 直读 PE 资源复核：`TapTap_Setup.exe` 与内嵌 `uninst.exe` 均声明
   `requireAdministrator` 与 `<dpiAware>true`，原始 stub 无清单；把期望级别故意写成 `asInvoker`
   时审计如期失败。

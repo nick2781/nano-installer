@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory = $true)][string]$Tag,
     [Parameter(Mandatory = $true)][string]$OutputPath,
     [string]$ChangelogPath = "CHANGELOG.md",
@@ -72,6 +72,11 @@ if (-not [string]::IsNullOrEmpty($repo)) {
     })
 }
 
+# This file is saved with a UTF-8 BOM on purpose. Windows PowerShell decodes a
+# BOM-less script with the ANSI code page, and the Chinese footer below then
+# turns into mojibake on an English release runner while still looking correct
+# on a UTF-8 development machine. scripts/audit_script_encoding.ps1 fails the
+# build if the BOM goes missing. Do not strip it.
 $changelogLink = if ([string]::IsNullOrEmpty($repo)) { "CHANGELOG.md" } else { "https://github.com/$repo/blob/main/CHANGELOG.md" }
 $body += "`n`n完整更新日志见 [CHANGELOG.md]($changelogLink)。`n"
 

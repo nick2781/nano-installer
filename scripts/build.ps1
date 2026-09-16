@@ -29,6 +29,11 @@ function Invoke-Checked {
 
 Push-Location $repoRoot
 try {
+    # A BOM-less script holding non-ASCII text is decoded with the ANSI code page
+    # on Windows PowerShell, which silently corrupted the release-note footer once
+    # already. Check it before anything expensive runs.
+    & (Join-Path $PSScriptRoot "audit_script_encoding.ps1")
+
     Invoke-Checked {
         & rustup run $Toolchain cargo build --locked --release `
             -Z build-std=std,panic_abort `

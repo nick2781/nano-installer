@@ -42,6 +42,11 @@ payload、布局与 bundle；脚本还会取出项目化的 `uninst.exe`，单�
 Release notes 来自 `CHANGELOG.md`：`scripts/changelog_notes.ps1` 抽取与被推送 tag 匹配的段落。
 打 tag 前先写好该版本的 `## [YYYY.M.D]` 段落；找不到或段落为空会让发布步骤失败，而不是发出空正文。
 
+`scripts/changelog_notes.ps1` 带 UTF-8 BOM：它含有一行中文尾注，而 Windows PowerShell 会用 ANSI
+代码页解码没有 BOM 的脚本。少了 BOM，这一行在 UTF-8 开发机上看不出问题，却会以乱码进入已发布的
+release 正文。`scripts/audit_script_encoding.ps1` 会在每次构建开始时运行，发现含非 ASCII 文本却
+没有 BOM 的脚本就让构建失败。
+
 段落中 `<!-- release-notes:end -->` 之后是技术细节，只留在仓库日志里；发布出去的正文是标记之前的
 产品向说明。需要发布完整段落时加 `-Full`。
 

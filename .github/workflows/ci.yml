@@ -36,6 +36,13 @@ jobs:
       - name: Restore Cargo cache
         uses: Swatinem/rust-cache@v2
 
+      # Runs first and on its own so a script that would be decoded with the
+      # ANSI code page fails clearly instead of surfacing as corrupted text in
+      # published release notes.
+      - name: Check script encodings
+        shell: powershell
+        run: .\scripts\audit_script_encoding.ps1
+
       - name: Check formatting
         run: cargo fmt --all -- --check
 
