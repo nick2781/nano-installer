@@ -27,7 +27,12 @@ target/release/
     └── uninst-stub-native.exe
 ```
 
-The runtimes ship without product resources; icons and version info are injected per project.
+The runtimes ship without product resources; icons, version info, and the application manifest are
+injected per project.
+
+Building a setup also audits it: `scripts/audit_application_manifest.ps1` reads the manifest
+resource back and checks the execution level and DPI behaviour against the project configuration, so
+a setup that silently lost its elevation requirement fails the build instead of shipping.
 
 The release workflow builds the builder, the GUI, and the runtimes, then uploads the five
 executables as separate release assets. It does not produce an archive and does not build or

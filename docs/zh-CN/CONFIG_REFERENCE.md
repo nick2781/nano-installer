@@ -35,6 +35,7 @@
 | `install.default_path` | string | 首屏显示的初始安装目录 |
 | `install.required_space_mb` | integer | 所需空间，单位 MiB，通过 XML 的 `value-source` 显示 |
 | `install.exe_name` | string | payload 中必须存在的应用 EXE；缺失时直接中止，不部署任何文件 |
+| `install.require_admin` | bool | 安装包启动前向 Windows 申请管理员权限，默认 `false` |
 | `install.kill_process_on_install` | bool | 安装前关闭正在运行的产品；无法关闭则安装失败 |
 | `install.kill_process_on_uninstall` | bool | 卸载前关闭正在运行的产品 |
 | `install.detect_running_process` | bool | 与上面两个开关取或；任一为 `true` 都会关闭进程 |
@@ -66,6 +67,7 @@
 | `resources.locales_dir` | string | 语言 JSON 目录，默认 `locales` |
 | `resources.payload_file` | string | 必需；ZIP 或 7z payload 路径 |
 | `localization.default_locale` | string | 启动时使用的语言，默认 `zh-CN` |
+| `localization.supported_locales` | array | 计划提供的语言列表；构建时会对没有对应 JSON 文件的条目告警 |
 | `wizard.pages[].layout` | string | 安装页列表：首屏欢迎页、第二页进度、最后一页完成 |
 | `wizard.update_pages[].layout` | string | 预留的升级页列表；当前安装流程使用 `wizard.pages` |
 | `wizard.uninstall_pages[].layout` | string | 卸载页列表，按同样的顺序切换 |
@@ -76,6 +78,24 @@
 | --- | --- | --- |
 | `ui.dpi_aware` | bool | 是否启用 DPI 感知与布局缩放，默认 `true` |
 | `ui.dpi_threshold` | integer | 达到该 DPI 时优先使用 `@2x` 图片，默认 `144` |
+
+`ui.dpi_aware` 同时会写进安装包的应用程序清单，让系统知道窗口自行缩放，而不是把窗口当成一张
+位图去拉伸。
+
+## 管理员权限
+
+`install.require_admin` 决定安装包的 `requestedExecutionLevel`：
+
+```json
+"install": { "require_admin": true }
+```
+
+- `true` 写入 `requireAdministrator`：安装包启动前 Windows 会弹出 UAC 确认框，窗口以提权身份
+  运行。安装目录位于 `Program Files` 时选它。
+- `false`（默认）写入 `asInvoker`：不弹框，使用用户当前的权限。按用户安装到 `%LOCALAPPDATA%`
+  的产品选它。
+
+内嵌的卸载程序由同一份配置生成，因此申请同样的权限级别，否则卸载项无法撤销一次提权安装。
 
 ## 卸载时的用户数据
 
@@ -121,6 +141,7 @@ payload 就是你的应用文件，预先压成 ZIP 或 7z。格式按文件头�
     "payload_file": "payload/app.7z"
   },
   "localization": { "default_locale": "zh-CN" },
+  "install": { "default_path": "C:\\Program Files\\MyApp", "require_admin": true },
   "ui": { "dpi_aware": true, "dpi_threshold": 144 },
   "wizard": {
     "pages": [
@@ -135,9 +156,9 @@ payload 就是你的应用文件，预先压成 ZIP 或 7z。格式按文件头�
 以下设置会原样打包进安装包，但运行时不会读取。不要因为字段存在就认为功能已完成：
 
 - 上表未列出的 `install.*` 与 `registry.*` 字段
-- `validation.*` 与 `advanced.*`；`links.*` 会被链接点击和 `open_url:` 动作读取
-- `localization.supported_locales` 与 `localization.show_language_selector`；语言列表与可见性由
-  XML 中的 `Select` 控件决定
+- `validation.*` 与 `advanced.*`；`links.*` 会被链接点击和 `open_url:` 动作读取，
+  `localization.supported_locales` 会在构建时校验
+- `localization.show_language_selector`；语言列表与可见性由 XML 中的 `Select` 控件决定
 - `advanced.update_mode_support`；升级是按目标目录中的既有安装自动识别的，不读该开关
 
 完整情况见[当前生产状态](PRODUCTION_STATUS.md)。

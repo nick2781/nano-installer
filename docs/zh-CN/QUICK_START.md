@@ -36,8 +36,8 @@ rustup toolchain install nightly-2025-11-08 --component rust-src,rustfmt,clippy
 
 ## 4. 在虚拟机中试用
 
-把安装包复制到一台干净的虚拟机。示例默认安装到 `Program Files` 下，需要以管理员身份启动；
-当前版本不会自动申请提权。
+把安装包复制到一台干净的虚拟机。示例打开了 `install.require_admin`，默认又装到 `Program Files`
+下，因此双击后 Windows 会先弹出提权确认框。确认后安装包即以所需权限运行。
 
 现在可以验证：
 
@@ -51,7 +51,8 @@ rustup toolchain install nightly-2025-11-08 --component rust-src,rustfmt,clippy
   配置好的页面。
 - 点击关闭按钮：窗口关闭前会弹出 `close_confirm_message` 中的本地化确认问题。
 - 在路径框里按住左键拖动或双击可以选中文字，`Ctrl+C`/`Ctrl+V` 复制粘贴，`Ctrl+Z` 撤销；点旁边
-  的文件夹图标可以选目录，选中的路径会写回输入框。
+  的文件夹图标可以选目录，选中的路径会写回输入框；输入法可以正常组合中文并显示候选。
+- 把安装路径改到 `Program Files` 下：能写进去，靠的就是启动时确认的那次提权。
 - 卸载完成后安装目录会立即消失；如果你往目录里放过自己的文件，目录会保留。
 
 想测试其他安装目录，可以直接点路径输入框旁的文件夹图标选择目录，也可以修改

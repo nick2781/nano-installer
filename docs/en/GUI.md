@@ -32,11 +32,16 @@ summary on the left, the build log or the parameter page in the main area, and a
 action with an always-visible status bar at the bottom.
 
 The left sidebar groups configuration checks, version and setup language, packaging inputs
-(payload, matching runtime, installer and uninstaller icons, uninstaller name), and the default
-install directory. Long paths show their drive and last segment, with the full path on hover.
-"Last check passed" carries the time of that check and only reflects the project state at that
-moment; refresh after changing files on disk. DPI asset warnings only compare 1x/2x PNG pairs and
-are not a full production check.
+(payload, matching runtime, installer and uninstaller icons, uninstaller name), and installation
+settings (whether the setup asks for administrator rights, and the default install directory). Long
+paths show their drive and last segment, with the full path on hover. "Last check passed" carries
+the time of that check and only reflects the project state at that moment; refresh after changing
+files on disk.
+
+**Build warnings** lists what the last inspection found: a 1x/2x PNG that has no counterpart, a
+locale that is missing page text the default locale defines, and a language listed in
+`supported_locales` with no file behind it. It is a quick sanity check between you and your assets,
+not a substitute for the release checklist.
 
 ## Reading the log
 

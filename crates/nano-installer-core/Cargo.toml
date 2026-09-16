@@ -38,6 +38,7 @@ features = [
     "Win32_Storage_FileSystem",
     "Win32_System_WindowsProgramming",
     "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Input_Ime",
     "Win32_UI_WindowsAndMessaging",
 ]
 

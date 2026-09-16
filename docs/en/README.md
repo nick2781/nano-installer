@@ -20,6 +20,7 @@ your users to install first.
 | Every language you need | Eleven UI languages included; add your own in plain JSON |
 | Upgrades that behave | Re-running the setup upgrades in place, and rolls back if anything fails |
 | Clean removal | Uninstalling takes back exactly what it put down, and keeps user data by default |
+| Rights that fit | Ask for administrator rights only when your product needs them, straight from the config |
 | Fits your process | Click through the visual builder, or drive the same engine from a command line in CI |
 
 ## Start

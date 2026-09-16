@@ -107,6 +107,13 @@ try {
             -Setup $outputPath `
             -ExpectedName $(if ($config.output.uninstaller_name) { $config.output.uninstaller_name } else { "uninst.exe" }) `
             -ExpectedVersion $(if ($config.project.file_version) { $config.project.file_version } else { $config.project.version })
+        # The builder injects the manifest the project asked for, so the setup has
+        # to declare the level and DPI behaviour this configuration resolves to.
+        # Raw stubs carry no manifest on purpose; the builder adds it per project.
+        & (Join-Path $PSScriptRoot "audit_application_manifest.ps1") `
+            -File $outputPath `
+            -ExpectLevel $(if ($config.install.require_admin) { "requireAdministrator" } else { "asInvoker" }) `
+            -ExpectDpiAware $(if ($config.ui.dpi_aware -eq $false) { "false" } else { "true" })
         $auditFiles += $outputPath
         Write-Output "Native Win7+ setup: $outputPath"
     }

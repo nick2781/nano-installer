@@ -22,8 +22,8 @@ MyApp/
 构建器与运行时是两个独立程序。生成的安装包只包含运行时和你的项目数据，永远不含构建器。
 
 构建器读取 payload 的头几个字节：`7z` 签名选 LZMA 运行时，`PK` 签名选 ZIP 运行时。随后它复制
-对应运行时，写入你配置的图标与版本资源，追加一个包含 layouts、assets、locales、scripts 与
-payload 的 bundle，最后追加自包含卸载程序。payload 保持你提供的压缩格式，打包过程不会再加一层
+对应运行时，写入你配置的图标、版本信息与应用程序清单，追加一个包含 layouts、assets、locales、
+scripts 与 payload 的 bundle，最后追加自包含卸载程序。payload 保持你提供的压缩格式，打包过程不会再加一层
 压缩。
 
 ## 生成的安装包内部
@@ -58,6 +58,10 @@ payload 的 bundle，最后追加自包含卸载程序。payload 保持你提供
 `nano-installer-cli` 与 `nano-installer-gui` 都是同一套 core 检查与构建 API 的薄前端。参数解析和
 eframe 界面代码留在 core 之外，因此 GUI 的 egui、eframe、winit 依赖不会进入任何运行时或安装包。
 
+清单由 `install.require_admin` 与 `ui.dpi_aware` 生成，让安装包向 Windows 申请所需权限，并告诉
+系统窗口自行缩放。Windows 在进程启动前就会读取清单，这也是这两项必须写成资源而不是运行时选项的
+原因。
+
 ## 后续阶段
 
-真实 Windows 7 SP1 机器上的生产验证，以及代码签名与安装包提权。
+真实 Windows 7 SP1 机器上的生产验证，以及代码签名。

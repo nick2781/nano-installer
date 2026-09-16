@@ -11,6 +11,7 @@ ANSI 变体需要同步维护。
 - Win32 Unicode API：窗口、控件与文字
 - WIC 解码 PNG，GDI 做透明混合绘制
 - Windows 7 SP1 就已存在的注册表、shell 与进程 API
+- IMM32：负责文本框的输入法组合窗与候选窗，Windows 7 自带
 
 正式构建使用固定的 `nightly-2025-11-08` 工具链、`rust-src`、
 `-Z build-std=std,panic_abort`、静态链接 CRT 与 `panic=abort`。

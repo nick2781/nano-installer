@@ -75,6 +75,9 @@ try {
         throw "Embedded uninstaller VERSIONINFO does not match the project"
     }
     & (Join-Path $PSScriptRoot "audit_win7_imports.ps1") -File $uninstallerPath
+    # The uninstaller must carry the same elevation the setup asked for, or the
+    # uninstall entry could not undo an elevated installation.
+    & (Join-Path $PSScriptRoot "audit_application_manifest.ps1") -File $uninstallerPath
     Write-Output "Embedded uninstaller verified: $embeddedName ($($metadata.FileVersion))"
 } finally {
     if (Test-Path -LiteralPath $uninstallerPath) {

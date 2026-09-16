@@ -179,7 +179,7 @@ fn tr(language: UiLanguage, key: &str) -> &str {
             "validation" => "Validation",
             "configuration_valid" => "Last inspection passed",
             "last_inspected" => "Inspected at",
-            "asset_warnings" => "DPI asset warnings",
+            "build_warnings" => "Build warnings",
             "versions_locale" => "Versions and locale",
             "setup_locale" => "Setup locale",
             "package_inputs" => "Package inputs",
@@ -189,6 +189,9 @@ fn tr(language: UiLanguage, key: &str) -> &str {
             "setup_icon" => "Setup icon",
             "uninstaller_file" => "Uninstaller",
             "uninstaller_icon" => "Uninstall icon",
+            "requires_admin" => "Administrator rights",
+            "requires_admin_yes" => "Requested on start",
+            "requires_admin_no" => "Not requested",
             "install_defaults" => "Installation",
             "default_install_path" => "Default folder",
             _ => key,
@@ -280,7 +283,7 @@ fn tr(language: UiLanguage, key: &str) -> &str {
             "validation" => "配置检查",
             "configuration_valid" => "上次校验通过",
             "last_inspected" => "校验时间",
-            "asset_warnings" => "DPI 素材警告",
+            "build_warnings" => "构建警告",
             "versions_locale" => "版本与语言",
             "setup_locale" => "安装包语言",
             "package_inputs" => "打包资源",
@@ -290,6 +293,9 @@ fn tr(language: UiLanguage, key: &str) -> &str {
             "setup_icon" => "安装图标",
             "uninstaller_file" => "卸载程序",
             "uninstaller_icon" => "卸载图标",
+            "requires_admin" => "管理员权限",
+            "requires_admin_yes" => "启动时申请",
+            "requires_admin_no" => "不申请",
             "install_defaults" => "安装配置",
             "default_install_path" => "默认目录",
             _ => key,
@@ -866,7 +872,7 @@ impl BuilderApp {
             }
             sidebar_row(
                 ui,
-                self.text("asset_warnings"),
+                self.text("build_warnings"),
                 &summary.warnings.len().to_string(),
                 None,
             );
@@ -938,6 +944,16 @@ impl BuilderApp {
             );
 
             sidebar_section(ui, self.text("install_defaults"));
+            sidebar_row(
+                ui,
+                self.text("requires_admin"),
+                if summary.require_admin {
+                    self.text("requires_admin_yes")
+                } else {
+                    self.text("requires_admin_no")
+                },
+                None,
+            );
             if let Some(path) = &summary.default_install_path {
                 sidebar_row(
                     ui,

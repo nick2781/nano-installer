@@ -37,6 +37,7 @@ Paths are relative to the project folder.
 | `install.default_path` | string | Initial install directory shown on the first page |
 | `install.required_space_mb` | integer | Required space in MiB, shown through an XML `value-source` binding |
 | `install.exe_name` | string | The application executable the payload must contain; installation stops before deploying anything if it is missing |
+| `install.require_admin` | bool | Ask Windows for administrator rights before the setup starts, defaults to `false` |
 | `install.kill_process_on_install` | bool | Close running copies of the product before installing; failure aborts the install |
 | `install.kill_process_on_uninstall` | bool | Close running copies of the product before uninstalling |
 | `install.detect_running_process` | bool | Combined with the two switches above; any of them closes the process |
@@ -69,6 +70,7 @@ restores the machine to its previous state.
 | `resources.locales_dir` | string | Language JSON directory, defaults to `locales` |
 | `resources.payload_file` | string | Required; path to the ZIP or 7z payload |
 | `localization.default_locale` | string | Language used at startup, defaults to `zh-CN` |
+| `localization.supported_locales` | array | Languages you intend to ship; the build reports any entry without a matching JSON file |
 | `wizard.pages[].layout` | string | Install pages: first is the welcome page, second shows progress, last is the finish page |
 | `wizard.update_pages[].layout` | string | Reserved update page list; the install flow uses `wizard.pages` |
 | `wizard.uninstall_pages[].layout` | string | Uninstall pages, switched in the same order |
@@ -79,6 +81,25 @@ restores the machine to its previous state.
 | --- | --- | --- |
 | `ui.dpi_aware` | bool | Enable DPI awareness and layout scaling, defaults to `true` |
 | `ui.dpi_threshold` | integer | DPI at which `@2x` images are preferred, defaults to `144` |
+
+`ui.dpi_aware` is also written into the setup's application manifest, so Windows knows the window
+scales itself rather than rescaling a blurry bitmap of it.
+
+## Administrator rights
+
+`install.require_admin` decides the setup's `requestedExecutionLevel`:
+
+```json
+"install": { "require_admin": true }
+```
+
+- `true` writes `requireAdministrator`, so Windows shows the UAC consent prompt before the setup
+  starts and the window runs elevated. Choose this when the install path is under `Program Files`.
+- `false` (the default) writes `asInvoker`: no prompt, and the same rights the user already has.
+  Choose this for a per-user install under `%LOCALAPPDATA%`.
+
+The embedded uninstaller is generated from the same configuration, so it asks for the same level —
+otherwise the uninstall entry could not undo an elevated install.
 
 ## User data on uninstall
 
@@ -126,6 +147,7 @@ Add `scripts/install.rhai` or `scripts/uninstall.rhai` to replace the built-in s
     "payload_file": "payload/app.7z"
   },
   "localization": { "default_locale": "zh-CN" },
+  "install": { "default_path": "C:\\Program Files\\MyApp", "require_admin": true },
   "ui": { "dpi_aware": true, "dpi_threshold": 144 },
   "wizard": {
     "pages": [
@@ -141,9 +163,10 @@ These settings are packaged into the setup but are not read at runtime. Do not t
 presence as a working feature:
 
 - `install.*` and `registry.*` fields other than the ones listed above
-- `validation.*` and `advanced.*`; `links.*` is read by link clicks and `open_url:` actions
-- `localization.supported_locales` and `localization.show_language_selector`; the language list
-  and its visibility come from the XML `Select` control
+- `validation.*` and `advanced.*`; `links.*` is read by link clicks and `open_url:` actions, and
+  `localization.supported_locales` is checked during the build
+- `localization.show_language_selector`; the language list and its visibility come from the XML
+  `Select` control
 - `advanced.update_mode_support`; upgrades are detected from an existing installation in the
   destination, not from this switch
 

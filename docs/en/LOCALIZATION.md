@@ -44,8 +44,19 @@ $env:NANO_INSTALLER_TEST_LOCALE = "en-US"
 .\examples\TapTap\dist\TapTap_Setup.exe
 ```
 
+## What the build checks for you
+
+Every build compares the locale files against the default locale and against the keys your pages
+actually ask for, and reports the gaps in the builder's warning list:
+
+- A locale that is missing text the default locale defines, with the key names listed.
+- A language named in `localization.supported_locales` that has no matching JSON file.
+
+Only keys the default locale answers are reported, so a page may deliberately ask for a key that a
+particular translation leaves out. At run time a missing key still falls back to the default
+locale, so a partly translated installer runs rather than showing an empty label.
+
 ## What is not implemented
 
-- Automatic checks that every locale defines the same key set.
-- Warnings for missing keys; a missing key falls back to the key text.
 - A separate language pack format. Locales are plain JSON files inside the project.
+- Comparing two translations against each other; only the default locale is the reference.

@@ -184,6 +184,8 @@ usually offers:
   typing collapsed into a single undo step.
 - Ctrl+Backspace and Ctrl+Delete remove a word at a time, and Ctrl+Left and Ctrl+Right step over
   one.
+- An IME composition window opens at the caret and the candidate list is placed just below it, so
+  East Asian input is composed inside the field rather than in a floating box.
 - Typing or pasting while text is selected replaces that selection.
 
 Words are grouped the way Windows groups them: letters, digits, and underscore form a word, runs of
@@ -271,7 +273,7 @@ bindings that read the same control pick up the new path immediately.
 ## Not implemented yet
 
 - Implicit minimum sizes beyond `min-width`/`min-height`, and `min-height` on a flow container.
-- A text field has no IME composition window, so East Asian input relies on the system IME's own
-  candidate display.
+- The composition window is repositioned when focus or the caret moves, but not while the user is
+  scrolling the page under an active composition.
 - An item's cross-axis size is still the container's extent unless the item declares one; there is
   no `stretch`/`baseline` distinction beyond that.

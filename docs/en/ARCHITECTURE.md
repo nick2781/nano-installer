@@ -23,9 +23,9 @@ The builder and the runtime are separate programs. A generated setup contains a 
 your project data, never the builder.
 
 The builder reads the first bytes of your payload: a `7z` signature selects the LZMA runtime, a
-`PK` signature selects the ZIP runtime. It then copies that stub, writes your icon and version
-resources into it, appends a bundle holding your layouts, assets, locales, scripts, and payload,
-and appends a self-contained uninstaller. The payload keeps whatever compression you gave it; the
+`PK` signature selects the ZIP runtime. It then copies that stub, writes your icon, version, and
+application manifest resources into it, appends a bundle holding your layouts, assets, locales,
+scripts, and payload, and appends a self-contained uninstaller. The payload keeps whatever compression you gave it; the
 bundler adds no second compression layer.
 
 ## Inside the generated setup
@@ -69,6 +69,10 @@ built-in flow, and an operation ceiling keeps a runaway script from hanging an i
 build APIs. Argument parsing and the eframe UI stay outside core, so the GUI's egui, eframe, and
 winit dependencies never reach a stub or a setup.
 
+The manifest is generated from `install.require_admin` and `ui.dpi_aware`, so a setup asks Windows
+for the rights it needs and tells the shell it scales its own pixels. Windows reads the manifest
+before the process starts, which is why the settings are resources rather than runtime options.
+
 ## Next stages
 
-Production validation on a real Windows 7 SP1 machine, plus code signing and setup elevation.
+Production validation on a real Windows 7 SP1 machine, plus code signing.

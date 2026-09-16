@@ -46,6 +46,11 @@ files and registry entries; validate them in a disposable virtual machine only.
   placed element from `right`/`bottom` or the `inset` shorthand.
 - A container that declares `flex-wrap` moves items onto the next line when a row is full; without
   it, an overflowing row still compresses its shrinkable items.
+- A setup carries an application manifest: `install.require_admin` makes Windows raise the consent
+  prompt before the process starts, and `ui.dpi_aware` tells the shell whether the window scales
+  itself. A project that sets neither keeps the ordinary invoker behaviour.
+- The builder compares every locale file against the default locale and the keys the pages ask for,
+  and reports a locale that is missing text or that `supported_locales` lists without a file.
 - A finished uninstall leaves a cleaner copy in the temporary directory that immediately deletes the
   uninstaller and the emptied installation directory. A directory that still holds files the user
   added is kept, and the cleaner removes itself once it is done.
@@ -58,12 +63,12 @@ files and registry entries; validate them in a disposable virtual machine only.
 
 ## Known limitations
 
-- Installers do not request elevation. Writing to `Program Files` requires starting the setup as an
-  administrator.
 - The runtime stubs embed the Rhai engine, which raised each stub from roughly 0.57-0.66 MB to
   about 1.8-1.9 MB.
-- Text fields have no IME composition window, so typing East Asian text relies on the system IME's
-  own inline display.
+- An elevated setup and its uninstaller run at high integrity, so a product that writes only to
+  `%LOCALAPPDATA%` should leave `install.require_admin` off.
+- The manifest asks for the legacy `dpiAware` flag; per-monitor awareness is not requested yet, so a
+  setup dragged between monitors with different scaling is rescaled by Windows.
 
 Once signing and the Windows 7 acceptance run are done, a product can be onboarded using the
 `examples/TapTap` structure.

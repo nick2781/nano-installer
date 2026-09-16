@@ -11,6 +11,8 @@ eframe/egui. It only creates installers; the setup it produces still runs on Win
 - Win32 Unicode APIs for windows, controls, and text
 - WIC for PNG decoding and GDI for alpha-blended drawing
 - Registry, shell, and process APIs that exist on Windows 7 SP1
+- IMM32 for the IME composition and candidate windows of a text field, which Windows 7 has shipped
+  since release
 
 Release builds use the pinned `nightly-2025-11-08` toolchain with `rust-src`,
 `-Z build-std=std,panic_abort`, a statically linked CRT, and `panic=abort`.

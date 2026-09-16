@@ -21,6 +21,7 @@ your users to install first.
 | Every language you need | Eleven UI languages included; add your own in plain JSON |
 | Upgrades that behave | Re-running the setup upgrades in place, and rolls back if anything fails |
 | Clean removal | Uninstalling takes back exactly what it put down, and keeps user data by default |
+| Rights that fit | Ask for administrator rights only when your product needs them, straight from the config |
 | Clear, friendly screens | Live progress with the current step named, plus a finish page that can start your app |
 | Fits your process | Click through the visual builder, or drive the same engine from a command line in CI |
 
@@ -70,6 +71,10 @@ Start by copying `examples/TapTap` and replacing its content.
   service or privacy policy.
 - Lets you pick the install directory with the standard Windows folder chooser, and lets the user
   edit the path by hand: select with the mouse or a double click, copy and paste, and undo a typo.
+- Types East Asian text through a proper IME composition window, with the candidate list placed
+  under the caret.
+- Asks Windows for administrator rights when a project sets `install.require_admin`, instead of
+  relying on the user to right-click and run as administrator.
 - Asks a localized question before closing, so nobody loses an install by accident.
 - Takes back the installation folder as soon as an uninstall finishes, so no empty directory is
   left behind; files your users added there keep the folder, as they should.
@@ -83,8 +88,6 @@ Start by copying `examples/TapTap` and replacing its content.
 ## Not there yet
 
 - Setups are not code-signed, so Windows SmartScreen warns about an unknown publisher.
-- Setup files do not ask for administrator rights by themselves. One that writes to
-  `Program Files` has to be started as an administrator.
 - Windows 7 support is checked automatically against the system calls each build uses, but has not
   yet been signed off on a real Windows 7 SP1 machine.
 

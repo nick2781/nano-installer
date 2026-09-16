@@ -3,6 +3,7 @@ compile_error!("nano-installer-native-x64 must be built for x86_64");
 
 mod icon;
 mod install;
+mod manifest;
 mod script;
 mod shell;
 mod version;
@@ -44,6 +45,10 @@ use windows::Win32::System::DataExchange::{
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
 use windows::Win32::System::Ole::CF_UNICODETEXT;
+use windows::Win32::UI::Input::Ime::{
+    ImmGetContext, ImmReleaseContext, ImmSetCandidateWindow, ImmSetCompositionWindow,
+    CANDIDATEFORM, CFS_CANDIDATEPOS, CFS_POINT, COMPOSITIONFORM,
+};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetDoubleClickTime, GetKeyState, ReleaseCapture, SetCapture, TrackMouseEvent, TME_LEAVE,
     TRACKMOUSEEVENT, VIRTUAL_KEY, VK_A, VK_BACK, VK_C, VK_CONTROL, VK_DELETE, VK_END, VK_HOME,
@@ -121,6 +126,9 @@ struct RuntimeUi {
     text_inputs: Vec<TextInputRegion>,
     /// Caret for the focused text field, positioned with the layout.
     caret: Option<ImageLayer>,
+    /// Where that caret is, in client coordinates. The input method needs the
+    /// position only, not the pixels, and the layer above owns a buffer.
+    caret_rect: Option<LayerRect>,
     /// Highlight bands for the focused field's selection, drawn under the text.
     selection: Vec<ImageLayer>,
     /// Whether the caret is in the visible half of its blink cycle.
@@ -744,6 +752,10 @@ pub struct ProjectSummary {
     pub payload_path: PathBuf,
     pub payload_size: u64,
     pub payload_format: PayloadFormat,
+    /// Whether the generated setup asks Windows for administrator rights.
+    pub require_admin: bool,
+    /// Whether the generated setup scales its interface with the display DPI.
+    pub dpi_aware: bool,
     pub warnings: Vec<String>,
 }
 
@@ -810,7 +822,11 @@ pub fn inspect_project(project: impl AsRef<Path>) -> Result<ProjectSummary> {
         .as_str()
         .map(str::to_string);
     validate_project_paths(project, &config, installer_icon.as_deref())?;
-    let warnings = asset_scale_warnings(project, &config)?;
+    let manifest = manifest::ManifestSettings::from_config(&config);
+    let mut warnings = asset_scale_warnings(project, &config)?;
+    warnings.extend(locale_scale_warnings(project, &config)?);
+    warnings.sort();
+    warnings.dedup();
     Ok(ProjectSummary {
         project_dir: project.to_path_buf(),
         project_name,
@@ -825,6 +841,8 @@ pub fn inspect_project(project: impl AsRef<Path>) -> Result<ProjectSummary> {
         payload_path,
         payload_size,
         payload_format,
+        require_admin: manifest.require_admin,
+        dpi_aware: manifest.dpi_aware,
         warnings,
     })
 }
@@ -969,6 +987,20 @@ pub fn build_project_with_progress(
         message: format!("Writing VERSIONINFO: {}", summary.file_version),
     });
     version::replace_exe_version_info(output, &version_info)?;
+    let manifest = manifest::ManifestSettings::from_config(&config);
+    progress(BuildEvent {
+        stage: BuildStage::WritingResources,
+        message: format!(
+            "Writing application manifest (elevation: {}, DPI aware: {})",
+            if manifest.require_admin {
+                "requested"
+            } else {
+                "as the user"
+            },
+            if manifest.dpi_aware { "yes" } else { "no" }
+        ),
+    });
+    manifest::replace_exe_manifest(output, &manifest)?;
     let mut file = OpenOptions::new().append(true).open(output)?;
     progress(BuildEvent {
         stage: BuildStage::WritingResources,
@@ -1022,6 +1054,10 @@ fn build_uninstaller_executable(
         version_info.file_version
     ));
     version::replace_exe_version_info(&temporary.path, &version_info)?;
+    manifest::replace_exe_manifest(
+        &temporary.path,
+        &manifest::ManifestSettings::from_config(config),
+    )?;
     progress(format!(
         "Appending uninstaller UI bundle ({})",
         format_build_size(bundle.len() as u64)
@@ -1298,6 +1334,139 @@ fn collect_png_paths(root: &Path, directory: &Path, paths: &mut Vec<PathBuf>) ->
             .is_some_and(|extension| extension.eq_ignore_ascii_case("png"))
         {
             paths.push(entry.path().strip_prefix(root)?.to_path_buf());
+        }
+    }
+    Ok(())
+}
+
+/// Compares the locale files with the pages and reports what has fallen behind.
+///
+/// A missing key is silent at run time: the runtime falls back to the default
+/// locale, so a half-translated installer still runs. The build is the only
+/// place where the gap is cheap to notice, so the missing keys are listed here.
+fn locale_scale_warnings(project: &Path, config: &serde_json::Value) -> Result<Vec<String>> {
+    let locales_dir = project.join(
+        config["resources"]["locales_dir"]
+            .as_str()
+            .unwrap_or("locales"),
+    );
+    let default_locale = config["localization"]["default_locale"]
+        .as_str()
+        .unwrap_or("zh-CN");
+    let required = required_locale_keys(project, config)?;
+    let mut files = Vec::new();
+    for entry in std::fs::read_dir(&locales_dir)? {
+        let path = entry?.path();
+        if path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("json"))
+        {
+            files.push(path);
+        }
+    }
+    files.sort();
+    let mut keys_by_locale: Vec<(String, HashSet<String>)> = Vec::new();
+    for path in &files {
+        let Some(locale) = path.file_stem().and_then(|stem| stem.to_str()) else {
+            continue;
+        };
+        let keys: HashSet<String> =
+            serde_json::from_slice::<HashMap<String, String>>(&std::fs::read(path)?)
+                .with_context(|| format!("invalid locale file: {}", path.display()))?
+                .into_keys()
+                .collect();
+        keys_by_locale.push((locale.to_string(), keys));
+    }
+    let default_keys = keys_by_locale
+        .iter()
+        .find(|(locale, _)| locale == default_locale)
+        .map(|(_, keys)| keys.clone())
+        .unwrap_or_default();
+    let mut warnings = Vec::new();
+    for (locale, keys) in &keys_by_locale {
+        // Only keys the default locale answers are reported, so a page may ask
+        // for a key the product intentionally leaves untranslated.
+        let mut missing: Vec<&String> = required
+            .iter()
+            .filter(|key| default_keys.contains(*key) && !keys.contains(*key))
+            .collect();
+        missing.sort();
+        if !missing.is_empty() {
+            let listed = missing
+                .iter()
+                .map(|key| format!("`{key}`"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            warnings.push(format!(
+                "locales/{locale}.json is missing {} page text(s): {listed}",
+                missing.len()
+            ));
+        }
+    }
+    let mut configured: Vec<String> = config["localization"]["supported_locales"]
+        .as_array()
+        .map(|locales| {
+            locales
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    configured.sort();
+    configured.dedup();
+    for locale in configured {
+        if !keys_by_locale.iter().any(|(name, _)| *name == locale) {
+            warnings.push(format!(
+                "localization.supported_locales lists {locale}, but locales/{locale}.json is missing"
+            ));
+        }
+    }
+    Ok(warnings)
+}
+
+/// Every locale key the project's pages ask for.
+///
+/// Only attributes are read, and only ones that start with `@`, so an asset
+/// reference such as `logo@2x.png` is never mistaken for a key.
+fn required_locale_keys(project: &Path, config: &serde_json::Value) -> Result<HashSet<String>> {
+    let layouts_dir = project.join(
+        config["resources"]["layouts_dir"]
+            .as_str()
+            .unwrap_or("layouts"),
+    );
+    let mut layouts = Vec::new();
+    collect_xml_paths(&layouts_dir, &mut layouts)?;
+    layouts.sort();
+    let mut keys = HashSet::new();
+    for path in layouts {
+        let xml = std::fs::read_to_string(&path)
+            .with_context(|| format!("cannot read layout: {}", path.display()))?;
+        let document = roxmltree::Document::parse(&xml)
+            .with_context(|| format!("invalid layout: {}", path.display()))?;
+        for node in document.descendants().filter(|node| node.is_element()) {
+            for attribute in node.attributes() {
+                if let Some(key) = attribute.value().trim().strip_prefix('@') {
+                    keys.insert(key.to_string());
+                }
+            }
+        }
+    }
+    Ok(keys)
+}
+
+fn collect_xml_paths(directory: &Path, paths: &mut Vec<PathBuf>) -> Result<()> {
+    for entry in std::fs::read_dir(directory)? {
+        let path = entry?.path();
+        if path.is_dir() {
+            collect_xml_paths(&path, paths)?;
+        } else if path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("xml"))
+        {
+            paths.push(path);
         }
     }
     Ok(())
@@ -2021,6 +2190,7 @@ fn load_layout(
         .as_deref()
         .and_then(|focused| output.text_inputs.iter().find(|field| field.id == focused));
     let caret = focused_field.map(|field| caret_layer(field, interaction.caret_index));
+    let caret_rect = focused_field.map(|field| caret_rect(field, interaction.caret_index));
     let selection = match (focused_field, interaction.selection_range()) {
         (Some(field), Some((start, end))) => selection_layers(field, start, end),
         _ => Vec::new(),
@@ -2039,6 +2209,7 @@ fn load_layout(
         hover_regions: output.hover_regions,
         text_inputs: output.text_inputs,
         caret,
+        caret_rect,
         selection,
         caret_drawn: interaction.caret_visible,
         language_options,
@@ -4423,6 +4594,9 @@ unsafe extern "system" fn window_proc(
         WM_APP_REFRESH => {
             // The state is already rebuilt by whoever posted this message.
             let _ = InvalidateRect(window, None, false);
+            // A worker may have moved the caret, and an input method is only
+            // repositioned from the thread that owns the window.
+            place_ime_windows(window);
             LRESULT(0)
         }
         WM_CLOSE if install::busy() => LRESULT(0),
@@ -4765,6 +4939,10 @@ unsafe fn focus_text_input(window: HWND, id: Option<String>, caret_index: usize)
     if focused.is_some() {
         let _ = SetTimer(window, CARET_TIMER, CARET_BLINK_MS, None);
     }
+    // An East Asian input method draws its own composition and candidate
+    // windows; without this they appear wherever the last application left
+    // them instead of at the caret the user is typing into.
+    place_ime_windows(window);
     let _ = InvalidateRect(window, None, false);
     let _ = UpdateWindow(window);
     Ok(())
@@ -4773,6 +4951,65 @@ unsafe fn focus_text_input(window: HWND, id: Option<String>, caret_index: usize)
 /// Flips the caret between drawn and hidden, the way an edit control blinks.
 ///
 /// Only the flag changes, so the page is not laid out again on every blink.
+/// The rectangle the caret occupies, which is where an input method anchors.
+fn caret_rect(field: &TextInputRegion, caret_index: usize) -> LayerRect {
+    let offset = text_offset_for_index(field, caret_index);
+    let caret_height = (field.height as f32 * 0.7).round().max(1.0) as i32;
+    LayerRect {
+        left: (field.left + offset).min(field.left + field.width - 1),
+        top: field.top + (field.height - caret_height) / 2,
+        width: 1,
+        height: caret_height,
+    }
+}
+
+/// Tells the active input method where the caret is.
+///
+/// An IME is not part of the window it types into: it keeps its own composition
+/// and candidate windows and only asks the window for a position. Moving those
+/// windows to the caret is what makes a Chinese, Japanese, or Korean candidate
+/// list appear next to the text field the user is typing in.
+///
+/// Nothing here reports a failure. A machine with no input method, or a field
+/// scrolled out of view, simply keeps the default IME placement, which is what
+/// the installer did before.
+unsafe fn place_ime_windows(window: HWND) {
+    let caret = UI
+        .get()
+        .and_then(|state| state.lock().ok())
+        .and_then(|state| state.ui.caret_rect);
+    let Some(caret) = caret else {
+        return;
+    };
+    let context = ImmGetContext(window);
+    if context.is_invalid() {
+        return;
+    }
+    // The composition text starts at the caret, and the candidate list sits
+    // just below it, which is where a user looks for it.
+    let point = POINT {
+        x: caret.left,
+        y: caret.top,
+    };
+    let composition = COMPOSITIONFORM {
+        dwStyle: CFS_POINT,
+        ptCurrentPos: point,
+        rcArea: RECT::default(),
+    };
+    let _ = ImmSetCompositionWindow(context, &composition);
+    let candidate = CANDIDATEFORM {
+        dwIndex: 0,
+        dwStyle: CFS_CANDIDATEPOS,
+        ptCurrentPos: POINT {
+            x: point.x,
+            y: point.y + caret.height,
+        },
+        rcArea: RECT::default(),
+    };
+    let _ = ImmSetCandidateWindow(context, &candidate);
+    let _ = ImmReleaseContext(window, context);
+}
+
 unsafe fn toggle_caret_blink() -> Result<()> {
     let runtime = UI.get().context("native UI state is missing")?;
     let mut state = runtime

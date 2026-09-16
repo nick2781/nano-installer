@@ -17,7 +17,9 @@ deploying files and the manifest from a script, rolling back a failing script, r
 manifest through `run_tracked_uninstall`, and the library fallback when a script skips cleanup.
 
 The build script audits PE imports for the builder, all three runtimes, the setup, and the embedded
-uninstaller. One test writes to `HKCU`, so it is ignored by default in restricted environments;
+uninstaller. It also reads the manifest resource back out of the generated setup and the embedded
+uninstaller, and fails if the declared execution level or DPI behaviour differs from what the
+project configuration resolves to. One test writes to `HKCU`, so it is ignored by default in restricted environments;
 run it explicitly inside an isolated VM.
 
 ## Manual checks
@@ -32,6 +34,8 @@ Start `examples/TapTap/dist/TapTap_Setup.exe` and confirm:
 - Chinese, English, and Russian text render without mojibake.
 - The path field supports drag selection, double-click word selection, copy/paste, and undo, and
   the folder icon picks a directory and writes it back into the field.
+- An IME composition window appears at the caret and the candidate list sits just below it while
+  typing Chinese or Japanese.
 - The installation directory is gone as soon as the uninstall finishes, while files the user added
   are still kept.
 
@@ -44,9 +48,11 @@ installed files, preservation of user-created files, failure rollback, and that 
 directory is gone as soon as the uninstall finishes and the cleaner copy in the temporary directory
 has exited.
 
-Never test the TapTap install action on a daily workstation. When the default path is under
-`Program Files`, start the setup as an administrator; this version does not request elevation.
-To exercise a user-writable directory, change the example's read-only `install.default_path` and
+Never test the TapTap install action on a daily workstation. The example sets
+`install.require_admin`, so a correct build shows the UAC consent prompt before the setup window
+appears; declining it must leave the machine untouched. To exercise a build that should never
+prompt, clear `install.require_admin` and confirm the same setup starts without a consent prompt. To
+exercise a user-writable directory, change the example's read-only `install.default_path` and
 repack the setup.
 
 ## Production cases that cannot pass yet

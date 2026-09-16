@@ -39,9 +39,9 @@ engine. See the [visual builder](GUI.md).
 
 ## 4. Try the setup in a VM
 
-Copy the setup into a fresh virtual machine. The sample's default install path is under
-`Program Files`, so start it as an administrator; this version does not request elevation on its
-own.
+Copy the setup into a fresh virtual machine. The sample sets `install.require_admin`, and its
+default install path is under `Program Files`, so Windows asks for consent the moment you launch
+it. Approve the prompt and the setup runs with the rights it needs.
 
 What you can check today:
 
@@ -57,6 +57,8 @@ What you can check today:
   and the agreement links open their configured pages in your browser.
 - Click the close button: it asks the localized confirmation question from `close_confirm_message`
   before the window closes.
+- Point the path field at a folder under `Program Files`: the elevation you approved at launch is
+  what lets the install write there.
 - Drag or double-click inside the path field to select text, then copy, paste, and undo with
   Ctrl+C, Ctrl+V, and Ctrl+Z; the folder icon next to it picks a directory and writes it back into
   the field.
