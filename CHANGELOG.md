@@ -79,8 +79,12 @@
   返回 740（`ERROR_ELEVATION_REQUIRED`）；`asInvoker` 则正常启动。
 - `scripts/build.ps1 -Project examples\TapTap` 全量构建、ZIP/7z backend smoke test、Win7 PE
   导入审计（含新增的 `imm32.dll`，Windows 7 自带），以及新增的清单审计。
-- 在英文 runner 的等价解码路径（把同一份脚本按 cp1252 解码）下复现并验证修复：加 BOM 前尾注
-  变成乱码，加 BOM 后完整可读；`v2026.9.18` 的 release 正文尾注已重新生成并确认正常。
+- 复现并验证修复：同一份脚本按 cp1252 解码时，加 BOM 前尾注变成乱码、加 BOM 后完整可读；
+  `v2026.9.18` 的 release 正文尾注已重新生成并确认正常。
+- 新增 `scripts/verify_release_notes.ps1`：用发布流程相同的方式（含 `GITHUB_REPOSITORY`）跑一遍
+  正文生成器，再与生成器源码里解码后的尾注逐字比对。它只在 ANSI 代码页不是 UTF-8 的机器上才能
+  失败，因此接在 CI 上；本机把 BOM 去掉做负向验证时，`audit_script_encoding.ps1` 如期以非零退出
+  拦截，而该端到端校验在 UTF-8 环境下不报错。
 - 用 Python 直读 PE 资源复核：`TapTap_Setup.exe` 与内嵌 `uninst.exe` 均声明
   `requireAdministrator` 与 `<dpiAware>true`，原始 stub 无清单；把期望级别故意写成 `asInvoker`
   时审计如期失败。

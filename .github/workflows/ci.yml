@@ -43,6 +43,13 @@ jobs:
         shell: powershell
         run: .\scripts\audit_script_encoding.ps1
 
+      # The release job builds the published notes with Windows PowerShell, so
+      # run the same generator here, where the ANSI code page is not UTF-8 and a
+      # BOM-less script decodes wrongly.
+      - name: Verify release notes generation
+        shell: powershell
+        run: .\scripts\verify_release_notes.ps1
+
       - name: Check formatting
         run: cargo fmt --all -- --check
 

@@ -57,7 +57,10 @@ Pass `-Full` to publish the whole section.
 Windows PowerShell decodes a BOM-less script with the ANSI code page. Without the BOM the footer
 looks correct on a UTF-8 development machine and reaches the published notes as mojibake.
 `scripts/audit_script_encoding.ps1` runs at the start of every build and fails if a script carrying
-non-ASCII text has no BOM.
+non-ASCII text has no BOM. `scripts/verify_release_notes.ps1` runs the generator the way the release
+job does and compares the resulting footer with the decoded literal, which catches the same
+regression through the published output; it can only fail where the ANSI code page is not UTF-8, so
+CI is where it earns its keep.
 
 ## Builder arguments
 
