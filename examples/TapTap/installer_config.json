@@ -66,6 +66,7 @@
     "window_height": 450,
     "expanded_height": 450,
     "window_corner_radius": 12,
+    "dialog_layout": "layouts/msgBox.xml",
     "dpi_aware": true,
     "dpi_threshold": 144
   },

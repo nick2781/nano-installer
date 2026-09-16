@@ -190,7 +190,7 @@ MiB 值转成可读大小，`size` 按 1024 进位格式化为 B/KB/MB/GB/TB。
 | --- | --- |
 | `minimize` | 最小化窗口 |
 | `close` | 直接关闭 |
-| `close_confirm` | 先用 locale 的 `close_confirm_message` 询问，确认后关闭 |
+| `close_confirm` | 先按 `ui.dialog_layout` 弹出皮肤确认框，确认后关闭 |
 | `pick_directory` | 打开系统目录选择框，把结果写入 TextInput，详见[目录选择](#目录选择) |
 | `open_url:<键>` | 打开 `links` 表中该键配置的网址 |
 | `open_url:<https://...>` | 直接打开写出的网址 |
@@ -200,6 +200,35 @@ MiB 值转成可读大小，`size` 按 1024 进位格式化为 B/KB/MB/GB/TB。
 | `finish` | 等同于 `close`，供完成页使用 |
 | `switch_language` | 展开语言列表，选择后切换 locale |
 | `toggle_panel:<id>:show/hide` | 显示或隐藏目标面板，并切换配对的 show/hide 控件 |
+| `dialog_ok` | 确认当前确认框：退出提问会关闭安装程序，提示框只是收起 |
+| `dialog_cancel` | 收起当前确认框，回到下面的页面 |
+
+## 对话框
+
+确认框不是系统弹窗，而是一个普通布局：运行时把 `ui.dialog_layout` 指向的文件（默认
+`layouts/msgBox.xml`）画在窗口中央，并在它和页面之间压一层遮罩。提问期间只有对话框上的控件
+响应点击，页面按钮不会被误触；`Enter` 等同于确认，`Escape` 等同于取消。
+
+对话框的文字来自当前这次提问，而不是布局里写死的文案，用 `value-source` 取值：
+
+```xml
+<Page width="400" height="180" background="#FF2A3844" border-radius="16">
+  <Label id="lblMsg" value-source="dialog:message" wrap="true" width="336" />
+  <Button id="btnCancel" action="dialog_cancel" value-source="dialog:dismiss"
+          visible-with="dismiss" width="160" height="40" />
+  <Button id="btnOK" action="dialog_ok" value-source="dialog:accept"
+          width="160" height="40" />
+</Page>
+```
+
+| `value-source` | 取值 |
+| --- | --- |
+| `dialog:message` | 本次提问或提示的正文 |
+| `dialog:accept` | 确认按钮文案 |
+| `dialog:dismiss` | 取消按钮文案，提示框下为空 |
+
+`visible-with="dismiss"` 让控件只在提供两种答案时出现，于是一份布局既能当退出提问，也能当只有
+一个「确定」的提示。
 
 ## 链接
 

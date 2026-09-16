@@ -42,6 +42,14 @@ clickable links, in-place text editing with selection, clipboard, and an undo st
 chooser, runtime locale switching, a borderless rounded window, a taskbar icon, double-buffered
 painting, dragging, minimize, and close.
 
+**Questions and notices.** Anything the user has to answer, such as the close confirmation, and
+notices they have to acknowledge, are drawn inside the window from the layout named by
+`ui.dialog_layout` rather than handed to a system message box. A dialog is an ordinary layout whose
+`value-source="dialog:*"` reads the question and button labels of the moment; only its own controls
+respond while it is open, and `Enter`/`Escape` confirm and dismiss it. The window is centred on the
+work area of the monitor it is on, and clamped into that work area when a layout is larger than the
+desktop.
+
 **Tasks.** Install and uninstall run on a worker thread that publishes progress and page changes
 through shared state. The UI thread repaints when it receives a refresh message, so painting never
 leaves the thread that owns the window and the window stays responsive during extraction.

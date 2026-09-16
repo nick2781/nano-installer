@@ -31,9 +31,9 @@ files and registry entries; validate them in a disposable virtual machine only.
   back, and a script that skips manifest cleanup falls back to the library removal.
 - Flow layout covers nested `VBox`, `HBox`, and `Content` containers with padding, margins,
   percentage sizing, `justify-content`, and `align-items`.
-- Markdown link markup in a label opens its configured URL, `close_confirm` asks the localized
-  question before closing, and the folder picker writes the chosen directory back into the layout's
-  TextInput.
+- Markdown link markup in a label opens its configured URL, `close_confirm` asks its question in the
+  product's own skin before closing, and the folder picker writes the chosen directory back into the
+  layout's TextInput.
 - Controls paint the `background`, `border-color`, and `border-radius` a layout declares, and the
   language menu takes Up/Down/Enter/Escape while it is open.
 - A text field can be edited in place: clicking places a blinking caret, typing inserts, Backspace

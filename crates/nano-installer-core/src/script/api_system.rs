@@ -104,7 +104,7 @@ pub(super) fn register(engine: &mut Engine, context: ScriptContext) {
     engine.register_fn("ask_yes_no", |title: &str, message: &str| -> bool {
         let result = unsafe {
             windows::Win32::UI::WindowsAndMessaging::MessageBoxW(
-                None,
+                crate::runtime_window().unwrap_or_default(),
                 &windows::core::HSTRING::from(message),
                 &windows::core::HSTRING::from(title),
                 windows::Win32::UI::WindowsAndMessaging::MB_YESNO
@@ -159,6 +159,11 @@ fn tracked_uninstall(context: &ScriptContext, start: f64, end: f64) -> bool {
     true
 }
 
+/// Shows a box on behalf of a project script.
+///
+/// It is owned by the installer window, so a message a script raises cannot sink
+/// behind the wizard that raised it. A script can also run before that window
+/// exists, in which case the box is unowned exactly as it was before.
 fn message_box(
     title: &str,
     message: &str,
@@ -166,7 +171,7 @@ fn message_box(
 ) {
     unsafe {
         windows::Win32::UI::WindowsAndMessaging::MessageBoxW(
-            None,
+            crate::runtime_window().unwrap_or_default(),
             &windows::core::HSTRING::from(message),
             &windows::core::HSTRING::from(title),
             windows::Win32::UI::WindowsAndMessaging::MB_OK | icon,

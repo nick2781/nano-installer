@@ -3,17 +3,14 @@ use serde_json::{json, Value};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use windows::core::{HSTRING, PCWSTR};
-use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND, HWND};
+use windows::core::PCWSTR;
+use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND};
 use windows::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_DELAY_UNTIL_REBOOT};
 use windows::Win32::System::Registry::{
     RegCloseKey, RegCreateKeyExW, RegDeleteKeyW, RegDeleteTreeW, RegDeleteValueW, RegOpenKeyExW,
     RegQueryValueExW, RegSetValueExW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_QUERY_VALUE,
     KEY_READ, KEY_SET_VALUE, KEY_WRITE, REG_CREATED_NEW_KEY, REG_CREATE_KEY_DISPOSITION, REG_DWORD,
     REG_OPTION_NON_VOLATILE, REG_SZ, REG_VALUE_TYPE,
-};
-use windows::Win32::UI::WindowsAndMessaging::{
-    MessageBoxW, MB_ICONERROR, MB_ICONINFORMATION, MB_OK,
 };
 
 use super::{script, shell, BundleIndex, RuntimeMode, UI};
@@ -68,7 +65,7 @@ impl Drop for StagingDirectory {
     }
 }
 
-pub(super) fn start_install(window: HWND) {
+pub(super) fn start_install() {
     let selection = UI
         .get()
         .and_then(|runtime| runtime.lock().ok())
@@ -79,26 +76,24 @@ pub(super) fn start_install(window: HWND) {
             })
         });
     let Some(selection) = selection else {
-        show_result(
-            window,
-            Err(anyhow::anyhow!("installation directory is not configured")),
-        );
+        show_result(Err(anyhow::anyhow!(
+            "installation directory is not configured"
+        )));
         return;
     };
     let Some(destination) = selection.destination.clone() else {
-        show_result(
-            window,
-            Err(anyhow::anyhow!("installation directory is not configured")),
-        );
+        show_result(Err(anyhow::anyhow!(
+            "installation directory is not configured"
+        )));
         return;
     };
-    run_worker(window, move || {
+    run_worker(move || {
         let setup = std::env::current_exe()?;
         install_setup(&setup, Path::new(&destination), &selection)
     });
 }
 
-pub(super) fn start_uninstall(window: HWND) {
+pub(super) fn start_uninstall() {
     // Data is preserved unless the user explicitly clears the keep-data box;
     // an uninstall page without that checkbox therefore never destroys data.
     let keep_data = UI
@@ -116,13 +111,13 @@ pub(super) fn start_uninstall(window: HWND) {
                 .flatten()
         })
         .unwrap_or(true);
-    run_worker(window, move || {
+    run_worker(move || {
         let uninstaller = std::env::current_exe()?;
         uninstall(&uninstaller, keep_data)
     });
 }
 
-fn run_worker(window: HWND, work: impl FnOnce() -> Result<()> + Send + 'static) {
+fn run_worker(work: impl FnOnce() -> Result<()> + Send + 'static) {
     if BUSY.swap(true, Ordering::AcqRel) {
         return;
     }
@@ -132,9 +127,7 @@ fn run_worker(window: HWND, work: impl FnOnce() -> Result<()> + Send + 'static) 
     if pages > 1 {
         let _ = super::show_page(1);
     }
-    let window_handle = window.0 as usize;
     std::thread::spawn(move || {
-        let window = HWND(window_handle as *mut _);
         let result = work();
         BUSY.store(false, Ordering::Release);
         match &result {
@@ -142,28 +135,26 @@ fn run_worker(window: HWND, work: impl FnOnce() -> Result<()> + Send + 'static) 
             Ok(()) if pages > 1 => {
                 let _ = super::show_page(pages - 1);
             }
-            Ok(()) => show_result(window, Ok(())),
+            Ok(()) => show_result(Ok(())),
             Err(error) => {
                 let _ = super::show_page(0);
-                show_result(window, Err(anyhow::anyhow!("{error:#}")));
+                show_result(Err(anyhow::anyhow!("{error:#}")));
             }
         }
     });
 }
 
-fn show_result(window: HWND, result: Result<()>) {
-    let (text, icon) = match result {
-        Ok(()) => ("Operation complete".to_string(), MB_ICONINFORMATION),
-        Err(error) => (format!("Operation failed:\n{error:#}"), MB_ICONERROR),
+/// Reports how the task ended.
+///
+/// A project with a completion page shows the outcome there. A project without
+/// one still has to be told, and that notice is drawn inside the installer
+/// window so it carries the product's skin rather than the system default.
+fn show_result(result: Result<()>) {
+    let text = match result {
+        Ok(()) => "Operation complete".to_string(),
+        Err(error) => format!("Operation failed:\n{error:#}"),
     };
-    unsafe {
-        let _ = MessageBoxW(
-            window,
-            &HSTRING::from(text),
-            &HSTRING::from("nano-installer"),
-            MB_OK | icon,
-        );
-    }
+    super::show_notice(&text);
 }
 
 fn install_setup(setup: &Path, destination: &Path, selection: &InstallSelection) -> Result<()> {

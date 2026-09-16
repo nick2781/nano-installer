@@ -21,13 +21,14 @@ use windows::Win32::Foundation::{
     COLORREF, HANDLE, HGLOBAL, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM,
 };
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreateDIBSection, CreateFontW,
-    CreateRoundRectRgn, DeleteDC, DeleteObject, DrawTextW, EndPaint, GdiAlphaBlend, GetDC,
-    GetDeviceCaps, GetTextExtentPoint32W, InvalidateRect, ReleaseDC, ScreenToClient, SelectObject,
-    SetBkMode, SetTextColor, SetWindowRgn, UpdateWindow, AC_SRC_ALPHA, AC_SRC_OVER, BITMAPINFO,
-    BITMAPINFOHEADER, BI_RGB, BLENDFUNCTION, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS,
-    DEFAULT_CHARSET, DEFAULT_PITCH, DIB_RGB_COLORS, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE,
-    DT_VCENTER, FW_BOLD, FW_NORMAL, HDC, HFONT, LOGPIXELSX, OUT_DEFAULT_PRECIS, PAINTSTRUCT,
+    BeginPaint, BitBlt, ClientToScreen, CreateCompatibleBitmap, CreateCompatibleDC,
+    CreateDIBSection, CreateFontW, CreateRoundRectRgn, DeleteDC, DeleteObject, DrawTextW, EndPaint,
+    GdiAlphaBlend, GetDC, GetDeviceCaps, GetMonitorInfoW, GetTextExtentPoint32W, InvalidateRect,
+    MonitorFromWindow, ReleaseDC, ScreenToClient, SelectObject, SetBkMode, SetTextColor,
+    SetWindowRgn, UpdateWindow, AC_SRC_ALPHA, AC_SRC_OVER, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
+    BLENDFUNCTION, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, DEFAULT_CHARSET, DEFAULT_PITCH,
+    DIB_RGB_COLORS, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, FW_BOLD, FW_NORMAL, HDC,
+    HFONT, LOGPIXELSX, MONITORINFO, MONITOR_DEFAULTTONEAREST, OUT_DEFAULT_PRECIS, PAINTSTRUCT,
     SRCCOPY, TRANSPARENT,
 };
 use windows::Win32::Graphics::Imaging::{
@@ -51,19 +52,19 @@ use windows::Win32::UI::Input::Ime::{
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetDoubleClickTime, GetKeyState, ReleaseCapture, SetCapture, TrackMouseEvent, TME_LEAVE,
-    TRACKMOUSEEVENT, VIRTUAL_KEY, VK_A, VK_BACK, VK_C, VK_CONTROL, VK_DELETE, VK_END, VK_HOME,
-    VK_LEFT, VK_RIGHT, VK_SHIFT, VK_V, VK_X, VK_Y, VK_Z,
+    TRACKMOUSEEVENT, VIRTUAL_KEY, VK_A, VK_BACK, VK_C, VK_CONTROL, VK_DELETE, VK_END, VK_ESCAPE,
+    VK_HOME, VK_LEFT, VK_RETURN, VK_RIGHT, VK_SHIFT, VK_V, VK_X, VK_Y, VK_Z,
 };
 use windows::Win32::UI::Shell::{
     FileOpenDialog, IFileOpenDialog, IShellItem, ShellExecuteW, FOS_PICKFOLDERS, SIGDN_FILESYSPATH,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect, GetCursorPos,
-    GetMessageW, GetSystemMetrics, KillTimer, LoadCursorW, LoadIconW, MessageBoxW, PostMessageW,
-    PostQuitMessage, RegisterClassExW, SendMessageW, SetProcessDPIAware, SetTimer, ShowWindow,
-    TranslateMessage, CS_HREDRAW, CS_VREDRAW, HTCAPTION, HTCLIENT, ICON_BIG, ICON_SMALL, IDC_ARROW,
-    IDC_HAND, IDYES, MB_ICONERROR, MB_ICONQUESTION, MB_OK, MB_YESNO, MSG, SM_CXSCREEN, SM_CYSCREEN,
-    SW_MINIMIZE, SW_SHOW, SW_SHOWNORMAL, WM_CHAR, WM_CLOSE, WM_DESTROY, WM_ERASEBKGND, WM_KEYDOWN,
+    GetMessageW, KillTimer, LoadCursorW, LoadIconW, MessageBoxW, PostMessageW, PostQuitMessage,
+    RegisterClassExW, SendMessageW, SetProcessDPIAware, SetTimer, SetWindowPos, ShowWindow,
+    TranslateMessage, CS_HREDRAW, CS_VREDRAW, HTCAPTION, HTCLIENT, HWND_TOP, ICON_BIG, ICON_SMALL,
+    IDC_ARROW, IDC_HAND, MB_ICONERROR, MB_OK, MSG, SWP_NOACTIVATE, SWP_NOZORDER, SW_MINIMIZE,
+    SW_SHOW, SW_SHOWNORMAL, WM_CHAR, WM_CLOSE, WM_DESTROY, WM_ERASEBKGND, WM_KEYDOWN,
     WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_NCLBUTTONDOWN, WM_PAINT, WM_SETCURSOR,
     WM_SETICON, WM_TIMER, WNDCLASSEXW, WS_EX_APPWINDOW, WS_POPUP,
 };
@@ -81,6 +82,10 @@ const CARET_TIMER: usize = 1;
 const CARET_BLINK_MS: u32 = 530;
 /// Posted by a worker thread when it changed runtime progress or page state.
 const WM_APP_REFRESH: u32 = 0x8001;
+/// Layout a project gets for its questions when it declares none of its own.
+const DEFAULT_DIALOG_LAYOUT: &str = "layouts/msgBox.xml";
+/// Dimming colour laid over the page while a dialog waits for an answer.
+const DIALOG_SCRIM: &str = "66000000";
 static UI: OnceLock<Mutex<RuntimeState>> = OnceLock::new();
 static TEMP_EXE_ID: AtomicU64 = AtomicU64::new(0);
 
@@ -139,6 +144,13 @@ struct RuntimeUi {
     language_options: Vec<String>,
     /// Localized question a `close_confirm` button asks before closing.
     close_confirm_message: String,
+    /// Localized label for a dialog's confirm button.
+    dialog_accept_label: String,
+    /// Localized label for a dialog's secondary button.
+    dialog_dismiss_label: String,
+    /// Controls of the dialog that is currently open. They are kept apart from
+    /// the page's own so a modal dialog is the only thing a click can reach.
+    dialog: Option<DialogUi>,
     /// Title for runtime dialogs, taken from `project.name`.
     product_name: String,
 }
@@ -153,6 +165,10 @@ struct RuntimeState {
     ui: RuntimeUi,
     /// The window the runtime paints into, so worker threads can report back.
     window: isize,
+    /// Size the window was last placed at. A page change that brings a different
+    /// layout re-centres the wizard, while a size the user already has is left
+    /// alone so a moved window stays where it was put.
+    window_size: (i32, i32),
     /// Executable an install deployed, launched from the finish page.
     installed_app: Option<PathBuf>,
 }
@@ -204,6 +220,56 @@ struct InteractionState {
     /// The field and character index of the last press, so a second press on the
     /// same character within the double-click time selects the word under it.
     last_press: Option<(String, usize, std::time::Instant)>,
+    /// Question the runtime is showing over the page, if any.
+    dialog: Option<DialogState>,
+}
+
+/// A question the runtime draws itself instead of handing to Windows.
+///
+/// The system message box the runtime used before could not take a product's
+/// skin, was not owned by the installer window, and so could end up behind
+/// another application while the wizard kept waiting for an answer. A dialog is
+/// now built from a project layout and drawn inside the installer window, which
+/// is what makes it look like part of the product and share its z-order.
+#[derive(Clone)]
+struct DialogState {
+    /// What the question means, which decides what confirming it does.
+    kind: DialogKind,
+    /// Text for the layout's message label.
+    message: String,
+    /// Label for the layout's confirm button.
+    accept_label: String,
+    /// Label for the layout's secondary button.
+    dismiss_label: String,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DialogKind {
+    /// Closing the window was confirmed; confirming again closes it.
+    CloseConfirm,
+    /// A notice; confirming dismisses it and leaves the wizard as it was.
+    Notice,
+}
+
+impl DialogState {
+    /// Whether this dialog offers a second answer besides confirming.
+    ///
+    /// A close question does, because staying in the wizard is a real choice. A
+    /// notice does not, and that is how one layout serves both.
+    fn offers_dismiss(&self) -> bool {
+        self.kind == DialogKind::CloseConfirm
+    }
+}
+
+/// The controls a dialog adds on top of the page.
+///
+/// Its regions are held separately from the page's own, because a click while a
+/// dialog is open must not reach the buttons the dialog is covering.
+#[derive(Default)]
+struct DialogUi {
+    actions: Vec<ActionRegion>,
+    text_hits: Vec<TextHit>,
+    hover_regions: Vec<HoverRegion>,
 }
 
 /// One remembered text field value, paired with the caret that goes with it.
@@ -380,9 +446,21 @@ enum WindowAction {
     Uninstall,
     LaunchApp,
     OpenLink(String),
-    PickDirectory { id: String },
-    ToggleCheckbox { id: String, checked: bool },
-    SetPanelVisibility { id: String, visible: bool },
+    PickDirectory {
+        id: String,
+    },
+    ToggleCheckbox {
+        id: String,
+        checked: bool,
+    },
+    SetPanelVisibility {
+        id: String,
+        visible: bool,
+    },
+    /// Confirms the open dialog; a close question then closes the window.
+    DialogOk,
+    /// Dismisses the open dialog and returns to the page under it.
+    DialogCancel,
 }
 
 #[derive(Clone, Copy)]
@@ -576,15 +654,45 @@ impl Drop for ComGuard {
 }
 
 pub fn show_runtime_error(error: &anyhow::Error) {
-    let message = HSTRING::from(format!("Native runtime failed:\n{error:#}"));
+    show_notice(&format!("Native runtime failed:\n{error:#}"));
+}
+
+/// Tells the user something, in the product's own skin once a window exists.
+///
+/// A failure before the window exists — a broken bundle, a display that cannot
+/// be opened — still has to reach the user, so that case keeps a system box, now
+/// owned by the window when there is one. Owning it is what stops the box from
+/// sinking behind the installer that opened it.
+pub(crate) fn show_notice(message: &str) {
+    if let Ok(window) = runtime_window() {
+        if !window.0.is_null() && open_notice_dialog(message.to_string()).is_ok() {
+            return;
+        }
+    }
+    let message = HSTRING::from(message.to_string());
     let title = UI
         .get()
         .and_then(|state| state.lock().ok())
         .map(|state| HSTRING::from(state.ui.product_name.clone()))
         .unwrap_or_else(|| HSTRING::from("nano-installer"));
     unsafe {
-        let _ = MessageBoxW(None, &message, &title, MB_OK | MB_ICONERROR);
+        let _ = MessageBoxW(
+            runtime_window().unwrap_or_default(),
+            &message,
+            &title,
+            MB_OK | MB_ICONERROR,
+        );
     }
+}
+
+/// The window the runtime paints into, for anything that needs to reach it.
+pub(crate) fn runtime_window() -> Result<HWND> {
+    let state = UI
+        .get()
+        .context("native UI state is missing")?
+        .lock()
+        .map_err(|_| anyhow::anyhow!("native UI state lock was poisoned"))?;
+    Ok(HWND(state.window as *mut _))
 }
 
 pub fn run_installer_runtime() -> Result<()> {
@@ -1872,6 +1980,7 @@ fn run_embedded(bundle: BundleIndex, mode: RuntimeMode) -> Result<()> {
         mode,
         ui,
         window: 0,
+        window_size: (0, 0),
         installed_app: None,
     }))
     .map_err(|_| anyhow::anyhow!("native UI was already initialized"))?;
@@ -2068,8 +2177,91 @@ fn load_layout(
             )
         });
 
-    // The page fill sits under its background image, so a layout can paint a
-    // base colour and still lay artwork over it.
+    render_layout_content(
+        page,
+        width,
+        height,
+        corner_radius,
+        active_panel,
+        &context,
+        &mut output,
+    )?;
+    // The caret and the selection follow the focused field, so they are built
+    // here where the font measurement helpers are available.
+    let focused_field = interaction
+        .focused_text_input
+        .as_deref()
+        .and_then(|focused| output.text_inputs.iter().find(|field| field.id == focused));
+    let caret = focused_field.map(|field| caret_layer(field, interaction.caret_index));
+    let caret_rect = focused_field.map(|field| caret_rect(field, interaction.caret_index));
+    let selection = match (focused_field, interaction.selection_range()) {
+        (Some(field), Some((start, end))) => selection_layers(field, start, end),
+        _ => Vec::new(),
+    };
+    let dialog = render_dialog_overlay(
+        files,
+        &config,
+        dpi,
+        &translations,
+        interaction,
+        width,
+        height,
+        &mut output,
+    )?;
+    Ok(RuntimeUi {
+        width,
+        height,
+        corner_radius,
+        caption_height: scale_value(64, dpi.scale),
+        layers: output.layers,
+        texts: output.texts,
+        overlay_layers: output.overlay_layers,
+        overlay_texts: output.overlay_texts,
+        actions: output.actions,
+        text_hits: output.text_hits,
+        hover_regions: output.hover_regions,
+        text_inputs: output.text_inputs,
+        caret,
+        caret_rect,
+        selection,
+        caret_drawn: interaction.caret_visible,
+        language_options,
+        close_confirm_message: translations
+            .get("close_confirm_message")
+            .cloned()
+            .unwrap_or_else(|| "Exit the installer?".to_string()),
+        dialog_accept_label: translations
+            .get("ok")
+            .cloned()
+            .unwrap_or_else(|| "OK".to_string()),
+        dialog_dismiss_label: translations
+            .get("cancel")
+            .cloned()
+            .unwrap_or_else(|| "Cancel".to_string()),
+        dialog,
+        product_name: product_name(files),
+    })
+}
+
+/// Paints one layout into `output`.
+///
+/// The page fill sits under its background image, so a layout can paint a base
+/// colour and still lay artwork over it. Both a wizard page and a dialog use
+/// this, which is what keeps a dialog looking like the page it covers.
+// The parameter list mirrors the layout being rendered rather than a struct
+// that would be rebuilt at every call site.
+#[allow(clippy::too_many_arguments)]
+fn render_layout_content(
+    page: roxmltree::Node<'_, '_>,
+    width: i32,
+    height: i32,
+    corner_radius: i32,
+    active_panel: Option<(usize, LayerRect)>,
+    context: &LayoutContext<'_>,
+    output: &mut LayoutOutput,
+) -> Result<()> {
+    let files = context.files;
+    let dpi = context.dpi;
     if let Some(background) = page.attribute("background") {
         push_solid_layer(
             &mut output.layers,
@@ -2106,21 +2298,21 @@ fn load_layout(
             width,
             height,
         },
-        &context,
+        context,
         &mut output.layers,
     )?;
     for node in page.descendants().filter(|node| node.is_element()) {
-        if is_hidden(node, interaction) || is_inside_render_container(node) {
+        if is_hidden(node, context.interaction) || is_inside_render_container(node) {
             continue;
         }
         let (left, top) = absolute_position(node, dpi);
-        let layer_width = size_attribute(node, "width", width, &context).unwrap_or(0);
-        let layer_height = size_attribute(node, "height", height, &context).unwrap_or(0);
+        let layer_width = size_attribute(node, "width", width, context).unwrap_or(0);
+        let layer_height = size_attribute(node, "height", height, context).unwrap_or(0);
         let own_left = scale_value(int_attribute(node, "left").unwrap_or(0), dpi.scale);
         let own_top = scale_value(int_attribute(node, "top").unwrap_or(0), dpi.scale);
         let rect = LayerRect {
-            left: anchored_left(node, left - own_left, layer_width, width, &context),
-            top: anchored_top(node, top - own_top, layer_height, height, &context),
+            left: anchored_left(node, left - own_left, layer_width, width, context),
+            top: anchored_top(node, top - own_top, layer_height, height, context),
             width: layer_width,
             height: layer_height,
         };
@@ -2137,24 +2329,24 @@ fn load_layout(
             && layer_width > 0
             && layer_height > 0
         {
-            push_action(node, rect, &mut output.actions, &context);
-            push_hover_region(node, rect, &context, &mut output.hover_regions);
+            push_action(node, rect, &mut output.actions, context);
+            push_hover_region(node, rect, context, &mut output.hover_regions);
         }
         if node.has_tag_name("ProgressBar") && layer_width > 0 && layer_height > 0 {
-            render_progress_bar(node, rect, &context, &mut output)?;
+            render_progress_bar(node, rect, context, output)?;
             continue;
         }
         // Containers own their subtree. `is_inside_render_container` already
         // skipped their children, so drawing here cannot double-place them.
         if let Some(axis) = flow_axis(node).filter(|_| layer_width > 0 && layer_height > 0) {
-            render_flow(node, rect, axis, &context, &mut output)?;
+            render_flow(node, rect, axis, context, output)?;
             continue;
         }
         if layer_width > 0 && layer_height > 0 {
-            push_node_text(node, rect, &context, &mut output);
+            push_node_text(node, rect, context, output);
         }
         if node.has_tag_name("Select") && layer_width > 0 && layer_height > 0 {
-            render_language_select(node, rect, &context, &mut output)?;
+            render_language_select(node, rect, context, output)?;
         }
         let has_layer = layer_width > 0 && layer_height > 0;
         match node.tag_name().name() {
@@ -2170,55 +2362,164 @@ fn load_layout(
                 }
             }
             "Button" if has_layer => {
-                if let Some(style) = button_image(node, interaction).map(parse_image_style) {
+                if let Some(style) = button_image(node, context.interaction).map(parse_image_style)
+                {
                     push_styled_layer(files, &mut output.layers, style, rect, dpi)?;
                 }
                 if node.attribute("normal-image").is_none() {
-                    push_node_border(node, rect, &context, &mut output.layers)?;
+                    push_node_border(node, rect, context, &mut output.layers)?;
                 }
             }
             "Box" | "Divider" if has_layer => {
-                render_box_contents(node, rect, &context, &mut output)?;
+                render_box_contents(node, rect, context, output)?;
             }
             _ => {}
         }
     }
-    // The caret and the selection follow the focused field, so they are built
-    // here where the font measurement helpers are available.
-    let focused_field = interaction
-        .focused_text_input
-        .as_deref()
-        .and_then(|focused| output.text_inputs.iter().find(|field| field.id == focused));
-    let caret = focused_field.map(|field| caret_layer(field, interaction.caret_index));
-    let caret_rect = focused_field.map(|field| caret_rect(field, interaction.caret_index));
-    let selection = match (focused_field, interaction.selection_range()) {
-        (Some(field), Some((start, end))) => selection_layers(field, start, end),
-        _ => Vec::new(),
+    Ok(())
+}
+
+/// Draws the open dialog over the page and reports the controls it added.
+///
+/// The dialog is a project layout like any page, which is what lets a product
+/// skin its own questions instead of showing a system message box. It is centred
+/// in the page, and its controls are kept apart from the page's own so a click
+/// while it is open cannot reach a button it is covering.
+///
+/// Returns `None` when no dialog is open, or when the project declares no dialog
+/// layout, in which case the page is drawn on its own.
+#[allow(clippy::too_many_arguments)]
+fn render_dialog_overlay(
+    files: &HashMap<String, Vec<u8>>,
+    config: &serde_json::Value,
+    dpi: DpiContext,
+    translations: &HashMap<String, String>,
+    interaction: &InteractionState,
+    page_width: i32,
+    page_height: i32,
+    output: &mut LayoutOutput,
+) -> Result<Option<DialogUi>> {
+    if interaction.dialog.is_none() {
+        return Ok(None);
+    }
+    let path = config["ui"]["dialog_layout"]
+        .as_str()
+        .unwrap_or(DEFAULT_DIALOG_LAYOUT);
+    let Some(bytes) = files.get(path) else {
+        // A project that declares no dialog layout keeps working: a close
+        // question then closes without asking, as it did before the wizard
+        // asked at all.
+        return Ok(None);
     };
-    Ok(RuntimeUi {
-        width,
-        height,
+    let xml = std::str::from_utf8(bytes)?;
+    let document = roxmltree::Document::parse(xml)
+        .with_context(|| format!("invalid dialog layout: {path}"))?;
+    let page = document
+        .descendants()
+        .find(|node| node.has_tag_name("Page"))
+        .with_context(|| format!("dialog layout has no Page element: {path}"))?;
+    let dialog_width = scale_value(int_attribute(page, "width").unwrap_or(400), dpi.scale);
+    let dialog_height = scale_value(int_attribute(page, "height").unwrap_or(230), dpi.scale);
+    let corner_radius = scale_value(
+        int_attribute(page, "border-radius").unwrap_or(16),
+        dpi.scale,
+    );
+
+    let context = LayoutContext {
+        dpi,
+        files,
+        config,
+        locale: "",
+        translations,
+        interaction,
+        language_menu_open: false,
+    };
+    // The dialog is laid out at the origin and then moved to the middle of the
+    // page, so its own layout can use the ordinary coordinate system.
+    let mut dialog_output = LayoutOutput::default();
+    render_layout_content(
+        page,
+        dialog_width,
+        dialog_height,
         corner_radius,
-        caption_height: scale_value(64, dpi.scale),
-        layers: output.layers,
-        texts: output.texts,
-        overlay_layers: output.overlay_layers,
-        overlay_texts: output.overlay_texts,
-        actions: output.actions,
-        text_hits: output.text_hits,
-        hover_regions: output.hover_regions,
-        text_inputs: output.text_inputs,
-        caret,
-        caret_rect,
-        selection,
-        caret_drawn: interaction.caret_visible,
-        language_options,
-        close_confirm_message: translations
-            .get("close_confirm_message")
-            .cloned()
-            .unwrap_or_else(|| "Exit the installer?".to_string()),
-        product_name: product_name(files),
-    })
+        None,
+        &context,
+        &mut dialog_output,
+    )?;
+    translate_layout(
+        &mut dialog_output,
+        ((page_width - dialog_width) / 2).max(0),
+        ((page_height - dialog_height) / 2).max(0),
+    );
+
+    // A scrim separates the question from the page behind it, so the page does
+    // not look live while the wizard waits for an answer.
+    push_solid_layer(
+        &mut output.overlay_layers,
+        LayerRect {
+            left: 0,
+            top: 0,
+            width: page_width,
+            height: page_height,
+        },
+        DIALOG_SCRIM,
+        0,
+    )?;
+    output.overlay_layers.append(&mut dialog_output.layers);
+    output.overlay_texts.append(&mut dialog_output.texts);
+    output
+        .overlay_layers
+        .append(&mut dialog_output.overlay_layers);
+    output
+        .overlay_texts
+        .append(&mut dialog_output.overlay_texts);
+
+    Ok(Some(DialogUi {
+        actions: dialog_output.actions,
+        text_hits: dialog_output.text_hits,
+        hover_regions: dialog_output.hover_regions,
+    }))
+}
+
+/// Moves every region of a layout by `(left, top)`.
+///
+/// A dialog is authored on its own and then placed in the middle of the page, so
+/// its art and its hit regions have to move together or the two disagree.
+fn translate_layout(output: &mut LayoutOutput, left: i32, top: i32) {
+    for layer in output
+        .layers
+        .iter_mut()
+        .chain(output.overlay_layers.iter_mut())
+    {
+        layer.left += left;
+        layer.top += top;
+    }
+    for text in output
+        .texts
+        .iter_mut()
+        .chain(output.overlay_texts.iter_mut())
+    {
+        text.left += left;
+        text.top += top;
+    }
+    for region in output.actions.iter_mut() {
+        region.left += left;
+        region.right += left;
+        region.top += top;
+        region.bottom += top;
+    }
+    for hit in output.text_hits.iter_mut() {
+        hit.left += left;
+        hit.right += left;
+        hit.top += top;
+        hit.bottom += top;
+    }
+    for region in output.hover_regions.iter_mut() {
+        region.left += left;
+        region.right += left;
+        region.top += top;
+        region.bottom += top;
+    }
 }
 
 fn runtime_layout_path(config: &serde_json::Value, mode: RuntimeMode) -> Result<&str> {
@@ -2305,6 +2606,17 @@ fn node_is_visible(node: roxmltree::Node<'_, '_>, interaction: &InteractionState
         .and_then(|id| interaction.panel_visibility.get(id))
     {
         return *visible;
+    }
+    // A dialog layout serves both a notice and a question, so a control says
+    // which kind of dialog it belongs to instead of hard-coding `visible`.
+    if let Some(role) = node.attribute("visible-with") {
+        return interaction
+            .dialog
+            .as_ref()
+            .is_some_and(|dialog| match role {
+                "dismiss" => dialog.offers_dismiss(),
+                _ => true,
+            });
     }
     node.attribute("visible") != Some("false")
 }
@@ -2481,6 +2793,10 @@ fn push_action(
                 resolve_link_target(target, context).map(WindowAction::OpenLink)
             }
             Some("switch_language") => Some(WindowAction::ToggleLanguageMenu),
+            // Dialog buttons belong to a dialog layout, so they only ever appear
+            // while that dialog is open.
+            Some("dialog_ok") => Some(WindowAction::DialogOk),
+            Some("dialog_cancel") => Some(WindowAction::DialogCancel),
             Some("install") => Some(WindowAction::Install),
             Some("uninstall") => Some(WindowAction::Uninstall),
             Some("launch_app") => Some(WindowAction::LaunchApp),
@@ -2794,6 +3110,25 @@ fn resolved_text_for_node(
     }
     let (mut text, alignment) = text_for_node(node, context.locale, context.translations)?;
     if let Some(source) = node.attribute("value-source") {
+        // `dialog:...` comes from the dialog that is open. A dialog layout is
+        // authored once and used for every question, so its text comes from the
+        // dialog rather than from the layout or the locale table.
+        if let Some(role) = source.strip_prefix("dialog:") {
+            let resolved = context
+                .interaction
+                .dialog
+                .as_ref()
+                .and_then(|dialog| match role {
+                    "message" => Some(dialog.message.clone()),
+                    "accept" => Some(dialog.accept_label.clone()),
+                    "dismiss" => Some(dialog.dismiss_label.clone()),
+                    _ => None,
+                });
+            if let Some(resolved) = resolved {
+                return Some((resolved, alignment));
+            }
+            return None;
+        }
         // `status` replaces the authored placeholder with what the running task
         // published. A project script names its own steps, so its literal text
         // wins; otherwise the published locale key is looked up.
@@ -3281,16 +3616,30 @@ fn container_intrinsic_size(
     context: &LayoutContext<'_>,
 ) -> i32 {
     let padding = insets_for_node(node, "padding", context);
+    (container_intrinsic_content(node, axis, context) + padding.along(axis)).max(0)
+}
+
+/// The extent a container's children need along `axis`, without its own padding.
+///
+/// Keeping the two apart is what lets a container be measured as a child of
+/// another container without counting its padding twice.
+fn container_intrinsic_content(
+    node: roxmltree::Node<'_, '_>,
+    axis: FlowAxis,
+    context: &LayoutContext<'_>,
+) -> i32 {
     let children: Vec<_> = node
         .children()
         .filter(|child| child.is_element() && !is_hidden(*child, context.interaction))
         .collect();
     if children.is_empty() {
-        return padding.along(axis);
+        return 0;
     }
-    let declared_main = size_attribute(node, main_axis_attribute(axis), 0, context).unwrap_or(0);
-    let declared_cross = size_attribute(node, cross_axis_attribute(axis), 0, context).unwrap_or(0);
-    let content = if flow_axis(node) == Some(axis) {
+    // The extent the container declares for itself on the axis being measured,
+    // which is the base a percentage child resolves against.
+    let declared_along_axis =
+        size_attribute(node, main_axis_attribute(axis), 0, context).unwrap_or(0);
+    if flow_axis(node) == Some(axis) {
         let gap = scale_value(
             int_attribute(node, "item-spacing")
                 .or_else(|| int_attribute(node, "gap"))
@@ -3299,12 +3648,12 @@ fn container_intrinsic_size(
         );
         let items: Vec<FlowItem> = children
             .iter()
-            .map(|child| flow_item_for_node(*child, axis, declared_main, context))
+            .map(|child| flow_item_for_node(*child, axis, declared_along_axis, context))
             .collect();
-        if wraps(node) && declared_main > 0 {
+        if wraps(node) && declared_along_axis > 0 {
             // A wrapping container is only as wide as its widest line, which is
             // what an outer flow needs to place it.
-            wrap_lines(&items, declared_main, gap)
+            wrap_lines(&items, declared_along_axis, gap)
                 .iter()
                 .map(|line| {
                     let widths: i32 = line.iter().map(|index| items[*index].basis_size()).sum();
@@ -3317,17 +3666,46 @@ fn container_intrinsic_size(
             widths + gap * i32::try_from(children.len().saturating_sub(1)).unwrap_or(0)
         }
     } else {
+        // The container flows across the axis being measured, so its extent on
+        // that axis is the largest extent its children ask for along it. Asking
+        // for a child's size across the container's flow instead would measure
+        // the wrong edge, which is what used to collapse a dialog row.
         children
             .iter()
-            .map(|child| {
-                let margin = insets_for_node(*child, "margin", context);
-                cross_size_for_node(*child, axis, declared_cross, context)
-                    + margin.along(axis.cross_measure())
-            })
+            .map(|child| outer_extent_along(*child, axis, declared_along_axis, context))
             .max()
             .unwrap_or(0)
+    }
+}
+
+/// The extent a child claims along `axis`, padding and margin included.
+///
+/// A child that declares an extent keeps it, a child that does not falls back to
+/// the extent its own content needs — a label's line box, a nested container's
+/// children — and a child with neither contributes nothing. Nothing here
+/// stretches to its container, because the container's extent is exactly what
+/// this is measuring.
+fn outer_extent_along(
+    child: roxmltree::Node<'_, '_>,
+    axis: FlowAxis,
+    base: i32,
+    context: &LayoutContext<'_>,
+) -> i32 {
+    let content = size_attribute(child, main_axis_attribute(axis), base, context).or_else(|| {
+        if renders_own_children(child) {
+            // A container reports its children, not its own padding, which is
+            // added below so it is counted exactly once.
+            Some(container_intrinsic_content(child, axis, context))
+        } else {
+            intrinsic_size(child, axis, context)
+        }
+    });
+    let Some(content) = content else {
+        return 0;
     };
-    (content + padding.along(axis)).max(0)
+    let insets = insets_for_node(child, "padding", context).along(axis)
+        + insets_for_node(child, "margin", context).along(axis);
+    (content + insets).max(0)
 }
 
 fn has_intrinsic_text(node: roxmltree::Node<'_, '_>) -> bool {
@@ -4404,15 +4782,18 @@ fn run_window(client_width: i32, client_height: i32) -> Result<()> {
             return Err(windows::core::Error::from_win32().into());
         }
         let style = WS_POPUP;
-        let left = (GetSystemMetrics(SM_CXSCREEN) - client_width) / 2;
-        let top = (GetSystemMetrics(SM_CYSCREEN) - client_height) / 2;
+        // The window is placed once it exists, so it can be centred on the
+        // monitor the user is actually looking at and clamped to that monitor's
+        // work area. Primary-screen metrics ignore a second display and, on a
+        // display scaled past 100%, a layout can measure wider than the desktop,
+        // in which case the old arithmetic resolved to the top-left corner.
         let window = CreateWindowExW(
             WS_EX_APPWINDOW,
             class_name,
             &title,
             style,
-            left,
-            top,
+            0,
+            0,
             client_width,
             client_height,
             None,
@@ -4420,6 +4801,7 @@ fn run_window(client_width: i32, client_height: i32) -> Result<()> {
             instance,
             None,
         )?;
+        center_window(window);
         let _ = SendMessageW(
             window,
             WM_SETICON,
@@ -4462,6 +4844,86 @@ fn run_window(client_width: i32, client_height: i32) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Puts the window in the middle of its monitor, sized to the current page.
+///
+/// The work area is used rather than the full screen, so the wizard never hides
+/// under the taskbar, and the size is clamped to it so a layout that is larger
+/// than the desktop stays fully reachable.
+///
+/// Nothing here reports a failure. A window that cannot be moved keeps the
+/// position Windows gave it, which is what the installer did before.
+unsafe fn center_window(window: HWND) {
+    let (width, height) = {
+        let Some(runtime) = UI.get() else {
+            return;
+        };
+        let Ok(mut state) = runtime.lock() else {
+            return;
+        };
+        let size = (state.ui.width, state.ui.height);
+        if size == state.window_size && size.0 > 0 {
+            // The page still has the size the window already has, so a window the
+            // user moved stays where they put it.
+            return;
+        }
+        state.window_size = size;
+        size
+    };
+    let Some(work) = monitor_work_area(window) else {
+        return;
+    };
+    let (left, top, width, height) = centered_bounds(work, width, height);
+    let _ = SetWindowPos(
+        window,
+        HWND_TOP,
+        left,
+        top,
+        width,
+        height,
+        SWP_NOZORDER | SWP_NOACTIVATE,
+    );
+}
+
+/// The `(left, top, right, bottom)` of the work area of the monitor a window is
+/// on. A window that does not exist yet falls back to the primary monitor.
+unsafe fn monitor_work_area(window: HWND) -> Option<(i32, i32, i32, i32)> {
+    let monitor = MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
+    if monitor.is_invalid() {
+        return None;
+    }
+    let mut info = MONITORINFO {
+        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+    if !GetMonitorInfoW(monitor, &mut info).as_bool() {
+        return None;
+    }
+    Some((
+        info.rcWork.left,
+        info.rcWork.top,
+        info.rcWork.right,
+        info.rcWork.bottom,
+    ))
+}
+
+/// Centres a `width` by `height` window inside a work area, clamped to it.
+///
+/// Split out from the Win32 call so the arithmetic that decides whether a window
+/// lands in the middle or in a corner is testable on its own.
+fn centered_bounds(work: (i32, i32, i32, i32), width: i32, height: i32) -> (i32, i32, i32, i32) {
+    let (left, top, right, bottom) = work;
+    let work_width = (right - left).max(1);
+    let work_height = (bottom - top).max(1);
+    let width = width.clamp(1, work_width);
+    let height = height.clamp(1, work_height);
+    (
+        left + (work_width - width) / 2,
+        top + (work_height - height) / 2,
+        width,
+        height,
+    )
 }
 
 fn win32_resource_id(id: u16) -> PCWSTR {
@@ -4520,10 +4982,23 @@ unsafe extern "system" fn window_proc(
             let over_caption = UI
                 .get()
                 .and_then(|state| state.lock().ok())
-                .is_some_and(|state| y < state.ui.caption_height);
+                .is_some_and(|state| y < state.ui.caption_height && state.ui.dialog.is_none());
             if over_caption && !over_action {
-                let _ = ReleaseCapture();
-                let _ = SendMessageW(window, WM_NCLBUTTONDOWN, WPARAM(HTCAPTION as usize), lparam);
+                // `WM_LBUTTONDOWN` carries client coordinates, but this message
+                // defers to the same fields as a real caption press, where they
+                // are screen coordinates. Passing the client point through
+                // unconverted made the window jump to a position derived from
+                // where the pointer sat inside it.
+                let mut point = POINT { x, y };
+                if ClientToScreen(window, &mut point).as_bool() {
+                    let _ = ReleaseCapture();
+                    let _ = SendMessageW(
+                        window,
+                        WM_NCLBUTTONDOWN,
+                        WPARAM(HTCAPTION as usize),
+                        LPARAM(((point.y << 16) | (point.x & 0xFFFF)) as isize),
+                    );
+                }
             }
             LRESULT(0)
         }
@@ -4587,12 +5062,26 @@ unsafe extern "system" fn window_proc(
             handle_language_menu_key(window, wparam.0 as u32);
             LRESULT(0)
         }
-        WM_KEYDOWN if wparam.0 as u32 == 0x1B && !install::busy() => {
+        // A dialog answers to the keyboard the way a message box does, and it
+        // takes these keys before the page can treat Escape as "close the
+        // window".
+        WM_KEYDOWN if dialog_is_open() => {
+            match VIRTUAL_KEY(wparam.0 as u16) {
+                VK_RETURN => handle_window_action(window, WindowAction::DialogOk),
+                VK_ESCAPE => handle_window_action(window, WindowAction::DialogCancel),
+                _ => {}
+            }
+            LRESULT(0)
+        }
+        WM_KEYDOWN if wparam.0 as u32 == VK_ESCAPE.0 as u32 && !install::busy() => {
             let _ = DestroyWindow(window);
             LRESULT(0)
         }
         WM_APP_REFRESH => {
-            // The state is already rebuilt by whoever posted this message.
+            // The state is already rebuilt by whoever posted this message. A
+            // page change can bring a differently sized layout, and the window
+            // follows it so the wizard is never left off-centre.
+            center_window(window);
             let _ = InvalidateRect(window, None, false);
             // A worker may have moved the caret, and an input method is only
             // repositioned from the thread that owns the window.
@@ -4656,20 +5145,23 @@ unsafe fn draw_ui_frame(destination: HDC, ui: &RuntimeUi) {
 
 fn window_action_at(x: i32, y: i32) -> Option<WindowAction> {
     let state = UI.get()?.lock().ok()?;
+    // A dialog is modal: while one is open only its own controls respond, so a
+    // click can never reach a page button it happens to be covering.
+    let regions = match state.ui.dialog.as_ref() {
+        Some(dialog) => (&dialog.text_hits, &dialog.actions),
+        None => (&state.ui.text_hits, &state.ui.actions),
+    };
+    let (text_hits, actions) = regions;
     // Text hits are checked first: a link sits inside a label that may itself
     // overlap a panel, and the innermost target is the one the user aimed at.
-    if let Some(hit) = state
-        .ui
-        .text_hits
+    if let Some(hit) = text_hits
         .iter()
         .rev()
         .find(|hit| x >= hit.left && x < hit.right && y >= hit.top && y < hit.bottom)
     {
         return Some(hit.action.clone());
     }
-    state
-        .ui
-        .actions
+    actions
         .iter()
         .rev()
         .find(|region| x >= region.left && x < region.right && y >= region.top && y < region.bottom)
@@ -4852,6 +5344,11 @@ fn end_text_selection_drag(window: HWND) -> bool {
 /// lands where the user aimed rather than always at the end of the text.
 fn text_input_at(x: i32, y: i32) -> Option<(String, usize)> {
     let state = UI.get()?.lock().ok()?;
+    // A dialog covers the page, so the fields under it are not reachable while
+    // it is open. A dialog layout declares no editable field of its own.
+    if state.ui.dialog.is_some() {
+        return None;
+    }
     let field = state.ui.text_inputs.iter().rev().find(|field| {
         x >= field.left
             && x < field.left + field.width
@@ -5509,9 +6006,12 @@ unsafe fn write_clipboard_text(text: &str) -> Result<()> {
 
 fn hover_control_at(x: i32, y: i32) -> Option<String> {
     let state = UI.get()?.lock().ok()?;
-    state
-        .ui
-        .hover_regions
+    // A dialog is modal, so nothing behind it highlights while it is open.
+    let regions = match state.ui.dialog.as_ref() {
+        Some(dialog) => &dialog.hover_regions,
+        None => &state.ui.hover_regions,
+    };
+    regions
         .iter()
         .rev()
         .find(|region| x >= region.left && x < region.right && y >= region.top && y < region.bottom)
@@ -5525,15 +6025,30 @@ unsafe fn handle_window_action(window: HWND, action: WindowAction) {
                 let _ = DestroyWindow(window);
             }
         }
-        WindowAction::CloseConfirm => match confirm_close() {
-            Ok(true) => {
-                if !install::busy() {
-                    let _ = DestroyWindow(window);
-                }
+        WindowAction::CloseConfirm => {
+            // The question is drawn inside the window rather than handed to
+            // Windows, so it carries the product's skin and cannot end up behind
+            // another application.
+            if let Err(error) = open_close_confirm_dialog(window) {
+                show_runtime_error(&error);
             }
-            Ok(false) => {}
-            Err(error) => show_runtime_error(&error),
-        },
+        }
+        WindowAction::DialogOk => {
+            let kind = UI
+                .get()
+                .and_then(|state| state.lock().ok())
+                .and_then(|state| state.interaction.dialog.as_ref().map(|dialog| dialog.kind));
+            if let Err(error) = set_dialog(window, None) {
+                show_runtime_error(&error);
+            } else if kind == Some(DialogKind::CloseConfirm) && !install::busy() {
+                let _ = DestroyWindow(window);
+            }
+        }
+        WindowAction::DialogCancel => {
+            if let Err(error) = set_dialog(window, None) {
+                show_runtime_error(&error);
+            }
+        }
         WindowAction::Minimize => {
             let _ = ShowWindow(window, SW_MINIMIZE);
         }
@@ -5551,8 +6066,8 @@ unsafe fn handle_window_action(window: HWND, action: WindowAction) {
                 show_runtime_error(&error);
             }
         }
-        WindowAction::Install => install::start_install(window),
-        WindowAction::Uninstall => install::start_uninstall(window),
+        WindowAction::Install => install::start_install(),
+        WindowAction::Uninstall => install::start_uninstall(),
         WindowAction::LaunchApp => {
             if let Err(error) = launch_installed_app() {
                 show_runtime_error(&error);
@@ -5774,30 +6289,91 @@ fn rebuild_runtime_ui(state: &mut RuntimeState) -> Result<()> {
     Ok(())
 }
 
-/// Asks the localized close question a `close_confirm` control declares.
-unsafe fn confirm_close() -> Result<bool> {
-    let (question, title) = UI
-        .get()
-        .and_then(|state| state.lock().ok())
-        .map(|state| {
-            (
-                state.ui.close_confirm_message.clone(),
-                state.ui.product_name.clone(),
-            )
-        })
-        .unwrap_or_else(|| {
-            (
-                "Exit the installer?".to_string(),
-                "nano-installer".to_string(),
-            )
-        });
-    let message = HSTRING::from(question);
-    let title = HSTRING::from(title);
-    let answer = unsafe { MessageBoxW(None, &message, &title, MB_YESNO | MB_ICONQUESTION) };
-    Ok(answer == IDYES)
+/// Asks the localized close question, drawn inside the installer window.
+///
+/// Returns as soon as the dialog opens. What confirming it does is decided when
+/// the answer arrives, which is what keeps the window's message loop free to
+/// keep painting while the question is up.
+unsafe fn open_close_confirm_dialog(window: HWND) -> Result<()> {
+    let (question, accept, dismiss) = dialog_labels()?;
+    set_dialog(
+        window,
+        Some(DialogState {
+            kind: DialogKind::CloseConfirm,
+            message: question,
+            accept_label: accept,
+            dismiss_label: dismiss,
+        }),
+    )
 }
 
-/// Opens a resolved URL in the user's default browser.
+/// The localized question and button labels a dialog uses.
+fn dialog_labels() -> Result<(String, String, String)> {
+    let state = UI
+        .get()
+        .context("native UI state is missing")?
+        .lock()
+        .map_err(|_| anyhow::anyhow!("native UI state lock was poisoned"))?;
+    Ok((
+        state.ui.close_confirm_message.clone(),
+        state.ui.dialog_accept_label.clone(),
+        state.ui.dialog_dismiss_label.clone(),
+    ))
+}
+
+/// Shows a notice that waits to be acknowledged.
+///
+/// The runtime uses this instead of a system message box so that a message the
+/// installer has to deliver carries the product's skin and stays with the
+/// installer window.
+pub(crate) fn open_notice_dialog(message: String) -> Result<()> {
+    let window = runtime_window()?;
+    if window.0.is_null() {
+        bail!("the installer window is not open yet");
+    }
+    let (_, accept, _) = dialog_labels()?;
+    unsafe {
+        set_dialog(
+            window,
+            Some(DialogState {
+                kind: DialogKind::Notice,
+                message,
+                accept_label: accept,
+                dismiss_label: String::new(),
+            }),
+        )
+    }
+}
+
+/// Replaces the open dialog, if any, and brings the window up to date.
+unsafe fn set_dialog(window: HWND, dialog: Option<DialogState>) -> Result<()> {
+    let runtime = UI.get().context("native UI state is missing")?;
+    {
+        let mut state = runtime
+            .lock()
+            .map_err(|_| anyhow::anyhow!("native UI state lock was poisoned"))?;
+        if state.interaction.dialog.is_none() && dialog.is_none() {
+            return Ok(());
+        }
+        state.interaction.dialog = dialog;
+        // The dialog takes any text focus the page had, so the caret goes away
+        // while a question is up.
+        state.interaction.focused_text_input = None;
+        rebuild_runtime_ui(&mut state)?;
+    }
+    let _ = InvalidateRect(window, None, false);
+    let _ = UpdateWindow(window);
+    Ok(())
+}
+
+/// Whether a dialog is waiting for an answer.
+fn dialog_is_open() -> bool {
+    UI.get()
+        .and_then(|state| state.lock().ok())
+        .is_some_and(|state| state.interaction.dialog.is_some())
+}
+
+/// Opens a resolved URL in the user's default browser./// Opens a resolved URL in the user's default browser.
 fn open_link(target: &str) -> Result<()> {
     let operation = w!("open");
     let file = HSTRING::from(target);
@@ -6282,19 +6858,19 @@ unsafe fn draw_layer(destination: HDC, layer: &ImageLayer) {
 #[cfg(test)]
 mod tests {
     use super::{
-        button_image, byte_index, caret_layer, disk_root, flow_axis, flow_widths,
-        format_size_bytes, initial_interaction, inspect_project, installer_version_info,
-        load_layout, measure_layout_text_width, pack_project, pack_project_with_progress,
-        parse_bundle, parse_color, parse_image_style, parse_text_runs, pick_directory_target,
-        push_action, push_border_layer, push_node_border, query_disk_free_bytes, render_flow,
-        render_flow_item, render_progress_bar, resolve_asset_path, resolve_link_target,
-        resolved_text_for_node, restore_snapshot, runtime_layout_path, runtime_layout_path_at,
-        runtime_page_count, scale_value, selection_layers, size_attribute,
-        uninstaller_version_info, validate_output_filename, word_end_after, word_range,
-        word_start_before, wrap_lines, wraps, BundleIndex, DpiContext, FlowAxis, FlowItem,
-        InteractionState, LayerRect, LayoutContext, LayoutOutput, PayloadFormat, RuntimeMode,
-        RuntimeUi, TextAlignment, TextHit, TextInputRegion, TextSnapshot, WindowAction, COLORREF,
-        FOOTER_MAGIC,
+        button_image, byte_index, caret_layer, centered_bounds, container_intrinsic_size,
+        disk_root, flow_axis, flow_widths, format_size_bytes, initial_interaction, inspect_project,
+        installer_version_info, load_layout, measure_layout_text_width, pack_project,
+        pack_project_with_progress, parse_bundle, parse_color, parse_image_style, parse_text_runs,
+        pick_directory_target, push_action, push_border_layer, push_node_border,
+        query_disk_free_bytes, render_flow, render_flow_item, render_progress_bar,
+        resolve_asset_path, resolve_link_target, resolved_text_for_node, restore_snapshot,
+        runtime_layout_path, runtime_layout_path_at, runtime_page_count, scale_value,
+        selection_layers, size_attribute, uninstaller_version_info, validate_output_filename,
+        word_end_after, word_range, word_start_before, wrap_lines, wraps, BundleIndex, DialogKind,
+        DialogState, DpiContext, FlowAxis, FlowItem, InteractionState, LayerRect, LayoutContext,
+        LayoutOutput, PayloadFormat, RuntimeMode, RuntimeUi, TextAlignment, TextHit,
+        TextInputRegion, TextSnapshot, WindowAction, COLORREF, FOOTER_MAGIC,
     };
     use anyhow::Context;
     use std::collections::HashMap;
@@ -6641,6 +7217,345 @@ mod tests {
         assert!(layers.is_empty());
     }
 
+    /// A layout and the translation table a dialog test needs.
+    fn dialog_fixture() -> (HashMap<String, Vec<u8>>, serde_json::Value) {
+        let config = serde_json::json!({
+            "ui": { "dialog_layout": "layouts/msgBox.xml" },
+            "resources": { "locales_dir": "locales" },
+            "wizard": { "pages": [{ "layout": "layouts/page.xml" }] }
+        });
+        let mut files = HashMap::new();
+        files.insert(
+            "installer_config.json".to_string(),
+            serde_json::to_vec(&config).expect("config serialises"),
+        );
+        files.insert(
+            "layouts/page.xml".to_string(),
+            br##"<Page width="720" height="450" background="#FF000000" />"##.to_vec(),
+        );
+        files.insert(
+            "layouts/msgBox.xml".to_string(),
+            br##"<Page width="400" height="230" background="#FF2A3844" border-radius="16">
+                 <Label id="lblMsg" text="placeholder" value-source="dialog:message" width="336" height="24" />
+                 <Button id="btnCancel" action="dialog_cancel" visible-with="dismiss"
+                         text="@cancel" value-source="dialog:dismiss" width="160" height="40" />
+                 <Button id="btnOK" action="dialog_ok" text="@ok" value-source="dialog:accept"
+                         width="160" height="40" />
+               </Page>"##
+                .to_vec(),
+        );
+        files.insert(
+            "locales/zh-CN.json".to_string(),
+            br##"{"ok":"Exit","cancel":"Keep going","close_confirm_message":"Leave the wizard?"}"##
+                .to_vec(),
+        );
+        (files, config)
+    }
+
+    /// The interaction state with a dialog open, which is what makes a layout
+    /// render its dialog branch.
+    fn interaction_with_dialog(dialog: DialogState) -> InteractionState {
+        InteractionState {
+            dialog: Some(dialog),
+            ..Default::default()
+        }
+    }
+
+    fn notice() -> DialogState {
+        DialogState {
+            kind: DialogKind::Notice,
+            message: "Everything finished".to_string(),
+            accept_label: "OK".to_string(),
+            dismiss_label: String::new(),
+        }
+    }
+
+    fn close_question() -> DialogState {
+        DialogState {
+            kind: DialogKind::CloseConfirm,
+            message: "Leave the wizard?".to_string(),
+            accept_label: "Exit".to_string(),
+            dismiss_label: "Keep going".to_string(),
+        }
+    }
+
+    #[test]
+    fn a_dialog_is_drawn_over_the_page_and_centred() -> anyhow::Result<()> {
+        let (files, _) = dialog_fixture();
+        let ui = load_layout(
+            &files,
+            DpiContext {
+                scale: 1.0,
+                use_2x: false,
+            },
+            "zh-CN",
+            false,
+            &interaction_with_dialog(close_question()),
+            RuntimeMode::Installer,
+        )?;
+        let dialog = ui.dialog.expect("the layout reported a dialog");
+
+        // The question is drawn with the dialog's own text, not the placeholder
+        // the layout was authored with.
+        let question = ui
+            .overlay_texts
+            .iter()
+            .map(visible_text)
+            .any(|text| text == "Leave the wizard?");
+        assert!(question, "the dialog question was not drawn");
+
+        // A dialog smaller than its page is centred inside it, so its own layout
+        // can use the ordinary coordinate system.
+        let expected_left = (720 - 400) / 2;
+        let expected_top = (450 - 230) / 2;
+        assert!(dialog
+            .actions
+            .iter()
+            .any(|region| region.left >= expected_left && region.top >= expected_top));
+        for region in &dialog.actions {
+            assert!(region.left >= expected_left && region.right <= 720 - expected_left);
+            assert!(region.top >= expected_top && region.bottom <= 450 - expected_top);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn a_dialog_button_answers_with_its_own_action() -> anyhow::Result<()> {
+        let (files, _) = dialog_fixture();
+        let ui = load_layout(
+            &files,
+            DpiContext {
+                scale: 1.0,
+                use_2x: false,
+            },
+            "zh-CN",
+            false,
+            &interaction_with_dialog(close_question()),
+            RuntimeMode::Installer,
+        )?;
+        let dialog = ui.dialog.expect("the layout reported a dialog");
+        assert!(dialog
+            .actions
+            .iter()
+            .any(|region| matches!(region.action, WindowAction::DialogOk)));
+        assert!(dialog
+            .actions
+            .iter()
+            .any(|region| matches!(region.action, WindowAction::DialogCancel)));
+        Ok(())
+    }
+
+    #[test]
+    fn a_notice_hides_the_secondary_button() -> anyhow::Result<()> {
+        // A notice has only one answer, so the layout's cancel button is not
+        // drawn and cannot be clicked. That is how one dialog layout serves both
+        // a question and a notice.
+        let (files, _) = dialog_fixture();
+        let ui = load_layout(
+            &files,
+            DpiContext {
+                scale: 1.0,
+                use_2x: false,
+            },
+            "zh-CN",
+            false,
+            &interaction_with_dialog(notice()),
+            RuntimeMode::Installer,
+        )?;
+        let dialog = ui.dialog.expect("the layout reported a dialog");
+        assert!(!dialog
+            .actions
+            .iter()
+            .any(|region| matches!(region.action, WindowAction::DialogCancel)));
+        assert!(dialog
+            .actions
+            .iter()
+            .any(|region| matches!(region.action, WindowAction::DialogOk)));
+
+        // The close question draws it again.
+        let ui = load_layout(
+            &files,
+            DpiContext {
+                scale: 1.0,
+                use_2x: false,
+            },
+            "zh-CN",
+            false,
+            &interaction_with_dialog(close_question()),
+            RuntimeMode::Installer,
+        )?;
+        let dialog = ui.dialog.expect("the layout reported a dialog");
+        assert!(dialog
+            .actions
+            .iter()
+            .any(|region| matches!(region.action, WindowAction::DialogCancel)));
+        Ok(())
+    }
+
+    #[test]
+    fn a_page_without_a_dialog_draws_no_overlay() -> anyhow::Result<()> {
+        let (files, _) = dialog_fixture();
+        let ui = load_layout(
+            &files,
+            DpiContext {
+                scale: 1.0,
+                use_2x: false,
+            },
+            "zh-CN",
+            false,
+            &InteractionState::default(),
+            RuntimeMode::Installer,
+        )?;
+        assert!(ui.dialog.is_none());
+        assert!(ui.overlay_layers.is_empty());
+        assert!(ui.overlay_texts.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn a_project_without_a_dialog_layout_still_opens() -> anyhow::Result<()> {
+        // A project that ships no dialog layout keeps working: the page draws on
+        // its own and the caller falls back to closing without asking.
+        let (mut files, _) = dialog_fixture();
+        files.remove("layouts/msgBox.xml");
+        let ui = load_layout(
+            &files,
+            DpiContext {
+                scale: 1.0,
+                use_2x: false,
+            },
+            "zh-CN",
+            false,
+            &interaction_with_dialog(close_question()),
+            RuntimeMode::Installer,
+        )?;
+        assert!(ui.dialog.is_none());
+        assert!(ui.overlay_layers.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn the_example_dialog_places_its_message_and_both_buttons() -> anyhow::Result<()> {
+        // The example's own dialog layout, so a change to either the layout or
+        // the flow measurement that drops a percentage-sized row shows up here
+        // rather than only on screen.
+        let (mut files, _) = dialog_fixture();
+        files.insert(
+            "layouts/msgBox.xml".to_string(),
+            include_bytes!("../../../examples/TapTap/layouts/msgBox.xml").to_vec(),
+        );
+        files.insert(
+            "assets/btn_dialog.png".to_string(),
+            include_bytes!("../../../examples/TapTap/assets/btn_dialog.png").to_vec(),
+        );
+        files.insert(
+            "assets/btn_dialog_primary.png".to_string(),
+            include_bytes!("../../../examples/TapTap/assets/btn_dialog_primary.png").to_vec(),
+        );
+        // The example's own translations, read the way the runtime reads them
+        // when it opens the question.
+        let locale: HashMap<String, String> = serde_json::from_slice(include_bytes!(
+            "../../../examples/TapTap/locales/zh-CN.json"
+        ))?;
+        let question = locale
+            .get("close_confirm_message")
+            .context("the locale has no close question")?
+            .clone();
+        let dialog = DialogState {
+            kind: DialogKind::CloseConfirm,
+            message: question.clone(),
+            accept_label: locale.get("ok").cloned().unwrap_or_default(),
+            dismiss_label: locale.get("cancel").cloned().unwrap_or_default(),
+        };
+        files.insert(
+            "locales/zh-CN.json".to_string(),
+            include_bytes!("../../../examples/TapTap/locales/zh-CN.json").to_vec(),
+        );
+        let ui = load_layout(
+            &files,
+            DpiContext {
+                scale: 1.0,
+                use_2x: false,
+            },
+            "zh-CN",
+            false,
+            &interaction_with_dialog(dialog),
+            RuntimeMode::Installer,
+        )?;
+
+        // The question is one wrapped line with real height, not a collapsed
+        // row, and it sits above the buttons.
+        let message = ui
+            .overlay_texts
+            .iter()
+            .find(|layer| visible_text(layer) == question)
+            .with_context(|| format!("the dialog question {question:?} was not drawn"))?;
+        assert!(
+            message.height > 0,
+            "the question was laid out with no height"
+        );
+        assert!(
+            message.width > 0 && message.left > 0,
+            "the question was not placed inside the dialog"
+        );
+
+        // Both answers are drawn, and they are side by side rather than stacked
+        // on top of each other.
+        let dialog = ui.dialog.expect("the layout reported a dialog");
+        let ok = dialog
+            .actions
+            .iter()
+            .find(|region| matches!(region.action, WindowAction::DialogOk))
+            .context("no accept button")?;
+        let cancel = dialog
+            .actions
+            .iter()
+            .find(|region| matches!(region.action, WindowAction::DialogCancel))
+            .context("no dismiss button")?;
+        assert!(ok.right > ok.left && ok.bottom > ok.top);
+        assert!(cancel.right > cancel.left && cancel.bottom > cancel.top);
+        assert!(
+            cancel.right <= ok.left || ok.right <= cancel.left,
+            "the dialog buttons overlap: cancel={}..{} and accept={}..{}",
+            cancel.left,
+            cancel.right,
+            ok.left,
+            ok.right
+        );
+        // The question is not covered by its own answers.
+        assert!(
+            message.top + message.height <= ok.top.max(cancel.top),
+            "the question overlaps the buttons"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn a_window_is_centred_and_clamped_to_its_work_area() {
+        // An ordinary desktop: the window sits in the middle.
+        assert_eq!(
+            centered_bounds((0, 0, 1920, 1080), 720, 450),
+            (600, 315, 720, 450)
+        );
+        // A work area that does not start at the origin, as a second monitor or
+        // a taskbar on the left produces, keeps its own offset.
+        assert_eq!(
+            centered_bounds((-1920, 0, 0, 1040), 720, 450),
+            (-1320, 295, 720, 450)
+        );
+        // A layout larger than the desktop is clamped instead of hanging off an
+        // edge. This is the case that used to resolve to the top-left corner.
+        assert_eq!(
+            centered_bounds((0, 0, 1440, 900), 2880, 1800),
+            (0, 0, 1440, 900)
+        );
+        // Only one axis overflowing still centres the other.
+        assert_eq!(
+            centered_bounds((0, 0, 1440, 1000), 2000, 400),
+            (0, 300, 1440, 400)
+        );
+    }
+
     #[test]
     fn action_attributes_map_to_window_actions() {
         let document = roxmltree::Document::parse(
@@ -6803,6 +7718,73 @@ mod tests {
         assert_eq!(runs.len(), 4);
         assert_eq!(runs[1].color.0, link.0);
         assert_eq!(runs[3].color.0, link.0);
+    }
+
+    #[test]
+    fn a_container_measures_the_edge_its_children_are_asked_for() -> anyhow::Result<()> {
+        // An HBox stretches its children vertically, so asking it for a height
+        // has to report the tallest child height. Reading the children's own
+        // cross sizes instead reported the width, which collapsed every row in
+        // a dialog: the row was laid out at zero height and its text was lost.
+        let files: HashMap<String, Vec<u8>> = HashMap::new();
+        let translations = HashMap::new();
+        let config = serde_json::json!({});
+        let interaction = InteractionState::default();
+        let context = LayoutContext {
+            dpi: DpiContext {
+                scale: 1.0,
+                use_2x: false,
+            },
+            files: &files,
+            config: &config,
+            locale: "zh-CN",
+            translations: &translations,
+            interaction: &interaction,
+            language_menu_open: false,
+        };
+        let document = roxmltree::Document::parse(
+            r##"<Page width="400" height="200">
+                  <HBox width="336" padding="0 32">
+                    <Label id="lblMsg" text="hi" wrap="true" width="272" height="24" />
+                  </HBox>
+                </Page>"##,
+        )?;
+        let hbox = document
+            .descendants()
+            .find(|node| node.has_tag_name("HBox"))
+            .context("hbox missing")?;
+
+        // Height: the row is as tall as its content plus its vertical padding.
+        assert_eq!(
+            container_intrinsic_size(hbox, FlowAxis::Vertical, &context),
+            24
+        );
+        // Width: the row reports what its children ask for along the width.
+        assert_eq!(
+            container_intrinsic_size(hbox, FlowAxis::Horizontal, &context),
+            272 + 64
+        );
+
+        // A container nested in the row is measured through its own children, so
+        // the outer row is not resized by a percentage-sized inner wrapper.
+        let document = roxmltree::Document::parse(
+            r##"<Page width="400" height="200">
+                  <HBox width="336" padding="0 32">
+                    <VBox width="100%">
+                      <Label id="lblMsg" text="hi" height="24" />
+                    </VBox>
+                  </HBox>
+                </Page>"##,
+        )?;
+        let hbox = document
+            .descendants()
+            .find(|node| node.has_tag_name("HBox"))
+            .context("hbox missing")?;
+        assert_eq!(
+            container_intrinsic_size(hbox, FlowAxis::Vertical, &context),
+            24
+        );
+        Ok(())
     }
 
     #[test]

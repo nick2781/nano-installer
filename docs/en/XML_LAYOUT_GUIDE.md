@@ -213,7 +213,7 @@ An element is not drawn when it, or any ancestor, has `visible="false"`.
 | --- | --- |
 | `minimize` | Minimizes the window |
 | `close` | Closes immediately |
-| `close_confirm` | Asks the question from the `close_confirm_message` locale key first, then closes on Yes |
+| `close_confirm` | Opens the skinned confirmation drawn from `ui.dialog_layout`, then closes on Yes |
 | `pick_directory` | Opens the Windows folder picker and writes the result into a TextInput, see [Folder picker](#folder-picker) |
 | `open_url:<key>` | Opens the URL configured under that `links` key |
 | `open_url:<https://...>` | Opens the URL as written |
@@ -223,6 +223,37 @@ An element is not drawn when it, or any ancestor, has `visible="false"`.
 | `finish` | Same as `close`, intended for the finish page |
 | `switch_language` | Expands the language list and switches the locale on selection |
 | `toggle_panel:<id>:show/hide` | Shows or hides a target panel and switches the paired show/hide control |
+| `dialog_ok` | Confirms the open dialog: a close question exits the setup, a notice just closes |
+| `dialog_cancel` | Dismisses the open dialog and returns to the page under it |
+
+## Dialogs
+
+A confirmation is not a system message box but an ordinary layout. The runtime draws the file named
+by `ui.dialog_layout` (default `layouts/msgBox.xml`) in the middle of the window, over a scrim that
+separates it from the page. Only the dialog's own controls respond while it is open, so a page button
+underneath cannot be clicked by mistake; `Enter` confirms it and `Escape` dismisses it.
+
+The text of a dialog comes from the question being asked rather than from the layout, through
+`value-source`:
+
+```xml
+<Page width="400" height="180" background="#FF2A3844" border-radius="16">
+  <Label id="lblMsg" value-source="dialog:message" wrap="true" width="336" />
+  <Button id="btnCancel" action="dialog_cancel" value-source="dialog:dismiss"
+          visible-with="dismiss" width="160" height="40" />
+  <Button id="btnOK" action="dialog_ok" value-source="dialog:accept"
+          width="160" height="40" />
+</Page>
+```
+
+| `value-source` | Value |
+| --- | --- |
+| `dialog:message` | The question or notice being shown |
+| `dialog:accept` | Label of the confirming button |
+| `dialog:dismiss` | Label of the dismissing button, empty for a notice |
+
+`visible-with="dismiss"` draws a control only when the dialog offers two answers, which is how one
+layout serves both a close question and a notice with a single "OK".
 
 ## Links
 

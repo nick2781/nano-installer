@@ -55,8 +55,8 @@ What you can check today:
   Up, Down, Enter, and Escape.
 - Hover the folder icon, the install button, and the agreement links: the pointer becomes a hand,
   and the agreement links open their configured pages in your browser.
-- Click the close button: it asks the localized confirmation question from `close_confirm_message`
-  before the window closes.
+- Click the close button: it asks its confirmation inside the window, wearing the same skin as the
+  installer, and only then closes.
 - Point the path field at a folder under `Program Files`: the elevation you approved at launch is
   what lets the install write there.
 - Drag or double-click inside the path field to select text, then copy, paste, and undo with

@@ -1259,7 +1259,7 @@ dependencies = [
 
 [[package]]
 name = "nano-installer-core"
-version = "2026.9.18"
+version = "2026.9.19"
 dependencies = [
  "anyhow",
  "rhai",
@@ -1271,7 +1271,7 @@ dependencies = [
 
 [[package]]
 name = "nano-installer-gui"
-version = "2026.9.18"
+version = "2026.9.19"
 dependencies = [
  "eframe",
  "image",
@@ -1283,7 +1283,7 @@ dependencies = [
 
 [[package]]
 name = "nano-installer-native-cli"
-version = "2026.9.18"
+version = "2026.9.19"
 dependencies = [
  "anyhow",
  "image",
@@ -1293,7 +1293,7 @@ dependencies = [
 
 [[package]]
 name = "nano-installer-stub-lzma"
-version = "2026.9.18"
+version = "2026.9.19"
 dependencies = [
  "anyhow",
  "nano-installer-core",
@@ -1302,7 +1302,7 @@ dependencies = [
 
 [[package]]
 name = "nano-installer-stub-zlib"
-version = "2026.9.18"
+version = "2026.9.19"
 dependencies = [
  "anyhow",
  "nano-installer-core",
@@ -1312,7 +1312,7 @@ dependencies = [
 
 [[package]]
 name = "nano-installer-uninstaller"
-version = "2026.9.18"
+version = "2026.9.19"
 dependencies = [
  "nano-installer-core",
 ]

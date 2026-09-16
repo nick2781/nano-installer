@@ -5,6 +5,90 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 版本号使用 CalVer（`YYYY.M.D`），tag 形如 `v2026.9.16`。
 
+## [2026.9.19]
+
+退出安装的确认框终于和安装界面是一套皮肤了，不再突然跳出一个系统灰框。安装窗口也老老实实待在
+屏幕正中间：不管你的显示器缩放调到多少、副屏摆在哪一侧，它都不会再溜到左上角去。
+
+### 修复
+
+- 确认退出安装时，弹出的是与安装界面同一套皮肤、同一套文案的确认框，不再出现系统默认的灰色
+  弹窗；确认框画在窗口内部，因此不会被其它程序盖住或甩到后面。
+- 提示信息（例如某个步骤出错）同样走这套皮肤，不再打断成系统弹窗。
+- 安装窗口始终居中显示：按当前显示器的可用区域（已避开任务栏）计算位置，多显示器与高倍缩放下
+  都停在正中间，布局比屏幕大时也会完整落在屏幕内，不会跑到左上角。
+- 拖动无标题栏的窗口不再跳动：从空白处按下标题栏时按屏幕坐标发消息，窗口随鼠标平稳移动。
+- 对话框里的问句文字不再丢失：一行文字按百分比宽度排版时，跨轴高度会被正确测量，文字不会再
+  被压成零高度。
+
+### 已知限制
+
+- 安装包尚未签名，Windows SmartScreen 仍会提示「未知发布者」。
+- 尚未在真实 Windows 7 SP1 虚拟机上完成端到端验收。
+
+<!-- release-notes:end -->
+
+### 技术细节
+
+- 结束系统 MessageBox：`confirm_close()` 原先调用 `MessageBoxW(None, ...)`，弹出的无主 `#32770`
+  与安装窗口同为顶层窗口，z 序会错乱，这正是「安装界面看起来永远在最上面」的来源。改为自绘
+  对话框后，运行期不再创建任何 `#32770`。
+- 对话框即布局：新增 `DialogState { kind, message, accept_label, dismiss_label }`、
+  `DialogKind::{CloseConfirm, Notice}`（`offers_dismiss()` 让同一份布局既能提问也能提示）、
+  `DialogUi { actions, text_hits, hover_regions }`，以及 `WindowAction::{DialogOk, DialogCancel}`
+  与 `dialog_ok`/`dialog_cancel` 两个 action。
+- 布局新能力：`value-source="dialog:message|accept|dismiss"` 读取当次提问，`visible-with="dismiss"`
+  只在对话框提供第二种答案时绘制控件。
+- 渲染：从 `load_layout` 抽出 `render_layout_content`（页面与对话框共用），新增
+  `render_dialog_overlay`（按 `config["ui"]["dialog_layout"]` 加载，缺省
+  `DEFAULT_DIALOG_LAYOUT = "layouts/msgBox.xml"`）、`translate_layout` 与遮罩
+  `DIALOG_SCRIM = "66000000"`。项目没有该布局时优雅退化：不弹确认框，点关闭直接退出。
+- 模态：`window_action_at`/`hover_control_at`/`text_input_at` 在对话框打开时只认对话框区域；
+  `dialog_is_open()` 让 `WM_KEYDOWN` 优先把 `VK_RETURN` 当确认、`VK_ESCAPE` 当取消，排在
+  「Esc 关闭窗口」分支之前。
+- 窗口居中：新增 `center_window`/`monitor_work_area`/`centered_bounds`。位置取自
+  `MonitorFromWindow` + `GetMonitorInfoW(rcWork)`，尺寸夹取到工作区内，取代原先的
+  `GetSystemMetrics(SM_CXSCREEN/CYSCREEN)`（主屏像素、忽略多显示器/DPI/任务栏，缩放后窗口
+  达到或超过屏幕时会算出 `(1440-1440)/2=0`、`(960-900)/2=30`，也就是左上角）。
+  `RuntimeState.window_size` 做守卫，只在页面尺寸变化时重新居中，用户手动移动过的窗口不会被拽回。
+- 拖动标题栏：`WM_LBUTTONDOWN` 转发的 `WM_NCLBUTTONDOWN` 需要屏幕坐标，原先直接传客户区坐标，
+  窗口会按指针在窗口内的位置跳走；现改用 `ClientToScreen` 转换。
+- 布局引擎：`container_intrinsic_size` 在测量容器跨轴尺寸时，对子元素调用了
+  `cross_size_for_node(..., axis.cross_measure(), ...)` 并沿错误的轴累加 margin，等于用宽度回答
+  高度的问题，`width="100%"` 的行因此被算成零高度、整行被丢弃。现拆出
+  `container_intrinsic_content`（不含自身内边距的子树尺寸）与 `outer_extent_along`（子元素沿被测量
+  轴的显式尺寸 → 自身内容的固有尺寸 → 0，再加 padding/margin），跨轴测量按正确方向进行。
+- 导入表：新增 `ClientToScreen`、`MonitorFromWindow`、`GetMonitorInfoW`、`MONITORINFO`、
+  `MONITOR_DEFAULTTONEAREST`、`SetWindowPos`、`HWND_TOP`、`SWP_NOZORDER`/`SWP_NOACTIVATE`、
+  `VK_RETURN`、`VK_ESCAPE`；移除 `GetSystemMetrics` 与 `IDYES`/`MB_YESNO`/`MB_ICONQUESTION`。
+- 示例 `examples/TapTap/layouts/msgBox.xml` 重写为圆角卡片布局（信息文案 + 「继续安装」/「退出安装」），
+  `examples/TapTap/installer_config.json` 的 `ui` 段显式声明 `"dialog_layout": "layouts/msgBox.xml"`。
+- 文档：`XML_LAYOUT_GUIDE`（新增「对话框」一节与 `dialog_ok`/`dialog_cancel`）、
+  `CONFIG_REFERENCE`（新增 `ui.dialog_layout`）、`ARCHITECTURE`（提问与提示的渲染）、
+  `PRODUCTION_STATUS` 与 `QUICK_START` 同步为皮肤确认框，中英双语。
+
+### 已验证
+
+- `cargo fmt --all -- --check`、`cargo clippy --locked --workspace --all-targets -- -D warnings`。
+- `cargo test --locked --workspace`（81 个 core 测试通过、1 个忽略，12 个 GUI 测试，2 个 stub 测试）；
+  新增回归测试覆盖对话框居中与模态、按钮动作、提示框隐藏次按钮、无对话框布局的退化、
+  `centered_bounds` 的夹取，以及跨轴容器尺寸，并以示例自带的 `msgBox.xml` 端到端断言问句与两个按钮
+  都被真实排版。
+- 实测窗口不再是置顶：`ex=0x40000`（仅 `WS_EX_APPWINDOW`，无 `WS_EX_TOPMOST`），z 序低于
+  `Shell_TrayWnd`，普通窗口可以排到它上面。
+- 实测高 DPI：`NANO_INSTALLER_TEST_DPI=384` 时窗口为 `0,12,2880,1812`（2880x1800，工作区
+  `0,0,2880,1824`），旧算术在同场景下得到 `0,30` 的贴左上角结果。
+- 实测皮肤对话框：点击关闭按钮后枚举窗口只剩 `NanoInstallerNativeRuntime`，没有任何 `#32770`；
+  `PrintWindow` 截图确认问句与「继续安装」/「退出安装」按皮肤渲染且居中。
+- 实测键盘：对话框打开时 `VK_ESCAPE` 只收起对话框（窗口仍在），`VK_RETURN` 确认后销毁窗口。
+- `scripts/build.ps1 -Project examples\TapTap` 全量构建、ZIP/7z backend smoke test、Win7 PE 导入
+  审计与清单审计；文档链接检查 38 个文件、140 条相对链接、0 条失效。
+
+### 未完成
+
+- 无代码签名；未通过真实 Windows 7 SP1 虚拟机端到端验收。
+- 清单申请的是旧版 `dpiAware`，尚未申请逐显示器感知。
+
 ## [2026.9.18]
 
 安装包现在会自己申请该有的权限，不用再让用户右键「以管理员身份运行」了。要装到 `Program Files`

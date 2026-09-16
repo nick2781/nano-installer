@@ -24,7 +24,7 @@
   回滚与 manifest 代码；脚本失败会回滚，脚本漏做清单清理时由库回退处理。
 - 流式布局覆盖嵌套 `VBox`、`HBox`、`Content`，支持内边距、外边距、百分比尺寸、
   `justify-content` 与 `align-items`。
-- 文案中的 Markdown 链接可以点击打开配置好的网址，`close_confirm` 会先弹本地化确认问题，
+- 文案中的 Markdown 链接可以点击打开配置好的网址，`close_confirm` 会先弹出项目自有皮肤的确认框，
   目录选择框会把选中的路径写回布局中的 TextInput。
 - 控件会绘制布局声明的 `background`、`border-color` 与 `border-radius`；语言菜单展开时
   上下键、回车与 Esc 可用。

@@ -81,9 +81,16 @@ restores the machine to its previous state.
 | --- | --- | --- |
 | `ui.dpi_aware` | bool | Enable DPI awareness and layout scaling, defaults to `true` |
 | `ui.dpi_threshold` | integer | DPI at which `@2x` images are preferred, defaults to `144` |
+| `ui.dialog_layout` | string | Layout used for the confirmation dialog, defaults to `layouts/msgBox.xml` |
 
 `ui.dpi_aware` is also written into the setup's application manifest, so Windows knows the window
 scales itself rather than rescaling a blurry bitmap of it.
+
+`ui.dialog_layout` names the layout drawn inside the window for questions such as "exit the
+installer?" and for notices the user has to acknowledge. The dialog therefore wears the product's
+own skin and cannot end up behind the installer. A project that ships no such layout gets no
+question: the close button then exits immediately. See
+[page layout](XML_LAYOUT_GUIDE.md#dialogs).
 
 ## Administrator rights
 
