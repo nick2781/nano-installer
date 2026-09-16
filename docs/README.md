@@ -1,4 +1,4 @@
-<h1 align="center"><img src="../assets/nano-technology.png" width="48" height="48" alt="nano-installer 工具图标"> nano-installer native 文档</h1>
+<h1 align="center"><img src="assets/nano-technology.png" width="48" height="48" align="texttop" alt="nano-installer 工具图标"> nano-installer native 文档</h1>
 
 <p align="center"><a href="../README.md">English README</a> | <a href="../README.zh-CN.md">中文 README</a></p>
 

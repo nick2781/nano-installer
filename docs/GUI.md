@@ -1,4 +1,4 @@
-<h1 align="center"><img src="../assets/nano-technology.png" width="48" height="48" alt="Nano Installer icon"> GUI 构建工具</h1>
+<h1 align="center"><img src="assets/nano-technology.png" width="48" height="48" align="texttop" alt="Nano Installer icon"> GUI 构建工具</h1>
 
 GUI 是 CLI 的 Windows 10+ 可视化前端。它不启动 CLI 子进程，
 而是与 CLI 一样直接调用 `nano-installer-core` 的项目检查和构建 API。界面按 MakeNSISW
