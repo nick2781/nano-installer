@@ -3,9 +3,9 @@
 本文件记录 nano-installer 的版本变更历史。
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
-版本号使用 CalVer（`YYYY.M.D`），tag 形如 `v2026.9.15`。
+版本号使用 CalVer（`YYYY.M.D`），tag 形如 `v2026.9.16`。
 
-## [未发布]
+## [2026.9.16]
 
 ### 变更
 
@@ -30,6 +30,11 @@
 - `set_status_key` 让脚本步骤文案走 locale，`set_status` 仍显示字面文本；11 个 locale 补齐
   `status.checking_processes`、`status.installing_uninstaller`、`status.creating_shortcuts`、
   `status.writing_registry` 与 `uninstall.status.cleaning_game_data`。
+- 仓库公开后恢复 GitHub Pages 部署：重建 `.github/workflows/docs.yml`（触发分支 `main`），
+  并在 `docs/` 下补齐 docsify 站点入口 `index.html`、`_sidebar.md`、`_navbar.md` 与
+  `.nojekyll`；logo 走 Git LFS，checkout 因此显式开启 `lfs: true`。
+- README 页头改为 logo 与产品名水平居中、垂直居中对齐（`align="texttop"`），
+  并同步 `README.zh-CN.md`、`docs/README.md`、`docs/GUI.md`。
 
 ### 已验证
 
