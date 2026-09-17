@@ -62,7 +62,43 @@ function Assert-Rejected {
     }
 }
 
-# Real dates in the shapes the project uses, including a same-day repeat.
+# The commit-date rule needs commits with known dates. Building them here keeps
+# the cases independent of this repository's history, which a shallow CI
+# checkout does not contain, and lets the dates be stated rather than looked up.
+function New-DatedCommit {
+    param([string]$Fixture, [string]$Day, [string]$Message)
+
+    $when = "${Day}T12:00:00+08:00"
+    $env:GIT_AUTHOR_DATE = $when
+    $env:GIT_COMMITTER_DATE = $when
+    try {
+        Set-Content -LiteralPath (Join-Path $Fixture "when.txt") -Value $when -Encoding UTF8
+        & git -C $Fixture add --all 2>&1 | Out-Null
+        & git -C $Fixture commit -q -m $Message 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "cannot create the fixture commit for $Day"
+        }
+        return (& git -C $Fixture rev-parse HEAD).Trim()
+    }
+    finally {
+        Remove-Item Env:\GIT_AUTHOR_DATE, Env:\GIT_COMMITTER_DATE -ErrorAction SilentlyContinue
+    }
+}
+
+$fixture = Join-Path ([System.IO.Path]::GetTempPath()) ("nano-calver-{0}" -f [guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Path $fixture -Force | Out-Null
+try {
+    & git -C $fixture init -q 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "cannot create the fixture repository (git is required)"
+    }
+    & git -C $fixture config user.email "fixture@example.invalid"
+    & git -C $fixture config user.name "CalVer fixture"
+    $onThe15th = New-DatedCommit $fixture "2026-09-15" "a commit from the 15th"
+    $onThe16th = New-DatedCommit $fixture "2026-09-16" "a commit from the 16th"
+    $onThe17th = New-DatedCommit $fixture "2026-09-17" "a commit from the 17th"
+
+    # Real dates in the shapes the project uses, including a same-day repeat.
 Assert-Accepted @("-Tag", "v2026.9.16", "-Now", $now) "a full year with short month and day"
 Assert-Accepted @("-Tag", "v2026.9.16-r2", "-Now", $now) "a second release on one day takes a modifier"
 Assert-Accepted @("-Version", "2026.9.16-r12", "-Now", $now) "a two-digit modifier is still a modifier"
@@ -81,16 +117,16 @@ Assert-Rejected @("-Tag", "v2026.9") "a release needs a day, not just a month"
 
 # The date has to be possible for the commit being released. These two are the
 # tags that were actually published ahead of their date.
-Assert-Rejected @("-Tag", "v2026.9.20", "-Commit", "2633482", "-Now", $now) "2026-09-20 had not happened yet"
-Assert-Rejected @("-Tag", "v2026.9.19", "-Commit", "cc1a626", "-Now", $now) "2026-09-19 had not happened yet"
+Assert-Rejected @("-Tag", "v2026.9.20", "-Commit", $onThe17th, "-RepoRoot", $fixture, "-Now", $now) "2026-09-20 had not happened yet"
+Assert-Rejected @("-Tag", "v2026.9.19", "-Commit", $onThe17th, "-RepoRoot", $fixture, "-Now", $now) "2026-09-19 had not happened yet"
 Assert-Rejected @("-Version", "2026.9.18", "-Now", $now) "the workspace version cannot be dated ahead either"
 
 # A tag on or after its commit, but not in the future, is fine.
-Assert-Accepted @("-Tag", "v2026.9.15", "-Commit", "0bd81a2", "-Now", $now) "the tag is dated the day the commit was made"
-Assert-Accepted @("-Tag", "v2026.9.16", "-Commit", "0363f20", "-Now", $now) "an earlier commit may be released later"
-Assert-Accepted @("-Tag", "v2026.9.17", "-Commit", "cc1a626", "-Now", $now) "a release may be tagged the day after its commit"
-Assert-Accepted @("-Tag", "v2026.9.17-r2", "-Commit", "cc1a626", "-Now", $now) "a modifier does not change the date"
-Assert-Rejected @("-Tag", "v2026.9.14", "-Commit", "0bd81a2", "-Now", $now) "a release cannot predate its own code"
+Assert-Accepted @("-Tag", "v2026.9.15", "-Commit", $onThe15th, "-RepoRoot", $fixture, "-Now", $now) "the tag is dated the day the commit was made"
+Assert-Accepted @("-Tag", "v2026.9.16", "-Commit", $onThe15th, "-RepoRoot", $fixture, "-Now", $now) "an earlier commit may be released later"
+Assert-Accepted @("-Tag", "v2026.9.17", "-Commit", $onThe16th, "-RepoRoot", $fixture, "-Now", $now) "a release may be tagged the day after its commit"
+Assert-Accepted @("-Tag", "v2026.9.17-r2", "-Commit", $onThe16th, "-RepoRoot", $fixture, "-Now", $now) "a modifier does not change the date"
+Assert-Rejected @("-Tag", "v2026.9.14", "-Commit", $onThe15th, "-RepoRoot", $fixture, "-Now", $now) "a release cannot predate its own code"
 
 # The tag and the workspace version have to name the same release, otherwise the
 # built binaries carry a version resource that does not match the release they
@@ -106,6 +142,11 @@ Assert-Rejected @("-Tag", "v2026.9.17", "-Version", "2026.9.17-r2", "-Now", $now
 $late = "2026-09-16T23:30:00+08:00"
 Assert-Accepted @("-Tag", "v2026.9.16", "-Now", $late) "23:30 in UTC+08:00 is still the 16th"
 Assert-Rejected @("-Tag", "v2026.9.17", "-Now", $late) "23:30 in UTC+08:00 is not yet the 17th"
+
+}
+finally {
+    Remove-Item -LiteralPath $fixture -Recurse -Force -ErrorAction SilentlyContinue
+}
 
 if ($failures.Count -gt 0) {
     throw "release_version.ps1 behaved unexpectedly:`n  - $($failures -join "`n  - ")"

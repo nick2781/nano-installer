@@ -36,13 +36,19 @@ param(
     [string]$Version,
     [string]$Commit,
     [int]$UtcOffsetHours = 8,
-    [datetime]$Now
+    [datetime]$Now,
+    # The repository to read commit dates from. Overridable so the checks can
+    # run against a fixture with known dates instead of this repository's
+    # history, which a shallow CI checkout does not contain.
+    [string]$RepoRoot
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
+if (-not $RepoRoot) {
+    $RepoRoot = Split-Path -Parent $PSScriptRoot
+}
 
 # v, a full four-digit year, unpadded month and day, and an optional modifier.
 # A padded month or day, or a fourth number, is rejected: the scheme is what
@@ -139,7 +145,7 @@ if ($parsed.Day -gt $now.Date) {
 
 if ($Commit) {
     # A release also cannot be dated before the code it releases.
-    $commitDate = & git -C $repoRoot show --no-patch --format=%cI $Commit 2>&1
+    $commitDate = & git -C $RepoRoot show --no-patch --format=%cI $Commit 2>&1
     if ($LASTEXITCODE -ne 0) {
         throw "Cannot read the date of commit '$Commit': $commitDate"
     }
