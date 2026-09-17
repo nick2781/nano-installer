@@ -2,9 +2,9 @@
 
 <p align="center"><a href="https://nick2781.github.io/nano-installer/#/en/README.md">English</a> | <b>简体中文</b> | <a href="https://nick2781.github.io/nano-installer/">全部文档</a></p>
 
-把安装包交给用户，对方双击一个 exe 就装好了你的产品。你把配置、素材和应用文件放在一个目录里，
-Nano Installer 把它变成一个 Windows 安装程序：图标、页面和文案都是你自己的，用户机器上不用预装
-任何东西。
+你交付的只有一个 exe，用户双击就能装上你的产品。配置、素材和应用文件都放在同一个目录里，Nano
+Installer 把它打包成一个 Windows 安装包。图标、界面和文案都由你决定。用户的机器上不用预装任何
+东西。
 
 > **状态：** 早期实现，尚不适合对外发布产品。安装动作会写入文件和注册表，请在一次性虚拟机中测试。
 

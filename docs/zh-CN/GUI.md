@@ -13,7 +13,7 @@
 1. **Open project** 选择包含 `installer_config.json` 的项目目录。
 2. **Refresh** 重新读一遍 JSON、XML、资源和 payload，但不会覆盖同一个项目里你已经改过的输出路径。
 3. **Parameters** 设置项目目录、输出 exe 和可选的运行时目录。
-   **Reset output** 把它恢复成 `dist/<output.installer_name>`；
+   **Reset output** 把输出路径恢复成 `dist/<output.installer_name>`；
    **Use automatic stub search** 恢复自动查找。
 4. **Build setup** 异步构建。构建时会在 worker 线程里重新校验项目，结果不受界面当前摘要的影响。
 5. **Save log...** 导出完整日志，**Open output** 在资源管理器里定位生成的安装包；
@@ -37,26 +37,26 @@
 
 ## 读懂日志
 
-日志里记录的是实际执行的步骤：安装和卸载运行时解析到的路径和大小、卸载程序在 bundle 里的名字、
+日志列出你的构建实际执行的步骤：安装和卸载运行时解析到的路径和大小、卸载程序在 bundle 里的名字、
 各资源目录的文件数量与大小、payload 格式，还有 bundle 索引。资源直接写进自定义 bundle，
-不生成中间的 `skins.zip`；payload 保持你提供的 ZIP 或 7z 格式。
+不生成中间的 `skins.zip`；应用文件（payload）保持你提供的 ZIP 或 7z 格式。
 
-卸载程序有自己独立的 UI bundle，里面不含 payload，所以 `layouts`、`assets`、`locales`、
-`scripts` 会先带着 `Uninstaller bundle:` 前缀收集一遍，再为主安装包收集一遍；
+卸载程序有独立的 UI bundle，里面不含 payload，所以日志会先带着 `Uninstaller bundle:` 前缀
+收集一遍 `layouts`、`assets`、`locales`、`scripts`，再为主安装包收集一遍；
 payload 只打进主安装包。
 
 日志行用本地时间戳 `[YYYY-MM-DD HH:mm:ss.SSS]`。日志窗口里的文字可以选中，警告是琥珀色、
 错误是红色，鼠标拖选、滚轮、横向滚动、`Ctrl+A` 和 `Ctrl+C` 都能用；
 **Copy all** 不用先选中就能复制完整日志。保存和复制时都保留原文和时间戳。
 
-菜单始终是固定最小宽度、单行文字，中英文切换不会改变菜单的几何结构。
+菜单始终有固定的最小宽度，标签也只有一行，所以中英文切换不会让菜单移动。
 菜单里还有 **Open config**（用系统默认程序打开 `installer_config.json`）、清空日志和退出。
 构建期间按钮会禁用，免得同时启两个打包任务。
 
 ## 界面语言
 
-**视图 > 界面语言** 里有 English 和简体中文。它只翻译构建工具自己的控件；
-你生成出来的安装包用什么语言，取决于项目自己的 `locales` 文件和 XML。
+**视图 > 界面语言** 里有 English 和简体中文。它只翻译构建工具的控件；
+你生成出来的安装包用什么语言，取决于项目里的 `locales` 文件和 XML。
 构建日志里的工具文案一直是英文，Windows 或文件系统返回的错误也保留原文，方便你查路径和错误码。
 
 ## 它不做什么

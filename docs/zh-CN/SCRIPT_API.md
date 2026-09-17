@@ -53,8 +53,8 @@
 | `get_temp_path()` | 临时目录 |
 | `sleep_ms(milliseconds)` | 等待 |
 
-`extract_payload*` 复用内置流程的解压：payload 先落盘，交给对应的运行时展开，同时校验归档里没有
-卸载程序、manifest 和符号链接。
+`extract_payload*` 走的是内置流程那一套解压：payload 先落盘，交给对应的运行时展开，同时校验归档
+里没有卸载程序、manifest 和符号链接。
 
 ## 注册表
 

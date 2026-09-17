@@ -1,6 +1,6 @@
 # 配置参考
 
-每个项目有一个 `installer_config.json`。这一页只列现在真的会改变安装包行为的设置；被接受但还没
+每个项目有一个 `installer_config.json`。这一页只列现在真的会改变安装包行为的设置；接受但还没
 生效的字段都集中放在最后。
 
 ## 产品信息
@@ -104,12 +104,12 @@
 - `false`（默认）写入 `asInvoker`：不弹框，使用用户当前的权限。按用户安装到 `%LOCALAPPDATA%`
   的产品选它。
 
-内嵌的卸载程序用同一份配置生成，所以申请同样的权限级别；不然卸载项撤销不了一次提权安装。
+内嵌的卸载程序用同一份配置生成，所以申请同样的权限级别；否则卸载项无法撤销一次提权安装。
 
 ## 卸载时的用户数据
 
-`uninstall.data_paths` 列出产品自己的数据目录。卸载时只有用户取消勾选保留数据才会删，而且展开
-之后不落在 `%APPDATA%` 或 `%LOCALAPPDATA%` 之下的条目会被忽略，免得误删无关文件。布局里没有
+`uninstall.data_paths` 列出产品自己的数据目录。卸载时只有用户取消勾选保留数据才会删，展开之后
+不落在 `%APPDATA%` 或 `%LOCALAPPDATA%` 之下的条目就忽略，免得误删无关文件。布局里没有
 `chkReserveData` 时，用户数据一律保留。
 
 ```json
@@ -196,11 +196,11 @@ uninst.exe --silent
 下面这些设置会原样打包进安装包，但运行时不会读取。别因为字段存在就以为功能已经做好：
 
 - 上表未列出的 `install.*` 与 `registry.*` 字段
-- `validation.*`；`links.*` 会被链接点击和 `open_url:` 动作读取，
+- `validation.*`；链接点击和 `open_url:` 动作会读取 `links.*`，
   `localization.supported_locales` 会在构建时校验
 - `localization.show_language_selector`；语言列表与可见性看 XML 中的 `Select` 控件
 - `advanced.update_mode_support`；升级是按目标目录中的既有安装自动识别的，不读这个开关。
-  `advanced.silent_mode_support` 与 `advanced.uninstall_mode_support` 会被读取，
+  运行时则读 `advanced.silent_mode_support` 与 `advanced.uninstall_mode_support`，
   见[无人值守运行](#无人值守运行)。
 
 完整情况见[当前生产状态](PRODUCTION_STATUS.md)。

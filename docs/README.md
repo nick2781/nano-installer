@@ -2,13 +2,13 @@
 
 <p align="center"><a href="en/">English documentation</a> &middot; <a href="zh-CN/">中文文档</a></p>
 
-把安装包交给用户，对方双击一个 exe 就装好了你的产品。你把配置、素材和应用文件放在一个目录里，
-Nano Installer 把它变成一个 Windows 安装程序：图标、页面和文案都是你自己的，用户机器上不用预装
-任何东西。
+你交付的只有一个 exe，用户双击就能装上你的产品。配置、素材和应用文件都放在同一个目录里，Nano
+Installer 把它打包成一个 Windows 安装包。图标、界面和文案都由你决定。用户的机器上不用预装任何
+东西。
 
 Hand someone a single `.exe` and your product is installed. You keep the configuration, the artwork
-and your application files in one folder, and Nano Installer turns it into one Windows setup file
-with your logo, your pages and your wording. Your users install nothing first.
+and your application files in one folder. Nano Installer turns that folder into one Windows setup
+file with your logo, your pages and your wording, and your users install nothing first.
 
 > **状态 / Status:** 早期实现，尚不适合对外发布产品。安装动作请只在一次性虚拟机中测试。
 >

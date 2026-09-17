@@ -38,14 +38,14 @@ payload、布局与 bundle；脚本还会取出项目化的 `uninst.exe`，单�
 示例 payload `examples/TapTap/payload/app.7z` 未存入仓库，所以上面的 CI job 只构建工具链。
 安装包级验证放在独立的 `setup-end-to-end` job：`crates/nano-installer-core/tests/e2e_setup.rs`
 自己写出一份项目、用它构建安装包，然后运行这个安装包与它部署出来的卸载程序。fixture 不含任何
-产品 payload 与第三方素材，安装到临时目录下，并注册到每例独立的注册表键，所以这个 job 既不需要
+产品 payload 与第三方素材，装到临时目录里，并注册到每个用例自己的注册表键下，所以这个 job 既不需要
 虚拟机，也不会与其它运行互相干扰。
 
 这个 job 会设置 `NANO_INSTALLER_E2E_REQUIRE_STUBS=1`，把「运行时 stub 缺失」从跳过改为失败；
 否则一个什么都没构建的 job 会把所有用例都记为跳过，却依然显示通过。
 
 每个 job 还会执行 `scripts/audit_test_targets.ps1`：它向 Cargo 询问工作区包含哪些包，只要有
-`tests/*.rs` 落在所有包之外就失败。虚拟清单旁边的 `tests/` 目录看起来像集成测试，却永远不会被
+`tests/*.rs` 落在所有包之外就失败。虚拟清单旁边的 `tests/` 目录看起来像集成测试，却永远进不了
 编译，其中的用例也就永远不会执行；这个坑在本仓库真实发生过，检查就是为这个加的。
 
 ## 版本号
@@ -68,13 +68,13 @@ payload、布局与 bundle；脚本还会取出项目化的 `uninst.exe`，单�
 构建一开始，`scripts/build.ps1` 就会校验 `Cargo.toml` 里的版本号；发布任务在构建前再用
 `-Tag`/`-Commit` 校验一次 tag，要求它和 `Cargo.toml` 的版本号指向同一次发布，否则安装包内嵌的
 版本资源会与它所属的 release 不符。同一个日历日第二次发布要加修饰后缀，例如 `v2026.9.17-r2`，
-而不是把日期往后写一天或加第四段数字：CalVer 建议最多三段数字。补零（`2026.09.17`）、不存在的
-日期（`2026.13.1`）、以及日期早于被发布提交或晚于今天，都会被拦下，所以不会再出现「今天才
-9.17，却发出 9.19/9.20」这种版本号。
+而不是把日期往后写一天或加第四段数字：CalVer 建议最多三段数字。补零的日期（`2026.09.17`）、
+不存在的日期（`2026.13.1`）、早于要发布的那个提交或晚于今天的日期，都会被拦下，所以不会再出现
+「今天才 9.17，却发出 9.19/9.20」这种版本号。
 
 ## 发布说明
 
-Release notes 来自 `CHANGELOG.md`：`scripts/changelog_notes.ps1` 抽取与被推送 tag 匹配的段落。
+Release notes 来自 `CHANGELOG.md`：`scripts/changelog_notes.ps1` 抽出与这次推送的 tag 匹配的段落。
 打 tag 前先写好这个版本的 `## [YYYY.M.D]` 段落；找不到或段落为空会让发布步骤失败。
 
 `scripts/changelog_notes.ps1` 带 UTF-8 BOM：它含有一行中文尾注，而 Windows PowerShell 会用 ANSI
@@ -100,5 +100,5 @@ nano-installer-native-x64.exe build --project <dir> [--output <exe>] [--stubs <d
 
 ## 签名
 
-构建器目前不做任何签名。生产发布必须在图标、版本资源和 bundle 全部写入之后签安装包，并在嵌入
-之前单独签卸载程序。`scripts/sign.ps1` 只是预留的签名脚本，默认构建不会调用它。
+构建器目前不做任何签名。生产发布必须在图标、版本资源和 bundle 全部写入之后给安装包签名，卸载
+程序则在嵌入它之前单独签名。`scripts/sign.ps1` 只是预留的签名脚本，默认构建不会调用它。

@@ -3,8 +3,8 @@
 <p align="center"><b>English</b> | <a href="https://nick2781.github.io/nano-installer/#/zh-CN/README.md">简体中文</a> | <a href="https://nick2781.github.io/nano-installer/">All docs</a></p>
 
 Hand someone a single `.exe` and your product is installed. You keep the configuration, the artwork
-and your application files in one folder, and Nano Installer turns it into one Windows setup file
-with your logo, your pages and your wording. Your users install nothing first.
+and your application files in one folder. Nano Installer turns that folder into one Windows setup
+file with your logo, your pages and your wording, and your users install nothing first.
 
 > **Status:** early implementation, not ready for production distribution. Install actions write
 > files and registry entries, so test only inside a disposable VM.

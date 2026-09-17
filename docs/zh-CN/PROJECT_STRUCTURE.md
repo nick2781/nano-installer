@@ -33,7 +33,7 @@ product-installer/
 ```
 
 配置里的每个路径都相对项目目录解析。构建器会把整个 `layouts`、`assets`、`locales` 目录、可选的
-`scripts` 目录，以及配置里指定的那一个应用文件（payload）一起收进来。
+`scripts` 目录，以及配置里指定的那一个应用文件（payload）一起打包进去。
 
 ## 构建产物
 
