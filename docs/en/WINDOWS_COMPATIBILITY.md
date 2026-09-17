@@ -20,8 +20,8 @@ Release builds use the pinned `nightly-2025-11-08` toolchain with `rust-src`,
 ## How compatibility is checked
 
 Every build audits the PE imports of the builder, all three stubs, and each generated setup, and
-fails if a blocked Windows 8 or Windows 10 API appears. This proves the files do not statically
-depend on newer system APIs.
+fails if a blocked Windows 8 or Windows 10 API appears, so the files cannot statically depend on a
+newer system API.
 
 Static checks do not prove the installer works. A formal Windows 7 SP1 x64 support statement still
 requires a run on a clean machine covering PNG decoding, text rendering, mouse input, window

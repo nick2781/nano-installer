@@ -20,7 +20,7 @@ MyApp/
 ```
 
 The builder and the runtime are separate programs. A generated setup contains a runtime stub and
-your project data, never the builder.
+your project data; it does not contain the builder.
 
 The builder reads the first bytes of your payload: a `7z` signature selects the LZMA runtime, a
 `PK` signature selects the ZIP runtime. It then copies that stub, writes your icon, version, and

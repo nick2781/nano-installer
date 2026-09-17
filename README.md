@@ -3,9 +3,9 @@
 <p align="center"><b>English</b> | <a href="README.zh-CN.md">简体中文</a> | <a href="docs/en/">Docs</a></p>
 
 Hand someone a single `.exe` and they have your product installed. Nano Installer turns a folder of
-configuration, artwork, and your packaged application into one Windows setup file with your own
-logo, your own interface, and your own wording — no installer framework to host, and nothing for
-your users to install first.
+configuration, artwork, and your packaged application into one Windows setup file with your logo,
+your interface and your wording. There is no installer framework to host, and nothing your users
+have to install first.
 
 > **Status:** early implementation, not ready for production distribution. Install actions write
 > files and registry entries, so test only inside a disposable VM. See
@@ -16,14 +16,14 @@ your users to install first.
 | | |
 | --- | --- |
 | One file to ship | A single setup `.exe` carrying your icon, version info, and branding |
-| Nothing to install first | Runs on a clean Windows 7 SP1 x64 machine or later |
-| Your interface, not ours | Pages and controls described in XML, using your own backgrounds and buttons |
-| Every language you need | Eleven UI languages included; add your own in plain JSON |
-| Upgrades that behave | Re-running the setup upgrades in place, and rolls back if anything fails |
-| Clean removal | Uninstalling takes back exactly what it put down, and keeps user data by default |
-| Rights that fit | Ask for administrator rights only when your product needs them, straight from the config |
-| Clear, friendly screens | Live progress with the current step named, plus a finish page that can start your app |
-| Fits your process | Click through the visual builder, or drive the same engine from a command line in CI |
+| Runs on a clean machine | Windows 7 SP1 x64 or later, with nothing to install first |
+| Your pages and controls | Described in XML, using your own backgrounds and buttons |
+| Eleven UI languages | Built in, and you can add more in plain JSON |
+| Upgrades and rollback | Re-running the setup upgrades in place, and returns to the previous state if a step fails |
+| Uninstall | Takes back what it put down, and keeps user data by default |
+| Administrator rights | Requested from Windows when the config asks for them |
+| Progress and finish pages | Live progress names the current step, and the finish page can start what it installed |
+| GUI, or a command line | Click through the visual builder, or drive the same engine from CI |
 
 ## Get started
 
@@ -69,15 +69,15 @@ Start by copying `examples/TapTap` and replacing its content.
 - Lets the user keep their data on uninstall unless they explicitly clear that option.
 - Ships eleven UI languages that switch instantly, and lets a page click through to your terms of
   service or privacy policy.
-- Lets you pick the install directory with the standard Windows folder chooser, and lets the user
-  edit the path by hand: select with the mouse or a double click, copy and paste, and undo a typo.
-- Types East Asian text through a proper IME composition window, with the candidate list placed
-  under the caret.
-- Asks Windows for administrator rights when a project sets `install.require_admin`, instead of
-  relying on the user to right-click and run as administrator.
-- Asks a localized question before closing, so nobody loses an install by accident.
-- Takes back the installation folder as soon as an uninstall finishes, so no empty directory is
-  left behind; files your users added there keep the folder, as they should.
+- Lets you pick the install directory with the standard Windows folder chooser. The user can edit
+  the path by hand too: select with the mouse or a double click, copy and paste, and undo a typo.
+- Types East Asian text through a proper IME composition window, with the candidate list under the
+  caret.
+- Asks Windows for administrator rights when a project sets `install.require_admin`, so the user
+  never has to right-click and choose Run as administrator.
+- Asks a localized question before closing the window.
+- Removes the installation folder as soon as an uninstall finishes, and keeps it when the user has
+  put files there.
 - Paints the colours, rounded corners, and outlines your layout asks for, and turns the pointer
   into a hand over anything clickable.
 - Supports custom install and uninstall steps from a small scripting file when the built-in steps

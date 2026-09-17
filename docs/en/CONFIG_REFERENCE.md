@@ -111,8 +111,8 @@ question: the close button then exits immediately. See
 - `false` (the default) writes `asInvoker`: no prompt, and the same rights the user already has.
   Choose this for a per-user install under `%LOCALAPPDATA%`.
 
-The embedded uninstaller is generated from the same configuration, so it asks for the same level —
-otherwise the uninstall entry could not undo an elevated install.
+The embedded uninstaller is generated from the same configuration, so it asks for the same level.
+Otherwise the uninstall entry could not undo an elevated install.
 
 ## User data on uninstall
 

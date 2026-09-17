@@ -77,11 +77,11 @@ which day it counts, so a release cut late in a Beijing evening keeps that day.
 `scripts/build.ps1` checks the `Cargo.toml` version when a build starts, and the release job checks
 the tag with `-Tag`/`-Version`/`-Commit` before it builds, so the tag has to name the version in
 `Cargo.toml`; a release whose binaries report a different version than the tag fails instead of
-shipping. **A second release on one calendar day takes a modifier**,
-such as `v2026.9.17-r2`, rather than yesterday's date nudged forward or a fourth number — CalVer
-recommends at most three numeric segments. A zero-padded date (`2026.09.17`), a date that does not
-exist (`2026.13.1`), a date before the commit being released, and a date after today are all
-rejected, so a release can no longer be numbered for a day that has not happened.
+shipping. A second release on one calendar day takes a modifier, such as `v2026.9.17-r2`, rather
+than yesterday's date nudged forward or a fourth number: CalVer recommends at most three numeric
+segments. A zero-padded date (`2026.09.17`), a date that does not exist (`2026.13.1`), a date
+before the commit being released, and a date after today are all rejected, so a release can no
+longer be numbered for a day that has not happened.
 
 ## Release notes
 

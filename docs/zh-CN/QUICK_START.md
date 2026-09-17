@@ -1,6 +1,6 @@
 # 快速开始
 
-下面用一个示例项目生成安装包，并在虚拟机中运行它。
+本页用一个示例项目生成安装包，并在虚拟机中运行它。
 
 ## 1. 准备环境
 
@@ -31,7 +31,7 @@ rustup toolchain install nightly-2025-11-08 --component rust-src,rustfmt,clippy
 示例项目输出 `examples/TapTap/dist/TapTap_Setup.exe`。它的 payload
 `examples/TapTap/payload/app.7z` 未存入仓库，构建前需要自行放入一个 7z 归档。
 
-更习惯可视化操作？运行 `target/release/nano-installer-gui-x64.exe`，打开项目目录后点
+也可以运行 `target/release/nano-installer-gui-x64.exe`，打开项目目录后点
 **Build setup**。GUI 驱动的是同一套构建引擎，产物完全一致。详见[可视化构建](GUI.md)。
 
 ## 4. 在虚拟机中试用
