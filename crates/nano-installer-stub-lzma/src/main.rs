@@ -2,7 +2,11 @@
 
 fn main() {
     if let Err(error) = run() {
-        if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--extract")) {
+        // A windowless run reports to whoever started it. The other cases keep
+        // the product-skinned notice, which is a no-op when there is no window.
+        if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--extract"))
+            || nano_installer_core::silent_mode()
+        {
             eprintln!("error: {error:#}");
         } else {
             nano_installer_core::show_runtime_error(&error);
@@ -16,6 +20,12 @@ fn run() -> anyhow::Result<()> {
     let Some(command) = args.next() else {
         return nano_installer_core::run_installer_runtime();
     };
+    // A windowless run is the runtime's own entry point, which reads the whole
+    // command line itself. Treating it as an unknown option here would report a
+    // usage error through a box nobody can click, hanging an unattended run.
+    if command == std::ffi::OsStr::new(nano_installer_core::SILENT_FLAG) {
+        return nano_installer_core::run_installer_runtime();
+    }
     if command == std::ffi::OsStr::new("--extract") {
         let archive = args.next().map(std::path::PathBuf::from).ok_or_else(|| {
             anyhow::anyhow!("usage: lzma-stub-native.exe --extract <archive.7z> <directory>")

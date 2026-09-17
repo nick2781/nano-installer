@@ -128,6 +128,37 @@ payload 就是你的应用文件，预先压成 ZIP 或 7z。格式按文件头�
 加入 `scripts/install.rhai` 或 `scripts/uninstall.rhai` 即可替代内置步骤，见
 [脚本 API](SCRIPT_API.md)。
 
+## 无人值守运行
+
+项目可以完全不开窗口地完成安装或卸载，这正是软件分发工具需要的。前提是项目自己先声明：
+
+```json
+"advanced": {
+  "silent_mode_support": true,
+  "uninstall_mode_support": true
+}
+```
+
+打开开关后，同一批可执行文件就接受 `--silent`：
+
+```powershell
+MyApp_Setup.exe --silent --dir "%LOCALAPPDATA%\MyApp"
+MyApp_Setup.exe --silent
+uninst.exe --silent
+```
+
+- `--silent` 全程不开任何界面。静默运行绝不弹框，因为弹框会等一个永远不会到来的点击。
+- `--dir` 指定本次安装目录，优先级高于 `install.default_path`。两者都支持环境变量，使用前会先
+  展开。
+- 其它任何参数都会被拒绝。写错的参数会让运行直接失败，而不是静默装到配置的默认目录。
+- `silent_mode_support` 与 `uninstall_mode_support` 互相独立：产品可以允许无人值守安装，
+  但不允许无人值守卸载。
+- 没有复选框可读，因此快捷方式与自启动按 `shortcuts.desktop_default` 与 `autostart.default`
+  取值，卸载时用户数据一律保留。
+
+无窗口运行会把过程汇报给启动它的程序：写控制台而不是画窗口，失败时返回非零退出码并把原因写到
+标准错误。
+
 ## 最小配置
 
 ```json
@@ -165,9 +196,11 @@ payload 就是你的应用文件，预先压成 ZIP 或 7z。格式按文件头�
 以下设置会原样打包进安装包，但运行时不会读取。不要因为字段存在就认为功能已完成：
 
 - 上表未列出的 `install.*` 与 `registry.*` 字段
-- `validation.*` 与 `advanced.*`；`links.*` 会被链接点击和 `open_url:` 动作读取，
+- `validation.*`；`links.*` 会被链接点击和 `open_url:` 动作读取，
   `localization.supported_locales` 会在构建时校验
 - `localization.show_language_selector`；语言列表与可见性由 XML 中的 `Select` 控件决定
-- `advanced.update_mode_support`；升级是按目标目录中的既有安装自动识别的，不读该开关
+- `advanced.update_mode_support`；升级是按目标目录中的既有安装自动识别的，不读该开关。
+  `advanced.silent_mode_support` 与 `advanced.uninstall_mode_support` 会被读取，
+  见[无人值守运行](#无人值守运行)。
 
 完整情况见[当前生产状态](PRODUCTION_STATUS.md)。

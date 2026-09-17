@@ -12,6 +12,64 @@
 > 四个 tag 都把日期写在了实际发布日（9 月 16 日至 17 日）之后，后两个甚至是还没到的日期。
 > 这些 tag 与对应 release 已删除，当天完成的内容统一作为 `2026.9.17` 重新发布。
 
+## [2026.9.17-r2]
+
+今天第二个版本：安装包可以不开窗口地装完，仓库里那套「写了却从没跑过」的测试也换成了真的
+端到端用例。
+
+### 新增
+
+- 支持无人值守安装与卸载。项目在配置里声明后，安装包与卸载程序都可以带 `--silent` 运行，
+  全程不弹任何窗口；安装目录可以用 `--dir` 指定，写法与配置里的路径一样支持环境变量。
+  写错的参数会让运行直接失败，而不是装到默认目录；没有声明的项目会被拒绝，不会被无人值守地
+  装上或卸掉。无人值守卸载一律保留用户数据，因为没有复选框可以取消勾选。
+- 提供一套真正的端到端测试：自造项目、构建安装包、执行安装、再执行卸载，覆盖产物结构、
+  payload 逐字节还原、manifest 与卸载项的写入、升级时清理旧文件并保留用户文件，以及卸载后
+  目录与注册项的清理。用例自己生成素材，不依赖示例项目，也不会在你机器上留下任何残留。
+
+### 改进
+
+- 「跳过」不再能伪装成通过：在专门验证安装包的流水线里，运行时缺失会让用例直接失败，
+  而不是把每个用例都记为跳过却依然显示绿色。
+- 新增一项检查，防止测试文件被放在永远不会被编译的位置。仓库根目录曾有一个这样的「集成测试」，
+  它引用了早已不存在的类型，其中的用例一次也没有运行过。
+
+### 已知限制
+
+- 安装包尚未签名，Windows SmartScreen 仍会提示「未知发布者」。
+- 尚未在真实 Windows 7 SP1 虚拟机上完成端到端验收。
+
+<!-- release-notes:end -->
+
+### 技术细节
+
+- `nano-installer-core` 新增 `SILENT_FLAG`、`silent_mode()` 与 `mark_silent()`；三个 stub 的
+  `main` 把 `--silent` 交给运行时入口，而不是当作未知参数报错（否则会弹出一个没人能点的模态框，
+  把无人值守安装挂死）。
+- `install::run_silent_install` / `run_silent_uninstall` 读取 bundle 索引与项目配置，用
+  `require_silent_support` 校验 `advanced.silent_mode_support` 与 `advanced.uninstall_mode_support`；
+  `parse_silent_arguments` 只接受 `--dir <path>`，其余一律拒绝。
+- `resolve_install_destination` 统一了解析规则：显式路径优先于 `install.default_path`，两者都先经
+  `shell::expand_environment`。未展开的 `%LOCALAPPDATA%\Product` 不是绝对路径，会被
+  `validate_destination` 拒绝，这曾是自动安装无法落地的根因。
+- `update_runtime` 在无窗口状态下退化为 no-op，进度与状态上报不再是错误路径；`show_notice` 与
+  `script/api_system.rs` 的 `message_box`/`ask_yes_no` 在静默时改写日志，后者返回 `false`，
+  绝不阻塞等待点击。
+- 新增 `crates/nano-installer-core/tests/e2e_setup.rs`：12 个用例，分为产物、安装、升级、卸载四组。
+  payload 由仓库内 `tools/7za.exe` 生成（同一工具产出 `-tzip` 与 `-t7z`），因此不引入归档依赖，
+  `Cargo.lock` 保持不变。`Fixture` 用 `TempDir` 加唯一 id，注册到
+  `HKCU\...\Uninstall\nano-installer-e2e-{id}`，`Drop` 里跑卸载并清注册表，断言失败也不留残留。
+- `scripts/audit_test_targets.ps1` 读取 `cargo metadata` 得到工作区的包，若 `tests/*.rs` 不属于
+  任何包则失败，同时拒绝 `autotests = false`；CI 与本地都可执行。
+- `.github/workflows/ci.yml` 新增 `setup-end-to-end` job：先构建三个 stub，再以
+  `NANO_INSTALLER_E2E_REQUIRE_STUBS=1` 运行 `e2e_setup`；`native-win7-build` job 增加测试目标审计。
+- 删除 `tests/integration_test.rs`：它引用的 `nano_installer` crate 实际叫 `nano_installer_core`，
+  且使用了 `i18n::LanguagePack`、`common::config::InstallerConfig` 等不存在的类型，5 个 `#[test]`
+  从未被编译。
+- `docs/{en,zh-CN}` 的 `CONFIG_REFERENCE.md` 增加「无人值守运行」章节并修正「已接受但尚未生效」
+  段落（`advanced.*` 不再整体未生效）；`TEST_PLAN.md`、`BUILD_AND_RELEASE.md`、
+  `PRODUCTION_STATUS.md` 同步。
+
 ## [2026.9.17]
 
 本次发布把安装界面收成一个像样的 Windows 安装程序：退出确认不再是系统灰框，窗口不再乱跑，

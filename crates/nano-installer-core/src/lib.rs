@@ -692,6 +692,11 @@ pub fn show_runtime_error(error: &anyhow::Error) {
 /// owned by the window when there is one. Owning it is what stops the box from
 /// sinking behind the installer that opened it.
 pub(crate) fn show_notice(message: &str) {
+    // Nothing is on screen to own a box, and a modal box would wait for a click
+    // that an unattended run never sends.
+    if silent_mode() {
+        return;
+    }
     if let Ok(window) = runtime_window() {
         if !window.0.is_null() && open_notice_dialog(message.to_string()).is_ok() {
             return;
@@ -723,7 +728,37 @@ pub(crate) fn runtime_window() -> Result<HWND> {
     Ok(HWND(state.window as *mut _))
 }
 
+/// The argument that runs a task with no window at all.
+///
+/// A project opts in through `advanced.silent_mode_support` and
+/// `advanced.uninstall_mode_support`; a project that did not is refused rather
+/// than installed unattended. This is also the entry point an end-to-end test
+/// drives, because it is the only one that needs no desktop session.
+pub const SILENT_FLAG: &str = "--silent";
+
+/// Whether this process is running a task with no window.
+///
+/// A silent run must not open anything: a modal box would wait for a click that
+/// never comes, which hangs an unattended install and any test driving one.
+/// Everything that would draw therefore asks here first.
+static SILENT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn silent_mode() -> bool {
+    SILENT.load(std::sync::atomic::Ordering::Acquire)
+}
+
+fn mark_silent(flag: bool) {
+    SILENT.store(flag, std::sync::atomic::Ordering::Release);
+}
+
 pub fn run_installer_runtime() -> Result<()> {
+    let arguments: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+    if arguments.first().map(std::ffi::OsString::as_os_str)
+        == Some(std::ffi::OsStr::new(SILENT_FLAG))
+    {
+        mark_silent(true);
+        return install::run_silent_install(&arguments[1..]);
+    }
     run_runtime(RuntimeMode::Installer)
 }
 
@@ -740,6 +775,12 @@ pub fn run_uninstaller_runtime() -> Result<()> {
     {
         run_cleanup_helper(&arguments);
         return Ok(());
+    }
+    if arguments.first().map(std::ffi::OsString::as_os_str)
+        == Some(std::ffi::OsStr::new(SILENT_FLAG))
+    {
+        mark_silent(true);
+        return install::run_silent_uninstall(&arguments[1..]);
     }
     run_runtime(RuntimeMode::Uninstaller)
 }
@@ -6758,8 +6799,16 @@ pub(crate) fn page_count() -> usize {
 ///
 /// Worker threads call this; painting itself stays on the UI thread because the
 /// repaint is requested through a posted message.
+///
+/// A task that runs without a window has no runtime state, and the wizard is
+/// only ever an observer of one: progress, step text, and the page index exist
+/// so a window can draw them. Reporting them is therefore a no-op rather than a
+/// failure when nothing is on screen, which is what lets the same deployment
+/// code serve a silent run and a wizard alike.
 fn update_runtime(change: impl FnOnce(&mut RuntimeState) -> Result<()>) -> Result<()> {
-    let runtime = UI.get().context("native UI state is missing")?;
+    let Some(runtime) = UI.get() else {
+        return Ok(());
+    };
     let window = {
         let mut state = runtime
             .lock()

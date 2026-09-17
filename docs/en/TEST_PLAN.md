@@ -8,6 +8,14 @@ cargo test --locked --workspace
 .\scripts\build.ps1 -Project examples\TapTap
 ```
 
+The setup-level suite builds a setup and runs it, which needs the runtime executables first:
+
+```powershell
+cargo build -p nano-installer-stub-lzma -p nano-installer-stub-zlib -p nano-installer-uninstaller
+$env:NANO_INSTALLER_E2E_REQUIRE_STUBS = "1"
+cargo test -p nano-installer-core --test e2e_setup
+```
+
 Unit tests cover bundle roundtrip, payload embedding, button hit testing, temporary-directory
 deployment, manifest writing, refusing to overwrite an existing directory, upgrades and stale-file
 cleanup, failure rollback, and uninstall rules for shortcuts and user data. Layout tests cover
@@ -21,6 +29,28 @@ uninstaller. It also reads the manifest resource back out of the generated setup
 uninstaller, and fails if the declared execution level or DPI behaviour differs from what the
 project configuration resolves to. One test writes to `HKCU`, so it is ignored by default in restricted environments;
 run it explicitly inside an isolated VM.
+
+`crates/nano-installer-core/tests/e2e_setup.rs` covers the seams the unit tests cannot see. A change
+that packs the wrong layout, drops the payload, or forgets a resource passes every unit test and
+still produces a setup that cannot install, because the defects live between two binaries. The suite
+therefore writes its own project, builds a setup from it with the real builder, and then runs that
+setup and the uninstaller it deployed.
+
+- Build product: the footer the runtime reads, a payload appended behind a real PE, the version and
+  manifest resources, and the runtime that matches the payload format.
+- Install: the payload lands on disk and comes back byte for byte, the manifest lists what was
+  written, the uninstall entry points at the deployed uninstaller, a configured `%TEMP%` path is
+  expanded, `--dir` beats the configured path, and an unopted or mistyped run installs nothing.
+- Upgrade: a second install over the first drops the files the new payload no longer ships and
+  leaves a file the payload does not own alone.
+- Uninstall: the product, the registration, and the directory go; a directory holding a file the
+  user added survives.
+
+Every case generates its fixture, carries no product payload and no third-party assets, installs
+below the temporary directory, and registers under a registry key naming only that case, so parallel
+cases cannot see each other and repeated runs do not collide. A case that fails still cleans up
+after itself. Without the runtime stubs the suite prints a skip and passes, so a job that validates
+setups sets `NANO_INSTALLER_E2E_REQUIRE_STUBS=1` to turn that skip into a failure.
 
 ## Manual checks
 
