@@ -1,0 +1,898 @@
+//! End-to-end tests that build a real setup and run it.
+//!
+//! These drive the actual builder and the actual runtime binaries, because the
+//! unit tests cannot see the seams between them: a change that packages the
+//! wrong layout, drops the payload, or forgets to inject the manifest passes
+//! every unit test and still produces a setup that cannot install.
+//!
+//! Every fixture is generated here, so the suite carries no product payload and
+//! no third-party assets. Nothing installs to a shared location either: each
+//! case picks a fresh directory below the temporary directory, and each builds
+//! a project whose uninstall registration names only that case, so two tests
+//! running at once cannot see each other's work.
+
+use std::path::{Path, PathBuf};
+use std::process::{Command, Output};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use nano_installer_core::{
+    build_project, build_project_with_progress, BuildRequest, PayloadFormat,
+};
+
+/// A name unique to one case in one process, so parallel cases and repeated
+/// runs do not share a registry key or an installation directory.
+fn unique_case_id() -> String {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    format!(
+        "{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    )
+}
+
+/// The workspace root, resolved from this crate's manifest directory.
+fn workspace_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("crate directory has a workspace root")
+        .to_path_buf()
+}
+
+/// A directory holding the three runtime executables the builder embeds.
+///
+/// The real stubs are preferred, because only they can extract a payload. A
+/// case that stops at the build product does not need that, so it falls back to
+/// any executable, which is enough for the builder to embed and for the bundle
+/// to be read back.
+fn stub_directory(require_real_stubs: bool) -> Option<PathBuf> {
+    let debug = workspace_root().join("target/debug");
+    let names = [
+        "lzma-stub-native.exe",
+        "zlib-stub-native.exe",
+        "uninst-stub-native.exe",
+    ];
+    if names.iter().all(|name| debug.join(name).is_file()) {
+        return Some(debug);
+    }
+    if require_real_stubs {
+        return None;
+    }
+    let deps = workspace_root().join("target/debug/deps");
+    let fallback = std::fs::read_dir(&deps)
+        .ok()?
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .find(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| {
+                    name.starts_with("nano_installer_core-") && name.ends_with(".exe")
+                })
+        })?;
+    let directory = workspace_root().join("target/e2e-stubs");
+    std::fs::create_dir_all(&directory).ok()?;
+    for name in names {
+        std::fs::copy(&fallback, directory.join(name)).ok()?;
+    }
+    Some(directory)
+}
+
+/// Reports that a case cannot run because the runtime executables are absent.
+///
+/// A local run skips, because building the stubs is a separate step. A job that
+/// builds them on purpose sets `NANO_INSTALLER_E2E_REQUIRE_STUBS`, where a skip
+/// would quietly turn the whole suite into a no-op.
+fn skip_missing_stubs() -> anyhow::Result<()> {
+    let required =
+        std::env::var_os("NANO_INSTALLER_E2E_REQUIRE_STUBS").is_some_and(|value| value != "0");
+    anyhow::ensure!(
+        !required,
+        "the runtime stubs are missing; build them first with `cargo build -p nano-installer-stub-lzma \
+         -p nano-installer-stub-zlib -p nano-installer-uninstaller`"
+    );
+    eprintln!("skipping: real runtime stubs are not built");
+    Ok(())
+}
+
+/// One case's project: a fresh directory, a unique registry key, and a
+/// generated payload.
+struct Fixture {
+    /// Held only so the case's directory is removed when the case ends.
+    _temp: tempfile::TempDir,
+    id: String,
+    project: PathBuf,
+    setup: PathBuf,
+    destination: PathBuf,
+    stubs: PathBuf,
+}
+
+impl Fixture {
+    /// Prepares a project that needs no product assets.
+    ///
+    /// `payload` decides the archive format, which is what routes a setup to
+    /// the matching runtime: a ZIP payload embeds the Deflate runtime, a 7z
+    /// payload the LZMA one.
+    fn new(payload: PayloadFormat, silent: bool, include_exe: bool) -> Option<Self> {
+        Self::with_stubs(stub_directory(true)?, payload, silent, include_exe)
+    }
+
+    /// Prepares a project that builds against a caller-supplied stub set.
+    ///
+    /// A case that stops at the build product does not need runtimes that can
+    /// extract anything, so it may hand in a stand-in.
+    fn with_stubs(
+        stubs: PathBuf,
+        payload: PayloadFormat,
+        silent: bool,
+        include_exe: bool,
+    ) -> Option<Self> {
+        let temp = tempfile::tempdir().expect("a temporary directory");
+        let id = unique_case_id();
+        let project = temp.path().join("project");
+        let setup = temp.path().join("E2eProbe_Setup.exe");
+        let destination = temp.path().join("installed");
+        let fixture = Self {
+            _temp: temp,
+            id,
+            project,
+            setup,
+            destination,
+            stubs,
+        };
+        fixture
+            .write_project(payload, silent, include_exe)
+            .expect("project files");
+        Some(fixture)
+    }
+
+    fn write_project(
+        &self,
+        payload: PayloadFormat,
+        silent: bool,
+        include_exe: bool,
+    ) -> anyhow::Result<()> {
+        for directory in ["layouts", "assets", "locales", "payload"] {
+            std::fs::create_dir_all(self.project.join(directory))?;
+        }
+        let name = "E2eProbe";
+        let config = serde_json::json!({
+            "project": {
+                "name": name,
+                "version": "1.0.0",
+                "file_version": "1.0.0.0",
+                "publisher": "nano-installer e2e",
+                "output_name": name
+            },
+            "output": {
+                "installer_name": "E2eProbe_Setup.exe",
+                "uninstaller_name": "uninst.exe",
+                "installer_stub": "zlib-x64.exe",
+                "uninstaller_stub": "uninst-x64.exe"
+            },
+            "install": {
+                "exe_name": "E2eProbe.exe",
+                "require_admin": false,
+                "kill_process_on_install": false,
+                "detect_running_process": false,
+                "kill_process_on_uninstall": false
+            },
+            "registry": {
+                "uninstall_key": format!(
+                    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\nano-installer-e2e-{}",
+                    self.id
+                )
+            },
+            "shortcuts": {"desktop_shortcut": false, "start_menu": false},
+            "autostart": {"enabled": false, "default": false},
+            "localization": {
+                "default_locale": "en-US",
+                "supported_locales": ["en-US"],
+                "show_language_selector": false
+            },
+            "resources": {
+                "layouts_dir": "layouts",
+                "assets_dir": "assets",
+                "locales_dir": "locales",
+                "payload_file": "payload/app.archive"
+            },
+            "ui": {
+                "window_width": 720,
+                "window_height": 450,
+                "expanded_height": 450,
+                "dialog_layout": "layouts/msgBox.xml"
+            },
+            "wizard": {
+                "pages": [{"id": "config", "layout": "layouts/configpage.xml", "title": "Options"}]
+            },
+            "uninstall": {"data_paths": []},
+            "advanced": {
+                "silent_mode_support": silent,
+                "update_mode_support": true,
+                "uninstall_mode_support": silent
+            }
+        });
+        std::fs::write(
+            self.project.join("installer_config.json"),
+            serde_json::to_vec_pretty(&config)?,
+        )?;
+        std::fs::write(
+            self.project.join("layouts/configpage.xml"),
+            r#"<Page width="720" height="450"><Label text="End to end" /></Page>"#,
+        )?;
+        std::fs::write(
+            self.project.join("layouts/msgBox.xml"),
+            r#"<Page width="480" height="180" />"#,
+        )?;
+        std::fs::write(self.project.join("locales/en-US.json"), b"{}")?;
+        self.archive_payload(payload, include_exe)?;
+        Ok(())
+    }
+
+    /// Rewrites `install.default_path` and returns where that resolves to.
+    ///
+    /// Windows expands the variable itself, so the expected directory is asked
+    /// for rather than guessed at.
+    fn set_configured_path(&self, value: &str) -> anyhow::Result<PathBuf> {
+        let path = self.project.join("installer_config.json");
+        let mut config: serde_json::Value = serde_json::from_slice(&std::fs::read(&path)?)?;
+        config["install"]["default_path"] = serde_json::Value::from(value);
+        std::fs::write(&path, serde_json::to_vec_pretty(&config)?)?;
+        let variable = value
+            .trim_start_matches('%')
+            .split('%')
+            .next()
+            .expect("the value names a variable");
+        let root = std::env::var(variable)?;
+        let tail = value
+            .rsplit('\\')
+            .next()
+            .expect("the value names a directory");
+        Ok(PathBuf::from(root).join(tail))
+    }
+
+    fn build(&self) -> anyhow::Result<()> {
+        let mut request = BuildRequest::new(&self.project);
+        request.output = Some(self.setup.clone());
+        request.stub_directory = Some(self.stubs.clone());
+        build_project(request)?;
+        Ok(())
+    }
+
+    /// Writes the payload archive with the bundled `7za.exe`.
+    ///
+    /// The same tool writes both formats, which keeps the two cases comparable
+    /// and needs no archive crate in the test build: the runtime under test is
+    /// the only thing that has to understand the result.
+    fn archive_payload(&self, format: PayloadFormat, include_exe: bool) -> anyhow::Result<()> {
+        self.archive_with(format, include_exe, &[])
+    }
+
+    fn archive_with(
+        &self,
+        format: PayloadFormat,
+        include_exe: bool,
+        extra: &[(&str, &[u8])],
+    ) -> anyhow::Result<()> {
+        let seven_zip = workspace_root().join("tools/7za.exe");
+        anyhow::ensure!(seven_zip.is_file(), "tools/7za.exe is missing");
+        let staged = self.project.join("payload-stage");
+        if staged.is_dir() {
+            std::fs::remove_dir_all(&staged)?;
+        }
+        std::fs::create_dir_all(staged.join("data"))?;
+        // A known sequence, so a byte-level mix-up shows up and not merely a
+        // missing file.
+        std::fs::write(
+            staged.join("data/expected.bin"),
+            (0u8..=255).collect::<Vec<u8>>(),
+        )?;
+        if include_exe {
+            std::fs::write(
+                staged.join("E2eProbe.exe"),
+                b"MZ end-to-end probe executable\r\n",
+            )?;
+        }
+        for (relative, contents) in extra {
+            let path = staged.join(relative);
+            std::fs::create_dir_all(path.parent().expect("entry has a parent"))?;
+            std::fs::write(&path, contents)?;
+        }
+        let archive = self.project.join("payload/app.archive");
+        std::fs::remove_file(&archive).ok();
+        let flag = match format {
+            PayloadFormat::Zip => "-tzip",
+            PayloadFormat::SevenZip => "-t7z",
+        };
+        let output = Command::new(&seven_zip)
+            .current_dir(&staged)
+            .arg("a")
+            .arg(flag)
+            .arg(&archive)
+            .arg(".")
+            .output()?;
+        anyhow::ensure!(
+            output.status.success(),
+            "7za failed for {flag}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        std::fs::remove_dir_all(&staged)?;
+        Ok(())
+    }
+
+    fn registry_key(&self) -> String {
+        format!(
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\nano-installer-e2e-{}",
+            self.id
+        )
+    }
+
+    /// Runs the built setup with no window.
+    fn install(&self) -> anyhow::Result<Output> {
+        run_silent(&self.setup, Some(&self.destination))
+    }
+
+    /// Runs the built setup with no window, expecting it to refuse.
+    fn install_expecting_failure(&self) -> anyhow::Result<Output> {
+        run_expecting_failure(&self.setup, Some(&self.destination))
+    }
+
+    /// Runs the deployed uninstaller with no window.
+    fn uninstall(&self) -> anyhow::Result<Output> {
+        run_silent(&self.destination.join("uninst.exe"), None)
+    }
+
+    fn read_uninstall_entry(&self) -> anyhow::Result<Option<serde_json::Value>> {
+        read_uninstall_entry(&self.registry_key())
+    }
+}
+
+impl Drop for Fixture {
+    /// Clears the installation when a case ends, so a failing assertion cannot
+    /// leave a product registered on the machine running the tests.
+    fn drop(&mut self) {
+        let uninstaller = self.destination.join("uninst.exe");
+        if uninstaller.is_file() {
+            let _ = Command::new(&uninstaller).arg("--silent").output();
+            wait_for_removal(&self.destination);
+        }
+        delete_registry_key(&self.registry_key());
+        std::fs::remove_dir_all(&self.destination).ok();
+    }
+}
+
+/// Runs an executable with `--silent`, optionally naming the install directory.
+fn silent_command(exe: &Path, destination: Option<&Path>) -> Command {
+    let mut command = Command::new(exe);
+    command.arg("--silent");
+    if let Some(destination) = destination {
+        command.arg("--dir").arg(destination);
+    }
+    command
+}
+
+fn run_silent(exe: &Path, destination: Option<&Path>) -> anyhow::Result<Output> {
+    let output = silent_command(exe, destination).output()?;
+    anyhow::ensure!(
+        output.status.success(),
+        "{} exited with {:?}\nstdout: {}\nstderr: {}",
+        exe.display(),
+        output.status.code(),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Ok(output)
+}
+
+fn run_expecting_failure(exe: &Path, destination: Option<&Path>) -> anyhow::Result<Output> {
+    let output = silent_command(exe, destination).output()?;
+    anyhow::ensure!(
+        !output.status.success(),
+        "{} unexpectedly succeeded",
+        exe.display()
+    );
+    Ok(output)
+}
+
+/// Parses `reg query` output into its values.
+///
+/// Each value line reads `    Name    REG_SZ    the value`, and the value may
+/// itself contain spaces, so only the first two columns are split off.
+fn read_uninstall_entry(key: &str) -> anyhow::Result<Option<serde_json::Value>> {
+    let output = Command::new("reg").arg("query").arg(key).output()?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let mut values = serde_json::Map::new();
+    for line in text.lines() {
+        let line = line.trim();
+        let Some((name, rest)) = line.split_once("    ") else {
+            continue;
+        };
+        let Some((kind, value)) = rest.split_once("    ") else {
+            continue;
+        };
+        if !kind.trim().starts_with("REG_") {
+            continue;
+        }
+        values.insert(
+            name.trim().to_string(),
+            serde_json::Value::from(value.trim()),
+        );
+    }
+    Ok(Some(serde_json::Value::Object(values)))
+}
+
+fn delete_registry_key(key: &str) {
+    let _ = Command::new("reg")
+        .arg("delete")
+        .arg(key)
+        .arg("/f")
+        .output();
+}
+
+/// Waits for the post-uninstall cleaner to remove the installation directory.
+fn wait_for_removal(directory: &Path) {
+    for _ in 0..120 {
+        if !directory.exists() {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
+}
+
+/// Waits for the cleaner to remove the deployed files, which happens while the
+/// uninstaller is still exiting. The directory itself may survive on purpose.
+fn wait_for_uninstaller_removal(directory: &Path) {
+    for _ in 0..120 {
+        if !directory.join("uninst.exe").exists() {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Build product
+// ---------------------------------------------------------------------------
+
+/// The build product is stub + bundle + resources, and the bundle has to
+/// describe itself at the very end of the file for the runtime to find it.
+#[test]
+fn a_built_setup_carries_a_readable_bundle_and_real_resources() -> anyhow::Result<()> {
+    let Some(stubs) = stub_directory(false) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    let Some(fixture) = Fixture::with_stubs(stubs.clone(), PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.build()?;
+
+    let bytes = std::fs::read(&fixture.setup)?;
+    // The footer, read exactly the way the runtime reads it.
+    let footer = &bytes[bytes.len() - 16..];
+    assert_eq!(
+        &footer[8..],
+        b"NATVEND1",
+        "the bundle footer marker is wrong"
+    );
+    let size = u64::from_le_bytes(footer[..8].try_into()?) as usize;
+    assert!(
+        size > 0 && size < bytes.len(),
+        "implausible bundle size {size}"
+    );
+
+    // Still a PE, so the file can be launched at all.
+    assert_eq!(&bytes[..2], b"MZ", "the setup is no longer an executable");
+
+    // The payload was appended: the image is much larger than the stub alone.
+    let stub_size = std::fs::metadata(stubs.join("zlib-stub-native.exe"))?.len();
+    assert!(
+        (bytes.len() as u64) > stub_size,
+        "the setup ({}) is not larger than its stub ({stub_size})",
+        bytes.len()
+    );
+
+    // The resources the builder promised to inject are present as resources.
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(
+        text.contains(
+            "V\u{0}S\u{0}_\u{0}V\u{0}E\u{0}R\u{0}S\u{0}I\u{0}O\u{0}N\u{0}_\u{0}I\u{0}N\u{0}F\u{0}O"
+        ),
+        "the version resource is missing"
+    );
+    assert!(
+        text.contains("asInvoker"),
+        "the application manifest is missing"
+    );
+    Ok(())
+}
+
+/// The payload format decides which runtime is embedded. A setup that keeps
+/// claiming the wrong one installs nothing, because that stub cannot read the
+/// archive.
+#[test]
+fn the_payload_format_selects_the_runtime_that_gets_embedded() -> anyhow::Result<()> {
+    assert_eq!(PayloadFormat::Zip.stub_name(), "zlib-stub-native.exe");
+    assert_eq!(PayloadFormat::SevenZip.stub_name(), "lzma-stub-native.exe");
+
+    for (format, expected_backend) in [
+        (PayloadFormat::Zip, "zlib-stub-native.exe"),
+        (PayloadFormat::SevenZip, "lzma-stub-native.exe"),
+    ] {
+        let Some(fixture) = Fixture::new(format, true, true) else {
+            skip_missing_stubs()?;
+            return Ok(());
+        };
+        // The format is decided from the archive signature, not its extension.
+        let summary = nano_installer_core::inspect_project(&fixture.project)?;
+        assert_eq!(
+            summary.payload_format, format,
+            "the archive signature routed to the wrong backend"
+        );
+        let mut request = BuildRequest::new(&fixture.project);
+        request.output = Some(fixture.setup.clone());
+        request.stub_directory = Some(fixture.stubs.clone());
+        let mut reported = Vec::new();
+        let result = build_project_with_progress(request, |event| reported.push(event.message))?;
+
+        // The runtime that got embedded is the one the format names, both as
+        // the path the build returned and as the step it reported.
+        assert_eq!(
+            result.stub_path.file_name().and_then(|name| name.to_str()),
+            Some(expected_backend),
+            "the build packed the wrong runtime for {}",
+            format.label()
+        );
+        assert!(
+            reported
+                .iter()
+                .any(|message| message.contains(expected_backend)),
+            "the build never reported {expected_backend}: {reported:?}"
+        );
+        assert!(fixture.setup.is_file());
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Install
+// ---------------------------------------------------------------------------
+
+/// The whole point of a setup: the payload lands on disk, a manifest records
+/// what was written, an uninstall entry is registered, and the payload's own
+/// bytes survive the trip.
+#[test]
+fn a_built_setup_installs_its_payload_and_registers_an_uninstall_entry() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.build()?;
+    fixture.install()?;
+
+    let destination = &fixture.destination;
+    assert!(
+        destination.join("E2eProbe.exe").is_file(),
+        "the product exe is missing"
+    );
+    assert!(
+        destination.join("uninst.exe").is_file(),
+        "no uninstaller was embedded"
+    );
+    assert!(
+        destination.join("nano-installer-manifest.json").is_file(),
+        "no manifest was written"
+    );
+
+    // The nested payload file has to come back byte for byte: a truncating or
+    // reordering extractor still produces a file of the right name.
+    let nested = destination.join("data/expected.bin");
+    assert!(
+        nested.is_file(),
+        "the nested payload directory was not recreated"
+    );
+    assert_eq!(
+        std::fs::read(&nested)?,
+        (0u8..=255).collect::<Vec<u8>>(),
+        "the extracted payload does not match what was archived"
+    );
+
+    // The manifest is what the uninstaller replays, so it has to list the files
+    // that were actually deployed.
+    let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(
+        destination.join("nano-installer-manifest.json"),
+    )?)?;
+    assert_eq!(manifest["version"], 1);
+    let listed = manifest["files"].to_string();
+    assert!(
+        listed.contains("E2eProbe.exe"),
+        "the manifest does not list the product exe"
+    );
+    assert!(
+        listed.contains("expected.bin"),
+        "the manifest does not list the nested file"
+    );
+
+    // The registration points Windows back at the deployed uninstaller.
+    let entry = fixture.read_uninstall_entry()?.expect("an uninstall entry");
+    let uninstall_string = entry["UninstallString"].as_str().unwrap_or_default();
+    assert!(
+        uninstall_string.contains("uninst.exe"),
+        "the uninstall entry does not name the uninstaller: {uninstall_string}"
+    );
+    assert_eq!(entry["DisplayName"], "E2eProbe");
+    Ok(())
+}
+
+/// A configured `%LOCALAPPDATA%` path has to be expanded before use, because an
+/// unexpanded one is not absolute and an install refuses a relative directory.
+/// This runs with no `--dir` at all, which is what a silent run without an
+/// override does.
+#[test]
+fn a_configured_percent_path_is_expanded_and_used() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    let name = format!("nano-installer-e2e-{}", fixture.id);
+    let expected = fixture.set_configured_path(&format!("%TEMP%\\{name}"))?;
+    // The fixture's own cleanup looks at `destination`, so point it at the path
+    // this case actually installs into.
+    let mut fixture = fixture;
+    fixture.destination = expected.clone();
+    fixture.build()?;
+
+    run_silent(&fixture.setup, None)?;
+    assert!(
+        expected.join("E2eProbe.exe").is_file(),
+        "nothing was installed into the configured path {}",
+        expected.display()
+    );
+    Ok(())
+}
+
+/// The directory named on the command line wins over the configured one, which
+/// is what lets a silent run choose where a product lands.
+#[test]
+fn an_explicit_directory_wins_over_the_configured_one() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    let configured =
+        fixture.set_configured_path(&format!("%TEMP%\\nano-installer-e2e-{}", fixture.id))?;
+    fixture.build()?;
+
+    fixture.install()?;
+    assert!(
+        fixture.destination.join("E2eProbe.exe").is_file(),
+        "the explicit directory was not used"
+    );
+    assert!(
+        !configured.join("E2eProbe.exe").exists(),
+        "the configured path was used even though one was given: {}",
+        configured.display()
+    );
+    let _ = std::fs::remove_dir_all(&configured);
+    Ok(())
+}
+
+/// A project that never declared silent support must refuse a windowless run
+/// rather than install unattended.
+#[test]
+fn a_project_without_silent_support_refuses_a_windowless_install() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, false, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.build()?;
+
+    let result = fixture.install_expecting_failure()?;
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("silent_mode_support"),
+        "the failure should name the switch to set: {stderr}"
+    );
+    assert!(
+        !fixture.destination.exists(),
+        "a refused run still created {}",
+        fixture.destination.display()
+    );
+    Ok(())
+}
+
+/// A mistyped option has to stop the run. Installing into the configured default
+/// instead would put files somewhere nobody asked for.
+#[test]
+fn an_unknown_silent_option_is_refused() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.build()?;
+
+    let output = Command::new(&fixture.setup)
+        .arg("--silent")
+        .arg("--silnet")
+        .output()?;
+    assert!(!output.status.success(), "an unknown option was accepted");
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("--silnet"),
+        "the error should name the offending option"
+    );
+    assert!(!fixture.destination.exists(), "files were written anyway");
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Upgrade
+// ---------------------------------------------------------------------------
+
+/// Installing this version over the previous one replaces the product and drops
+/// the files the new payload no longer ships.
+#[test]
+fn installing_over_an_existing_installation_drops_stale_files() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    // The first payload carries a file the second one will not.
+    fixture.archive_with(PayloadFormat::Zip, true, &[("stale/old.txt", b"obsolete")])?;
+    fixture.build()?;
+    fixture.install()?;
+    let stale = fixture.destination.join("stale/old.txt");
+    assert!(
+        stale.is_file(),
+        "the first install did not deploy the extra file"
+    );
+
+    // Rebuild without it, and install over the top.
+    fixture.archive_payload(PayloadFormat::Zip, true)?;
+    fixture.build()?;
+    fixture.install()?;
+
+    assert!(
+        fixture.destination.join("E2eProbe.exe").is_file(),
+        "the product went missing"
+    );
+    assert!(
+        !stale.exists(),
+        "the upgrade left the dropped file behind: {}",
+        stale.display()
+    );
+    Ok(())
+}
+
+/// A local settings file the product wrote is not part of the payload, so an
+/// upgrade must leave it alone.
+#[test]
+fn an_upgrade_keeps_a_file_the_payload_does_not_own() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.build()?;
+    fixture.install()?;
+
+    let user_file = fixture.destination.join("user-settings.ini");
+    std::fs::write(&user_file, b"[user]\nvalue=1\n")?;
+
+    fixture.build()?;
+    fixture.install()?;
+
+    assert!(
+        user_file.is_file(),
+        "the upgrade deleted a file it does not own: {}",
+        user_file.display()
+    );
+    assert_eq!(std::fs::read(&user_file)?, b"[user]\nvalue=1\n");
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Uninstall
+// ---------------------------------------------------------------------------
+
+/// Uninstall removes what it deployed, removes the registration, and removes the
+/// installation directory itself.
+#[test]
+fn uninstalling_removes_the_product_the_registration_and_the_directory() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.build()?;
+    fixture.install()?;
+    assert!(
+        fixture.read_uninstall_entry()?.is_some(),
+        "nothing was registered to uninstall"
+    );
+
+    fixture.uninstall()?;
+    // The directory goes once the cleaner copy exits, a moment after the
+    // uninstaller itself returns.
+    wait_for_removal(&fixture.destination);
+
+    assert!(
+        !fixture.destination.exists(),
+        "the installation directory survived uninstall: {}",
+        fixture.destination.display()
+    );
+    assert!(
+        fixture.read_uninstall_entry()?.is_none(),
+        "the uninstall registration survived uninstall"
+    );
+    Ok(())
+}
+
+/// A file the user put in the installation directory keeps the directory, which
+/// is the promise the manifest cleanup makes, while the deployed files still go.
+#[test]
+fn uninstall_keeps_a_directory_that_still_holds_user_files() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.build()?;
+    fixture.install()?;
+
+    let keep = fixture.destination.join("user-notes.txt");
+    std::fs::write(&keep, b"a file the user added")?;
+
+    fixture.uninstall()?;
+    wait_for_uninstaller_removal(&fixture.destination);
+
+    assert!(keep.is_file(), "the user's own file was deleted");
+    assert!(
+        !fixture.destination.join("E2eProbe.exe").exists(),
+        "the deployed product was not removed"
+    );
+    assert!(
+        fixture.destination.exists(),
+        "the directory holding a user file was removed anyway"
+    );
+    Ok(())
+}
+
+/// Uninstalling a project that never declared silent support is refused, so a
+/// product cannot be removed unattended by a flag its author did not agree to.
+#[test]
+fn a_project_without_silent_support_refuses_a_windowless_uninstall() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.build()?;
+    fixture.install()?;
+
+    // Rewrite only the uninstall switch, leaving the install one on.
+    let path = fixture.project.join("installer_config.json");
+    let mut config: serde_json::Value = serde_json::from_slice(&std::fs::read(&path)?)?;
+    config["advanced"]["uninstall_mode_support"] = serde_json::Value::from(false);
+    std::fs::write(&path, serde_json::to_vec_pretty(&config)?)?;
+    fixture.build()?;
+    // The deployed uninstaller still carries the old project, so install again
+    // to deploy one built from the edited project.
+    fixture.install()?;
+
+    let output = Command::new(fixture.destination.join("uninst.exe"))
+        .arg("--silent")
+        .output()?;
+    assert!(
+        !output.status.success(),
+        "a project without uninstall support was removed anyway"
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("uninstall_mode_support"),
+        "the failure should name the switch to set"
+    );
+    assert!(
+        fixture.destination.join("E2eProbe.exe").is_file(),
+        "the product was removed despite the refusal"
+    );
+    Ok(())
+}
