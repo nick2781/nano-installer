@@ -20,7 +20,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           lfs: true
 
@@ -30,8 +30,14 @@ jobs:
           toolchain: nightly-2025-11-08
           components: rust-src,rustfmt,clippy
 
+      # A maintained fork of ilammy/msvc-dev-cmd, which is still on the
+      # deprecated Node 20 runtime and has had no release since 2024. This one
+      # runs on Node 24 and takes the same inputs, but it has no default, so the
+      # architecture ilammy used to assume is now stated.
       - name: Configure MSVC tools
-        uses: ilammy/msvc-dev-cmd@v1
+        uses: TheMrMilchmann/setup-msvc-dev@v4
+        with:
+          arch: x64
 
       - name: Restore Cargo cache
         uses: Swatinem/rust-cache@v2
