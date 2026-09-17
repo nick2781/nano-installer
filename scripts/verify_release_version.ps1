@@ -152,4 +152,10 @@ if ($failures.Count -gt 0) {
     throw "release_version.ps1 behaved unexpectedly:`n  - $($failures -join "`n  - ")"
 }
 
+# Rejected cases exit the checker with a non-zero code, and that code is still
+# in $LASTEXITCODE here. A CI step runs this file dot-sourced, so the runner would
+# read that stale value as this script's own result and fail a run whose cases
+# all passed. Clearing it makes the step inherit success.
+$global:LASTEXITCODE = 0
+
 Write-Output "CalVer version rules verified: 28 accepted/rejected cases"
