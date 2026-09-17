@@ -138,6 +138,40 @@ selects the 7z runtime. Any other format fails the build.
 Add `scripts/install.rhai` or `scripts/uninstall.rhai` to replace the built-in steps. See the
 [script API](SCRIPT_API.md).
 
+## Unattended runs
+
+A project can run its install or uninstall with no window at all, which is what a software
+deployment tool needs. It has to say so first:
+
+```json
+"advanced": {
+  "silent_mode_support": true,
+  "uninstall_mode_support": true
+}
+```
+
+With the switches on, the same executables accept `--silent`:
+
+```powershell
+MyApp_Setup.exe --silent --dir "%LOCALAPPDATA%\MyApp"
+MyApp_Setup.exe --silent
+uninst.exe --silent
+```
+
+- `--silent` installs or uninstalls without opening anything. A silent run never shows a dialog,
+  because a dialog would wait for a click that never comes.
+- `--dir` chooses the install directory for that run and wins over `install.default_path`. Both
+  accept environment variables, which are expanded before use.
+- Any other option is refused. A mistyped flag stops the run instead of installing into the
+  configured default.
+- `silent_mode_support` and `uninstall_mode_support` are separate, so a product can allow
+  unattended installs without allowing unattended removal.
+- Because there are no checkboxes to read, shortcut and autostart decisions follow
+  `shortcuts.desktop_default` and `autostart.default`, and user data is always kept on uninstall.
+
+A windowless run reports progress to whoever started it: it writes to the console instead of
+painting a window, and a failure sets a non-zero exit code with the reason on standard error.
+
 ## Minimum configuration
 
 ```json
@@ -176,11 +210,13 @@ These settings are packaged into the setup but are not read at runtime. Do not t
 presence as a working feature:
 
 - `install.*` and `registry.*` fields other than the ones listed above
-- `validation.*` and `advanced.*`; `links.*` is read by link clicks and `open_url:` actions, and
+- `validation.*`; `links.*` is read by link clicks and `open_url:` actions, and
   `localization.supported_locales` is checked during the build
 - `localization.show_language_selector`; the language list and its visibility come from the XML
   `Select` control
 - `advanced.update_mode_support`; upgrades are detected from an existing installation in the
-  destination, not from this switch
+  destination, not from this switch. `advanced.silent_mode_support` and
+  `advanced.uninstall_mode_support` are read, and are described under
+  [unattended runs](#unattended-runs).
 
 See [production status](PRODUCTION_STATUS.md) for the full picture.

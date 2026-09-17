@@ -34,8 +34,18 @@ DPI 行为是否与项目配置一致，因此悄悄丢掉提权声明的安装�
 压缩包，也不会构建或发布 TapTap 示例安装包。本地显式传 `-Project` 才会生成示例安装包，用于验证
 payload、布局与 bundle；脚本还会取出项目化的 `uninst.exe`，单独审计其 Windows 7 导入与版本资源。
 
-示例 payload `examples/TapTap/payload/app.7z` 未存入仓库，因此 CI 只构建工具链；使用真实 payload
-的自动化测试计划放在独立的 job。
+示例 payload `examples/TapTap/payload/app.7z` 未存入仓库，因此上面的 CI job 只构建工具链。
+安装包级验证放在独立的 `setup-end-to-end` job：`crates/nano-installer-core/tests/e2e_setup.rs`
+自己写出一份项目、用它构建安装包，然后运行这个安装包与它部署出来的卸载程序。fixture 不含任何产品
+payload 与第三方素材，安装到临时目录下，并注册到每例独立的注册表键，因此该 job 既不需要虚拟机，
+也不会与其它运行互相干扰。
+
+该 job 会设置 `NANO_INSTALLER_E2E_REQUIRE_STUBS=1`，把「运行时 stub 缺失」从跳过改为失败；
+否则一个什么都没构建的 job 会把所有用例都记为跳过，却依然显示通过。
+
+每个 job 还会执行 `scripts/audit_test_targets.ps1`：它向 Cargo 询问工作区包含哪些包，只要有
+`tests/*.rs` 落在所有包之外就失败。虚拟清单旁边的 `tests/` 目录看起来像集成测试，却永远不会被
+编译，其中的用例也就永远不会执行；这个坑在本仓库真实发生过，检查就是为此而加。
 
 ## 版本号
 

@@ -54,6 +54,14 @@ files and registry entries; validate them in a disposable virtual machine only.
 - A finished uninstall leaves a cleaner copy in the temporary directory that immediately deletes the
   uninstaller and the emptied installation directory. A directory that still holds files the user
   added is kept, and the cleaner removes itself once it is done.
+- A project that opts in with `advanced.silent_mode_support` runs an install with `--silent`, and one
+  with `advanced.uninstall_mode_support` runs an uninstall the same way. A silent run opens nothing,
+  takes `--dir`, refuses any other option, and reports through the exit code and standard error. A
+  project that did not opt in is refused rather than installed or removed unattended.
+- The setup-level suite in `crates/nano-installer-core/tests/e2e_setup.rs` builds a setup from a
+  project it writes itself and runs it against a real installation: files land on disk byte for
+  byte, the manifest and the uninstall entry are written, an upgrade drops stale files and keeps
+  files it does not own, and an uninstall removes the product, the registration, and the directory.
 
 ## Blocking a release
 

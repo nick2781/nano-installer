@@ -8,6 +8,14 @@ cargo test --locked --workspace
 .\scripts\build.ps1 -Project examples\TapTap
 ```
 
+安装包级用例会真的构建并运行安装包，需要先产出运行时：
+
+```powershell
+cargo build -p nano-installer-stub-lzma -p nano-installer-stub-zlib -p nano-installer-uninstaller
+$env:NANO_INSTALLER_E2E_REQUIRE_STUBS = "1"
+cargo test -p nano-installer-core --test e2e_setup
+```
+
 单元测试覆盖 bundle 往返、payload 打包、按钮命中测试、临时目录部署、manifest 写入、拒绝覆盖已有
 目录、升级与旧文件清理、失败回滚，以及卸载时的快捷方式与用户数据规则。布局测试覆盖嵌套流式容器
 与间距、百分比尺寸、进度条裁剪、越界页面回退，以及进度页与状态文案的绑定。脚本测试覆盖脚本部署
@@ -16,6 +24,22 @@ cargo test --locked --workspace
 构建脚本审计构建器、三个运行时、安装包与内嵌卸载程序的 PE 导入，并读回安装包与内嵌卸载程序中的
 清单资源，核对权限级别与 DPI 行为是否与项目配置推导出的结果一致。有一项测试会写 `HKCU`，在受限
 环境中默认忽略，需要在隔离虚拟机中显式执行。
+
+`crates/nano-installer-core/tests/e2e_setup.rs` 覆盖单元测试看不到的接缝。布局打错、payload 丢失、
+资源没注入，这类缺陷都发生在两个程序之间，单元测试全绿而安装包根本装不上。因此这套用例自己写出
+一份项目，用真实构建器生成安装包，再运行这个安装包与它部署出来的卸载程序。
+
+- 产物：运行时读取的尾部标记、贴在真实 PE 之后的 payload、版本与清单资源，以及 payload 格式对应
+  的运行时。
+- 安装：payload 落到磁盘且逐字节一致、manifest 记录实际写入的内容、卸载项指向部署出来的卸载程序、
+  配置的 `%TEMP%` 路径会被展开、`--dir` 优先于配置路径，未声明支持或参数写错的运行不落任何文件。
+- 升级：第二次安装覆盖第一次时删掉新版 payload 不再包含的文件，同时保留 payload 不属于它的文件。
+- 卸载：产品、注册项与目录一并消失；目录里还有用户自己加的文件时保留目录。
+
+每个用例都自造 fixture，不含任何产品 payload 与第三方素材，安装到临时目录下，并注册到只属于该用例
+的注册表键，因此并行执行互不干扰，重复运行也不会冲突；即使断言失败也会自行清理。运行时 stub 缺失时
+用例打印跳过并计为通过，所以真正验证安装包的 job 会设置 `NANO_INSTALLER_E2E_REQUIRE_STUBS=1`，
+把跳过变成失败。
 
 ## 手动检查
 

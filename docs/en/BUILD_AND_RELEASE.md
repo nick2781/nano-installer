@@ -40,8 +40,21 @@ publish the TapTap example setup. Passing `-Project` locally is what generates a
 the payload, layout, and bundle can be validated; the script also extracts the project's
 `uninst.exe` and audits its Windows 7 imports and version resource on its own.
 
-The example payload `examples/TapTap/payload/app.7z` is not stored in the repository, so CI builds
-only the toolchain. Automated tests with a real payload are planned for a separate job.
+The example payload `examples/TapTap/payload/app.7z` is not stored in the repository, so the CI
+job above builds only the toolchain. Setup-level validation runs in its own `setup-end-to-end` job:
+`crates/nano-installer-core/tests/e2e_setup.rs` writes a project of its own, builds a setup from it,
+and then runs that setup and the uninstaller it deployed. The fixture carries no product payload and
+no third-party assets, and it installs below the temporary directory under a per-case registry key,
+so the job needs no VM and touches no shared state.
+
+That job sets `NANO_INSTALLER_E2E_REQUIRE_STUBS=1`, which turns "the runtime stubs are missing" from
+a skip into a failure. Without it a job that built nothing would report every case as skipped and
+still pass.
+
+Every job also runs `scripts/audit_test_targets.ps1`, which asks Cargo which packages the workspace
+has and fails if a `tests/*.rs` file sits outside all of them. A `tests/` directory next to the
+virtual manifest looks like an integration suite but is never compiled, so its cases never run;
+that is not hypothetical here, and the check exists because it happened.
 
 ## Version numbers
 
