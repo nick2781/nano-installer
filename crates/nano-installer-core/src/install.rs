@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, ensure, Context, Result};
 use serde_json::{json, Value};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
@@ -76,21 +76,128 @@ pub(super) fn start_install() {
             })
         });
     let Some(selection) = selection else {
-        show_result(Err(anyhow::anyhow!(
-            "installation directory is not configured"
-        )));
-        return;
-    };
-    let Some(destination) = selection.destination.clone() else {
-        show_result(Err(anyhow::anyhow!(
-            "installation directory is not configured"
-        )));
+        show_result(Err(anyhow::anyhow!("the installer window is not ready")));
         return;
     };
     run_worker(move || {
         let setup = std::env::current_exe()?;
-        install_setup(&setup, Path::new(&destination), &selection)
+        let bundle = BundleIndex::read(&setup)?.context("installer resource bundle missing")?;
+        let config = bundle.read_config()?;
+        let destination =
+            resolve_install_destination(&config, selection.destination.as_deref().map(Path::new))?;
+        install_setup(&setup, &destination, &selection)
     });
+}
+
+/// The directory an install writes into.
+///
+/// A silent run can state one with `--dir`, which wins over the project's
+/// `install.default_path`; the wizard passes whatever the path field holds.
+/// Either way the value is expanded, because a configured path normally names
+/// environment variables such as `%LOCALAPPDATA%\Product`, and an unexpanded
+/// percent path is not absolute, so every install would be refused.
+pub(super) fn resolve_install_destination(
+    config: &Value,
+    explicit: Option<&Path>,
+) -> Result<PathBuf> {
+    let raw = match explicit {
+        Some(path) => path.to_path_buf(),
+        None => {
+            let configured = config["install"]["default_path"]
+                .as_str()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .context(
+                    "no installation directory: pass --dir, or set install.default_path in the project",
+                )?;
+            PathBuf::from(configured)
+        }
+    };
+    let expanded = shell::expand_environment(&raw.to_string_lossy())?;
+    let path = PathBuf::from(expanded.trim());
+    ensure!(
+        !path.as_os_str().is_empty(),
+        "the installation directory is empty"
+    );
+    Ok(path)
+}
+
+/// Reads the flags a silent install accepts.
+///
+/// Only the install directory can be overridden. Anything else is rejected
+/// rather than ignored, so a mistyped option cannot quietly install somewhere
+/// nobody asked for.
+fn parse_silent_arguments(arguments: &[std::ffi::OsString]) -> Result<Option<PathBuf>> {
+    let mut destination = None;
+    let mut index = 0;
+    while index < arguments.len() {
+        let argument = arguments[index].to_string_lossy();
+        match argument.as_ref() {
+            "--dir" => {
+                index += 1;
+                let value = arguments
+                    .get(index)
+                    .with_context(|| "--dir needs the directory to install into")?;
+                destination = Some(PathBuf::from(value));
+            }
+            other => bail!("unsupported silent option: {other}"),
+        }
+        index += 1;
+    }
+    Ok(destination)
+}
+
+/// Refuses a windowless run for a project that never declared one.
+///
+/// `advanced.silent_mode_support` and `advanced.uninstall_mode_support` are the
+/// project's own statement that its flow works without a window, so a flag its
+/// author did not agree to cannot install or remove a product unattended.
+fn require_silent_support(config: &Value, key: &str) -> Result<()> {
+    if config["advanced"][key].as_bool() == Some(true) {
+        return Ok(());
+    }
+    bail!(
+        "this project does not support a windowless run: set advanced.{key} to true in installer_config.json"
+    )
+}
+
+/// Runs an install with no window, for a project that declares silent support.
+///
+/// The flags after `--silent` are the only input such a run has, so the image
+/// is read once here to answer the two questions that have to be settled before
+/// anything is written: whether the project agreed to a windowless run, and
+/// where it wants to be installed. The read is the bundle index alone, a footer
+/// and a small table; the payload stays on disk and is streamed later.
+pub(super) fn run_silent_install(arguments: &[std::ffi::OsString]) -> Result<()> {
+    let override_destination = parse_silent_arguments(arguments)?;
+    let setup = std::env::current_exe()?;
+    let bundle = BundleIndex::read(&setup)?.context("installer resource bundle missing")?;
+    let config = bundle.read_config()?;
+    require_silent_support(&config, "silent_mode_support")?;
+    let destination = resolve_install_destination(&config, override_destination.as_deref())?;
+    // No window means no checkboxes, so every shortcut and autostart decision
+    // falls back to the default the project configured.
+    let selection = InstallSelection {
+        destination: None,
+        checkboxes: std::collections::HashMap::new(),
+    };
+    install_setup(&setup, &destination, &selection)
+}
+
+/// Runs an uninstall with no window, for a project that declares silent support.
+///
+/// User data is kept: a silent run has no keep-data checkbox to clear, and the
+/// runtime never destroys data the user did not ask to remove.
+pub(super) fn run_silent_uninstall(arguments: &[std::ffi::OsString]) -> Result<()> {
+    ensure!(
+        arguments.is_empty(),
+        "the uninstaller accepts no option after --silent"
+    );
+    let uninstaller = std::env::current_exe()?;
+    let bundle = BundleIndex::read(&uninstaller)?.context("uninstaller bundle missing")?;
+    let config = bundle.read_config()?;
+    require_silent_support(&config, "uninstall_mode_support")?;
+    uninstall(&uninstaller, true)
 }
 
 pub(super) fn start_uninstall() {
@@ -1608,9 +1715,9 @@ fn schedule_removal_at_reboot(path: &Path) {
 #[cfg(test)]
 mod tests {
     use super::{
-        preserved_data_paths, previous_install, register_uninstaller, registry_key_exists,
-        registry_path, validate_destination, wide, Deployment, InstallArtifacts, PreviousInstall,
-        MANIFEST_NAME,
+        parse_silent_arguments, preserved_data_paths, previous_install, register_uninstaller,
+        registry_key_exists, registry_path, require_silent_support, resolve_install_destination,
+        validate_destination, wide, Deployment, InstallArtifacts, PreviousInstall, MANIFEST_NAME,
     };
     use anyhow::Result;
     use std::path::{Path, PathBuf};
@@ -1970,5 +2077,102 @@ mod tests {
             true,
         )?;
         Ok(())
+    }
+
+    /// A configured default path names environment variables, and an
+    /// unexpanded `%LOCALAPPDATA%\\Product` is not absolute, so an install that
+    /// skipped this step would be refused before it wrote anything.
+    #[test]
+    fn configured_install_paths_are_expanded() -> Result<()> {
+        let config = serde_json::json!({
+            "install": {"default_path": "%LOCALAPPDATA%\\nano-installer-path-test"}
+        });
+        let resolved = resolve_install_destination(&config, None)?;
+        assert!(resolved.is_absolute(), "{resolved:?} is not absolute");
+        assert!(
+            !resolved.to_string_lossy().contains('%'),
+            "{resolved:?} still holds an unexpanded variable"
+        );
+        assert_eq!(
+            resolved.file_name().and_then(|name| name.to_str()),
+            Some("nano-installer-path-test")
+        );
+        Ok(())
+    }
+
+    /// An explicit directory wins over the configured one, which is what lets a
+    /// silent run choose where a product lands without editing the project.
+    #[test]
+    fn an_explicit_install_path_wins_over_the_configured_one() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let chosen = temp.path().join("chosen");
+        let config = serde_json::json!({
+            "install": {"default_path": "C:\\Somewhere\\Else"}
+        });
+        let resolved = resolve_install_destination(&config, Some(&chosen))?;
+        assert_eq!(resolved, chosen);
+        Ok(())
+    }
+
+    /// Neither source is a directory to guess at, so the run stops with a
+    /// message that names both ways to supply one.
+    #[test]
+    fn a_run_without_any_install_path_is_refused() {
+        let config = serde_json::json!({"install": {}});
+        let error = resolve_install_destination(&config, None).expect_err("no directory");
+        let text = format!("{error:#}");
+        assert!(
+            text.contains("--dir"),
+            "the error should name --dir: {text}"
+        );
+        assert!(
+            text.contains("install.default_path"),
+            "the error should name the config key: {text}"
+        );
+    }
+
+    #[test]
+    fn silent_arguments_read_the_directory_and_reject_anything_else() -> Result<()> {
+        use std::ffi::OsString;
+
+        let empty: Vec<OsString> = Vec::new();
+        assert_eq!(parse_silent_arguments(&empty)?, None);
+
+        let given = vec![OsString::from("--dir"), OsString::from("C:\\Install\\Here")];
+        assert_eq!(
+            parse_silent_arguments(&given)?,
+            Some(PathBuf::from("C:\\Install\\Here"))
+        );
+
+        // A mistyped option has to stop the run: quietly installing into the
+        // configured default instead would put files somewhere nobody asked for.
+        let unknown = vec![OsString::from("--silnet")];
+        assert!(parse_silent_arguments(&unknown).is_err());
+
+        // So does --dir with nothing after it.
+        let dangling = vec![OsString::from("--dir")];
+        assert!(parse_silent_arguments(&dangling).is_err());
+        Ok(())
+    }
+
+    /// A windowless run is the project's own decision, so a project that never
+    /// declared one cannot be installed or removed unattended.
+    #[test]
+    fn a_project_that_did_not_opt_in_refuses_a_windowless_run() {
+        let opted_in = serde_json::json!({"advanced": {"silent_mode_support": true}});
+        assert!(require_silent_support(&opted_in, "silent_mode_support").is_ok());
+
+        for config in [
+            serde_json::json!({}),
+            serde_json::json!({"advanced": {}}),
+            serde_json::json!({"advanced": {"silent_mode_support": false}}),
+        ] {
+            let error = require_silent_support(&config, "silent_mode_support")
+                .expect_err("the project did not opt in");
+            assert!(
+                format!("{error:#}").contains("silent_mode_support"),
+                "the error should name the switch to set"
+            );
+        }
     }
 }

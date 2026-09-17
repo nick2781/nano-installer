@@ -102,6 +102,15 @@ pub(super) fn register(engine: &mut Engine, context: ScriptContext) {
     });
 
     engine.register_fn("ask_yes_no", |title: &str, message: &str| -> bool {
+        // A silent run cannot wait for an answer, and the safe answer to "may I
+        // do this" is no, so the question is recorded and declined.
+        if crate::silent_mode() {
+            log(
+                "warn",
+                &format!("{title}: {message} (no answer during a windowless run; treated as No)"),
+            );
+            return false;
+        }
         let result = unsafe {
             windows::Win32::UI::WindowsAndMessaging::MessageBoxW(
                 crate::runtime_window().unwrap_or_default(),
@@ -169,6 +178,12 @@ fn message_box(
     message: &str,
     icon: windows::Win32::UI::WindowsAndMessaging::MESSAGEBOX_STYLE,
 ) {
+    // A windowless run has no one to click OK, so the message goes to the log
+    // the run already keeps instead of to a box nothing can dismiss.
+    if crate::silent_mode() {
+        log("info", &format!("{title}: {message}"));
+        return;
+    }
     unsafe {
         windows::Win32::UI::WindowsAndMessaging::MessageBoxW(
             crate::runtime_window().unwrap_or_default(),
