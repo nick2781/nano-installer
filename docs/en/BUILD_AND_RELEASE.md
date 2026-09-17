@@ -43,6 +43,33 @@ the payload, layout, and bundle can be validated; the script also extracts the p
 The example payload `examples/TapTap/payload/app.7z` is not stored in the repository, so CI builds
 only the toolchain. Automated tests with a real payload are planned for a separate job.
 
+## Version numbers
+
+A release number is the day it is cut, using the CalVer scheme from <https://calver.org/>: a full
+year, an unpadded month, and an unpadded day, such as `2026.9.17`, tagged `v2026.9.17`. The
+calendar day is the project's stated UTC+08:00, which CalVer allows as long as the project says
+which day it counts, so a release cut late in a Beijing evening keeps that day.
+
+`scripts/release_version.ps1` is the single source for that rule:
+
+```powershell
+# The version to use today
+.\scripts\release_version.ps1
+# Check the version in Cargo.toml
+.\scripts\release_version.ps1 -Version 2026.9.17
+# Check a tag: the day, the commit, and that it matches Cargo.toml
+.\scripts\release_version.ps1 -Tag v2026.9.17 -Version 2026.9.17 -Commit <sha>
+```
+
+`scripts/build.ps1` checks the `Cargo.toml` version when a build starts, and the release job checks
+the tag with `-Tag`/`-Version`/`-Commit` before it builds, so the tag has to name the version in
+`Cargo.toml`; a release whose binaries report a different version than the tag fails instead of
+shipping. **A second release on one calendar day takes a modifier**,
+such as `v2026.9.17-r2`, rather than yesterday's date nudged forward or a fourth number — CalVer
+recommends at most three numeric segments. A zero-padded date (`2026.09.17`), a date that does not
+exist (`2026.13.1`), a date before the commit being released, and a date after today are all
+rejected, so a release can no longer be numbered for a day that has not happened.
+
 ## Release notes
 
 Release notes come from `CHANGELOG.md`: `scripts/changelog_notes.ps1` extracts the section matching

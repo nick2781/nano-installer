@@ -50,6 +50,13 @@ jobs:
         shell: powershell
         run: .\scripts\verify_release_notes.ps1
 
+      # A release number is a date, and the date has to be the project's
+      # calendar day for the commit it releases, and has to name the version in
+      # Cargo.toml. These cases pin those rules down.
+      - name: Verify CalVer version rules
+        shell: powershell
+        run: .\scripts\verify_release_version.ps1
+
       - name: Check formatting
         run: cargo fmt --all -- --check
 

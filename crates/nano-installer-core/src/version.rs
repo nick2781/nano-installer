@@ -144,9 +144,20 @@ fn build_version_info(info: &VersionInfo) -> Result<Vec<u8>> {
     Ok(buffer)
 }
 
+/// Reads a Windows version resource, which is strictly numeric.
+///
+/// A project version may carry a release suffix — CalVer uses one for a second
+/// release on the same day, as in `2026.9.17-r2` — but a PE version resource has
+/// room for four numbers and nothing else. The suffix is dropped here rather
+/// than rejected, which is the same treatment `project.file_version` documents
+/// for a suffixed `project.version`.
 fn parse_version(value: &str) -> Result<[u16; 4]> {
-    let parts: Vec<_> = value.split('.').collect();
-    if parts.is_empty() || parts.len() > 4 || parts.iter().any(|part| part.is_empty()) {
+    let numeric = value.split(['-', '+']).next().unwrap_or(value).trim();
+    if numeric.is_empty() {
+        bail!("version must start with numeric components: {value}");
+    }
+    let parts: Vec<_> = numeric.split('.').collect();
+    if parts.len() > 4 || parts.iter().any(|part| part.is_empty()) {
         bail!("version must contain one to four numeric components: {value}");
     }
     let mut version = [0u16; 4];
@@ -236,6 +247,11 @@ mod tests {
         assert_eq!(parse_version("1.2.3")?, [1, 2, 3, 0]);
         assert!(parse_version("1.2.beta").is_err());
         assert!(parse_version("1.2.3.4.5").is_err());
+        // A PE version resource is numeric, but a CalVer version may carry the
+        // suffix used for a second release on one day.
+        assert_eq!(parse_version("2026.9.17-r2")?, [2026, 9, 17, 0]);
+        assert_eq!(parse_version("2026.9.17+notes")?, [2026, 9, 17, 0]);
+        assert!(parse_version("-r2").is_err());
         Ok(())
     }
 

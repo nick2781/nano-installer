@@ -5,7 +5,7 @@
     machine. A script that is pure ASCII is unaffected, but one holding a
     non-ASCII literal looks correct on a UTF-8 development machine and produces
     mojibake on an English runner. That is exactly how the Chinese footer in
-    scripts/changelog_notes.ps1 reached v2026.9.18 as "ae*...".
+    scripts/changelog_notes.ps1 reached a published release as "ae*...".
 
     A UTF-8 BOM makes the encoding explicit, so it is required here for any
     script that is not pure ASCII.

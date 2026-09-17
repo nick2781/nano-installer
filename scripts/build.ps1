@@ -29,10 +29,24 @@ function Invoke-Checked {
 
 Push-Location $repoRoot
 try {
+    # Read before the encoding audit below, so the CalVer check and the build
+    # agree on which version is being released.
+    $versionLine = Get-Content -LiteralPath (Join-Path $repoRoot "Cargo.toml") -Encoding UTF8 |
+        Where-Object { $_ -match '^version\s*=\s*"' } |
+        Select-Object -First 1
+    if (-not $versionLine) {
+        throw "Cargo.toml has no workspace version"
+    }
+    $workspaceVersion = [regex]::Match($versionLine, '"([^"]+)"').Groups[1].Value
     # A BOM-less script holding non-ASCII text is decoded with the ANSI code page
     # on Windows PowerShell, which silently corrupted the release-note footer once
     # already. Check it before anything expensive runs.
     & (Join-Path $PSScriptRoot "audit_script_encoding.ps1")
+
+    # A release number is a date, so it can be wrong: the workspace version has
+    # to follow CalVer, which keeps the tag, the changelog heading, and the
+    # version resources in the built binaries telling the same story.
+    & (Join-Path $PSScriptRoot "release_version.ps1") -Version $workspaceVersion
 
     Invoke-Checked {
         & rustup run $Toolchain cargo build --locked --release `

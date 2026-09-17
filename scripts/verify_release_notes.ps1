@@ -4,7 +4,7 @@
 
     Published bodies are built from CHANGELOG.md by scripts/changelog_notes.ps1.
     That script holds a Chinese footer, and Windows PowerShell decodes a BOM-less
-    script with the ANSI code page, so v2026.9.18 shipped a footer that read
+    script with the ANSI code page, so an early build shipped a footer that read
     correctly on a UTF-8 development machine and arrived as mojibake. The
     generator's own output is what has to be checked, and the release job only
     does that on a tag push, so it is checked here on every change instead.

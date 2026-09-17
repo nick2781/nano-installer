@@ -37,6 +37,30 @@ payload、布局与 bundle；脚本还会取出项目化的 `uninst.exe`，单�
 示例 payload `examples/TapTap/payload/app.7z` 未存入仓库，因此 CI 只构建工具链；使用真实 payload
 的自动化测试计划放在独立的 job。
 
+## 版本号
+
+版本号是发布当天的日期，采用 <https://calver.org/> 的 CalVer：完整年份 + 不补零的月 + 不补零的日，
+例如 `2026.9.17`，tag 写作 `v2026.9.17`。日历日取项目自选的 UTC+08:00（CalVer 允许项目自选
+日历日，写明即可），因此北京时间的深夜发布仍算当天。
+
+`scripts/release_version.ps1` 是唯一的口径来源：
+
+```powershell
+# 今天该用哪个版本号
+.\scripts\release_version.ps1
+# 检查 Cargo.toml 里的版本号
+.\scripts\release_version.ps1 -Version 2026.9.17
+# 检查 tag、它标在当天的提交上，且与 Cargo.toml 的版本一致
+.\scripts\release_version.ps1 -Tag v2026.9.17 -Version 2026.9.17 -Commit <sha>
+```
+
+构建开始时 `scripts/build.ps1` 会校验 `Cargo.toml` 的版本号；发布任务在构建前用 `-Tag`/`-Commit`
+再校验一次 tag，并要求它与 `Cargo.toml` 的版本号指向同一个发布，否则安装包内嵌的版本资源会与
+它所属的 release 不符。**同一个日历日第二次发布要加修饰后缀**，例如 `v2026.9.17-r2`，而不是把日期往后
+写一天或加第四段数字——CalVer 建议最多三段数字。补零（`2026.09.17`）、不存在的日期
+（`2026.13.1`）、以及日期早于被发布提交或晚于今天，都会被拦下，因此不会再出现「今天才 9.17，却
+发出 9.19/9.20」这种版本号。
+
 ## 发布说明
 
 Release notes 来自 `CHANGELOG.md`：`scripts/changelog_notes.ps1` 抽取与被推送 tag 匹配的段落。

@@ -31,6 +31,19 @@ jobs:
       - name: Restore Cargo cache
         uses: Swatinem/rust-cache@v2
 
+      # A release number is a date, so it can be wrong. A tag named for a day
+      # that never happened, one that does not match the commit it releases, or
+      # one that disagrees with the version in Cargo.toml, fails here rather
+      # than being published and cleaned up later.
+      - name: Check the release tag is the version being built
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: powershell
+        run: |
+          $versionLine = Get-Content -LiteralPath Cargo.toml -Encoding UTF8 |
+            Where-Object { $_ -match '^version\s*=\s*"' } | Select-Object -First 1
+          $version = [regex]::Match($versionLine, '"([^"]+)"').Groups[1].Value
+          .\scripts\release_version.ps1 -Tag $env:GITHUB_REF_NAME -Version $version -Commit $env:GITHUB_SHA
+
       - name: Build and audit Win7+ artifacts
         shell: powershell
         run: .\scripts\build.ps1

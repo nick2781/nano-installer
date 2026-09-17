@@ -3,13 +3,34 @@
 本文件记录 nano-installer 的版本变更历史。
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
-版本号使用 CalVer（`YYYY.M.D`），tag 形如 `v2026.9.16`。
+版本号使用 [CalVer](https://calver.org/)（`完整年份.月.日`，月与日不补零），tag 形如 `v2026.9.17`。
+日历日取本项目声明的 UTC+08:00（CalVer 允许项目自选日历日，写明即可），因此北京时间的深夜发布
+仍算当天。同一个日历日第二次发布加修饰后缀（`v2026.9.17-r2`），不把日期往后写、也不加第四段
+数字；`scripts/release_version.ps1` 会校验这些规则，构建与发布都会执行。
 
-## [2026.9.20]
+> **2026-09-17 版本号校正**：此前发布的 `v2026.9.17`、`v2026.9.18`、`v2026.9.19`、`v2026.9.20`
+> 四个 tag 都把日期写在了实际发布日（9 月 16 日至 17 日）之后，后两个甚至是还没到的日期。
+> 这些 tag 与对应 release 已删除，当天完成的内容统一作为 `2026.9.17` 重新发布。
 
-安装窗口现在跟着显示器走。把窗口拖到另一块缩放比例不同的屏幕上，界面的字号、间距和图片会按那块
-屏幕重新排一遍，而不是被 Windows 拉伸成一张发虚的位图。以前只有 Windows 7/8.1 能读的那种写法，
-现在换成了 Windows 10 起的逐显示器感知。
+## [2026.9.17]
+
+本次发布把安装界面收成一个像样的 Windows 安装程序：退出确认不再是系统灰框，窗口不再乱跑，
+高分屏和换屏幕也不会糊。以下内容在同一天内陆续完成，统一作为今天的版本发布。
+
+### 新增
+
+- 安装路径输入框支持完整的文本编辑：鼠标拖选、双击选词或 `Ctrl+A` 全选，选中部分会高亮显示；`Ctrl+C`/`Ctrl+X`/`Ctrl+V` 复制、剪切与粘贴，`Ctrl+Z` 撤销、`Ctrl+Y` 重做，`Ctrl+Backspace`/`Ctrl+Delete` 按词删除。
+- 安装路径旁边的文件夹图标可以直接点击选择目录，选中的路径会写回输入框，旁边的可用空间读数同步更新。
+- 卸载完成后，安装目录和卸载程序会被立即清理；用户自己放进目录里的文件仍会保留，目录也会随之保留。
+- 界面布局支持 `flex-wrap`：一行放不下时元素自动折到下一行，窗口变窄也不会把内容压扁。
+- 要装到 `Program Files` 的产品可以在配置里申请管理员权限：安装包启动时由 Windows 弹出提权确认，
+  用户不必再右键「以管理员身份运行」。默认不申请，普通双击即可运行；内嵌的卸载程序申请同一级别，
+  卸载项仍然能撤销一次提权安装。
+- 高分屏下窗口由程序自己缩放，文字和图片保持清晰，而不是被系统整体拉伸。
+- 安装路径输入框接入输入法组合窗：组合中的文字停在光标处，候选列表紧贴光标下方，中日韩输入与
+  常见 Windows 输入框一致。
+- 构建时检查译文：哪个语言少了页面文案（会列出具体键名）、哪个语言在配置里声明了却没有语言文件，
+  都会出现在可视化构建工具的「构建警告」里。
 
 ### 改进
 
@@ -18,58 +39,6 @@
 - 窗口被移到另一块屏幕后仍完整可见：新位置超出该屏幕可用范围时会被拉回屏幕内，比屏幕还大的
   布局则收缩到可用范围，不会露在屏幕外。
 - 圆角在尺寸变化后依然是圆角：页面变高变宽时窗口形状会跟着重算，不再留下旧尺寸的直角缺口。
-
-### 已知限制
-
-- 安装包尚未签名，Windows SmartScreen 仍会提示「未知发布者」。
-- 尚未在真实 Windows 7 SP1 虚拟机上完成端到端验收。
-
-<!-- release-notes:end -->
-
-### 技术细节
-
-- 清单同时声明两个元素：`dpiAware`（Windows 7/8/8.1 读）与 `dpiAwareness`（Windows 10 1607 起
-  优先读）。后者取值 `PerMonitorV2, PerMonitor`：1607-1703 只认 `PerMonitor`，1703 及以后取第一个
-  认识的值，因此每个受支持的版本都拿到它能提供的最清晰行为。项目关闭缩放时写 `unaware`，避免
-  新版 Windows 又替它缩放。
-- `DpiContext::for_dpi` 由 DPI 与 `DpiSettings { aware, threshold }` 推出布局比例与 `@2x` 选择；
-  `DpiSettings` 与解析结果一起存进 `RuntimeState`，因此收到 DPI 变化时可以重新推导。
-- 新增 `WM_DPICHANGED` 处理：`wparam` 低字是 X 轴 DPI，据此重建 `DpiContext`，调用
-  `rebuild_runtime_ui` 重新排版整页，再按 Windows 建议的矩形（`lparam` 指向的 `RECT`）或居中结果
-  重新放置窗口。缩放比例未变时直接返回，不做无谓重排。
-- 该消息由 Windows 同步投递，运行时的测试钩子也必须用 `SendMessageW`：`PostMessageW` 会拒绝携带
-  指针的消息（`0x80070487`）。
-- 新增 `clamped_bounds`（把 `left`/`top` 夹进工作区，窗口大于工作区时收缩）与 `place_window`
-  （`SetWindowPos` + 重算圆角区域）。`center_window` 改为复用两者，窗口形状不再只在创建时设置一次。
-- `CreateRectRgn` 加入导入表，用于项目声明直角时清掉上一块区域。
-- 验证钩子 `NANO_INSTALLER_TEST_DPI_CHANGE`（配合可选的 `NANO_INSTALLER_TEST_DPI_RECT`）让单显示器
-  机器也能驱动真实处理函数，与既有的 `NANO_INSTALLER_TEST_DPI` 同一风格，未设置时完全不生效。
-- `scripts/audit_application_manifest.ps1` 现在校验 `dpiAwareness`：缺失、模式名非法、关闭缩放却
-  仍声明、或第一个模式不是 `PerMonitorV2` 都会导致构建失败。
-- 新增测试：`a_display_scales_the_layout_by_its_own_dpi`（96/120/144/192/384 的换算与 `@2x` 选择、
-  关闭缩放时保持基准）、`a_placed_window_is_pulled_back_inside_its_work_area`（建议位置在范围内时
-  保留、越界时拉回、负坐标副屏、大于工作区时收缩）。
-
-### 已验证
-
-- `cargo fmt --all -- --check`、`cargo clippy --locked --workspace --all-targets -- -D warnings`、
-  `cargo test --locked --workspace`（83 个 core 测试通过、1 个忽略，12 个 GUI 测试，2 个 stub 测试）。
-- 清单审计：`examples/TapTap/dist/TapTap_Setup.exe` 与内嵌卸载程序均为
-  `level=requireAdministrator, dpiAware=true, dpiAwareness=PerMonitorV2, PerMonitor`。
-- 实测 DPI 切换：DPI 由 192 变为 384 时窗口从 `720,462,2160,1362`（1440x900）变为
-  `0,12,2880,1812`（2880x1800，工作区 `0,0,2880,1824`），即整页按新比例重新排版；
-  带建议矩形 `100,50` 时窗口落在 `0,24,2880,1824`，仍完整位于工作区内。
-- `PrintWindow` 截图确认 2880x1800 下界面按 2 倍比例重排，文字与图标清晰。
-- 构建审计恢复全套通过：Win7 PE 导入审计、ZIP/7z backend smoke test、脚本编码审计。
-
-### 未完成
-
-- 无代码签名；未通过真实 Windows 7 SP1 虚拟机端到端验收。
-
-## [2026.9.19]
-
-退出安装的确认框终于和安装界面是一套皮肤了，不再突然跳出一个系统灰框。安装窗口也老老实实待在
-屏幕正中间：不管你的显示器缩放调到多少、副屏摆在哪一侧，它都不会再溜到左上角去。
 
 ### 修复
 
@@ -81,6 +50,8 @@
 - 拖动无标题栏的窗口不再跳动：从空白处按下标题栏时按屏幕坐标发消息，窗口随鼠标平稳移动。
 - 对话框里的问句文字不再丢失：一行文字按百分比宽度排版时，跨轴高度会被正确测量，文字不会再
   被压成零高度。
+- 确认框不再把按钮挤到底边：卡片高度改为「至少」这个值，按钮下方留出固定间距，文案换行或
+  译文更长时卡片会自己变高，按钮不会被压到边框上。
 
 ### 已知限制
 
@@ -91,96 +62,18 @@
 
 ### 技术细节
 
-- 结束系统 MessageBox：`confirm_close()` 原先调用 `MessageBoxW(None, ...)`，弹出的无主 `#32770`
-  与安装窗口同为顶层窗口，z 序会错乱，这正是「安装界面看起来永远在最上面」的来源。改为自绘
-  对话框后，运行期不再创建任何 `#32770`。
-- 对话框即布局：新增 `DialogState { kind, message, accept_label, dismiss_label }`、
-  `DialogKind::{CloseConfirm, Notice}`（`offers_dismiss()` 让同一份布局既能提问也能提示）、
-  `DialogUi { actions, text_hits, hover_regions }`，以及 `WindowAction::{DialogOk, DialogCancel}`
-  与 `dialog_ok`/`dialog_cancel` 两个 action。
-- 布局新能力：`value-source="dialog:message|accept|dismiss"` 读取当次提问，`visible-with="dismiss"`
-  只在对话框提供第二种答案时绘制控件。
-- 渲染：从 `load_layout` 抽出 `render_layout_content`（页面与对话框共用），新增
-  `render_dialog_overlay`（按 `config["ui"]["dialog_layout"]` 加载，缺省
-  `DEFAULT_DIALOG_LAYOUT = "layouts/msgBox.xml"`）、`translate_layout` 与遮罩
-  `DIALOG_SCRIM = "66000000"`。项目没有该布局时优雅退化：不弹确认框，点关闭直接退出。
-- 模态：`window_action_at`/`hover_control_at`/`text_input_at` 在对话框打开时只认对话框区域；
-  `dialog_is_open()` 让 `WM_KEYDOWN` 优先把 `VK_RETURN` 当确认、`VK_ESCAPE` 当取消，排在
-  「Esc 关闭窗口」分支之前。
-- 窗口居中：新增 `center_window`/`monitor_work_area`/`centered_bounds`。位置取自
-  `MonitorFromWindow` + `GetMonitorInfoW(rcWork)`，尺寸夹取到工作区内，取代原先的
-  `GetSystemMetrics(SM_CXSCREEN/CYSCREEN)`（主屏像素、忽略多显示器/DPI/任务栏，缩放后窗口
-  达到或超过屏幕时会算出 `(1440-1440)/2=0`、`(960-900)/2=30`，也就是左上角）。
-  `RuntimeState.window_size` 做守卫，只在页面尺寸变化时重新居中，用户手动移动过的窗口不会被拽回。
-- 拖动标题栏：`WM_LBUTTONDOWN` 转发的 `WM_NCLBUTTONDOWN` 需要屏幕坐标，原先直接传客户区坐标，
-  窗口会按指针在窗口内的位置跳走；现改用 `ClientToScreen` 转换。
-- 布局引擎：`container_intrinsic_size` 在测量容器跨轴尺寸时，对子元素调用了
-  `cross_size_for_node(..., axis.cross_measure(), ...)` 并沿错误的轴累加 margin，等于用宽度回答
-  高度的问题，`width="100%"` 的行因此被算成零高度、整行被丢弃。现拆出
-  `container_intrinsic_content`（不含自身内边距的子树尺寸）与 `outer_extent_along`（子元素沿被测量
-  轴的显式尺寸 → 自身内容的固有尺寸 → 0，再加 padding/margin），跨轴测量按正确方向进行。
-- 导入表：新增 `ClientToScreen`、`MonitorFromWindow`、`GetMonitorInfoW`、`MONITORINFO`、
-  `MONITOR_DEFAULTTONEAREST`、`SetWindowPos`、`HWND_TOP`、`SWP_NOZORDER`/`SWP_NOACTIVATE`、
-  `VK_RETURN`、`VK_ESCAPE`；移除 `GetSystemMetrics` 与 `IDYES`/`MB_YESNO`/`MB_ICONQUESTION`。
-- 示例 `examples/TapTap/layouts/msgBox.xml` 重写为圆角卡片布局（信息文案 + 「继续安装」/「退出安装」），
-  `examples/TapTap/installer_config.json` 的 `ui` 段显式声明 `"dialog_layout": "layouts/msgBox.xml"`。
-- 文档：`XML_LAYOUT_GUIDE`（新增「对话框」一节与 `dialog_ok`/`dialog_cancel`）、
-  `CONFIG_REFERENCE`（新增 `ui.dialog_layout`）、`ARCHITECTURE`（提问与提示的渲染）、
-  `PRODUCTION_STATUS` 与 `QUICK_START` 同步为皮肤确认框，中英双语。
-
-### 已验证
-
-- `cargo fmt --all -- --check`、`cargo clippy --locked --workspace --all-targets -- -D warnings`。
-- `cargo test --locked --workspace`（81 个 core 测试通过、1 个忽略，12 个 GUI 测试，2 个 stub 测试）；
-  新增回归测试覆盖对话框居中与模态、按钮动作、提示框隐藏次按钮、无对话框布局的退化、
-  `centered_bounds` 的夹取，以及跨轴容器尺寸，并以示例自带的 `msgBox.xml` 端到端断言问句与两个按钮
-  都被真实排版。
-- 实测窗口不再是置顶：`ex=0x40000`（仅 `WS_EX_APPWINDOW`，无 `WS_EX_TOPMOST`），z 序低于
-  `Shell_TrayWnd`，普通窗口可以排到它上面。
-- 实测高 DPI：`NANO_INSTALLER_TEST_DPI=384` 时窗口为 `0,12,2880,1812`（2880x1800，工作区
-  `0,0,2880,1824`），旧算术在同场景下得到 `0,30` 的贴左上角结果。
-- 实测皮肤对话框：点击关闭按钮后枚举窗口只剩 `NanoInstallerNativeRuntime`，没有任何 `#32770`；
-  `PrintWindow` 截图确认问句与「继续安装」/「退出安装」按皮肤渲染且居中。
-- 实测键盘：对话框打开时 `VK_ESCAPE` 只收起对话框（窗口仍在），`VK_RETURN` 确认后销毁窗口。
-- `scripts/build.ps1 -Project examples\TapTap` 全量构建、ZIP/7z backend smoke test、Win7 PE 导入
-  审计与清单审计；文档链接检查 38 个文件、140 条相对链接、0 条失效。
-
-### 未完成
-
-- 无代码签名；未通过真实 Windows 7 SP1 虚拟机端到端验收。
-- 清单申请的是旧版 `dpiAware`，尚未申请逐显示器感知。
-
-## [2026.9.18]
-
-安装包现在会自己申请该有的权限，不用再让用户右键「以管理员身份运行」了。要装到 `Program Files`
-的产品，在配置里打开一个开关，双击时 Windows 就会正常弹出确认框；只写到用户目录的产品什么都不用
-改，仍然是安静启动、不打扰用户。
-
-输入中文也不再别扭：在路径框里打字时，输入法组合窗停在光标处，候选框就贴在光标下方，跟在记事本里
-打字的手感一致。
-
-构建时顺手把译文查一遍：哪个语言少了页面文案、哪个语言声明了却没有语言文件，都会出现在可视化
-构建工具的「构建警告」里，不用等用户来反馈「这里显示的是英文」。
-
-### 新增
-
-- 要装到 `Program Files` 的产品可以在配置里申请管理员权限：安装包启动时由 Windows 弹出提权确认，
-  用户不必再右键「以管理员身份运行」。默认不申请，普通双击即可运行；内嵌的卸载程序申请同一级别，
-  卸载项仍然能撤销一次提权安装。
-- 高分屏下窗口由程序自己缩放，文字和图片保持清晰，而不是被系统整体拉伸。
-- 安装路径输入框接入输入法组合窗：组合中的文字停在光标处，候选列表紧贴光标下方，中日韩输入与
-  常见 Windows 输入框一致。
-- 构建时检查译文：哪个语言少了页面文案（会列出具体键名）、哪个语言在配置里声明了却没有语言文件，
-  都会出现在可视化构建工具的「构建警告」里。
-
-### 已知限制
-
-- 安装包尚未签名，Windows SmartScreen 仍会提示「未知发布者」。
-- 尚未在真实 Windows 7 SP1 虚拟机上完成端到端验收。
-
-<!-- release-notes:end -->
-
-### 技术细节
+- 双击选词：`begin_text_selection_drag` 用 `last_press` 与 `GetDoubleClickTime()` 判断双击，命中后由 `word_range`/`same_selection_run`/`is_word_character` 选出一个词（字母数字下划线成词、空白成段、分隔符各自独立）。
+- 按词操作：`word_start_before`/`word_end_after` 供 Ctrl+Backspace/Delete 与 Ctrl+Left/Right 使用，`delete_before_caret`/`delete_after_caret`/`move_caret` 因此各多一个 `whole_word` 参数。
+- 文本编辑：`InteractionState` 新增 `selection_anchor` 与 `selection_range()`/`clear_selection()`/`remove_selection()`，并抽出 `text_offset_for_index` 供光标与选区共用；选区以 alpha 96 的浅蓝高亮带绘制在图片层之上、文字之下。
+- 鼠标拖选：`begin_text_selection_drag`/`extend_text_selection_drag`/`end_text_selection_drag` 配合 `WM_LBUTTONDOWN` 的 `SetCapture` 与 `WM_MOUSEMOVE` 完成，原地单击不会留下选区。
+- 剪贴板：`write_clipboard_text` 走 `OpenClipboard`/`EmptyClipboard`/`GlobalAlloc(GMEM_MOVEABLE)`/`SetClipboardData(CF_UNICODETEXT)`，分配失败时 `GlobalFree` 回收；`read_clipboard_text` 复用原有实现。
+- 撤销栈：`TextSnapshot { id, text, caret }` 与 `UNDO_DEPTH = 64`；连续输入经 `typing_run` 合并为一步，其余编辑各占一步，`restore_snapshot` 会对光标做 clamp。
+- `Delete`/`Backspace` 修正为存在选区时只删除选区，不再多吃一个字符；`key_down(VIRTUAL_KEY)` 取代原先直读 `VK_CONTROL` 的写法。
+- `flex-wrap`：新增 `wraps(node)` 与 `wrap_lines(&[FlowItem], available_main, gap)`，按 `FlowItem::basis_size()` 折行，超宽元素独占一行；`render_flow` 改为逐行布局，多行时每行高度取该行最高元素，`justify-content` 与 `align-self` 仍然生效；`container_intrinsic_size` 在开启折行且声明了主轴尺寸时按「最宽行」测量。
+- 卸载即时清理：`finish_uninstall` 调整为先删注册表、再删 manifest、最后启动清理副本，任一步失败都不会留下空的卸载项；`try_spawn_cleanup_helper` 把自身 exe 复制到 `%TEMP%` 后以 `CLEANUP_FLAG` 与 `CREATE_NO_WINDOW` 启动，失败时回退到 `MOVEFILE_DELAY_UNTIL_REBOOT`。
+- 清理副本自身：实验确认 Windows 拒绝删除进程正在运行的镜像，也不接受对其的 delete-on-close（`ACCESS_DENIED`），因此 `self_delete_current_image` 改为把删除交给短生命周期 `cmd` 脚本，脚本等待进程结束后删除副本并自删；`cleanup_after_uninstall` 以 2400×250ms（上限 10 分钟）轮询等待卸载程序可删，随后删除卸载程序与空目录。
+- `docs/en` 与 `docs/zh-CN` 的 `XML_LAYOUT_GUIDE.md`、`PRODUCTION_STATUS.md`、`ARCHITECTURE.md`、`TEST_PLAN.md`、`QUICK_START.md` 同步本次能力变更。
+- 示例 `examples/TapTap/layouts/configpage.xml`：`editDir` 去掉 `readonly="true"` 并加 `cursor="text"`，`editDirIcon` 补 `action="pick_directory"`、`target` 与 `cursor="hand"`；`chkAgree` 不再声明 `flex-basis="0"`，否则协议文案会被压窄折行。
 
 - 修复 `scripts/changelog_notes.ps1` 的发布正文尾注乱码：该文件含一行中文，而 Windows
   PowerShell 会用 ANSI 代码页解码没有 BOM 的脚本，因此开发机上看不出问题、英文 runner 上却发出
@@ -216,7 +109,75 @@
 - 文档：README、文档首页与各语言指南改为产品口吻，把提权、输入法与语言校验从「未做」移到
   「已做」，技术页（架构、配置参考、构建发布、Windows 兼容性）保留实现细节。
 
+- 结束系统 MessageBox：`confirm_close()` 原先调用 `MessageBoxW(None, ...)`，弹出的无主 `#32770`
+  与安装窗口同为顶层窗口，z 序会错乱，这正是「安装界面看起来永远在最上面」的来源。改为自绘
+  对话框后，运行期不再创建任何 `#32770`。
+- 对话框即布局：新增 `DialogState { kind, message, accept_label, dismiss_label }`、
+  `DialogKind::{CloseConfirm, Notice}`（`offers_dismiss()` 让同一份布局既能提问也能提示）、
+  `DialogUi { actions, text_hits, hover_regions }`，以及 `WindowAction::{DialogOk, DialogCancel}`
+  与 `dialog_ok`/`dialog_cancel` 两个 action。
+- 布局新能力：`value-source="dialog:message|accept|dismiss"` 读取当次提问，`visible-with="dismiss"`
+  只在对话框提供第二种答案时绘制控件。
+- 渲染：从 `load_layout` 抽出 `render_layout_content`（页面与对话框共用），新增
+  `render_dialog_overlay`（按 `config["ui"]["dialog_layout"]` 加载，缺省
+  `DEFAULT_DIALOG_LAYOUT = "layouts/msgBox.xml"`）、`translate_layout` 与遮罩
+  `DIALOG_SCRIM = "66000000"`。项目没有该布局时优雅退化：不弹确认框，点关闭直接退出。
+- 模态：`window_action_at`/`hover_control_at`/`text_input_at` 在对话框打开时只认对话框区域；
+  `dialog_is_open()` 让 `WM_KEYDOWN` 优先把 `VK_RETURN` 当确认、`VK_ESCAPE` 当取消，排在
+  「Esc 关闭窗口」分支之前。
+- 窗口居中：新增 `center_window`/`monitor_work_area`/`centered_bounds`。位置取自
+  `MonitorFromWindow` + `GetMonitorInfoW(rcWork)`，尺寸夹取到工作区内，取代原先的
+  `GetSystemMetrics(SM_CXSCREEN/CYSCREEN)`（主屏像素、忽略多显示器/DPI/任务栏，缩放后窗口
+  达到或超过屏幕时会算出 `(1440-1440)/2=0`、`(960-900)/2=30`，也就是左上角）。
+  `RuntimeState.window_size` 做守卫，只在页面尺寸变化时重新居中，用户手动移动过的窗口不会被拽回。
+- 拖动标题栏：`WM_LBUTTONDOWN` 转发的 `WM_NCLBUTTONDOWN` 需要屏幕坐标，原先直接传客户区坐标，
+  窗口会按指针在窗口内的位置跳走；现改用 `ClientToScreen` 转换。
+- 布局引擎：`container_intrinsic_size` 在测量容器跨轴尺寸时，对子元素调用了
+  `cross_size_for_node(..., axis.cross_measure(), ...)` 并沿错误的轴累加 margin，等于用宽度回答
+  高度的问题，`width="100%"` 的行因此被算成零高度、整行被丢弃。现拆出
+  `container_intrinsic_content`（不含自身内边距的子树尺寸）与 `outer_extent_along`（子元素沿被测量
+  轴的显式尺寸 → 自身内容的固有尺寸 → 0，再加 padding/margin），跨轴测量按正确方向进行。
+- 对话框高度：`render_dialog_overlay` 把 `Page` 的 `height` 当最小值，新增 `dialog_intrinsic_height`
+  （跳过 `is_hidden` 与 `position="absolute"` 的子元素；子元素声明百分比高度时改测其内容，否则用
+  `outer_extent_along`），内容更高时卡片自动变高并在页面上重新居中。示例 `msgBox.xml` 的按钮行
+  下方因此拿到 24px 留白，两条长译文（es/pt）会把卡片从 180 撑到 199。
+- 导入表：新增 `ClientToScreen`、`MonitorFromWindow`、`GetMonitorInfoW`、`MONITORINFO`、
+  `MONITOR_DEFAULTTONEAREST`、`SetWindowPos`、`HWND_TOP`、`SWP_NOZORDER`/`SWP_NOACTIVATE`、
+  `VK_RETURN`、`VK_ESCAPE`；移除 `GetSystemMetrics` 与 `IDYES`/`MB_YESNO`/`MB_ICONQUESTION`。
+- 示例 `examples/TapTap/layouts/msgBox.xml` 重写为圆角卡片布局（信息文案 + 「继续安装」/「退出安装」），
+  `examples/TapTap/installer_config.json` 的 `ui` 段显式声明 `"dialog_layout": "layouts/msgBox.xml"`。
+- 文档：`XML_LAYOUT_GUIDE`（新增「对话框」一节与 `dialog_ok`/`dialog_cancel`）、
+  `CONFIG_REFERENCE`（新增 `ui.dialog_layout`）、`ARCHITECTURE`（提问与提示的渲染）、
+  `PRODUCTION_STATUS` 与 `QUICK_START` 同步为皮肤确认框，中英双语。
+
+- 清单同时声明两个元素：`dpiAware`（Windows 7/8/8.1 读）与 `dpiAwareness`（Windows 10 1607 起
+  优先读）。后者取值 `PerMonitorV2, PerMonitor`：1607-1703 只认 `PerMonitor`，1703 及以后取第一个
+  认识的值，因此每个受支持的版本都拿到它能提供的最清晰行为。项目关闭缩放时写 `unaware`，避免
+  新版 Windows 又替它缩放。
+- `DpiContext::for_dpi` 由 DPI 与 `DpiSettings { aware, threshold }` 推出布局比例与 `@2x` 选择；
+  `DpiSettings` 与解析结果一起存进 `RuntimeState`，因此收到 DPI 变化时可以重新推导。
+- 新增 `WM_DPICHANGED` 处理：`wparam` 低字是 X 轴 DPI，据此重建 `DpiContext`，调用
+  `rebuild_runtime_ui` 重新排版整页，再按 Windows 建议的矩形（`lparam` 指向的 `RECT`）或居中结果
+  重新放置窗口。缩放比例未变时直接返回，不做无谓重排。
+- 该消息由 Windows 同步投递，运行时的测试钩子也必须用 `SendMessageW`：`PostMessageW` 会拒绝携带
+  指针的消息（`0x80070487`）。
+- 新增 `clamped_bounds`（把 `left`/`top` 夹进工作区，窗口大于工作区时收缩）与 `place_window`
+  （`SetWindowPos` + 重算圆角区域）。`center_window` 改为复用两者，窗口形状不再只在创建时设置一次。
+- `CreateRectRgn` 加入导入表，用于项目声明直角时清掉上一块区域。
+- 验证钩子 `NANO_INSTALLER_TEST_DPI_CHANGE`（配合可选的 `NANO_INSTALLER_TEST_DPI_RECT`）让单显示器
+  机器也能驱动真实处理函数，与既有的 `NANO_INSTALLER_TEST_DPI` 同一风格，未设置时完全不生效。
+- `scripts/audit_application_manifest.ps1` 现在校验 `dpiAwareness`：缺失、模式名非法、关闭缩放却
+  仍声明、或第一个模式不是 `PerMonitorV2` 都会导致构建失败。
+- 新增测试：`a_display_scales_the_layout_by_its_own_dpi`（96/120/144/192/384 的换算与 `@2x` 选择、
+  关闭缩放时保持基准）、`a_placed_window_is_pulled_back_inside_its_work_area`（建议位置在范围内时
+  保留、越界时拉回、负坐标副屏、大于工作区时收缩）。
+
 ### 已验证
+
+- `cargo fmt --all -- --check`、`cargo clippy --locked --workspace --all-targets -- -D warnings`。
+- `cargo test --locked --workspace`（71 个 core 测试通过、1 个忽略，12 个 GUI 测试，2 个 stub 测试）。
+- `scripts/build.ps1 -Project examples\TapTap` 全量构建、ZIP/7z backend smoke test 与 Win7 PE 导入审计。
+- 手工验收：路径框拖选高亮、单击清除选区、输入与 Backspace 生效；清理副本端到端实验确认目标目录与副本都被删除，临时脚本无残留。
 
 - `cargo fmt --all -- --check`、`cargo clippy --locked --workspace --all-targets -- -D warnings`。
 - `cargo test --locked --workspace`（73 个 core 测试通过、1 个忽略，12 个 GUI 测试，2 个 stub 测试）。
@@ -225,7 +186,7 @@
 - `scripts/build.ps1 -Project examples\TapTap` 全量构建、ZIP/7z backend smoke test、Win7 PE
   导入审计（含新增的 `imm32.dll`，Windows 7 自带），以及新增的清单审计。
 - 复现并验证修复：同一份脚本按 cp1252 解码时，加 BOM 前尾注变成乱码、加 BOM 后完整可读；
-  `v2026.9.18` 的 release 正文尾注已重新生成并确认正常。
+  该版本的 release 正文尾注已重新生成并确认正常。
 - 新增 `scripts/verify_release_notes.ps1`：用发布流程相同的方式（含 `GITHUB_REPOSITORY`）跑一遍
   正文生成器，再与生成器源码里解码后的尾注逐字比对。它只在 ANSI 代码页不是 UTF-8 的机器上才能
   失败，因此接在 CI 上；本机把 BOM 去掉做负向验证时，`audit_script_encoding.ps1` 如期以非零退出
@@ -235,56 +196,44 @@
   时审计如期失败。
 - 文档链接检查：38 个文件、138 条相对链接、0 条失效。
 
-### 未完成
-
-- 无代码签名；未通过真实 Windows 7 SP1 虚拟机端到端验收。
-- 清单申请的是旧版 `dpiAware`，尚未申请逐显示器感知。
-
-## [2026.9.17]
-
-安装界面更像一个正经的安装程序了：路径框可以像记事本一样选中、复制、粘贴和撤销，装完之后
-安装目录会立刻消失，不会留下一个「只有卸载程序」的空文件夹。
-
-### 新增
-
-- 安装路径输入框支持完整的文本编辑：鼠标拖选、双击选词或 `Ctrl+A` 全选，选中部分会高亮显示；`Ctrl+C`/`Ctrl+X`/`Ctrl+V` 复制、剪切与粘贴，`Ctrl+Z` 撤销、`Ctrl+Y` 重做，`Ctrl+Backspace`/`Ctrl+Delete` 按词删除。
-- 安装路径旁边的文件夹图标可以直接点击选择目录，选中的路径会写回输入框，旁边的可用空间读数同步更新。
-- 卸载完成后，安装目录和卸载程序会被立即清理；用户自己放进目录里的文件仍会保留，目录也会随之保留。
-- 界面布局支持 `flex-wrap`：一行放不下时元素自动折到下一行，窗口变窄也不会把内容压扁。
-
-### 已知限制
-
-- 安装包尚未签名，Windows 可能提示「未知发布者」。
-- 尚未在真实 Windows 7 SP1 虚拟机上完成端到端验收。
-
-<!-- release-notes:end -->
-
-### 技术细节
-
-- 双击选词：`begin_text_selection_drag` 用 `last_press` 与 `GetDoubleClickTime()` 判断双击，命中后由 `word_range`/`same_selection_run`/`is_word_character` 选出一个词（字母数字下划线成词、空白成段、分隔符各自独立）。
-- 按词操作：`word_start_before`/`word_end_after` 供 Ctrl+Backspace/Delete 与 Ctrl+Left/Right 使用，`delete_before_caret`/`delete_after_caret`/`move_caret` 因此各多一个 `whole_word` 参数。
-- 文本编辑：`InteractionState` 新增 `selection_anchor` 与 `selection_range()`/`clear_selection()`/`remove_selection()`，并抽出 `text_offset_for_index` 供光标与选区共用；选区以 alpha 96 的浅蓝高亮带绘制在图片层之上、文字之下。
-- 鼠标拖选：`begin_text_selection_drag`/`extend_text_selection_drag`/`end_text_selection_drag` 配合 `WM_LBUTTONDOWN` 的 `SetCapture` 与 `WM_MOUSEMOVE` 完成，原地单击不会留下选区。
-- 剪贴板：`write_clipboard_text` 走 `OpenClipboard`/`EmptyClipboard`/`GlobalAlloc(GMEM_MOVEABLE)`/`SetClipboardData(CF_UNICODETEXT)`，分配失败时 `GlobalFree` 回收；`read_clipboard_text` 复用原有实现。
-- 撤销栈：`TextSnapshot { id, text, caret }` 与 `UNDO_DEPTH = 64`；连续输入经 `typing_run` 合并为一步，其余编辑各占一步，`restore_snapshot` 会对光标做 clamp。
-- `Delete`/`Backspace` 修正为存在选区时只删除选区，不再多吃一个字符；`key_down(VIRTUAL_KEY)` 取代原先直读 `VK_CONTROL` 的写法。
-- `flex-wrap`：新增 `wraps(node)` 与 `wrap_lines(&[FlowItem], available_main, gap)`，按 `FlowItem::basis_size()` 折行，超宽元素独占一行；`render_flow` 改为逐行布局，多行时每行高度取该行最高元素，`justify-content` 与 `align-self` 仍然生效；`container_intrinsic_size` 在开启折行且声明了主轴尺寸时按「最宽行」测量。
-- 卸载即时清理：`finish_uninstall` 调整为先删注册表、再删 manifest、最后启动清理副本，任一步失败都不会留下空的卸载项；`try_spawn_cleanup_helper` 把自身 exe 复制到 `%TEMP%` 后以 `CLEANUP_FLAG` 与 `CREATE_NO_WINDOW` 启动，失败时回退到 `MOVEFILE_DELAY_UNTIL_REBOOT`。
-- 清理副本自身：实验确认 Windows 拒绝删除进程正在运行的镜像，也不接受对其的 delete-on-close（`ACCESS_DENIED`），因此 `self_delete_current_image` 改为把删除交给短生命周期 `cmd` 脚本，脚本等待进程结束后删除副本并自删；`cleanup_after_uninstall` 以 2400×250ms（上限 10 分钟）轮询等待卸载程序可删，随后删除卸载程序与空目录。
-- `docs/en` 与 `docs/zh-CN` 的 `XML_LAYOUT_GUIDE.md`、`PRODUCTION_STATUS.md`、`ARCHITECTURE.md`、`TEST_PLAN.md`、`QUICK_START.md` 同步本次能力变更。
-- 示例 `examples/TapTap/layouts/configpage.xml`：`editDir` 去掉 `readonly="true"` 并加 `cursor="text"`，`editDirIcon` 补 `action="pick_directory"`、`target` 与 `cursor="hand"`；`chkAgree` 不再声明 `flex-basis="0"`，否则协议文案会被压窄折行。
-
-### 已验证
-
 - `cargo fmt --all -- --check`、`cargo clippy --locked --workspace --all-targets -- -D warnings`。
-- `cargo test --locked --workspace`（71 个 core 测试通过、1 个忽略，12 个 GUI 测试，2 个 stub 测试）。
-- `scripts/build.ps1 -Project examples\TapTap` 全量构建、ZIP/7z backend smoke test 与 Win7 PE 导入审计。
-- 手工验收：路径框拖选高亮、单击清除选区、输入与 Backspace 生效；清理副本端到端实验确认目标目录与副本都被删除，临时脚本无残留。
+- `cargo test --locked --workspace`（81 个 core 测试通过、1 个忽略，12 个 GUI 测试，2 个 stub 测试）；
+  新增回归测试覆盖对话框居中与模态、按钮动作、提示框隐藏次按钮、无对话框布局的退化、
+  `centered_bounds` 的夹取，以及跨轴容器尺寸，并以示例自带的 `msgBox.xml` 端到端断言问句与两个按钮
+  都被真实排版。
+- 实测窗口不再是置顶：`ex=0x40000`（仅 `WS_EX_APPWINDOW`，无 `WS_EX_TOPMOST`），z 序低于
+  `Shell_TrayWnd`，普通窗口可以排到它上面。
+- 实测高 DPI：`NANO_INSTALLER_TEST_DPI=384` 时窗口为 `0,12,2880,1812`（2880x1800，工作区
+  `0,0,2880,1824`），旧算术在同场景下得到 `0,30` 的贴左上角结果。
+- 实测皮肤对话框：点击关闭按钮后枚举窗口只剩 `NanoInstallerNativeRuntime`，没有任何 `#32770`；
+  `PrintWindow` 截图确认问句与「继续安装」/「退出安装」按皮肤渲染且居中。
+- 实测键盘：对话框打开时 `VK_ESCAPE` 只收起对话框（窗口仍在），`VK_RETURN` 确认后销毁窗口。
+- `scripts/build.ps1 -Project examples\TapTap` 全量构建、ZIP/7z backend smoke test、Win7 PE 导入
+  审计与清单审计；文档链接检查 38 个文件、140 条相对链接、0 条失效。
+
+- `cargo fmt --all -- --check`、`cargo clippy --locked --workspace --all-targets -- -D warnings`、
+  `cargo test --locked --workspace`（83 个 core 测试通过、1 个忽略，12 个 GUI 测试，2 个 stub 测试）。
+- 清单审计：`examples/TapTap/dist/TapTap_Setup.exe` 与内嵌卸载程序均为
+  `level=requireAdministrator, dpiAware=true, dpiAwareness=PerMonitorV2, PerMonitor`。
+- 实测 DPI 切换：DPI 由 192 变为 384 时窗口从 `720,462,2160,1362`（1440x900）变为
+  `0,12,2880,1812`（2880x1800，工作区 `0,0,2880,1824`），即整页按新比例重新排版；
+  带建议矩形 `100,50` 时窗口落在 `0,24,2880,1824`，仍完整位于工作区内。
+- `PrintWindow` 截图确认 2880x1800 下界面按 2 倍比例重排，文字与图标清晰。
+- 构建审计恢复全套通过：Win7 PE 导入审计、ZIP/7z backend smoke test、脚本编码审计。
+
+- `cargo fmt --all -- --check`、`cargo clippy --locked --workspace --all-targets -- -D warnings`、
+  `cargo test --locked --workspace`（84 个 core 测试通过、1 个忽略，12 个 GUI 测试，2 个 stub 测试）。
+- 新增回归测试 `every_shipped_question_keeps_its_answers_inside_the_card`：遍历示例全部 11 种语言的
+  `locales/*.json`，断言答案距卡片底部 ≥16px、横向在卡片内、问句不与答案重叠、卡片 ≥180 且居中。
+  把 `msgBox.xml` 还原成旧版本时该测试如期失败（打印 `the answers are flush with the card bottom
+  (card ends at 315, answers end at 314)`），恢复后通过。
+- 实测修复后的按钮距卡片底边 24 逻辑像素；es/pt 两行译文时卡片由 180 自动增高到 199 并保持居中。
+- `scripts/build.ps1` 全量构建（ZIP/7z smoke test、Win7 PE 导入审计、清单审计）；
+  `scripts/verify_release_version.ps1` 23 条用例；文档链接检查 38 个文件、140 条相对链接、0 条失效。
 
 ### 未完成
 
 - 无代码签名；未通过真实 Windows 7 SP1 虚拟机端到端验收。
-- 文本框仍无输入法组合窗，中日韩文字的候选依赖系统输入法自己显示。
 
 ## [2026.9.16]
 
