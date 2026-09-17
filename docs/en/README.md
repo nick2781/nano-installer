@@ -2,9 +2,9 @@
 
 <p align="center"><b>English</b> | <a href="https://nick2781.github.io/nano-installer/#/zh-CN/README.md">简体中文</a> | <a href="https://nick2781.github.io/nano-installer/">All docs</a></p>
 
-Hand someone a single `.exe` and they have your product installed. Nano Installer turns a folder of
-configuration, artwork, and your packaged application into one Windows setup file. The icon, the
-interface, and the wording are yours, and your users install nothing first.
+Hand someone a single `.exe` and your product is installed. You keep the configuration, the artwork
+and your application files in one folder, and Nano Installer turns it into one Windows setup file
+with your logo, your pages and your wording. Your users install nothing first.
 
 > **Status:** early implementation, not ready for production distribution. Install actions write
 > files and registry entries, so test only inside a disposable VM.
@@ -30,13 +30,13 @@ interface, and the wording are yours, and your users install nothing first.
 .\target\release\nano-installer-native-x64.exe build --project .\examples\TapTap
 ```
 
-Then read the [quick start](QUICK_START.md), or drive the same engine from the
-[visual builder](GUI.md).
+Then read the [quick start](QUICK_START.md) to build your first setup and try it in a VM, or drive the
+same engine from the [visual builder](GUI.md).
 
 ## Guides
 
 - [Quick start](QUICK_START.md) - build your first setup, then try it in a VM
-- [Visual builder](GUI.md) - the Windows 10+ authoring tool
+- [Visual builder](GUI.md) - the Windows 10+ app you build setups with
 - [Configuration](CONFIG_REFERENCE.md) - product identity, install behaviour, output names
 - [Page layout](XML_LAYOUT_GUIDE.md) - pages, controls, flow layout, links, actions
 - [Languages](LOCALIZATION.md) - shipping translated installers

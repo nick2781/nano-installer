@@ -1,7 +1,7 @@
 # Production status
 
 **The current implementation is not ready for production distribution.** Install actions write
-files and registry entries; validate them in a disposable virtual machine only.
+files and registry entries, so validate them in a disposable virtual machine only.
 
 ## Verified
 
@@ -13,19 +13,19 @@ files and registry entries; validate them in a disposable virtual machine only.
   runtime.
 - A setup carries the payload, project resources, and a self-contained uninstaller with its own
   icon and version resources.
-- Installation extracts the payload, deploys files and the uninstaller into a new directory, writes
-  the manifest and the uninstall entry; uninstall removes only what the manifest records.
+- Installing extracts the payload, deploys files and the uninstaller into a new directory, writes
+  the manifest and the uninstall entry; uninstalling removes only what the manifest records.
 - Reinstalling over an existing installation upgrades in place, drops files the new payload no
   longer ships, and restores the previous version if anything fails.
-- The first page renders background bitmaps and Unicode text natively, in a borderless rounded
-  window that can be dragged, minimized, and closed, and shows a hand cursor over clickable
-  controls.
-- Windows 7 SP1 x64 compatibility is checked by PE import audit for every artifact.
+- The first page renders background bitmaps and Unicode text natively, in a window with no border
+  and rounded corners that you can drag, minimize, and close; it shows a hand cursor over
+  clickable controls.
+- Every artifact goes through a PE import audit for Windows 7 SP1 x64 compatibility.
 - Progress pages report live status, and the finish page can launch the deployed application.
 - Shortcuts and autostart entries are created during install and restored on uninstall, including
   through rollback.
 - Uninstall terminates a running product, removes shortcuts, and deletes declared user data only
-  when the user clears the keep-data option.
+  when you clear the keep-data option.
 - `scripts/install.rhai` and `scripts/uninstall.rhai` run in an embedded Rhai engine whose
   primitives reuse the built-in deployment, rollback, and manifest code; a failing script rolls
   back, and a script that skips manifest cleanup falls back to the library removal.
@@ -51,13 +51,13 @@ files and registry entries; validate them in a disposable virtual machine only.
   itself. A project that sets neither keeps the ordinary invoker behaviour.
 - The builder compares every locale file against the default locale and the keys the pages ask for,
   and reports a locale that is missing text or that `supported_locales` lists without a file.
-- A finished uninstall leaves a cleaner copy in the temporary directory that immediately deletes the
-  uninstaller and the emptied installation directory. A directory that still holds files the user
-  added is kept, and the cleaner removes itself once it is done.
-- A project that opts in with `advanced.silent_mode_support` runs an install with `--silent`, and one
-  with `advanced.uninstall_mode_support` runs an uninstall the same way. A silent run opens nothing,
-  takes `--dir`, refuses any other option, and reports through the exit code and standard error. A
-  project that did not opt in is refused rather than installed or removed unattended.
+- A finished uninstall leaves a cleaner copy in the temporary directory that immediately deletes
+  the uninstaller and the emptied installation directory. A directory that still holds files the
+  user added is kept, and the cleaner removes itself once it is done.
+- A project that opts in with `advanced.silent_mode_support` runs an install with `--silent`, and
+  one with `advanced.uninstall_mode_support` runs an uninstall the same way. A silent run opens
+  nothing, takes `--dir`, refuses any other option, and reports through the exit code and standard
+  error. A project that did not opt in is refused rather than installed or removed unattended.
 - The setup-level suite in `crates/nano-installer-core/tests/e2e_setup.rs` builds a setup from a
   project it writes itself and runs it against a real installation: files land on disk byte for
   byte, the manifest and the uninstall entry are written, an upgrade drops stale files and keeps
@@ -81,5 +81,5 @@ files and registry entries; validate them in a disposable virtual machine only.
   out again for that display, so text and artwork stay sharp; on Windows 7 the system still scales
   the window for the primary display.
 
-Once signing and the Windows 7 acceptance run are done, a product can be onboarded using the
+Once signing and the Windows 7 acceptance run are done, you can onboard a product using the
 `examples/TapTap` structure.

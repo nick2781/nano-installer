@@ -17,8 +17,8 @@ examples/TapTap/                # 校验项目
 scripts/                        # 构建、冒烟测试、PE 审计
 ```
 
-原始运行时不带任何产品资源。图标、版本信息与品牌素材由构建器按你的项目配置注入，因此同一套
-运行时可以为任意产品生成安装包。
+原始运行时不带任何产品资源：图标、版本信息和品牌素材都靠构建器按你的项目配置注入，
+所以同一套运行时可以为任意产品生成安装包。
 
 ## 产品项目
 
@@ -32,8 +32,8 @@ product-installer/
 └── payload/app.7z              # 也可以是 ZIP 归档
 ```
 
-配置中的每个路径都相对项目目录解析。构建器会收集整个 `layouts`、`assets`、`locales` 目录、
-可选的 `scripts` 目录，以及配置中指定的 payload。
+配置里的每个路径都相对项目目录解析。构建器会把整个 `layouts`、`assets`、`locales` 目录、可选的
+`scripts` 目录，以及配置里指定的那一个应用文件（payload）一起收进来。
 
 ## 构建产物
 
@@ -47,5 +47,5 @@ target/release/
     └── uninst-stub-native.exe
 ```
 
-`target/x86_64-win7-windows-msvc/` 是 Cargo 的交叉编译缓存，不是另一套发布文件。示例安装包输出
-到 `examples/TapTap/dist/`，不属于发布内容。
+`target/x86_64-win7-windows-msvc/` 只是 Cargo 的交叉编译缓存，不是另一套发布文件。示例安装包输出
+到 `examples/TapTap/dist/`，不算发布内容。

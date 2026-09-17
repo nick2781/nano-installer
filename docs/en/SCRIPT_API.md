@@ -12,7 +12,7 @@ operation ceiling, so a runaway loop cannot hang an installation.
 - The install script must deploy the executable named by `install.exe_name`, otherwise
   `finish_install` fails and the installation rolls back.
 - The uninstall script should call `run_tracked_uninstall(start, end)`, which removes shortcuts,
-  registry values, and installed files recorded in the manifest. If the script skips it, the driver
+  registry values, and installed files recorded in the manifest. If your script skips it, the driver
   runs the library fallback after the script ends, so the product is still cleaned up; calling it
   lets the script choose the timing and progress range.
 - A failing script (`throw`, or a primitive returning failure that the script returns on) rolls back
@@ -36,8 +36,8 @@ operation ceiling, so a runaway loop cannot hang an installation.
 | `get_mode()` | `"install"` or `"uninstall"` |
 | `log_info(text)`, `log_warn(text)`, `log_error(text)` | Write to the script log |
 
-Scripts have no console. On failure the last 32 log lines are appended to the error the wizard
-shows.
+Scripts have no console. On failure the runtime appends the last 32 log lines to the error the
+wizard shows.
 
 ## Files and payload
 
@@ -59,13 +59,13 @@ shows.
 | `get_temp_path()` | Temporary directory |
 | `sleep_ms(milliseconds)` | Waits |
 
-`extract_payload*` reuses the built-in extraction: the payload is staged to disk, unpacked by the
-matching runtime, and verified not to contain an uninstaller, a manifest, or symbolic links.
+`extract_payload*` reuses the built-in extraction: it stages the payload to disk, unpacks it with
+the matching runtime, and verifies it holds no uninstaller, no manifest, and no symbolic links.
 
 ## Registry
 
-Keys use the `HKCU\...` or `HKLM\...` form. Values and keys written by the script are recorded in
-the manifest and removed on uninstall.
+Keys use the `HKCU\...` or `HKLM\...` form. The manifest records the values and keys your script
+writes, and uninstall removes them.
 
 | Primitive | Description |
 | --- | --- |
@@ -76,9 +76,9 @@ the manifest and removed on uninstall.
 | `reg_delete_value(key, name)` | Deletes a single value |
 | `reg_delete_key(key)` | Deletes a key and its subkeys, and drops it from the tracked list |
 
-Writing into a container key shared with Windows or another product (such as
-`...\CurrentVersion\Run`) records only that value, and uninstall deletes only that value rather than
-the whole key.
+When you write into a container key shared with Windows or another product (such as
+`...\CurrentVersion\Run`), the manifest records only that value, and uninstall deletes only that
+value rather than the whole key.
 
 ## Shortcuts
 
@@ -134,4 +134,4 @@ set_status_key("status.install_complete");
 set_progress(100.0);
 ```
 
-A complete pair lives in `examples/TapTap/scripts/`.
+You can find a complete pair in `examples/TapTap/scripts/`.

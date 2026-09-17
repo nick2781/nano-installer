@@ -17,8 +17,8 @@ examples/TapTap/                # validation project
 scripts/                        # build, smoke test, PE audit
 ```
 
-The raw runtime stubs carry no product resources. Icons, version info, and branding are injected by
-the builder from your project configuration, so one runtime can produce setups for any product.
+The raw runtime stubs carry no product resources. The builder injects icons, version info, and
+branding from your project configuration, so one runtime can produce setups for any product.
 
 ## A product project
 
@@ -32,9 +32,9 @@ product-installer/
 └── payload/app.7z              # or a ZIP archive
 ```
 
-Every configured path is resolved relative to the project folder. The builder collects the whole
+The builder resolves every configured path relative to the project folder, and collects the whole
 `layouts`, `assets`, and `locales` directories, the optional `scripts` directory, and the payload
-named in the configuration.
+you name in the configuration.
 
 ## Build outputs
 

@@ -8,7 +8,7 @@ cargo test --locked --workspace
 .\scripts\build.ps1 -Project examples\TapTap
 ```
 
-The setup-level suite builds a setup and runs it, which needs the runtime executables first:
+The setup-level suite builds a setup and runs it, so build the runtime executables first:
 
 ```powershell
 cargo build -p nano-installer-stub-lzma -p nano-installer-stub-zlib -p nano-installer-uninstaller
@@ -27,14 +27,14 @@ manifest through `run_tracked_uninstall`, and the library fallback when a script
 The build script audits PE imports for the builder, all three runtimes, the setup, and the embedded
 uninstaller. It also reads the manifest resource back out of the generated setup and the embedded
 uninstaller, and fails if the declared execution level or DPI behaviour differs from what the
-project configuration resolves to. One test writes to `HKCU`, so it is ignored by default in restricted environments;
-run it explicitly inside an isolated VM.
+project configuration resolves to. One test writes to `HKCU`, so it is ignored by default in
+restricted environments; run it explicitly inside an isolated VM.
 
 `crates/nano-installer-core/tests/e2e_setup.rs` covers the seams the unit tests cannot see. A change
 that packs the wrong layout, drops the payload, or forgets a resource passes every unit test and
-still produces a setup that cannot install, because the defects live between two binaries. The suite
-therefore writes its own project, builds a setup from it with the real builder, and then runs that
-setup and the uninstaller it deployed.
+still produces a setup that cannot install, because the defects live between two binaries. That is
+why the suite writes its own project, builds a setup from it with the real builder, and then runs
+that setup and the uninstaller it deployed.
 
 - Build product: the footer the runtime reads, a payload appended behind a real PE, the version and
   manifest resources, and the runtime that matches the payload format.
@@ -71,7 +71,7 @@ Start `examples/TapTap/dist/TapTap_Setup.exe` and confirm:
 
 ## Windows 7 SP1 gate
 
-Before claiming Windows 7 support, verify WIC PNG decoding, GDI text, mouse input, and window
+Before you claim Windows 7 support, verify WIC PNG decoding, GDI text, mouse input, and window
 behaviour on a clean Windows 7 SP1 x64 VM. In an isolated VM, test ZIP and 7z extraction, the
 manifest, the uninstall entry, and the uninstall button using a fresh directory; then check
 installed files, preservation of user-created files, failure rollback, and that the installation

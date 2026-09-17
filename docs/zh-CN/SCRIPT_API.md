@@ -1,16 +1,16 @@
 # 自定义安装与卸载步骤
 
-项目带有 `scripts/install.rhai` 时，安装步骤由该脚本决定；`scripts/uninstall.rhai` 同理。两者缺失
-时走内置流程。两个脚本共用同一组原语，只是入口不同。
+项目里放了 `scripts/install.rhai`，安装步骤就按这个脚本走；`scripts/uninstall.rhai` 也一样。两个
+文件都没有时走内置流程。两个脚本共用同一组原语，只是入口不同。
 
 脚本是项目数据而不是插件系统：原语固定，引擎带有操作数上限，失控循环不会挂死安装。
 
 ## 契约
 
 - 安装脚本必须部署 `install.exe_name` 指定的可执行文件，否则 `finish_install` 报错并回滚。
-- 卸载脚本应调用 `run_tracked_uninstall(start, end)`，它按 manifest 删除快捷方式、注册表项与已装
-  文件。脚本没调用时，驱动会在脚本结束后执行库的回退流程，产品不会残留；调用它才能让脚本自己
-  决定删除时机与进度区间。
+- 卸载脚本应该调用 `run_tracked_uninstall(start, end)`，它按 manifest 删除快捷方式、注册表项与
+  已装文件。脚本没调用时，驱动会在脚本跑完之后走一遍库里的回退流程，产品不会残留；调了它，删除
+  时机与进度区间才交给脚本自己定。
 - 脚本失败（`throw`，或原语返回失败且脚本 `return`）会回滚本次安装写下的文件、快捷方式和注册表
   值，并删除本次全新创建的安装目录。
 
@@ -53,8 +53,8 @@
 | `get_temp_path()` | 临时目录 |
 | `sleep_ms(milliseconds)` | 等待 |
 
-`extract_payload*` 复用内置流程的解压：payload 先落盘，由匹配的运行时展开，并校验归档不含卸载
-程序、manifest 和符号链接。
+`extract_payload*` 复用内置流程的解压：payload 先落盘，交给对应的运行时展开，同时校验归档里没有
+卸载程序、manifest 和符号链接。
 
 ## 注册表
 
@@ -69,8 +69,8 @@
 | `reg_delete_value(key, name)` | 删除单个值 |
 | `reg_delete_key(key)` | 删除键及其子键，并从待删记录中移除 |
 
-写入与 Windows 或其他产品共用的容器键（如 `...\CurrentVersion\Run`）时只记录该值，卸载只删该
-值，不会删除整个键。
+写入 Windows 或其他产品共用的容器键（比如 `...\CurrentVersion\Run`）时，只记录这一个值；卸载也
+只删这个值，不会删掉整个键。
 
 ## 快捷方式
 

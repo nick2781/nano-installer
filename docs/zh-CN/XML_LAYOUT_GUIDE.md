@@ -1,9 +1,9 @@
 # 页面布局
 
-安装页来自 `wizard.pages`，卸载页来自 `wizard.uninstall_pages`。任务执行期间向导显示列表中的
-第二页，结束时切到最后一页；只有一个页面的列表会停留在该页，用消息框报告结果。
+安装页取自 `wizard.pages`，卸载页取自 `wizard.uninstall_pages`。任务跑起来时向导显示列表里的
+第二页，结束时切到最后一页；列表里只有一个页面时就停在这一页，用消息框报告结果。
 
-布局以绝对定位为主，也可以使用流式容器。只有下表标注「已支持」的属性会真正生效。
+布局以绝对定位为主，也可以使用流式容器。只有下表标着「已支持」的属性才真的生效。
 
 ## Page
 
@@ -30,24 +30,24 @@
        left="260" top="100" width="200" height="58" />
 ```
 
-`Image` 与 `Icon` 只有在绝对定位并给出 left/top/width/height 时才绘制。PNG 由 WIC 解码为
-PBGRA，再用 GDI alpha blend 绘制。
+`Image` 与 `Icon` 只有在绝对定位、并且给了 left/top/width/height 的情况下才会画出来。PNG 交给
+WIC 解码成 PBGRA，再用 GDI alpha blend 绘制。
 
 ## DPI 与图片密度
 
-布局中的坐标以 96 DPI 为基准。启用 `ui.dpi_aware` 后，运行时会读取当前显示器的 DPI，并同步
-缩放窗口、坐标、字体、点击区域和圆角。安装包申请的是逐显示器感知，窗口被拖到缩放比例不同的
-显示器上时会按那块显示器重新排版，不需要为不同缩放各做一套布局。
+布局中的坐标以 96 DPI 为基准。打开 `ui.dpi_aware` 后，运行时会读取当前显示器的 DPI，并同步缩放
+窗口、坐标、字体、点击区域和圆角。安装包申请的是逐显示器感知，窗口被拖到缩放比例不同的显示器上
+时会按那块显示器重新排版，不需要为不同缩放各做一套布局。
 
-图片只填 1x 基础名，由运行时挑选密度：
+图片只填 1x 的基础名，密度交给运行时挑：
 
 ```text
 assets/logo.png
 assets/logo@2x.png
 ```
 
-系统 DPI 达到 `ui.dpi_threshold`（默认 144）时优先使用 `@2x`，否则使用 1x；首选文件不存在时
-自动回退到另一份。布局里已经写了 `@2x` 也会按当前 DPI 归一化，因此不需要维护两套布局。
+系统 DPI 达到 `ui.dpi_threshold`（默认 144）时优先使用 `@2x`，否则使用 1x；首选文件不存在时自动
+回退到另一份。布局里已经写了 `@2x` 也会按当前 DPI 归一化，所以不需要维护两套布局。
 
 ## Button
 
@@ -61,8 +61,8 @@ assets/logo@2x.png
 
 支持的属性包括 `normal-image` 与文字。`file='assets/x.png' dest='...' fade='...'` 形式会把图片绘制
 到控件内的子矩形，并应用 0-255 透明度。按钮按状态选择 `hover-image`、`pressed-image` 和
-`disabled-image`，缺少状态图时回退 `normal-image`。状态变化会先绘制到离屏位图再一次性提交，
-因此鼠标悬停不会闪烁。
+`disabled-image`，缺少状态图时回退 `normal-image`。状态变化会先绘制到离屏位图再一次性提交，所以
+鼠标悬停不会闪烁。
 
 按钮可以依赖其他控件：
 
@@ -77,15 +77,15 @@ assets/logo@2x.png
 
 ## 流式容器
 
-绝对定位的 `HBox`、`VBox` 与 `Content` 会接管自己的子树：子元素不再需要坐标，由容器沿主轴依次
-摆放。支持的属性包括固定与内容测量尺寸、`min-width`/`min-height`、`flex-grow`、`flex-shrink`、
+绝对定位的 `HBox`、`VBox` 与 `Content` 会接管自己的子树：子元素不再需要坐标，容器沿主轴依次摆放
+它们。支持的属性包括固定与内容测量尺寸、`min-width`/`min-height`、`flex-grow`、`flex-shrink`、
 `item-spacing`/`gap`、`padding`、`margin`（含 `margin-top` 等单边写法）、`justify-content` 与
 `align-items`。`HBox` 也可以用 `horizontal-align`/`vertical-align` 表达对齐，`Content` 用
 `layout="vertical"` 声明纵向排列。
 
 子元素超出可用主轴空间时，先压缩可收缩项；`flex-shrink="0"` 的按钮保持设计宽度。`Spacer` 只要
 `flex-grow="1"`（或固定 `height`）就能吸收剩余空间。Button 内的 Content 支持 Label、Box 与
-Image/Icon，用于组合文字与图标。
+Image/Icon，用来组合文字与图标。
 
 ### 尺寸与间距
 
@@ -106,18 +106,18 @@ Image/Icon，用于组合文字与图标。
 居中：`HBox` 中居中高度，`VBox` 中居中宽度；单个子元素可以用 `align-self="start"` 或 `"end"`
 覆盖容器设置。
 
-`flex-wrap="true"`（也接受 `wrap`）让一行的元素放不下时折到下一行，窗口变窄不会把内容压扁；
-多行时每一行的高度取该行最高的元素，`justify-content` 与 `align-self` 仍然生效。默认不折行：
+`flex-wrap="true"`（也接受 `wrap`）让一行的元素放不下时折到下一行，窗口变窄不会把内容压扁；多行
+时每一行的高度取这一行里最高的元素，`justify-content` 与 `align-self` 仍然生效。默认不折行，
 放不下时先压缩可收缩项。
 
-`flex-basis` 是分配剩余空间前元素的起始尺寸，因此 `flex-basis="0" flex-grow="1"` 会与其他弹性
-元素平分剩余空间。嵌套在流式容器里的子容器会按自身内容参与外层测量，面板不需要再写死尺寸。
-除 `left`/`top` 外，绝对定位元素还可以用 `right`/`bottom` 从另一侧定位，或用 `inset` 简写
+`flex-basis` 是分配剩余空间前元素的起始尺寸，所以 `flex-basis="0" flex-grow="1"` 会与其他弹性
+元素平分剩余空间。嵌套在流式容器里的子容器会按自己的内容参与外层测量，面板不需要再写死尺寸。除
+`left`/`top` 外，绝对定位元素还可以用 `right`/`bottom` 从另一侧定位，或用 `inset` 简写
 （`inset="8"`，也可写 `inset-top`/`inset-right`/`inset-bottom`/`inset-left`）。
 
 复选框按 `checked` 选择 `checked-image`/`unchecked-image`，绘制本地化文字，并把 Markdown 链接
-标记显示为 `linkcolor` 颜色的文字。未指定固定宽度时按文字内容测量宽度，由 `Spacer` 吸收 `HBox`
-的剩余空间；只有达到可用宽度上限才换行。复选框可点击切换；链接可以点击打开，因此 `linkcolor`
+标记显示为 `linkcolor` 颜色的文字。未指定固定宽度时按文字内容测量宽度，`HBox` 里剩下的空间交给
+`Spacer` 吸收；只有达到可用宽度上限才换行。复选框可点击切换；链接可以点击打开，所以 `linkcolor`
 就是把文字变成链接的开关，详见[链接](#链接)。
 
 ## Label 与 Select
@@ -126,7 +126,7 @@ Image/Icon，用于组合文字与图标。
 - `action="switch_language"` 的 Select：按当前 locale 选中对应 Option，在 `background` 填充与
   `border-color` 描边之上绘制随 DPI 缩放的箭头，并展开 XML 中声明的选项。选择后重新加载对应
   语言文件并重绘页面文字。
-- 菜单展开时由键盘接管：上下键移动高亮（首尾循环），回车切换到高亮的语言，Esc 只关闭菜单、
+- 菜单展开后键盘接管：上下键移动高亮（首尾循环），回车切换到高亮的语言，Esc 只关闭菜单、
   不离开页面。打开菜单时高亮停在当前语言。高亮使用 `popup-highlight-background`，缺省回退到
   `popup-selected-background`。
 
@@ -156,7 +156,7 @@ TextInput 与 Label 可以通过 `value-source` 绑定运行时数据：
 ```
 
 `config:` 后面是以点分隔的 `installer_config.json` 路径。`disk-free:` 后面写 TextInput 的 id；
-运行时从该路径提取 Windows 卷根，再用 `GetDiskFreeSpaceExW` 查询可用空间。`size-mb` 把配置中的
+运行时从这个路径提取 Windows 卷根，再用 `GetDiskFreeSpaceExW` 查询可用空间。`size-mb` 把配置中的
 MiB 值转成可读大小，`size` 按 1024 进位格式化为 B/KB/MB/GB/TB。
 
 未声明 `readonly` 的 TextInput 可以直接编辑，操作方式与常见的 Windows 输入框一致：
@@ -172,7 +172,7 @@ MiB 值转成可读大小，`size` 按 1024 进位格式化为 B/KB/MB/GB/TB。
 选词规则与 Windows 一致：字母、数字和下划线组成一个词，连续空白算一段，路径分隔符等符号各自
 独立。双击 `C:\Program Files` 里的反斜杠只会选中那个反斜杠。
 
-只想展示的字段声明 `readonly="true"`，它不再响应点击与输入，`pick_directory` 也会视其为展示
+只想展示的字段声明 `readonly="true"`，它不再响应点击与输入，`pick_directory` 也会把它当成展示
 字段。用户输入的值在本次运行中优先于 `value`/`value-source` 默认值，读取同一控件的 `disk-free:`
 绑定会立刻按新值重新计算。
 
@@ -183,7 +183,7 @@ MiB 值转成可读大小，`size` 按 1024 进位格式化为 B/KB/MB/GB/TB。
 
 ## 可见性
 
-元素自身或任一祖先带 `visible="false"` 时不绘制。
+一个元素带了 `visible="false"`，或者它的某个祖先带了，就不绘制。
 
 ## 动作
 
@@ -207,8 +207,8 @@ MiB 值转成可读大小，`size` 按 1024 进位格式化为 B/KB/MB/GB/TB。
 ## 对话框
 
 确认框不是系统弹窗，而是一个普通布局：运行时把 `ui.dialog_layout` 指向的文件（默认
-`layouts/msgBox.xml`）画在窗口中央，并在它和页面之间压一层遮罩。提问期间只有对话框上的控件
-响应点击，页面按钮不会被误触；`Enter` 等同于确认，`Escape` 等同于取消。
+`layouts/msgBox.xml`）画在窗口中央，并在它和页面之间压一层遮罩。提问期间只有对话框上的控件响应
+点击，页面按钮不会被误触；`Enter` 等同于确认，`Escape` 等同于取消。
 
 对话框的文字来自当前这次提问，而不是布局里写死的文案，用 `value-source` 取值：
 
@@ -232,8 +232,8 @@ MiB 值转成可读大小，`size` 按 1024 进位格式化为 B/KB/MB/GB/TB。
 一个「确定」的提示。
 
 `Page` 的 `height` 是最小高度。对话框的文案随语言变化，同一句话在别的语言里可能多占一行；这时
-卡片会按内容自动变高并保持居中，而不是把答案挤出下边缘。答案与卡片边缘之间的留白由布局自己的
-`padding` 决定，示例里给底部留了 24 像素。
+卡片会按内容自动变高并保持居中，而不是把答案挤出下边缘。答案和卡片边缘之间留多少白，看布局自己
+的 `padding`，示例里给底部留了 24 像素。
 
 ## 链接
 
@@ -260,8 +260,8 @@ MiB 值转成可读大小，`size` 按 1024 进位格式化为 B/KB/MB/GB/TB。
 
 ## 点击目标与光标
 
-Button、Select，以及任何声明了 `action` 的元素都响应点击，鼠标悬停时变成手型。没有 `action`
-的控件即使压在可点击区域上也不响应，图标或文字正是这样被提升为链接的。
+Button、Select，以及任何声明了 `action` 的元素都响应点击，鼠标悬停时变成手型。没有 `action` 的
+控件即使压在可点击区域上也不响应，图标或文字正是这样被提升为链接的。
 
 ## 目录选择
 

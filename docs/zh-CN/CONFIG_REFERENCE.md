@@ -1,7 +1,7 @@
 # 配置参考
 
-每个项目有一个 `installer_config.json`。本页只列出当前真正会改变安装包行为的设置；被接受但
-尚未生效的字段集中列在最后。
+每个项目有一个 `installer_config.json`。这一页只列现在真的会改变安装包行为的设置；被接受但还没
+生效的字段都集中放在最后。
 
 ## 产品信息
 
@@ -15,7 +15,7 @@
 | `project.publisher` | string | 文件属性中的公司名 |
 | `project.copyright` | string | 文件属性中的版权信息 |
 
-未配置 `project.file_version` 时，版本资源使用 `project.version`，此时它必须是纯数字。
+没有配置 `project.file_version` 时，版本资源用 `project.version`，这时它必须是纯数字。
 
 ## 输出文件
 
@@ -55,8 +55,8 @@
 | `autostart.registry_key` | string | 自启动注册表路径，默认 `HKCU\...\CurrentVersion\Run` |
 | `autostart.registry_value_name` | string | 自启动值名称，默认 `project.name` |
 
-复选框是否存在由你的布局决定：布局里没有 `chkShotcut` 或 `chkAutoRun` 时，使用上面的默认值。
-安装时会记录这两项，卸载后机器回到安装前的状态。
+复选框出不出现，你的布局说了算：布局里没有 `chkShotcut` 或 `chkAutoRun` 时，就用上面的默认值。
+安装时会把这两项记下来，卸载后机器回到安装前的状态。
 
 ## 文件、语言与页面
 
@@ -80,16 +80,16 @@
 | `ui.dpi_threshold` | integer | 达到该 DPI 时优先使用 `@2x` 图片，默认 `144` |
 | `ui.dialog_layout` | string | 确认框使用的布局文件，默认 `layouts/msgBox.xml` |
 
-`ui.dpi_aware` 同时会写进安装包的应用程序清单，让系统知道窗口自行缩放，而不是把窗口当成一张
-位图去拉伸。开启后清单会申请逐显示器感知：窗口被拖到缩放比例不同的显示器上时，界面按那块显示器
-重新排版，文字与图片保持清晰。关闭时清单写 `unaware`，由系统统一缩放。
+`ui.dpi_aware` 还会写进安装包的应用程序清单，让系统知道窗口自己会缩放，而不是把窗口当成一张位图
+去拉伸。打开后清单申请逐显示器感知：窗口被拖到缩放比例不同的显示器上时，界面按那块显示器重新
+排版，文字和图片保持清晰。关闭时清单写 `unaware`，缩放统一交给系统做。
 
-`ui.dpi_threshold` 决定何时改用 `@2x` 图片，与显示器无关，只与当前生效的 DPI 有关。窗口移动到
-另一块显示器后会按新的 DPI 重新判断。
+`ui.dpi_threshold` 决定什么时候改用 `@2x` 图片，跟显示器无关，只看当前生效的 DPI。窗口移到另一块
+显示器上之后，会按新的 DPI 重新判断。
 
-`ui.dialog_layout` 指向的布局画在窗口内部，用于「确定要退出安装？」这类提问和需要用户知晓的
-提示，因此提示框与安装界面是同一套皮肤，也不会跑到安装窗口后面。项目不提供该布局时，确认框
-不再弹出，点关闭按钮会直接退出。布局写法见[页面布局](XML_LAYOUT_GUIDE.md#对话框)。
+`ui.dialog_layout` 指向的那份布局画在窗口内部，「确定要退出安装？」这类提问和需要用户知晓的提示
+都用它，所以提示框和安装界面是同一套皮肤，也不会跑到安装窗口后面。项目不提供这份布局时，确认框
+不再弹出，点关闭按钮直接退出。布局怎么写见[页面布局](XML_LAYOUT_GUIDE.md#对话框)。
 
 ## 管理员权限
 
@@ -104,13 +104,13 @@
 - `false`（默认）写入 `asInvoker`：不弹框，使用用户当前的权限。按用户安装到 `%LOCALAPPDATA%`
   的产品选它。
 
-内嵌的卸载程序由同一份配置生成，因此申请同样的权限级别，否则卸载项无法撤销一次提权安装。
+内嵌的卸载程序用同一份配置生成，所以申请同样的权限级别；不然卸载项撤销不了一次提权安装。
 
 ## 卸载时的用户数据
 
-`uninstall.data_paths` 列出产品自己的数据目录。只有用户取消勾选保留数据时才会在卸载时删除，
-并且展开后不落在 `%APPDATA%` 或 `%LOCALAPPDATA%` 之下的条目会被忽略，避免误删无关文件。
-布局里没有 `chkReserveData` 时，用户数据一律保留。
+`uninstall.data_paths` 列出产品自己的数据目录。卸载时只有用户取消勾选保留数据才会删，而且展开
+之后不落在 `%APPDATA%` 或 `%LOCALAPPDATA%` 之下的条目会被忽略，免得误删无关文件。布局里没有
+`chkReserveData` 时，用户数据一律保留。
 
 ```json
 "uninstall": {
@@ -120,8 +120,8 @@
 
 ## payload 格式
 
-payload 就是你的应用文件，预先压成 ZIP 或 7z。格式按文件头识别而不是按扩展名：`PK` 选择 ZIP
-运行时，`37 7A BC AF 27 1C` 选择 7z 运行时。其他格式会导致构建失败。
+payload 就是你的应用文件，事先压成 ZIP 或 7z。格式按文件头认，不按扩展名：`PK` 选 ZIP 运行时，
+`37 7A BC AF 27 1C` 选 7z 运行时。其他格式会让构建失败。
 
 ## 自定义安装与卸载步骤
 
@@ -130,7 +130,7 @@ payload 就是你的应用文件，预先压成 ZIP 或 7z。格式按文件头�
 
 ## 无人值守运行
 
-项目可以完全不开窗口地完成安装或卸载。前提是项目自己先声明：
+项目可以完全不开窗口就把安装或卸载做完。前提是项目自己先声明：
 
 ```json
 "advanced": {
@@ -153,11 +153,11 @@ uninst.exe --silent
 - 其它任何参数都会被拒绝。写错的参数会让运行直接失败，而不是静默装到配置的默认目录。
 - `silent_mode_support` 与 `uninstall_mode_support` 互相独立：产品可以允许无人值守安装，
   但不允许无人值守卸载。
-- 没有复选框可读，因此快捷方式与自启动按 `shortcuts.desktop_default` 与 `autostart.default`
+- 没有复选框可读，所以快捷方式与自启动按 `shortcuts.desktop_default` 与 `autostart.default`
   取值，卸载时用户数据一律保留。
 
-无窗口运行会把过程汇报给启动它的程序：写控制台而不是画窗口，失败时返回非零退出码并把原因写到
-标准错误。
+无窗口运行会把过程汇报给启动它的那个程序：写控制台，不画窗口；失败时返回非零退出码，并把原因写
+到标准错误。
 
 ## 最小配置
 
@@ -193,13 +193,13 @@ uninst.exe --silent
 
 ## 已接受但尚未生效
 
-以下设置会原样打包进安装包，但运行时不会读取。不要因为字段存在就认为功能已完成：
+下面这些设置会原样打包进安装包，但运行时不会读取。别因为字段存在就以为功能已经做好：
 
 - 上表未列出的 `install.*` 与 `registry.*` 字段
 - `validation.*`；`links.*` 会被链接点击和 `open_url:` 动作读取，
   `localization.supported_locales` 会在构建时校验
-- `localization.show_language_selector`；语言列表与可见性由 XML 中的 `Select` 控件决定
-- `advanced.update_mode_support`；升级是按目标目录中的既有安装自动识别的，不读该开关。
+- `localization.show_language_selector`；语言列表与可见性看 XML 中的 `Select` 控件
+- `advanced.update_mode_support`；升级是按目标目录中的既有安装自动识别的，不读这个开关。
   `advanced.silent_mode_support` 与 `advanced.uninstall_mode_support` 会被读取，
   见[无人值守运行](#无人值守运行)。
 

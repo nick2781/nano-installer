@@ -1,7 +1,7 @@
 # Configuration reference
 
 Every project has one `installer_config.json`. This page lists the settings that change what your
-installer does today. Settings that are accepted but not yet acted on are listed at the end, so you
+installer does today. The settings that are accepted but not yet acted on come at the end, so you
 never have to guess whether a field is live.
 
 ## Product identity
@@ -16,8 +16,8 @@ never have to guess whether a field is live.
 | `project.publisher` | string | Company name in file properties |
 | `project.copyright` | string | Copyright text in file properties |
 
-If `project.file_version` is omitted, `project.version` is used for the Windows version resource;
-it must then be numeric.
+If you omit `project.file_version`, the builder uses `project.version` for the Windows version
+resource, and it must then be numeric.
 
 ## Output files
 
@@ -28,7 +28,7 @@ it must then be numeric.
 | `output.uninstaller_name` | string | File name of the embedded uninstaller, defaults to `uninst.exe`; must be a bare file name |
 | `output.uninstaller_icon` | string | Optional ICO for the generated uninstaller |
 
-Paths are relative to the project folder.
+You write these paths relative to the project folder.
 
 ## Install behaviour
 
@@ -57,9 +57,9 @@ Paths are relative to the project folder.
 | `autostart.registry_key` | string | Autostart key, defaults to `HKCU\...\CurrentVersion\Run` |
 | `autostart.registry_value_name` | string | Autostart value name, defaults to `project.name` |
 
-Whether the checkboxes exist at all is up to your layout: if `chkShotcut` or `chkAutoRun` is absent,
-the corresponding default above is used. Both entries are recorded while installing, so removal
-restores the machine to its previous state.
+Whether the checkboxes exist at all is up to your layout: if `chkShotcut` or `chkAutoRun` is
+absent, the installer falls back to the corresponding default above. It records both entries while
+installing, so removal restores the machine to its previous state.
 
 ## Files, languages, and pages
 
@@ -83,19 +83,19 @@ restores the machine to its previous state.
 | `ui.dpi_threshold` | integer | DPI at which `@2x` images are preferred, defaults to `144` |
 | `ui.dialog_layout` | string | Layout used for the confirmation dialog, defaults to `layouts/msgBox.xml` |
 
-`ui.dpi_aware` is also written into the setup's application manifest, so Windows knows the window
-scales itself rather than rescaling a blurry bitmap of it. With it on, the manifest asks for
-per-monitor awareness: a window moved onto a display with a different scaling factor is laid out
-again for that display, so text and artwork stay sharp. With it off the manifest declares
-`unaware`, and the shell scales the window instead.
+The builder also writes `ui.dpi_aware` into the setup's application manifest, so Windows knows the
+window scales itself rather than rescaling a blurry bitmap of it. With it on, the manifest asks for
+per-monitor awareness: move the window onto a display with a different scaling factor and the
+runtime lays it out again for that display, so text and artwork stay sharp. With it off the manifest
+declares `unaware`, and the shell scales the window instead.
 
-`ui.dpi_threshold` decides when `@2x` artwork is preferred. It applies to whichever DPI is in
-effect, so moving the window to another display re-evaluates it.
+`ui.dpi_threshold` decides when the runtime prefers `@2x` artwork. It applies to whichever DPI is
+in effect, so moving the window to another display re-evaluates it.
 
-`ui.dialog_layout` names the layout drawn inside the window for questions such as "exit the
-installer?" and for notices the user has to acknowledge. The dialog therefore wears the product's
-own skin and cannot end up behind the installer. A project that ships no such layout gets no
-question: the close button then exits immediately. See
+`ui.dialog_layout` names the layout the runtime draws inside the window for questions such as "exit
+the installer?" and for notices the user has to acknowledge. The dialog therefore wears the
+product's own skin and cannot end up behind the installer. If your project ships no such layout
+there is no question: the close button then exits immediately. See
 [page layout](XML_LAYOUT_GUIDE.md#dialogs).
 
 ## Administrator rights
@@ -111,15 +111,15 @@ question: the close button then exits immediately. See
 - `false` (the default) writes `asInvoker`: no prompt, and the same rights the user already has.
   Choose this for a per-user install under `%LOCALAPPDATA%`.
 
-The embedded uninstaller is generated from the same configuration, so it asks for the same level.
-Otherwise the uninstall entry could not undo an elevated install.
+The builder generates the embedded uninstaller from the same configuration, so it asks for the same
+level. Otherwise the uninstall entry could not undo an elevated install.
 
 ## User data on uninstall
 
-`uninstall.data_paths` lists the folders a product owns. They are deleted on uninstall only when
-the user clears the keep-data checkbox, and entries that do not expand to a location under
-`%APPDATA%` or `%LOCALAPPDATA%` are ignored, so unrelated files are never removed. If your layout
-has no `chkReserveData`, user data is always kept.
+`uninstall.data_paths` lists the folders your product owns. The uninstaller deletes them only when
+the user clears the keep-data checkbox, and it ignores entries that do not expand to a location
+under `%APPDATA%` or `%LOCALAPPDATA%`, so unrelated files are never removed. If your layout has no
+`chkReserveData`, user data is always kept.
 
 ```json
 "uninstall": {
@@ -129,9 +129,9 @@ has no `chkReserveData`, user data is always kept.
 
 ## Payload format
 
-The payload is your application's files, already compressed as ZIP or 7z. The format is detected
-from the file signature, not the extension: `PK` selects the ZIP runtime and `37 7A BC AF 27 1C`
-selects the 7z runtime. Any other format fails the build.
+The payload is your application's files, already compressed as ZIP or 7z. The builder detects the
+format from the file signature, not the extension: `PK` selects the ZIP runtime and
+`37 7A BC AF 27 1C` selects the 7z runtime. Any other format fails the build.
 
 ## Custom install and uninstall steps
 
@@ -140,8 +140,8 @@ Add `scripts/install.rhai` or `scripts/uninstall.rhai` to replace the built-in s
 
 ## Unattended runs
 
-A project can run its install or uninstall with no window at all, which is what a software
-deployment tool needs. It has to say so first:
+You can run your install or uninstall with no window at all, which is what a software deployment
+tool needs. Your project has to say so first:
 
 ```json
 "advanced": {
@@ -162,12 +162,12 @@ uninst.exe --silent
   because a dialog would wait for a click that never comes.
 - `--dir` chooses the install directory for that run and wins over `install.default_path`. Both
   accept environment variables, which are expanded before use.
-- Any other option is refused. A mistyped flag stops the run instead of installing into the
-  configured default.
+- The setup refuses any other option, so a mistyped flag stops the run instead of installing into
+  the configured default.
 - `silent_mode_support` and `uninstall_mode_support` are separate, so a product can allow
   unattended installs without allowing unattended removal.
-- Because there are no checkboxes to read, shortcut and autostart decisions follow
-  `shortcuts.desktop_default` and `autostart.default`, and user data is always kept on uninstall.
+- Because there are no checkboxes to read, the installer follows `shortcuts.desktop_default` and
+  `autostart.default` for shortcuts and autostart, and always keeps user data on uninstall.
 
 A windowless run reports progress to whoever started it: it writes to the console instead of
 painting a window, and a failure sets a non-zero exit code with the reason on standard error.
@@ -206,8 +206,8 @@ painting a window, and a failure sets a non-zero exit code with the reason on st
 
 ## Accepted but not yet in effect
 
-These settings are packaged into the setup but are not read at runtime. Do not treat their
-presence as a working feature:
+These settings are packaged into the setup but are not read at runtime. Do not treat their presence
+as a working feature:
 
 - `install.*` and `registry.*` fields other than the ones listed above
 - `validation.*`; `links.*` is read by link clicks and `open_url:` actions, and

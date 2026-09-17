@@ -2,9 +2,9 @@
 
 <p align="center"><a href="https://nick2781.github.io/nano-installer/#/en/README.md">English</a> | <b>简体中文</b> | <a href="https://nick2781.github.io/nano-installer/">全部文档</a></p>
 
-把安装包交给用户，他们双击一个 exe 就装好了你的产品。Nano Installer 把一个装着配置、素材和应用
-文件的目录，变成一个 Windows 安装程序：图标、界面和文案都用你自己的，用户机器上不需要预装任何
-东西。
+把安装包交给用户，对方双击一个 exe 就装好了你的产品。你把配置、素材和应用文件放在一个目录里，
+Nano Installer 把它变成一个 Windows 安装程序：图标、页面和文案都是你自己的，用户机器上不用预装
+任何东西。
 
 > **状态：** 早期实现，尚不适合对外发布产品。安装动作会写入文件和注册表，请在一次性虚拟机中测试。
 
@@ -29,12 +29,13 @@
 .\target\release\nano-installer-native-x64.exe build --project .\examples\TapTap
 ```
 
-接着看[快速开始](QUICK_START.md)，或改用[可视化构建](GUI.md)操作同一套引擎。
+接着看[快速开始](QUICK_START.md)，照着生成第一个安装包并在虚拟机里试一遍；也可以改用
+[可视化构建](GUI.md)，它操作的是同一套引擎。
 
 ## 指南
 
 - [快速开始](QUICK_START.md) - 生成第一个安装包，并在虚拟机中试用
-- [可视化构建](GUI.md) - Windows 10+ 编写工具
+- [可视化构建](GUI.md) - Windows 10 及以上的图形界面
 - [配置参考](CONFIG_REFERENCE.md) - 产品信息、安装行为、输出文件名
 - [页面布局](XML_LAYOUT_GUIDE.md) - 页面、控件、流式布局、链接与动作
 - [多语言](LOCALIZATION.md) - 发布带译文的安装包

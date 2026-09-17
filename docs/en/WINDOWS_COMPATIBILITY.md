@@ -19,11 +19,11 @@ Release builds use the pinned `nightly-2025-11-08` toolchain with `rust-src`,
 
 ## How compatibility is checked
 
-Every build audits the PE imports of the builder, all three stubs, and each generated setup, and
+Every build audits the PE imports of the builder, all three stubs, and each setup you generate, and
 fails if a blocked Windows 8 or Windows 10 API appears, so the files cannot statically depend on a
 newer system API.
 
-Static checks do not prove the installer works. A formal Windows 7 SP1 x64 support statement still
-requires a run on a clean machine covering PNG decoding, text rendering, mouse input, window
-behaviour, extraction, installation, and uninstallation. Machines should also have update
+Static checks do not prove the installer works. You can only claim formal Windows 7 SP1 x64 support
+after a run on a clean machine covering PNG decoding, text rendering, mouse input, window
+behaviour, extraction, installation, and uninstallation. Those machines should also have update
 KB3033929 (SHA-2 code signing support) installed.

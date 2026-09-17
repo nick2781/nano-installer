@@ -2,10 +2,10 @@
 
 <p align="center"><b>English</b> | <a href="README.zh-CN.md">简体中文</a> | <a href="docs/en/">Docs</a></p>
 
-Hand someone a single `.exe` and they have your product installed. Nano Installer turns a folder of
-configuration, artwork, and your packaged application into one Windows setup file with your logo,
-your interface and your wording. There is no installer framework to host, and nothing your users
-have to install first.
+Hand someone a single `.exe` and your product is installed. You keep the configuration, the artwork
+and your application files in one folder; Nano Installer turns that folder into one Windows setup
+file with your logo, your pages and your wording. There is no framework to host, and nothing your
+users install first.
 
 > **Status:** early implementation, not ready for production distribution. Install actions write
 > files and registry entries, so test only inside a disposable VM. See
@@ -37,8 +37,8 @@ You need Windows x64 with the MSVC build tools, plus the Rust toolchain pinned i
 .\target\release\nano-installer-native-x64.exe build --project .\examples\TapTap
 ```
 
-The setup lands in `dist/<installer_name>` inside your project. Prefer clicking to typing? Launch
-`target/release/nano-installer-gui-x64.exe` and pick the project folder there.
+Your setup lands in `dist/<installer_name>` inside the project. If you would rather click than type,
+start `target/release/nano-installer-gui-x64.exe` and pick the project folder there.
 
 Full walkthrough: [Quick start](docs/en/QUICK_START.md).
 
@@ -54,36 +54,38 @@ MyApp/
   payload/app.7z            your application files, zipped or 7z-compressed
 ```
 
-Every path in the configuration is relative to the project folder, so a project stays portable.
-Start by copying `examples/TapTap` and replacing its content.
+Paths in the configuration are relative to the project folder, so you can move a project anywhere. The
+quickest start is to copy `examples/TapTap` and replace what is inside.
 
 ## What your setup does today
 
-- Installs and uninstalls from one executable, on Windows 7 SP1 x64 and later.
-- Accepts a ZIP or 7z payload and detects which one by looking at the file itself, so you never
-  pick a format setting.
-- Shows live progress with the current step, then a finish page that can launch what it installed.
-- Upgrades in place when run again, and returns the machine to its previous state if a step fails.
-- Creates desktop, Start menu, and autostart entries only when the user asks for them, and removes
-  them again on uninstall.
-- Lets the user keep their data on uninstall unless they explicitly clear that option.
-- Ships eleven UI languages that switch instantly, and lets a page click through to your terms of
-  service or privacy policy.
-- Lets you pick the install directory with the standard Windows folder chooser. The user can edit
-  the path by hand too: select with the mouse or a double click, copy and paste, and undo a typo.
-- Types East Asian text through a proper IME composition window, with the candidate list under the
+- One executable installs and uninstalls, on Windows 7 SP1 x64 and later.
+- Hand it a ZIP or a 7z payload. It reads the file itself and picks the matching runtime, so you never
+  set a format option.
+- Your users watch live progress with the current step named, and the finish page can launch what it
+  installed.
+- Run the same setup again and it upgrades in place. If a step fails, the machine goes back to the
+  version it had.
+- Desktop, Start menu and autostart entries are created only when the user asks for them, and cleaned
+  up again on uninstall.
+- Users keep their data on uninstall unless they clear that option themselves.
+- Eleven UI languages switch instantly, and a page can link to your terms of service or privacy
+  policy.
+- Users pick the install directory with the standard Windows folder chooser, or type and edit the
+  path: mouse or double-click selection, copy and paste, undo.
+- East Asian text goes in through a proper IME composition window, with the candidate list under the
   caret.
-- Asks Windows for administrator rights when a project sets `install.require_admin`, so the user
-  never has to right-click and choose Run as administrator.
-- Asks a localized question before closing the window.
-- Removes the installation folder as soon as an uninstall finishes, and keeps it when the user has
-  put files there.
-- Paints the colours, rounded corners, and outlines your layout asks for, and turns the pointer
+- When a project sets `install.require_admin`, the setup asks Windows for administrator rights, so
+  nobody has to right-click and choose Run as administrator.
+- The setup asks a localized question before it closes the window.
+- The installation folder disappears as soon as an uninstall finishes. If the user put files there,
+  it stays.
+- Colours, rounded corners and outlines are drawn as your layout asks for them, and the pointer turns
   into a hand over anything clickable.
-- Supports custom install and uninstall steps from a small scripting file when the built-in steps
-  are not enough; a failing script rolls back and never leaves a half-installed product.
-- Offers a visual builder for Windows 10 and later that produces byte-for-byte the same result as
-  the command line.
+- When the built-in steps are not enough, a small script file can drive install and uninstall. A
+  failing script rolls back and never leaves a half-installed product.
+- The visual builder for Windows 10 and later produces byte-for-byte the same result as the command
+  line.
 
 ## Not there yet
 
