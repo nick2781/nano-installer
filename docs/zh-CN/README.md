@@ -1,6 +1,6 @@
 <h1 align="center"><img src="https://nick2781.github.io/nano-installer/assets/nano-technology.png" width="48" height="48" align="texttop" alt="Nano Installer icon"> Nano Installer</h1>
 
-<p align="center"><a href="../en/">English</a> | <b>简体中文</b> | <a href="../">全部文档</a></p>
+<p align="center"><a href="https://nick2781.github.io/nano-installer/#/en/README.md">English</a> | <b>简体中文</b> | <a href="https://nick2781.github.io/nano-installer/">全部文档</a></p>
 
 把安装包交给用户，他们双击一个 exe 就装好了你的产品。Nano Installer 把一个装着配置、素材和应用
 文件的目录，变成一个 Windows 安装程序：图标、界面和文案都用你自己的，用户机器上不需要预装任何

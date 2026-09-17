@@ -1,6 +1,6 @@
 <h1 align="center"><img src="https://nick2781.github.io/nano-installer/assets/nano-technology.png" width="48" height="48" align="texttop" alt="Nano Installer icon"> Nano Installer</h1>
 
-<p align="center"><b>English</b> | <a href="../zh-CN/">简体中文</a> | <a href="../">All docs</a></p>
+<p align="center"><b>English</b> | <a href="https://nick2781.github.io/nano-installer/#/zh-CN/README.md">简体中文</a> | <a href="https://nick2781.github.io/nano-installer/">All docs</a></p>
 
 Hand someone a single `.exe` and they have your product installed. Nano Installer turns a folder of
 configuration, artwork, and your packaged application into one Windows setup file. The icon, the
