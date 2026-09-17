@@ -2501,7 +2501,7 @@ fn render_dialog_overlay(
         .find(|node| node.has_tag_name("Page"))
         .with_context(|| format!("dialog layout has no Page element: {path}"))?;
     let dialog_width = scale_value(int_attribute(page, "width").unwrap_or(400), dpi.scale);
-    let dialog_height = scale_value(int_attribute(page, "height").unwrap_or(230), dpi.scale);
+    let declared_height = scale_value(int_attribute(page, "height").unwrap_or(230), dpi.scale);
     let corner_radius = scale_value(
         int_attribute(page, "border-radius").unwrap_or(16),
         dpi.scale,
@@ -2516,6 +2516,10 @@ fn render_dialog_overlay(
         interaction,
         language_menu_open: false,
     };
+    // The declared height is a minimum: the question comes from the product's
+    // own translations, so a longer sentence needs a taller card rather than a
+    // row of buttons pushed out through the bottom of one.
+    let dialog_height = dialog_intrinsic_height(page, declared_height, &context);
     // The dialog is laid out at the origin and then moved to the middle of the
     // page, so its own layout can use the ordinary coordinate system.
     let mut dialog_output = LayoutOutput::default();
@@ -3788,6 +3792,45 @@ fn outer_extent_along(
     let insets = insets_for_node(child, "padding", context).along(axis)
         + insets_for_node(child, "margin", context).along(axis);
     (content + insets).max(0)
+}
+
+/// The height a dialog needs for the content it is about to show.
+///
+/// A dialog declares a height, but the text it holds is chosen at runtime from
+/// the product's translations: a longer question wraps onto another line, and
+/// the answers underneath would then be pushed past the card's bottom edge.
+/// The declared height is therefore a minimum, and a layout whose content asks
+/// for more gets it, so no translation can push a button out of the frame.
+///
+/// Children that are placed absolutely, or hidden for this question, take no
+/// room and are not measured.
+fn dialog_intrinsic_height(
+    page: roxmltree::Node<'_, '_>,
+    declared: i32,
+    context: &LayoutContext<'_>,
+) -> i32 {
+    page.children()
+        .filter(|child| {
+            child.is_element()
+                && !is_hidden(*child, context.interaction)
+                && child.attribute("position") != Some("absolute")
+        })
+        .map(|child| match child.attribute("height") {
+            // A child that fills the page would only repeat the page's own
+            // extent when asked for its height, so its content is measured
+            // instead. That is exactly the case a long question overflows.
+            Some(raw) if raw.trim().ends_with('%') => {
+                if renders_own_children(child) {
+                    container_intrinsic_size(child, FlowAxis::Vertical, context)
+                } else {
+                    intrinsic_size(child, FlowAxis::Vertical, context).unwrap_or(0)
+                }
+            }
+            _ => outer_extent_along(child, FlowAxis::Vertical, declared, context),
+        })
+        .max()
+        .unwrap_or(0)
+        .max(declared)
 }
 
 fn has_intrinsic_text(node: roxmltree::Node<'_, '_>) -> bool {
@@ -7720,6 +7763,137 @@ mod tests {
             message.top + message.height <= ok.top.max(cancel.top),
             "the question overlaps the buttons"
         );
+        Ok(())
+    }
+
+    /// The dialog answers have to stay inside the card around them.
+    ///
+    /// The question a dialog shows comes from the product's own translations,
+    /// so a longer sentence wraps onto another line. The card used to be a
+    /// fixed height with the answers flush against its bottom edge, which a
+    /// two-line question pushed out through the frame. Every shipped locale is
+    /// checked here, because the ones with the longest sentences are exactly
+    /// the ones that only break on a user's machine.
+    #[test]
+    fn every_shipped_question_keeps_its_answers_inside_the_card() -> anyhow::Result<()> {
+        let project = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/TapTap");
+        let layout = std::fs::read(project.join("layouts/msgBox.xml"))?;
+        let mut checked = 0;
+        for entry in std::fs::read_dir(project.join("locales"))? {
+            let path = entry?.path();
+            if path.extension().and_then(|value| value.to_str()) != Some("json") {
+                continue;
+            }
+            let locale_name = path
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .context("locale file name is not Unicode")?
+                .to_string();
+            // The example's own translations, read the way the runtime reads
+            // them when it opens the question.
+            let locale: HashMap<String, String> = serde_json::from_slice(&std::fs::read(&path)?)?;
+            let (mut files, _) = dialog_fixture();
+            files.insert("layouts/msgBox.xml".to_string(), layout.clone());
+            files.insert(
+                "assets/btn_dialog.png".to_string(),
+                std::fs::read(project.join("assets/btn_dialog.png"))?,
+            );
+            files.insert(
+                "assets/btn_dialog_primary.png".to_string(),
+                std::fs::read(project.join("assets/btn_dialog_primary.png"))?,
+            );
+            files.insert(format!("locales/{locale_name}.json"), std::fs::read(&path)?);
+            let dialog = DialogState {
+                kind: DialogKind::CloseConfirm,
+                message: locale
+                    .get("close_confirm_message")
+                    .cloned()
+                    .unwrap_or_default(),
+                accept_label: locale.get("ok").cloned().unwrap_or_default(),
+                dismiss_label: locale.get("cancel").cloned().unwrap_or_default(),
+            };
+            let ui = load_layout(
+                &files,
+                DpiContext {
+                    scale: 1.0,
+                    use_2x: false,
+                },
+                &locale_name,
+                false,
+                &interaction_with_dialog(dialog),
+                RuntimeMode::Installer,
+            )?;
+
+            let question = ui
+                .overlay_texts
+                .iter()
+                .find(|layer| layer.wrap)
+                .with_context(|| format!("{locale_name}: the question was not drawn"))?;
+            assert!(
+                question.height > 0,
+                "{locale_name}: the question was laid out with no height"
+            );
+
+            // The card is the fill the layout paints behind its controls.
+            let card = ui
+                .overlay_layers
+                .iter()
+                .find(|layer| layer.width == 400)
+                .with_context(|| format!("{locale_name}: the dialog card was not drawn"))?;
+            let regions = ui.dialog.expect("the layout reported a dialog");
+            let ok = regions
+                .actions
+                .iter()
+                .find(|region| matches!(region.action, WindowAction::DialogOk))
+                .with_context(|| format!("{locale_name}: no accept button"))?;
+            let cancel = regions
+                .actions
+                .iter()
+                .find(|region| matches!(region.action, WindowAction::DialogCancel))
+                .with_context(|| format!("{locale_name}: no dismiss button"))?;
+            let answers_top = ok.top.min(cancel.top);
+            let answers_bottom = ok.bottom.max(cancel.bottom);
+
+            // The reported bug: the answers sat on the card's bottom edge, so
+            // the space below them was the border rather than a margin.
+            assert!(
+                card.top + card.height - answers_bottom >= 16,
+                "{locale_name}: the answers are flush with the card bottom \
+                 (card ends at {}, answers end at {answers_bottom})",
+                card.top + card.height
+            );
+            // Both answers are inside the card horizontally too.
+            for region in &regions.actions {
+                assert!(
+                    region.left >= card.left && region.right <= card.left + card.width,
+                    "{locale_name}: an answer is outside the card horizontally"
+                );
+            }
+            // A wrapped question never runs into the answers below it, and a
+            // taller question makes the card grow instead of moving them down.
+            assert!(
+                question.top + question.height <= answers_top,
+                "{locale_name}: the question overlaps the answers"
+            );
+            assert!(
+                card.height >= 180,
+                "{locale_name}: the card dropped below its declared height"
+            );
+            // The card stays centred on the page it covers.
+            let page = (ui.width, ui.height);
+            assert_eq!(
+                card.left,
+                (page.0 - card.width) / 2,
+                "{locale_name}: the card is not horizontally centred"
+            );
+            assert_eq!(
+                card.top,
+                (page.1 - card.height) / 2,
+                "{locale_name}: the card is not vertically centred"
+            );
+            checked += 1;
+        }
+        assert!(checked >= 11, "only {checked} locales were checked");
         Ok(())
     }
 

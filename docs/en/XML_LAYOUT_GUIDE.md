@@ -258,6 +258,11 @@ The text of a dialog comes from the question being asked rather than from the la
 `visible-with="dismiss"` draws a control only when the dialog offers two answers, which is how one
 layout serves both a close question and a notice with a single "OK".
 
+The `height` on `Page` is a minimum. A dialog's text follows the language it is shown in, and the
+same sentence can take another line elsewhere; the card then grows to fit and stays centred instead
+of pushing its answers out through the bottom edge. How much room is left below the answers is up to
+the layout's own `padding`; the example keeps 24 pixels there.
+
 ## Links
 
 A `[label](target)` run inside `text`, `value`, or a locale string becomes clickable when the element

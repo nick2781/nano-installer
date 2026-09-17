@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Page width="400" height="180" background="#FF2A3844"
       border-radius="16" border-color="#FF474B59" border-width="1">
-  <VBox width="100%" height="100%" padding="1">
+  <!-- The 1px inset keeps the children inside the border; the bottom inset
+       is what keeps the answers off the card edge. -->
+  <VBox width="100%" height="100%" padding="1 1 24 1">
 
     <Spacer height="56" />
 
@@ -12,7 +14,7 @@
              text-align="center" wrap="true" width="336" />
     </HBox>
 
-    <Spacer flex-grow="1" />
+    <Spacer flex-basis="12" flex-grow="1" />
 
     <!-- Buttons -->
     <HBox height="40" padding="0 32" justify-content="center" gap="16">
