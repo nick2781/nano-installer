@@ -7,7 +7,8 @@
 
 use anyhow::{bail, Result};
 use serde_json::Value;
-use std::collections::{BTreeSet, HashMap};
+use std::cell::RefCell;
+use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -387,38 +388,42 @@ pub(super) fn checked_delete_target(path: &str) -> Result<PathBuf> {
 /// An installer runs without a console, so `log_info` and friends would
 /// otherwise go nowhere. The tail of this buffer is attached to the error the
 /// wizard reports, which is where a project author will look.
+///
+/// The buffer belongs to the run rather than to the process. A run happens on
+/// the one thread that drives the script, and a process that runs more than one
+/// of them — every test binary does, and nothing stops an application from
+/// doing the same — would otherwise report whichever run logged last against a
+/// failure that never wrote those lines.
 const LOG_LIMIT: usize = 32;
-static LOG: std::sync::OnceLock<Mutex<std::collections::VecDeque<String>>> =
-    std::sync::OnceLock::new();
-
-fn log_buffer() -> &'static Mutex<std::collections::VecDeque<String>> {
-    LOG.get_or_init(|| Mutex::new(std::collections::VecDeque::new()))
+thread_local! {
+    static LOG: RefCell<VecDeque<String>> = const { RefCell::new(VecDeque::new()) };
 }
 
 pub(super) fn log(level: &str, message: &str) {
-    let mut buffer = log_buffer()
-        .lock()
-        .unwrap_or_else(|error| error.into_inner());
-    if buffer.len() == LOG_LIMIT {
-        buffer.pop_front();
-    }
-    buffer.push_back(format!("{level}: {message}"));
+    LOG.with(|buffer| {
+        let mut buffer = buffer.borrow_mut();
+        if buffer.len() == LOG_LIMIT {
+            buffer.pop_front();
+        }
+        buffer.push_back(format!("{level}: {message}"));
+    });
 }
 
 /// The script log, oldest line first, for reporting alongside a failure.
 pub(super) fn log_tail() -> String {
-    let buffer = log_buffer()
-        .lock()
-        .unwrap_or_else(|error| error.into_inner());
-    buffer.iter().cloned().collect::<Vec<_>>().join("\n")
+    LOG.with(|buffer| {
+        buffer
+            .borrow()
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n")
+    })
 }
 
 /// Clears the buffer, so one run never reports another run's messages.
 pub(super) fn reset_log() {
-    log_buffer()
-        .lock()
-        .unwrap_or_else(|error| error.into_inner())
-        .clear();
+    LOG.with(|buffer| buffer.borrow_mut().clear());
 }
 
 /// Reads a script entry and checks that it is text.

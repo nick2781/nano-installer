@@ -76,8 +76,26 @@ jobs:
       - name: Lint workspace
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
 
+      # The suite writes to a file rather than to the step's console, and the
+      # step below shows what it wrote.
+      #
+      # A step is finished when its output has closed, and the toolchain leaves
+      # a process behind that holds whatever the build wrote to: the linker
+      # starts `vctip.exe`, the command-line telemetry helper, which outlives
+      # the linker and is reparented when it does. On the console that process
+      # keeps the step's pipe open after every test has run, so the step never
+      # ends, its log is never archived, no later step of the job runs, and
+      # neither a step timeout nor a cancel can finish it, which is what
+      # wedged this job for an hour. A file has no such reader, so the shell
+      # alone holds the pipe.
       - name: Test workspace
-        run: cargo test --locked --workspace
+        shell: cmd
+        run: cargo test --locked --workspace > target\tests.txt 2>&1
+
+      - name: Report the test run
+        if: always()
+        shell: cmd
+        run: type target\tests.txt
 
       # Builds the builder, the three stubs, and the GUI. It deliberately
       # does not build a setup from examples/TapTap: that example payload is
