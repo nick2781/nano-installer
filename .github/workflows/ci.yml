@@ -76,8 +76,34 @@ jobs:
       - name: Lint workspace
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
 
+      - name: Build the test targets
+        run: cargo test --locked --workspace --no-run
+
+      # The run is bounded so a case that never returns fails the job naming the
+      # test it was in, rather than holding the job until the 60 minute timeout.
       - name: Test workspace
-        run: cargo test --locked --workspace
+        shell: powershell
+        run: |
+          $log = Join-Path $env:GITHUB_WORKSPACE "target\workspace-tests.txt"
+          $process = Start-Process cargo -ArgumentList "test","--locked","--workspace" -NoNewWindow -PassThru -RedirectStandardOutput $log -RedirectStandardError "$log.err"
+          $deadline = (Get-Date).AddMinutes(10)
+          while (-not $process.HasExited -and (Get-Date) -lt $deadline) {
+            Start-Sleep -Seconds 5
+          }
+          if (-not $process.HasExited) {
+            taskkill /PID $process.Id /T /F | Out-Null
+            Write-Output "::error::the workspace test run did not finish within 10 minutes; the last output follows"
+            foreach ($line in (Get-Content $log -Tail 25)) {
+              Write-Output ("::error::" + $line.Replace("%", "%25"))
+            }
+            Get-Content $log -Tail 25
+            Get-Content "$log.err" -Tail 25
+            exit 1
+          }
+          $code = $process.ExitCode
+          Get-Content $log
+          Get-Content "$log.err"
+          exit $code
 
       # Builds the builder, the three stubs, and the GUI. It deliberately
       # does not build a setup from examples/TapTap: that example payload is
