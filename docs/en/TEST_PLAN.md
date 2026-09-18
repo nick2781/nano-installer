@@ -21,6 +21,9 @@ The report names the commit it ran against, the commands, the requirements and t
 a result can still be read after the terminal that produced it is gone. The script sets
 `NANO_INSTALLER_E2E_REQUIRE_STUBS=1` itself; `-RequireDesktop` adds the desktop requirement.
 
+Every behaviour these documents promise sits next to the case that holds it in
+[Test coverage](TEST_COVERAGE.md), layer by layer, including what no automated case reaches yet.
+
 Unit tests cover bundle roundtrip, payload embedding, button hit testing, temporary-directory
 deployment, manifest writing, refusing to overwrite an existing directory, upgrades and stale-file
 cleanup, failure rollback, and uninstall rules for shortcuts and user data. Layout tests cover

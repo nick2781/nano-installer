@@ -2486,13 +2486,15 @@ fn render_layout_content(
             render_flow(node, rect, axis, context, output)?;
             continue;
         }
-        if layer_width > 0 && layer_height > 0 {
+        let has_layer = layer_width > 0 && layer_height > 0;
+        // A checkbox draws its state image, its click region, and text placed
+        // beside that image, so it is not part of the plain text pass.
+        if has_layer && !node.has_tag_name("Checkbox") {
             push_node_text(node, rect, context, output);
         }
-        if node.has_tag_name("Select") && layer_width > 0 && layer_height > 0 {
+        if node.has_tag_name("Select") && has_layer {
             render_language_select(node, rect, context, output)?;
         }
-        let has_layer = layer_width > 0 && layer_height > 0;
         match node.tag_name().name() {
             "Image" | "Icon" if has_layer => {
                 if let Some(source) = node.attribute("src") {
@@ -2514,6 +2516,7 @@ fn render_layout_content(
                     push_node_border(node, rect, context, &mut output.layers)?;
                 }
             }
+            "Checkbox" if has_layer => render_checkbox(node, rect, context, output)?,
             "Box" | "Divider" if has_layer => {
                 render_box_contents(node, rect, context, output)?;
             }
@@ -2772,8 +2775,10 @@ fn node_is_visible(node: roxmltree::Node<'_, '_>, interaction: &InteractionState
 /// Positions a node along the horizontal axis.
 ///
 /// `left` measures from the near edge, `right` from the far one, and `inset`
-/// is the shorthand that sets all four edges. A near edge wins when both are
-/// declared, because a declared width already fixes the extent.
+/// is the shorthand that sets all four edges. Either edge can also be given on
+/// its own, as `inset-left` or `inset-right`, which measures the same way as
+/// the edge attribute it names. A near edge wins when both are declared,
+/// because a declared width already fixes the extent.
 fn anchored_left(
     node: roxmltree::Node<'_, '_>,
     base: i32,
@@ -2789,6 +2794,9 @@ fn anchored_left(
         return base + scale_value(left, context.dpi.scale);
     }
     if let Some(right) = int_attribute(node, "right") {
+        return base + parent_width - scale_value(right, context.dpi.scale) - size;
+    }
+    if let Some(right) = int_attribute(node, "inset-right") {
         return base + parent_width - scale_value(right, context.dpi.scale) - size;
     }
     if node.attribute("inset").is_some() {
@@ -2813,6 +2821,9 @@ fn anchored_top(
         return base + scale_value(top, context.dpi.scale);
     }
     if let Some(bottom) = int_attribute(node, "bottom") {
+        return base + parent_height - scale_value(bottom, context.dpi.scale) - size;
+    }
+    if let Some(bottom) = int_attribute(node, "inset-bottom") {
         return base + parent_height - scale_value(bottom, context.dpi.scale) - size;
     }
     if node.attribute("inset").is_some() {
@@ -4073,6 +4084,55 @@ fn measure_layout_text_width(text: &str, font_size: i32, bold: bool) -> i32 {
     }
 }
 
+/// Draws a checkbox: its checked or unchecked image, its click region, and the
+/// text that sits beside that image.
+///
+/// The flow and the absolute path both need this. A checkbox that was given
+/// coordinates used to reach neither the image nor the click region, so it drew
+/// as a caption that could not be toggled, which is what the shipped uninstall
+/// page's keep-data box had become.
+fn render_checkbox(
+    node: roxmltree::Node<'_, '_>,
+    rect: LayerRect,
+    context: &LayoutContext<'_>,
+    output: &mut LayoutOutput,
+) -> Result<()> {
+    let checked = checkbox_checked(node, context.interaction);
+    let image = if checked {
+        node.attribute("checked-image")
+    } else {
+        node.attribute("unchecked-image")
+    };
+    let mut text_left = rect.left;
+    if let Some(value) = image {
+        let mut style = parse_image_style(value);
+        if let Some(destination) = style.destination {
+            text_left += scale_value(destination.left + destination.width + 8, context.dpi.scale);
+            let logical_control_height = rect.height as f32 / context.dpi.scale;
+            style.destination = Some(LayerRect {
+                top: ((logical_control_height - destination.height as f32) / 2.0)
+                    .round()
+                    .max(0.0) as i32,
+                ..destination
+            });
+        }
+        push_styled_layer(context.files, &mut output.layers, style, rect, context.dpi)?;
+    }
+    push_action(node, rect, &mut output.actions, context);
+    push_node_text(
+        node,
+        LayerRect {
+            left: text_left,
+            top: rect.top,
+            width: (rect.left + rect.width - text_left).max(0),
+            height: rect.height,
+        },
+        context,
+        output,
+    );
+    Ok(())
+}
+
 fn render_flow_item(
     node: roxmltree::Node<'_, '_>,
     rect: LayerRect,
@@ -4092,42 +4152,7 @@ fn render_flow_item(
         rect
     };
     match node.tag_name().name() {
-        "Checkbox" => {
-            let checked = checkbox_checked(node, context.interaction);
-            let image = if checked {
-                node.attribute("checked-image")
-            } else {
-                node.attribute("unchecked-image")
-            };
-            let mut text_left = rect.left;
-            if let Some(value) = image {
-                let mut style = parse_image_style(value);
-                if let Some(destination) = style.destination {
-                    text_left +=
-                        scale_value(destination.left + destination.width + 8, context.dpi.scale);
-                    let logical_control_height = rect.height as f32 / context.dpi.scale;
-                    style.destination = Some(LayerRect {
-                        top: ((logical_control_height - destination.height as f32) / 2.0)
-                            .round()
-                            .max(0.0) as i32,
-                        ..destination
-                    });
-                }
-                push_styled_layer(context.files, &mut output.layers, style, rect, context.dpi)?;
-            }
-            push_action(node, rect, &mut output.actions, context);
-            push_node_text(
-                node,
-                LayerRect {
-                    left: text_left,
-                    top: rect.top,
-                    width: (rect.left + rect.width - text_left).max(0),
-                    height: rect.height,
-                },
-                context,
-                output,
-            );
-        }
+        "Checkbox" => render_checkbox(node, rect, context, output)?,
         "Button" => {
             push_action(node, rect, &mut output.actions, context);
             push_hover_region(node, rect, context, &mut output.hover_regions);
@@ -7163,20 +7188,23 @@ unsafe fn draw_layer(destination: HDC, layer: &ImageLayer) {
 #[cfg(test)]
 mod tests {
     use super::{
-        button_image, byte_index, caret_layer, centered_bounds, clamped_bounds,
-        container_intrinsic_size, disk_root, flow_axis, flow_widths, format_size_bytes,
-        initial_interaction, inspect_project, installer_version_info, load_layout,
-        measure_layout_text_width, pack_project, pack_project_with_progress, parse_bundle,
-        parse_color, parse_image_style, parse_text_runs, pick_directory_target, push_action,
-        push_border_layer, push_node_border, query_disk_free_bytes, render_flow, render_flow_item,
-        render_progress_bar, resolve_asset_path, resolve_link_target, resolved_text_for_node,
-        restore_snapshot, runtime_layout_path, runtime_layout_path_at, runtime_page_count,
-        scale_value, selection_layers, size_attribute, uninstaller_version_info,
-        validate_output_filename, word_end_after, word_range, word_start_before, wrap_lines, wraps,
-        BundleIndex, DialogKind, DialogState, DpiContext, DpiSettings, FlowAxis, FlowItem,
-        InteractionState, LayerRect, LayoutContext, LayoutOutput, PayloadFormat, RuntimeMode,
-        RuntimeUi, TextAlignment, TextHit, TextInputRegion, TextSnapshot, WindowAction,
-        BUNDLE_MAGIC, BUNDLE_VERSION, COLORREF, FOOTER_MAGIC,
+        anchored_left, anchored_top, button_enabled, button_image, byte_index, caret_layer,
+        centered_bounds, clamped_bounds, container_intrinsic_size, cross_alignment,
+        cross_alignment_for_item, disk_free_bytes, disk_root, flow_axis, flow_item_for_node,
+        flow_widths, format_size_bytes, initial_interaction, insets_for_node, inspect_project,
+        installer_version_info, load_layout, main_alignment, measure_layout_text_width,
+        pack_project, pack_project_with_progress, parse_bundle, parse_color, parse_image_style,
+        parse_text_runs, pick_directory_target, push_action, push_border_layer, push_hover_region,
+        push_node_border, query_disk_free_bytes, render_flow, render_flow_item,
+        render_progress_bar, resolve_asset_path, resolve_link_target, resolve_value_source,
+        resolved_text_for_node, restore_snapshot, runtime_layout_path, runtime_layout_path_at,
+        runtime_page_count, scale_value, selection_layers, size_attribute,
+        uninstaller_version_info, validate_output_filename, word_end_after, word_range,
+        word_start_before, wrap_lines, wraps, BundleIndex, DialogKind, DialogState, DpiContext,
+        DpiSettings, FlowAxis, FlowItem, ImageLayer, Insets, InteractionState, LayerRect,
+        LayoutContext, LayoutOutput, PayloadFormat, RuntimeMode, RuntimeUi, TextAlignment, TextHit,
+        TextInputRegion, TextSnapshot, WindowAction, BUNDLE_MAGIC, BUNDLE_VERSION, COLORREF,
+        FOOTER_MAGIC,
     };
     use anyhow::Context;
     use std::collections::HashMap;
@@ -9672,6 +9700,2039 @@ mod tests {
         );
         assert!(summary.payload_size > 100 * 1024 * 1024);
         assert!(summary.warnings.is_empty(), "{:?}", summary.warnings);
+        Ok(())
+    }
+
+    // Behaviour the layout guide documents, tested attribute by attribute.
+    //
+    // The guide is a contract with the projects that write these layouts, so a
+    // row it marks as supported has to keep working: these cases pin each claim
+    // down rather than leaving it to the example layouts, which only cover the
+    // combinations that particular product chose.
+
+    /// One PNG from the example project, which is what the image cases draw.
+    ///
+    /// The example ships both densities for every file it uses, which is what
+    /// lets the same artwork prove both sides of the density choice.
+    fn example_asset(name: &str) -> Vec<u8> {
+        let bytes: &[u8] = match name {
+            "logo.png" => include_bytes!("../../../examples/TapTap/assets/logo.png"),
+            "logo@2x.png" => include_bytes!("../../../examples/TapTap/assets/logo@2x.png"),
+            "bg_main.png" => include_bytes!("../../../examples/TapTap/assets/bg_main.png"),
+            "checkbox-0.png" => include_bytes!("../../../examples/TapTap/assets/checkbox-0.png"),
+            "checkbox-2.png" => include_bytes!("../../../examples/TapTap/assets/checkbox-2.png"),
+            "bar_installing.png" => {
+                include_bytes!("../../../examples/TapTap/assets/bar_installing.png")
+            }
+            "select-arrow.png" => {
+                include_bytes!("../../../examples/TapTap/assets/select-arrow.png")
+            }
+            "select-arrow-up.png" => {
+                include_bytes!("../../../examples/TapTap/assets/select-arrow-up.png")
+            }
+            other => panic!("the example project ships no asset called {other}"),
+        };
+        bytes.to_vec()
+    }
+
+    /// An in-memory project with one page and one locale file, which is the
+    /// smallest thing a layout can be loaded from.
+    fn one_page_project_with(
+        config: serde_json::Value,
+        layout: &str,
+        locale: &str,
+    ) -> HashMap<String, Vec<u8>> {
+        let mut files = HashMap::new();
+        files.insert(
+            "installer_config.json".to_string(),
+            serde_json::to_vec(&config).expect("the config serialises"),
+        );
+        files.insert("layouts/page.xml".to_string(), layout.as_bytes().to_vec());
+        files.insert("locales/zh-CN.json".to_string(), locale.as_bytes().to_vec());
+        files
+    }
+
+    /// The project file every layout case that does not care about it starts
+    /// from: one page, and the locale directory the runtime reads.
+    fn one_page_config() -> serde_json::Value {
+        serde_json::json!({
+            "resources": { "locales_dir": "locales" },
+            "wizard": { "pages": [{ "layout": "layouts/page.xml" }] }
+        })
+    }
+
+    fn one_page_project(layout: &str, locale: &str) -> HashMap<String, Vec<u8>> {
+        one_page_project_with(one_page_config(), layout, locale)
+    }
+
+    /// Draws a project on a display of the given scale, which is what the
+    /// density and scaling claims are about.
+    fn drawn_for_display(
+        files: &HashMap<String, Vec<u8>>,
+        interaction: &InteractionState,
+        scale: f32,
+        use_2x: bool,
+    ) -> anyhow::Result<RuntimeUi> {
+        load_layout(
+            files,
+            DpiContext { scale, use_2x },
+            "zh-CN",
+            false,
+            interaction,
+            RuntimeMode::Installer,
+        )
+    }
+
+    /// Draws a project at 96 DPI, the scale a layout is authored at.
+    fn drawn_at_96(
+        files: &HashMap<String, Vec<u8>>,
+        interaction: &InteractionState,
+    ) -> anyhow::Result<RuntimeUi> {
+        drawn_for_display(files, interaction, 1.0, false)
+    }
+
+    /// A layout context over an in-memory project, for the measuring helpers
+    /// that are called with one node instead of a whole page.
+    fn context_for<'a>(
+        files: &'a HashMap<String, Vec<u8>>,
+        config: &'a serde_json::Value,
+        translations: &'a HashMap<String, String>,
+        interaction: &'a InteractionState,
+    ) -> LayoutContext<'a> {
+        LayoutContext {
+            dpi: DpiContext {
+                scale: 1.0,
+                use_2x: false,
+            },
+            files,
+            config,
+            locale: "zh-CN",
+            translations,
+            interaction,
+            language_menu_open: false,
+        }
+    }
+
+    /// The `(top, right, bottom, left)` of an inset set, in the order the
+    /// shorthand is written and read.
+    fn inset_edges(insets: Insets) -> (i32, i32, i32, i32) {
+        (insets.top, insets.right, insets.bottom, insets.left)
+    }
+
+    /// Parses a small layout and hands back its document, so a case can reach
+    /// the node it is about without a temporary being dropped under it.
+    fn parsed_layout(markup: &str) -> roxmltree::Document<'_> {
+        roxmltree::Document::parse(markup).expect("layout parses")
+    }
+
+    /// The one node of a small layout that carries `id`, so a case can hand the
+    /// measuring helpers the element it is about.
+    fn node_with_id<'a, 'input>(
+        document: &'a roxmltree::Document<'input>,
+        id: &str,
+    ) -> roxmltree::Node<'a, 'input> {
+        document
+            .descendants()
+            .find(|node| node.attribute("id") == Some(id))
+            .unwrap_or_else(|| panic!("no element with id {id}"))
+    }
+
+    #[test]
+    fn a_page_paints_its_fill_under_its_image_and_its_outline_over_them() -> anyhow::Result<()> {
+        // The page decoration in the order the guide lists it: the base colour,
+        // the background image stretched over it, then the outline grown inwards
+        // from the edges. `border-radius` becomes the window region, so it is
+        // reported as a radius rather than drawn into a layer.
+        let mut files = one_page_project(
+            r##"<Page width="400" height="200" background="#FF181B22"
+                       background-image="assets/bg_main.png"
+                       border-color="#FF00FF00" border-width="2" border-radius="12" />"##,
+            "{}",
+        );
+        files.insert(
+            "assets/bg_main.png".to_string(),
+            example_asset("bg_main.png"),
+        );
+        let ui = drawn_at_96(&files, &InteractionState::default())?;
+
+        assert_eq!((ui.width, ui.height), (400, 200));
+        assert_eq!(ui.corner_radius, 12);
+        assert_eq!(ui.layers.len(), 3);
+        let fill = &ui.layers[0];
+        assert_eq!(
+            (fill.left, fill.top, fill.width, fill.height),
+            (0, 0, 400, 200)
+        );
+
+        // The image keeps its own decoded size and is stretched over the client
+        // area, which is wider than the 400px page.
+        let background = &ui.layers[1];
+        assert_eq!(
+            (
+                background.left,
+                background.top,
+                background.width,
+                background.height
+            ),
+            (0, 0, 400, 200)
+        );
+        assert_eq!(
+            (background.image.width, background.image.height),
+            (720, 450)
+        );
+
+        // The outline is a ring: two device pixels at the edge are painted and
+        // the interior is left clear, so the fill below it still shows through.
+        let outline = &ui.layers[2];
+        assert_eq!((outline.width, outline.height), (400, 200));
+        let alpha = |x: usize, y: usize| outline.image.pixels[(y * 400 + x) * 4 + 3];
+        assert_eq!(alpha(200, 0), 255);
+        assert_eq!(alpha(200, 1), 255);
+        assert_eq!(alpha(200, 2), 0);
+        assert_eq!(alpha(200, 100), 0);
+        // The corner is cut away, which is what the window region does with the
+        // same radius.
+        assert_eq!(alpha(0, 0), 0);
+
+        // A scaled display gets a scaled radius, so the region and the page art
+        // are rounded by the same amount.
+        let scaled = drawn_for_display(&files, &InteractionState::default(), 2.0, true)?;
+        assert_eq!(scaled.corner_radius, 24);
+        assert_eq!((scaled.width, scaled.height), (800, 400));
+
+        // A page that declares no extent at all falls back to the documented
+        // client area rather than to a window of nothing.
+        let default_size = drawn_at_96(
+            &one_page_project("<Page />", "{}"),
+            &InteractionState::default(),
+        )?;
+        assert_eq!((default_size.width, default_size.height), (720, 450));
+        Ok(())
+    }
+
+    #[test]
+    fn an_absolute_image_and_icon_draw_at_the_rectangle_they_declare() -> anyhow::Result<()> {
+        // `Image` and `Icon` are the tags that draw artwork of their own. The
+        // guide's claim is that an absolute position with an extent is what makes
+        // them appear at all, so a control without one has nothing to draw.
+        let mut files = one_page_project(
+            r##"<Page width="400" height="200">
+                  <Image id="logo" src="assets/logo.png" position="absolute"
+                         left="10" top="20" width="100" height="30" />
+                  <Icon id="badge" src="assets/checkbox-2.png" position="absolute"
+                        left="200" top="120" width="24" height="24" />
+                  <Image id="unplaced" src="assets/logo.png" position="absolute" left="0" top="0" />
+                </Page>"##,
+            "{}",
+        );
+        files.insert("assets/logo.png".to_string(), example_asset("logo.png"));
+        files.insert(
+            "assets/checkbox-2.png".to_string(),
+            example_asset("checkbox-2.png"),
+        );
+        let ui = drawn_at_96(&files, &InteractionState::default())?;
+
+        assert_eq!(ui.layers.len(), 2);
+        let logo = &ui.layers[0];
+        assert_eq!(
+            (logo.left, logo.top, logo.width, logo.height),
+            (10, 20, 100, 30)
+        );
+        // The PNG is decoded at its own size and drawn into the declared extent.
+        assert_eq!((logo.image.width, logo.image.height), (200, 58));
+        let badge = &ui.layers[1];
+        assert_eq!(
+            (badge.left, badge.top, badge.width, badge.height),
+            (200, 120, 24, 24)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn a_layout_picks_the_image_density_the_display_asks_for() -> anyhow::Result<()> {
+        // A project names one file and the runtime chooses the variant: the 1x
+        // artwork below the threshold and the `@2x` one at or above it, in both
+        // directions and with a fallback when only one of the two shipped.
+        let layout = r##"<Page width="400" height="200">
+                  <Image id="logo" src="assets/logo.png" position="absolute"
+                         left="0" top="0" width="200" height="58" />
+                </Page>"##;
+        let spelled_out = r##"<Page width="400" height="200">
+                  <Image id="logo" src="assets/logo@2x.png" position="absolute"
+                         left="0" top="0" width="200" height="58" />
+                </Page>"##;
+        let both = |layout: &str| {
+            let mut files = one_page_project(layout, "{}");
+            files.insert("assets/logo.png".to_string(), example_asset("logo.png"));
+            files.insert(
+                "assets/logo@2x.png".to_string(),
+                example_asset("logo@2x.png"),
+            );
+            files
+        };
+
+        // Both variants shipped: the display decides which one is decoded.
+        let one_x = drawn_at_96(&both(layout), &InteractionState::default())?;
+        assert_eq!(one_x.layers[0].image.width, 200);
+        let two_x = drawn_for_display(&both(layout), &InteractionState::default(), 2.0, true)?;
+        assert_eq!(two_x.layers[0].image.width, 400);
+
+        // A layout that names the dense file is normalized the same way, so a
+        // project never maintains two copies of one layout.
+        let named_dense = drawn_at_96(&both(spelled_out), &InteractionState::default())?;
+        assert_eq!(named_dense.layers[0].image.width, 200);
+        let named_dense_at_2x =
+            drawn_for_display(&both(spelled_out), &InteractionState::default(), 2.0, true)?;
+        assert_eq!(named_dense_at_2x.layers[0].image.width, 400);
+
+        // Only the 1x artwork shipped, and only the dense one shipped.
+        let mut base_only = one_page_project(layout, "{}");
+        base_only.insert("assets/logo.png".to_string(), example_asset("logo.png"));
+        let dense_display = drawn_for_display(&base_only, &InteractionState::default(), 2.0, true)?;
+        assert_eq!(dense_display.layers[0].image.width, 200);
+        let mut dense_only = one_page_project(layout, "{}");
+        dense_only.insert(
+            "assets/logo@2x.png".to_string(),
+            example_asset("logo@2x.png"),
+        );
+        let plain_display = drawn_at_96(&dense_only, &InteractionState::default())?;
+        assert_eq!(plain_display.layers[0].image.width, 400);
+        Ok(())
+    }
+
+    #[test]
+    fn a_button_state_image_falls_back_to_the_normal_one() {
+        // A layout that paints only some states still has to draw the button: a
+        // missing `hover-image`, `pressed-image` or `disabled-image` falls back to
+        // `normal-image` instead of leaving a hole in the page.
+        let document = roxmltree::Document::parse(
+            r#"<Button id="next" action="install" normal-image="normal.png" hover-image="hover.png" />"#,
+        )
+        .expect("layout parses");
+        let button = document.root_element();
+        let mut interaction = InteractionState::default();
+        assert_eq!(button_image(button, &interaction), Some("normal.png"));
+
+        // Hovering has artwork of its own; pressing does not, so the press is
+        // drawn with the normal image rather than with the hover one.
+        interaction.hovered_control = Some("next".to_string());
+        assert_eq!(button_image(button, &interaction), Some("hover.png"));
+        interaction.pressed_control = Some("next".to_string());
+        assert_eq!(button_image(button, &interaction), Some("normal.png"));
+
+        // A button held back by its condition is drawn from `disabled-image` when
+        // it declares one, whatever the pointer is doing.
+        let document = roxmltree::Document::parse(
+            r#"<Button id="gated" action="install" enabled-when="terms:checked"
+                       normal-image="normal.png" hover-image="hover.png"
+                       disabled-image="disabled.png" />"#,
+        )
+        .expect("layout parses");
+        let gated = document.root_element();
+        assert_eq!(
+            button_image(gated, &InteractionState::default()),
+            Some("disabled.png")
+        );
+        let gated_interaction = InteractionState {
+            hovered_control: Some("gated".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(
+            button_image(gated, &gated_interaction),
+            Some("disabled.png")
+        );
+
+        // A control with no id cannot be hovered or pressed at all, which is how
+        // an unbound button behaves.
+        let document = roxmltree::Document::parse(
+            r#"<Button action="install" normal-image="normal.png" hover-image="hover.png" />"#,
+        )
+        .expect("layout parses");
+        let unbound = InteractionState {
+            hovered_control: Some("next".to_string()),
+            pressed_control: Some("next".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(
+            button_image(document.root_element(), &unbound),
+            Some("normal.png")
+        );
+    }
+
+    #[test]
+    fn a_button_waits_for_each_state_its_condition_can_name() {
+        // `enabled-when` is what makes one control depend on another. The four
+        // states the guide lists decide on the checkbox or the panel they name,
+        // and a condition the runtime does not understand holds the button back
+        // rather than letting a click through.
+        let document = roxmltree::Document::parse(
+            r#"<Page>
+                 <Button id="checked" enabled-when="terms:checked" />
+                 <Button id="unchecked" enabled-when="terms:unchecked" />
+                 <Button id="visible" enabled-when="panel:visible" />
+                 <Button id="hidden" enabled-when="panel:hidden" />
+                 <Button id="elsewhere" enabled-when="anything:checked" />
+                 <Button id="unknown_state" enabled-when="terms:whenever" />
+                 <Button id="no_state" enabled-when="terms" />
+                 <Button id="unconditional" />
+               </Page>"#,
+        )
+        .expect("layout parses");
+
+        let mut interaction = InteractionState::default();
+        interaction
+            .checkbox_states
+            .insert("terms".to_string(), false);
+        assert!(button_enabled(
+            node_with_id(&document, "unchecked"),
+            &interaction
+        ));
+        assert!(!button_enabled(
+            node_with_id(&document, "checked"),
+            &interaction
+        ));
+        assert!(button_enabled(
+            node_with_id(&document, "hidden"),
+            &interaction
+        ));
+        assert!(!button_enabled(
+            node_with_id(&document, "visible"),
+            &interaction
+        ));
+
+        interaction
+            .checkbox_states
+            .insert("terms".to_string(), true);
+        assert!(button_enabled(
+            node_with_id(&document, "checked"),
+            &interaction
+        ));
+        assert!(!button_enabled(
+            node_with_id(&document, "unchecked"),
+            &interaction
+        ));
+        interaction
+            .panel_visibility
+            .insert("panel".to_string(), true);
+        assert!(button_enabled(
+            node_with_id(&document, "visible"),
+            &interaction
+        ));
+        assert!(!button_enabled(
+            node_with_id(&document, "hidden"),
+            &interaction
+        ));
+
+        // The runtime carries no rules about which control a condition names, so
+        // any id works; only the state has to be one it knows.
+        interaction
+            .checkbox_states
+            .insert("anything".to_string(), true);
+        assert!(button_enabled(
+            node_with_id(&document, "elsewhere"),
+            &interaction
+        ));
+        assert!(!button_enabled(
+            node_with_id(&document, "unknown_state"),
+            &interaction
+        ));
+        assert!(!button_enabled(
+            node_with_id(&document, "no_state"),
+            &interaction
+        ));
+        // A button without a condition is enabled, which is what makes the
+        // attribute opt-in.
+        assert!(button_enabled(
+            node_with_id(&document, "unconditional"),
+            &interaction
+        ));
+    }
+
+    #[test]
+    fn a_disabled_button_registers_no_click_and_no_hover() {
+        // While the condition is unmet the button is inert: no action region, so
+        // the click that would start an install cannot land, and no hover region,
+        // so it does not light up either.
+        let files: HashMap<String, Vec<u8>> = HashMap::new();
+        let config = serde_json::json!({});
+        let translations = HashMap::new();
+        let document = roxmltree::Document::parse(
+            r#"<Page>
+                 <Button id="install" action="install" enabled-when="terms:checked"
+                         normal-image="normal.png" hover-image="hover.png"
+                         disabled-image="disabled.png" />
+               </Page>"#,
+        )
+        .expect("layout parses");
+        let button = node_with_id(&document, "install");
+        let rect = LayerRect {
+            left: 10,
+            top: 20,
+            width: 100,
+            height: 30,
+        };
+
+        let mut interaction = InteractionState::default();
+        interaction
+            .checkbox_states
+            .insert("terms".to_string(), false);
+        let context = context_for(&files, &config, &translations, &interaction);
+        let mut actions = Vec::new();
+        let mut hovers = Vec::new();
+        push_action(button, rect, &mut actions, &context);
+        push_hover_region(button, rect, &context, &mut hovers);
+        assert!(actions.is_empty());
+        assert!(hovers.is_empty());
+
+        // Once the condition holds it answers with the action it declares, over
+        // the rectangle it was placed at.
+        let mut interaction = InteractionState::default();
+        interaction
+            .checkbox_states
+            .insert("terms".to_string(), true);
+        let context = context_for(&files, &config, &translations, &interaction);
+        let mut actions = Vec::new();
+        let mut hovers = Vec::new();
+        push_action(button, rect, &mut actions, &context);
+        push_hover_region(button, rect, &context, &mut hovers);
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0].action, WindowAction::Install));
+        assert_eq!(
+            (
+                actions[0].left,
+                actions[0].top,
+                actions[0].right,
+                actions[0].bottom
+            ),
+            (10, 20, 110, 50)
+        );
+        assert_eq!(hovers.len(), 1);
+        assert_eq!(hovers[0].id, "install");
+    }
+
+    #[test]
+    fn a_styled_image_draws_into_a_sub_rectangle_at_the_opacity_it_declares() -> anyhow::Result<()>
+    {
+        // `file='...' dest='...' fade='...'` is the form the example's window
+        // buttons use: artwork inset inside a larger hit area, faded into the
+        // page. The destination is relative to the control, not to the page.
+        let mut files = one_page_project(
+            r##"<Page width="400" height="200">
+                  <Button id="close" action="close" position="absolute" left="100" top="50"
+                          width="34" height="34"
+                          normal-image="file='assets/checkbox-2.png' dest='7,7,27,27' fade='160'" />
+                </Page>"##,
+            "{}",
+        );
+        files.insert(
+            "assets/checkbox-2.png".to_string(),
+            example_asset("checkbox-2.png"),
+        );
+        let ui = drawn_at_96(&files, &InteractionState::default())?;
+        assert_eq!(ui.layers.len(), 1);
+        let layer = &ui.layers[0];
+        assert_eq!(
+            (layer.left, layer.top, layer.width, layer.height),
+            (107, 57, 20, 20)
+        );
+        assert_eq!(layer.alpha, 160);
+
+        // The destination follows the control onto a scaled display.
+        let scaled = drawn_for_display(&files, &InteractionState::default(), 2.0, true)?;
+        let layer = &scaled.layers[0];
+        assert_eq!(
+            (layer.left, layer.top, layer.width, layer.height),
+            (214, 114, 40, 40)
+        );
+        assert_eq!(layer.alpha, 160);
+        Ok(())
+    }
+
+    #[test]
+    fn flow_attributes_become_the_item_a_container_shares_space_with() {
+        // The container reads its children through these fields, so an attribute
+        // that stopped being read would silently drop the sizing a layout asked
+        // for, and the row would be laid out at the wrong widths.
+        let files: HashMap<String, Vec<u8>> = HashMap::new();
+        let config = serde_json::json!({});
+        let translations = HashMap::new();
+        let interaction = InteractionState::default();
+        let context = context_for(&files, &config, &translations, &interaction);
+        let document = roxmltree::Document::parse(
+            r##"<Page>
+                  <Button id="sized" width="100" padding="0 10" margin-left="5"
+                          flex-grow="1" flex-shrink="0.5" min-width="20" flex-basis="30" />
+                  <Button id="fixed" width="80" padding="4" margin="2" />
+                  <Button id="tall" height="60" padding="2" min-height="30" />
+                  <Spacer id="grow" flex-grow="1" />
+                </Page>"##,
+        )
+        .expect("layout parses");
+
+        // `flex-basis` reserves room before free space is shared out, so an item
+        // that declares one keeps growing instead of freezing at that size.
+        let sized = flow_item_for_node(
+            node_with_id(&document, "sized"),
+            FlowAxis::Horizontal,
+            400,
+            &context,
+        );
+        assert_eq!(sized.fixed_width, None);
+        assert_eq!(sized.flex_basis, 30 + 10 + 10 + 5);
+        assert_eq!(sized.flex_grow, 1.0);
+        assert_eq!(sized.flex_shrink, 0.5);
+        assert_eq!(sized.min_width, 20);
+
+        // Without a basis the item claims its width, padding and margin included.
+        let fixed = flow_item_for_node(
+            node_with_id(&document, "fixed"),
+            FlowAxis::Horizontal,
+            400,
+            &context,
+        );
+        assert_eq!(fixed.fixed_width, Some(80 + 4 + 4 + 2 + 2));
+        assert_eq!(fixed.flex_basis, 0);
+
+        // `Spacer` declares no size at all: growing is the whole of what it does.
+        let grow = flow_item_for_node(
+            node_with_id(&document, "grow"),
+            FlowAxis::Horizontal,
+            400,
+            &context,
+        );
+        assert_eq!(grow.fixed_width, None);
+        assert_eq!(grow.flex_grow, 1.0);
+        assert_eq!(grow.flex_shrink, 1.0);
+
+        // A vertical container reads the same attributes off the other edge:
+        // `height` is its main axis and `min-height` its floor.
+        let tall = flow_item_for_node(
+            node_with_id(&document, "tall"),
+            FlowAxis::Vertical,
+            400,
+            &context,
+        );
+        assert_eq!(tall.fixed_width, Some(60 + 2 + 2));
+        assert_eq!(tall.min_width, 30);
+    }
+
+    #[test]
+    fn a_shrinking_row_stops_at_the_minimum_its_items_declare() {
+        // `flex-shrink` is how a row fits a fixed button beside text, and
+        // `min-width` is what keeps a control readable: a row overflows before it
+        // squeezes an item past the floor its layout declared.
+        let item = |fixed: i32, shrink: f32, min_width: i32| FlowItem {
+            fixed_width: Some(fixed),
+            flex_grow: 0.0,
+            flex_shrink: shrink,
+            min_width,
+            flex_basis: 0,
+        };
+
+        // 684px of content in a 400px row, and no floor to hold the text back.
+        assert_eq!(
+            flow_widths(&[item(500, 1.0, 0), item(184, 0.0, 0)], 400, 0),
+            [216, 184]
+        );
+        // The 500px item can only give up 200px, so the row stays overflowing
+        // rather than shrinking it past `min-width`.
+        assert_eq!(
+            flow_widths(&[item(500, 1.0, 300), item(184, 0.0, 0)], 400, 0),
+            [300, 184]
+        );
+        // `flex-shrink="0"` is what keeps a button at its designed width, so the
+        // item that may shrink carries the whole overflow.
+        assert_eq!(
+            flow_widths(&[item(500, 0.0, 0), item(400, 1.0, 0)], 400, 0),
+            [500, 0]
+        );
+    }
+
+    #[test]
+    fn item_spacing_and_gap_leave_the_same_distance_between_items() -> anyhow::Result<()> {
+        // `gap` is the spelling the dialog layouts use and `item-spacing` the one
+        // the example pages use; both have to leave the same distance, and a
+        // layout that writes both gets the specific one.
+        let layout = |attributes: &str| {
+            format!(
+                r##"<Page width="400" height="100">
+                  <HBox position="absolute" left="0" top="0" width="400" height="40" {attributes}>
+                    <Button id="first" action="install" width="100" height="40" />
+                    <Button id="second" action="close" width="100" height="40" />
+                  </HBox>
+                </Page>"##
+            )
+        };
+        let second_left = |attributes: &str| -> anyhow::Result<i32> {
+            let files = one_page_project(&layout(attributes), "{}");
+            let ui = drawn_at_96(&files, &InteractionState::default())?;
+            let second = ui
+                .actions
+                .iter()
+                .find(|region| matches!(region.action, WindowAction::Close))
+                .expect("the close button is clickable");
+            Ok(second.left)
+        };
+
+        assert_eq!(second_left("")?, 100);
+        assert_eq!(second_left(r#"gap="16""#)?, 116);
+        assert_eq!(second_left(r#"item-spacing="16""#)?, 116);
+        assert_eq!(second_left(r#"item-spacing="16" gap="40""#)?, 116);
+        Ok(())
+    }
+
+    #[test]
+    fn padding_and_margin_take_one_to_four_values_and_their_single_side_forms() {
+        // Both shorthands promise CSS semantics and the example layouts mix them
+        // with the single-side forms, which stand alone and override whatever the
+        // shorthand said about that edge.
+        let files: HashMap<String, Vec<u8>> = HashMap::new();
+        let config = serde_json::json!({});
+        let translations = HashMap::new();
+        let interaction = InteractionState::default();
+        let context = context_for(&files, &config, &translations, &interaction);
+        let insets = |markup: &str, name: &str| {
+            let document = roxmltree::Document::parse(markup).expect("layout parses");
+            insets_for_node(document.root_element(), name, &context)
+        };
+
+        assert_eq!(
+            inset_edges(insets(r#"<Box padding="8" />"#, "padding")),
+            (8, 8, 8, 8)
+        );
+        assert_eq!(
+            inset_edges(insets(r#"<Box padding="10 20" />"#, "padding")),
+            (10, 20, 10, 20)
+        );
+        assert_eq!(
+            inset_edges(insets(r#"<Box padding="1 2 3" />"#, "padding")),
+            (1, 2, 3, 2)
+        );
+        assert_eq!(
+            inset_edges(insets(r#"<Box padding="1 2 3 4" />"#, "padding")),
+            (1, 2, 3, 4)
+        );
+        // A single side overrides the shorthand it is written beside.
+        assert_eq!(
+            inset_edges(insets(r#"<Box margin="10 20" margin-top="4" />"#, "margin")),
+            (4, 20, 10, 20)
+        );
+        assert_eq!(
+            inset_edges(insets(r#"<Box margin-left="6" />"#, "margin")),
+            (0, 0, 0, 6)
+        );
+        assert_eq!(
+            inset_edges(insets(r#"<Box padding-right="7" />"#, "padding")),
+            (0, 7, 0, 0)
+        );
+        // Padding and margin are read apart from each other, so one attribute
+        // never moves the other.
+        assert_eq!(
+            inset_edges(insets(r#"<Box padding="8" />"#, "margin")),
+            (0, 0, 0, 0)
+        );
+
+        // Every value assumes 96 DPI and scales with the display.
+        let scaled = LayoutContext {
+            dpi: DpiContext {
+                scale: 2.0,
+                use_2x: true,
+            },
+            ..context
+        };
+        let document =
+            roxmltree::Document::parse(r#"<Box margin="1 2 3 4" />"#).expect("layout parses");
+        assert_eq!(
+            inset_edges(insets_for_node(document.root_element(), "margin", &scaled)),
+            (2, 4, 6, 8)
+        );
+    }
+
+    #[test]
+    fn justify_content_places_the_run_inside_the_room_it_has() -> anyhow::Result<()> {
+        // Centring a row is how the dialogs and the uninstall page keep their
+        // content in the middle whatever a translation does to its width.
+        let layout = |attributes: &str| {
+            format!(
+                r##"<Page width="400" height="100">
+                  <HBox position="absolute" left="0" top="0" width="400" height="40" {attributes}>
+                    <Button id="first" action="minimize" width="100" height="40" />
+                    <Button id="second" action="close" width="100" height="40" />
+                  </HBox>
+                </Page>"##
+            )
+        };
+        let first_left = |attributes: &str| -> anyhow::Result<i32> {
+            let files = one_page_project(&layout(attributes), "{}");
+            let ui = drawn_at_96(&files, &InteractionState::default())?;
+            let first = ui
+                .actions
+                .iter()
+                .find(|region| matches!(region.action, WindowAction::Minimize))
+                .expect("the first button is clickable");
+            Ok(first.left)
+        };
+
+        // Two 100px items leave 200px, which the run shares by its alignment.
+        assert_eq!(first_left("")?, 0);
+        assert_eq!(first_left(r#"justify-content="center""#)?, 100);
+        assert_eq!(first_left(r#"justify-content="end""#)?, 200);
+        // `horizontal-align` is the same idea under the spelling the example uses.
+        assert_eq!(first_left(r#"horizontal-align="right""#)?, 200);
+        Ok(())
+    }
+
+    #[test]
+    fn align_self_overrides_the_alignment_of_its_container() -> anyhow::Result<()> {
+        // `align-items` centres on the cross axis and one item can step out of
+        // that with `align-self`, which is how a row keeps its text centred and
+        // one control on the bottom edge.
+        let files = one_page_project(
+            r##"<Page width="400" height="100">
+                  <HBox position="absolute" left="0" top="0" width="400" height="100"
+                        align-items="center" item-spacing="10">
+                    <Button id="middle" action="minimize" width="80" height="40" />
+                    <Button id="bottom" action="close" width="80" height="40" align-self="end" />
+                    <Button id="top" action="install" width="80" height="40" align-self="start" />
+                  </HBox>
+                </Page>"##,
+            "{}",
+        );
+        let ui = drawn_at_96(&files, &InteractionState::default())?;
+        let top_of = |action: fn(&WindowAction) -> bool| -> i32 {
+            ui.actions
+                .iter()
+                .find(|region| action(&region.action))
+                .expect("the button is clickable")
+                .top
+        };
+        assert_eq!(
+            top_of(|action| matches!(action, WindowAction::Minimize)),
+            30
+        );
+        assert_eq!(top_of(|action| matches!(action, WindowAction::Close)), 60);
+        assert_eq!(top_of(|action| matches!(action, WindowAction::Install)), 0);
+
+        // A vertical container measures its cross axis across the page instead, so
+        // `align-self="end"` pushes the item to the right edge.
+        let files = one_page_project(
+            r##"<Page width="400" height="100">
+                  <VBox position="absolute" left="0" top="0" width="400" height="100">
+                    <Button id="left" action="minimize" width="80" height="20" />
+                    <Button id="right" action="close" width="80" height="20" align-self="end" />
+                  </VBox>
+                </Page>"##,
+            "{}",
+        );
+        let ui = drawn_at_96(&files, &InteractionState::default())?;
+        let left_of = |action: fn(&WindowAction) -> bool| -> i32 {
+            ui.actions
+                .iter()
+                .find(|region| action(&region.action))
+                .expect("the button is clickable")
+                .left
+        };
+        assert_eq!(
+            left_of(|action| matches!(action, WindowAction::Minimize)),
+            0
+        );
+        assert_eq!(left_of(|action| matches!(action, WindowAction::Close)), 320);
+        Ok(())
+    }
+
+    #[test]
+    fn each_container_tag_accepts_the_alignment_spelling_it_documents() {
+        // The two spellings mean the main and the cross axis of the tag that
+        // carries them, not a fixed direction, and `Content` stacks vertically
+        // only when it says so.
+        let document = roxmltree::Document::parse(
+            r##"<Page>
+                  <HBox id="row" />
+                  <VBox id="column" horizontal-align="center" />
+                  <Content id="default" layout="horizontal" horizontal-align="right"
+                           vertical-align="center" />
+                  <Content id="vertical" layout="vertical" />
+                </Page>"##,
+        )
+        .expect("layout parses");
+        assert!(matches!(
+            flow_axis(node_with_id(&document, "row")),
+            Some(FlowAxis::Horizontal)
+        ));
+        assert!(matches!(
+            flow_axis(node_with_id(&document, "column")),
+            Some(FlowAxis::Vertical)
+        ));
+        assert!(matches!(
+            flow_axis(node_with_id(&document, "default")),
+            Some(FlowAxis::Horizontal)
+        ));
+        assert!(matches!(
+            flow_axis(node_with_id(&document, "vertical")),
+            Some(FlowAxis::Vertical)
+        ));
+
+        // A horizontal row reads both spellings: the main axis first.
+        let content = node_with_id(&document, "default");
+        assert_eq!(main_alignment(content, FlowAxis::Horizontal), Some("right"));
+        assert_eq!(
+            cross_alignment(content, FlowAxis::Horizontal),
+            Some("center")
+        );
+        // A vertical column has no horizontal main axis, so the same attribute
+        // there is its cross alignment instead.
+        let column = node_with_id(&document, "column");
+        assert_eq!(main_alignment(column, FlowAxis::Vertical), None);
+        assert_eq!(cross_alignment(column, FlowAxis::Vertical), Some("center"));
+        // One item steps out of whatever the container asked for.
+        let document = roxmltree::Document::parse(
+            r##"<Page><HBox id="row" align-items="center" /><Box id="item" align-self="end" /></Page>"##,
+        )
+        .expect("layout parses");
+        assert_eq!(
+            cross_alignment_for_item(
+                node_with_id(&document, "item"),
+                node_with_id(&document, "row"),
+                FlowAxis::Horizontal
+            ),
+            Some("end")
+        );
+        assert_eq!(
+            cross_alignment_for_item(
+                node_with_id(&document, "row"),
+                node_with_id(&document, "row"),
+                FlowAxis::Horizontal
+            ),
+            Some("center")
+        );
+    }
+
+    #[test]
+    fn a_wrapping_row_gives_each_line_the_height_of_its_tallest_item() -> anyhow::Result<()> {
+        // A narrow window reflows a wrapping row, and the next line starts below
+        // the tallest item of the current one, so cards of different heights do
+        // not overlap each other.
+        let files = one_page_project(
+            r##"<Page width="260" height="200">
+                  <HBox position="absolute" left="0" top="0" width="260" height="200"
+                        flex-wrap="true" gap="10">
+                    <Button id="first" action="minimize" width="120" height="40" />
+                    <Button id="taller" action="close" width="120" height="70" />
+                    <Button id="next_line" action="install" width="120" height="30" />
+                  </HBox>
+                </Page>"##,
+            "{}",
+        );
+        let ui = drawn_at_96(&files, &InteractionState::default())?;
+        let region = |action: fn(&WindowAction) -> bool| -> (i32, i32) {
+            let region = ui
+                .actions
+                .iter()
+                .find(|region| action(&region.action))
+                .expect("the button is clickable");
+            (region.left, region.top)
+        };
+        // Two 120px buttons and the gap fill the row, so the third wraps.
+        assert_eq!(
+            region(|action| matches!(action, WindowAction::Minimize)),
+            (0, 0)
+        );
+        assert_eq!(
+            region(|action| matches!(action, WindowAction::Close)),
+            (130, 0)
+        );
+        // The line was 70px tall, the tallest card on it, and the gap follows it.
+        assert_eq!(
+            region(|action| matches!(action, WindowAction::Install)),
+            (0, 80)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn a_spacer_takes_what_the_fixed_items_leave() -> anyhow::Result<()> {
+        // `Spacer` draws nothing: what it does is push the items after it to the
+        // far end, which is how the example keeps its agreement row and its
+        // buttons apart.
+        let files = one_page_project(
+            r##"<Page width="400" height="60">
+                  <HBox position="absolute" left="0" top="0" width="400" height="60"
+                        align-items="center">
+                    <Button id="near" action="minimize" width="100" height="40" />
+                    <Spacer flex-grow="1" />
+                    <Button id="far" action="close" width="100" height="40" />
+                  </HBox>
+                </Page>"##,
+            "{}",
+        );
+        let ui = drawn_at_96(&files, &InteractionState::default())?;
+        let near = ui
+            .actions
+            .iter()
+            .find(|region| matches!(region.action, WindowAction::Minimize))
+            .expect("the first button is clickable");
+        let far = ui
+            .actions
+            .iter()
+            .find(|region| matches!(region.action, WindowAction::Close))
+            .expect("the second button is clickable");
+        assert_eq!((near.left, near.right), (0, 100));
+        // The spacer absorbed the 200px between the two fixed buttons.
+        assert_eq!((far.left, far.right), (300, 400));
+        Ok(())
+    }
+
+    #[test]
+    fn a_nested_container_reports_the_extent_its_children_need() {
+        // A panel without a declared size is as big as what it holds: along its
+        // own axis its children add up with their gaps, across it the largest
+        // child wins, and its own padding is counted exactly once. Measuring the
+        // wrong edge is what used to collapse a dialog row.
+        let files: HashMap<String, Vec<u8>> = HashMap::new();
+        let config = serde_json::json!({});
+        let translations = HashMap::new();
+        let interaction = InteractionState::default();
+        let context = context_for(&files, &config, &translations, &interaction);
+        let document = roxmltree::Document::parse(
+            r##"<Page>
+                  <VBox id="panel" padding="2">
+                    <Label id="one" text="one" height="20" width="60" />
+                    <Label id="two" text="two" height="30" width="90" />
+                  </VBox>
+                </Page>"##,
+        )
+        .expect("layout parses");
+        let panel = node_with_id(&document, "panel");
+        // Stacked: 20 + 30, plus the container's own top and bottom padding.
+        assert_eq!(
+            container_intrinsic_size(panel, FlowAxis::Vertical, &context),
+            50 + 4
+        );
+        // Across: the tallest child, and the padding is added once and not twice.
+        assert_eq!(
+            container_intrinsic_size(panel, FlowAxis::Horizontal, &context),
+            90 + 4
+        );
+
+        // An outer row places that panel with the same measurement, so a layout
+        // does not have to declare a size for a wrapper.
+        let document = roxmltree::Document::parse(
+            r##"<Page>
+                  <HBox id="row">
+                    <VBox id="wrap" padding="2">
+                      <Label id="only" text="one" height="20" width="60" />
+                    </VBox>
+                  </HBox>
+                </Page>"##,
+        )
+        .expect("layout parses");
+        assert_eq!(
+            container_intrinsic_size(node_with_id(&document, "row"), FlowAxis::Vertical, &context),
+            24
+        );
+    }
+
+    #[test]
+    fn an_element_is_pinned_by_the_edge_attribute_it_carries() {
+        // `right` and `bottom` measure from the far edge and `inset` is the
+        // shorthand for the near ones. A declared near edge wins over both,
+        // because the layout has already said where the element starts.
+        let files: HashMap<String, Vec<u8>> = HashMap::new();
+        let config = serde_json::json!({});
+        let translations = HashMap::new();
+        let interaction = InteractionState::default();
+        let context = context_for(&files, &config, &translations, &interaction);
+
+        let from_the_right = parsed_layout(r#"<Box width="60" right="10" />"#);
+        assert_eq!(
+            anchored_left(from_the_right.root_element(), 0, 60, 400, &context),
+            330
+        );
+        let from_the_bottom = parsed_layout(r#"<Box height="30" bottom="20" />"#);
+        assert_eq!(
+            anchored_top(from_the_bottom.root_element(), 0, 30, 200, &context),
+            150
+        );
+        // The shorthand insets every edge at once.
+        let shorthand = parsed_layout(r#"<Box width="60" inset="8" />"#);
+        assert_eq!(
+            anchored_left(shorthand.root_element(), 0, 60, 400, &context),
+            8
+        );
+        assert_eq!(
+            anchored_top(shorthand.root_element(), 0, 30, 200, &context),
+            8
+        );
+        // A single side stands on its own, and `left` beats the shorthand.
+        let one_side = parsed_layout(r#"<Box width="60" inset-left="12" />"#);
+        assert_eq!(
+            anchored_left(one_side.root_element(), 0, 60, 400, &context),
+            12
+        );
+        // The far edge has single-side forms too, and they measure the way the
+        // edge attribute they name does.
+        let far_side = parsed_layout(r#"<Box width="60" inset-right="18" />"#);
+        assert_eq!(
+            anchored_left(far_side.root_element(), 0, 60, 400, &context),
+            322
+        );
+        let below = parsed_layout(r#"<Box height="30" inset-bottom="26" />"#);
+        assert_eq!(
+            anchored_top(below.root_element(), 0, 30, 200, &context),
+            144
+        );
+        let both_edges = parsed_layout(r#"<Box width="60" left="25" inset="8" />"#);
+        assert_eq!(
+            anchored_left(both_edges.root_element(), 0, 60, 400, &context),
+            25
+        );
+        // The base the page placed the element at is added to the inset, not
+        // replaced by it.
+        assert_eq!(
+            anchored_left(shorthand.root_element(), 100, 60, 400, &context),
+            108
+        );
+        // The page itself is the parent an absolutely positioned control is
+        // measured against, so the far edge is the page's own width.
+        let at_the_far_edge = parsed_layout(r#"<Box width="100" right="0" />"#);
+        assert_eq!(
+            anchored_left(at_the_far_edge.root_element(), 0, 100, 400, &context),
+            300
+        );
+    }
+
+    #[test]
+    fn a_label_takes_its_text_font_and_alignment_from_the_layout() -> anyhow::Result<()> {
+        // A Label is the control whose whole content is text, so its attributes
+        // are the ones a project tunes per language. `value` is accepted where
+        // `text` is, and the alignment is what keeps a centred line centred
+        // instead of starting at its left edge.
+        let files = one_page_project(
+            r##"<Page width="400" height="200">
+                  <Label id="version" position="absolute" left="10" top="10" width="380" height="18"
+                         value="@version_label" font-size="16" font-weight="bold"
+                         color="#CCFFFFFF" textalign="center" />
+                  <Label id="plain" position="absolute" left="10" top="40" width="100" height="18"
+                         text="plain" />
+                </Page>"##,
+            r##"{"version_label":"v2026.9.17-r2"}"##,
+        );
+        let ui = drawn_at_96(&files, &InteractionState::default())?;
+
+        assert_eq!(ui.texts.len(), 2);
+        let version = &ui.texts[0];
+        assert_eq!(visible_text(version), "v2026.9.17-r2");
+        assert_eq!(version.font_size, 16);
+        assert!(version.bold);
+        assert!(matches!(version.alignment, TextAlignment::Center));
+        // Text is drawn with the RGB part of the colour, alpha ignored.
+        assert_eq!(version.runs[0].color.0, parse_color("#FFFFFF").0);
+        // A label without an alignment starts at its own left edge, unlike a
+        // button whose text is centred by default.
+        assert!(matches!(ui.texts[1].alignment, TextAlignment::Left));
+
+        // The font size follows the display like every other measurement.
+        let scaled = drawn_for_display(&files, &InteractionState::default(), 2.0, true)?;
+        assert_eq!(scaled.texts[0].font_size, 32);
+        Ok(())
+    }
+
+    #[test]
+    fn value_sources_read_the_config_the_disk_and_the_running_step() -> anyhow::Result<()> {
+        // The three sources the guide lists. `config:` walks the project file,
+        // `disk-free:` asks Windows about the volume a field points at, and the
+        // two formats turn the number they find into text a user reads.
+        let config = serde_json::json!({
+            "project": { "version": "2026.9.17-r2" },
+            "install": { "required_space_mb": 200, "default_path": "C:\\Program Files\\Demo" }
+        });
+        let files: HashMap<String, Vec<u8>> = HashMap::new();
+        let translations = HashMap::new();
+        let mut interaction = InteractionState::default();
+        interaction
+            .text_input_values
+            .insert("editDir".to_string(), "C:\\Program Files\\Demo".to_string());
+        let context = context_for(&files, &config, &translations, &interaction);
+
+        assert_eq!(
+            resolve_value_source("config:project.version", None, &context).as_deref(),
+            Some("2026.9.17-r2")
+        );
+        assert_eq!(
+            resolve_value_source("config:install.default_path", None, &context).as_deref(),
+            Some("C:\\Program Files\\Demo")
+        );
+        // `size-mb` reads the configured mebibytes; without a format the number
+        // is shown as it stands.
+        assert_eq!(
+            resolve_value_source(
+                "config:install.required_space_mb",
+                Some("size-mb"),
+                &context
+            )
+            .as_deref(),
+            Some("200 MB")
+        );
+        assert_eq!(
+            resolve_value_source("config:install.required_space_mb", None, &context).as_deref(),
+            Some("200")
+        );
+        // A path the project file does not have has nothing to show.
+        assert_eq!(
+            resolve_value_source("config:install.missing", None, &context),
+            None
+        );
+
+        // `disk-free:` measures the volume the named field points at, and `size`
+        // formats the bytes it reports.
+        let free = disk_free_bytes(Path::new("C:\\Program Files\\Demo"))
+            .context("the demo drive reports no free space")?;
+        let formatted = format_size_bytes(free);
+        assert_eq!(
+            resolve_value_source("disk-free:editDir", Some("size"), &context).as_deref(),
+            Some(formatted.as_str())
+        );
+        // A field the user has not filled in yet has no path to measure, and a
+        // source nothing recognises resolves to nothing.
+        assert_eq!(
+            resolve_value_source("disk-free:nothing", Some("size"), &context),
+            None
+        );
+        assert_eq!(resolve_value_source("something:else", None, &context), None);
+        Ok(())
+    }
+
+    #[test]
+    fn a_bound_label_shows_its_own_text_beside_the_value_it_reads() -> anyhow::Result<()> {
+        // A layout writes a localized label and the runtime appends the value, so
+        // the same markup reads in every language: "Required: 200 MB". A source
+        // with nothing to show leaves a placeholder rather than an empty line.
+        let layout = r##"<Page width="400" height="100">
+                  <Label id="space" position="absolute" left="0" top="0" width="300" height="18"
+                         text="@required_space" value-source="config:install.required_space_mb"
+                         value-format="size-mb" />
+                  <Label id="none" position="absolute" left="0" top="20" width="300" height="18"
+                         text="@available_space" value-source="config:install.missing" />
+                </Page>"##;
+        let locale = r##"{"required_space":"Required: ","available_space":"Available: "}"##;
+        let files = one_page_project_with(
+            serde_json::json!({
+                "resources": { "locales_dir": "locales" },
+                "install": { "required_space_mb": 200 },
+                "wizard": { "pages": [{ "layout": "layouts/page.xml" }] }
+            }),
+            layout,
+            locale,
+        );
+        let ui = drawn_at_96(&files, &InteractionState::default())?;
+        assert_eq!(visible_text(&ui.texts[0]), "Required: 200 MB");
+        assert_eq!(visible_text(&ui.texts[1]), "Available: --");
+        Ok(())
+    }
+
+    #[test]
+    fn a_hidden_element_takes_its_whole_subtree_with_it() -> anyhow::Result<()> {
+        // `visible="false"` on an ancestor hides everything under it, which is how
+        // a project keeps an alternative panel out of the window until it is
+        // asked for. The rest of the page is unaffected.
+        let layout = |visible: &str| {
+            format!(
+                r##"<Page width="400" height="200">
+                  <Box id="panel" position="absolute" left="0" top="0" width="200" height="100"
+                       visible="{visible}" background="#FF303F4B">
+                    <Button id="inside" action="install" position="absolute" left="10" top="10"
+                            width="100" height="30" />
+                    <Label id="caption" position="absolute" left="10" top="50" width="100"
+                           height="18" text="caption" />
+                  </Box>
+                  <Button id="outside" action="close" position="absolute" left="10" top="120"
+                          width="100" height="30" />
+                </Page>"##
+            )
+        };
+        let ui = drawn_at_96(
+            &one_page_project(&layout("false"), "{}"),
+            &InteractionState::default(),
+        )?;
+        assert!(!ui
+            .actions
+            .iter()
+            .any(|region| matches!(region.action, WindowAction::Install)));
+        assert!(ui
+            .actions
+            .iter()
+            .any(|region| matches!(region.action, WindowAction::Close)));
+        assert!(!ui
+            .texts
+            .iter()
+            .map(visible_text)
+            .any(|text| text == "caption"));
+        // The panel's own fill is not painted either.
+        assert!(!ui
+            .layers
+            .iter()
+            .any(|layer| (layer.width, layer.height) == (200, 100)));
+
+        // The same layout with the attribute turned on draws the branch again.
+        let shown = drawn_at_96(
+            &one_page_project(&layout("true"), "{}"),
+            &InteractionState::default(),
+        )?;
+        assert!(shown
+            .actions
+            .iter()
+            .any(|region| matches!(region.action, WindowAction::Install)));
+        assert!(shown
+            .layers
+            .iter()
+            .any(|layer| (layer.width, layer.height) == (200, 100)));
+        assert!(shown
+            .texts
+            .iter()
+            .map(visible_text)
+            .any(|text| text == "caption"));
+        Ok(())
+    }
+
+    #[test]
+    fn a_panel_pair_shows_the_panel_and_only_the_control_that_fits() -> anyhow::Result<()> {
+        // `toggle_panel:<id>:show` and `:hide` are two controls on either side of
+        // the same panel: while the panel is closed the show control is the one
+        // drawn, and expanding the panel swaps them over.
+        let files = one_page_project(
+            r##"<Page width="400" height="200">
+                  <Box id="panel" position="absolute" left="0" top="40" width="400" height="80"
+                       visible="false" background="#FF303F4B" />
+                  <Button id="show" action="toggle_panel:panel:show" position="absolute"
+                          left="0" top="0" width="100" height="30" />
+                  <Button id="hide" action="toggle_panel:panel:hide" position="absolute"
+                          left="120" top="0" width="100" height="30" />
+                </Page>"##,
+            "{}",
+        );
+        let collapsed = drawn_at_96(&files, &InteractionState::default())?;
+        assert!(collapsed.actions.iter().any(|region| matches!(
+            region.action,
+            WindowAction::SetPanelVisibility { ref id, visible: true } if id == "panel"
+        )));
+        assert!(!collapsed.actions.iter().any(|region| matches!(
+            region.action,
+            WindowAction::SetPanelVisibility { visible: false, .. }
+        )));
+        assert!(!collapsed
+            .layers
+            .iter()
+            .any(|layer| (layer.width, layer.height) == (400, 80)));
+
+        let mut interaction = InteractionState::default();
+        interaction
+            .panel_visibility
+            .insert("panel".to_string(), true);
+        let expanded = drawn_at_96(&files, &interaction)?;
+        assert!(expanded.actions.iter().any(|region| matches!(
+            region.action,
+            WindowAction::SetPanelVisibility { ref id, visible: false } if id == "panel"
+        )));
+        assert!(!expanded.actions.iter().any(|region| matches!(
+            region.action,
+            WindowAction::SetPanelVisibility { visible: true, .. }
+        )));
+        assert!(expanded
+            .layers
+            .iter()
+            .any(|layer| (layer.width, layer.height) == (400, 80)));
+        Ok(())
+    }
+
+    #[test]
+    fn a_progress_bar_paints_a_rounded_track_and_follows_the_live_value() -> anyhow::Result<()> {
+        // `background` is the track and `border-radius` rounds it, so a thin bar
+        // reads as a pill. The authored `progress` is what an idle wizard shows,
+        // a running task overrides it, and the authored value comes back.
+        let mut files = one_page_project(
+            r##"<Page width="400" height="100">
+                  <ProgressBar id="bar" position="absolute" left="10" top="20" width="200"
+                               height="10" progress="40" border-radius="5"
+                               background="#FF4C5868" bar-image="assets/bar_installing.png" />
+                </Page>"##,
+            "{}",
+        );
+        files.insert(
+            "assets/bar_installing.png".to_string(),
+            example_asset("bar_installing.png"),
+        );
+
+        let idle = drawn_at_96(&files, &InteractionState::default())?;
+        assert_eq!(idle.layers.len(), 2);
+        let track = &idle.layers[0];
+        assert_eq!(
+            (track.left, track.top, track.width, track.height),
+            (10, 20, 200, 10)
+        );
+        // The rounded corner is cut away and the middle of the track is painted.
+        let alpha = |x: usize, y: usize| track.image.pixels[(y * 200 + x) * 4 + 3];
+        assert_eq!(alpha(0, 0), 0);
+        assert_eq!(alpha(100, 5), 255);
+        // 40% of the 200px control.
+        assert_eq!(idle.layers[1].width, 80);
+
+        // A task that reports its own progress takes the bar over...
+        let running = drawn_at_96(
+            &files,
+            &InteractionState {
+                progress: Some(90),
+                ..Default::default()
+            },
+        )?;
+        assert_eq!(running.layers[1].width, 180);
+        // ...and a task that has not started yet draws the track alone.
+        let waiting = drawn_at_96(
+            &files,
+            &InteractionState {
+                progress: Some(0),
+                ..Default::default()
+            },
+        )?;
+        assert_eq!(waiting.layers.len(), 1);
+
+        // With nothing running the authored value is drawn again.
+        let idle_again = drawn_at_96(&files, &InteractionState::default())?;
+        assert_eq!(idle_again.layers[1].width, 80);
+        Ok(())
+    }
+
+    #[test]
+    fn every_action_in_the_table_answers_with_its_own_window_action() {
+        // The actions table is the contract for what a layout may ask the runtime
+        // to do, so each row has to reach the action it names; a row that stopped
+        // mapping would leave its button doing nothing at all.
+        let document = roxmltree::Document::parse(
+            r#"<Page>
+                 <Button id="minimize" action="minimize" />
+                 <Button id="close" action="close" />
+                 <Button id="close_confirm" action="close_confirm" />
+                 <Button id="pick_directory" action="pick_directory" target="editDir" />
+                 <Button id="open_key" action="open_url:help" />
+                 <Button id="open_url" action="open_url:https://example.test/help" />
+                 <Button id="install" action="install" />
+                 <Button id="uninstall" action="uninstall" />
+                 <Button id="launch_app" action="launch_app" />
+                 <Button id="finish" action="finish" />
+                 <Button id="switch_language" action="switch_language" />
+                 <Button id="show_panel" action="toggle_panel:panel:show" />
+                 <Button id="hide_panel" action="toggle_panel:panel:hide" />
+                 <Button id="dialog_ok" action="dialog_ok" />
+                 <Button id="dialog_cancel" action="dialog_cancel" />
+                 <Button id="invented" action="not_a_real_action" />
+               </Page>"#,
+        )
+        .expect("layout parses");
+        let config = serde_json::json!({
+            "links": { "help": "https://example.test/help" }
+        });
+        let files: HashMap<String, Vec<u8>> = HashMap::new();
+        let translations = HashMap::new();
+        let interaction = InteractionState::default();
+        let context = context_for(&files, &config, &translations, &interaction);
+        let action = |id: &str| -> Option<WindowAction> {
+            let mut actions = Vec::new();
+            push_action(
+                node_with_id(&document, id),
+                LayerRect {
+                    left: 0,
+                    top: 0,
+                    width: 10,
+                    height: 10,
+                },
+                &mut actions,
+                &context,
+            );
+            actions.into_iter().next().map(|region| region.action)
+        };
+
+        assert!(matches!(action("minimize"), Some(WindowAction::Minimize)));
+        assert!(matches!(action("close"), Some(WindowAction::Close)));
+        assert!(matches!(
+            action("close_confirm"),
+            Some(WindowAction::CloseConfirm)
+        ));
+        assert!(matches!(
+            action("pick_directory"),
+            Some(WindowAction::PickDirectory { ref id }) if id == "editDir"
+        ));
+        assert!(matches!(
+            action("open_key"),
+            Some(WindowAction::OpenLink(ref target)) if target == "https://example.test/help"
+        ));
+        assert!(matches!(
+            action("open_url"),
+            Some(WindowAction::OpenLink(ref target)) if target == "https://example.test/help"
+        ));
+        assert!(matches!(action("install"), Some(WindowAction::Install)));
+        assert!(matches!(action("uninstall"), Some(WindowAction::Uninstall)));
+        assert!(matches!(
+            action("launch_app"),
+            Some(WindowAction::LaunchApp)
+        ));
+        // The finish page closes the wizard, which is the same action as `close`.
+        assert!(matches!(action("finish"), Some(WindowAction::Close)));
+        assert!(matches!(
+            action("switch_language"),
+            Some(WindowAction::ToggleLanguageMenu)
+        ));
+        assert!(matches!(
+            action("show_panel"),
+            Some(WindowAction::SetPanelVisibility { ref id, visible: true }) if id == "panel"
+        ));
+        assert!(matches!(
+            action("hide_panel"),
+            Some(WindowAction::SetPanelVisibility { ref id, visible: false }) if id == "panel"
+        ));
+        assert!(matches!(action("dialog_ok"), Some(WindowAction::DialogOk)));
+        assert!(matches!(
+            action("dialog_cancel"),
+            Some(WindowAction::DialogCancel)
+        ));
+        // A row nothing implements leaves the control inert rather than closing
+        // the wizard by accident.
+        assert!(action("invented").is_none());
+    }
+
+    #[test]
+    fn an_element_answers_the_pointer_only_when_it_declares_an_action() -> anyhow::Result<()> {
+        // The guide's rule for promoting artwork or a label into a link: without
+        // an `action` a control is inert even when it covers a clickable area,
+        // which is what stops a decoration from swallowing a click.
+        let mut files = one_page_project(
+            r##"<Page width="400" height="200">
+                  <Label id="link" action="open_url:https://example.test/help"
+                         position="absolute" left="0" top="0" width="100" height="20" text="help" />
+                  <Label id="labelless" position="absolute" left="0" top="0" width="100"
+                         height="20" text="decoration" />
+                  <Image id="inert_icon" src="assets/checkbox-0.png" position="absolute"
+                         left="0" top="0" width="20" height="20" />
+                  <Button id="bare_button" position="absolute" left="0" top="0" width="40"
+                          height="20" />
+                  <Image id="picker" action="pick_directory" target="editDir" cursor="hand"
+                         src="assets/checkbox-0.png" position="absolute" left="120" top="0"
+                         width="20" height="20" />
+                </Page>"##,
+            "{}",
+        );
+        files.insert(
+            "assets/checkbox-0.png".to_string(),
+            example_asset("checkbox-0.png"),
+        );
+        let ui = drawn_at_96(&files, &InteractionState::default())?;
+
+        // Only the two controls that declare an action are in the list, even
+        // though the others are drawn on top of the same spot.
+        assert_eq!(ui.actions.len(), 2);
+        assert!(ui.actions.iter().any(|region| matches!(
+            region.action,
+            WindowAction::OpenLink(ref target) if target == "https://example.test/help"
+        )));
+        assert!(ui.actions.iter().any(|region| matches!(
+            region.action,
+            WindowAction::PickDirectory { ref id } if id == "editDir"
+        )));
+        // The artwork is still drawn where the layout put it.
+        assert!(ui
+            .layers
+            .iter()
+            .any(|layer| (layer.width, layer.height) == (20, 20)));
+
+        // A button that is in a flow container is clickable through the action it
+        // declares; a select answers with the language menu, which is not an
+        // `action` attribute value on a plain control.
+        let files = one_page_project(
+            r##"<Page width="400" height="200">
+                  <Select id="lang" action="switch_language" position="absolute" left="0" top="0"
+                          width="96" height="26">
+                    <Option value="zh-CN" text="简体中文" />
+                    <Option value="en-US" text="English" />
+                  </Select>
+                </Page>"##,
+            "{}",
+        );
+        let ui = drawn_at_96(&files, &InteractionState::default())?;
+        assert!(ui
+            .actions
+            .iter()
+            .any(|region| matches!(region.action, WindowAction::ToggleLanguageMenu)));
+        // The list the arrow keys walk is the layout's own option order.
+        assert_eq!(ui.language_options, ["zh-CN", "en-US"]);
+        Ok(())
+    }
+
+    /// A checkbox that is given coordinates behaves like one in a flow: it draws
+    /// the image for its state, and it registers the click that flips that state.
+    ///
+    /// The shipped uninstall page places its keep-data box absolutely, so a
+    /// page-level checkbox that reached neither the image nor the click region
+    /// left that box drawn as a caption that nobody could toggle.
+    #[test]
+    fn an_absolutely_placed_checkbox_draws_its_state_image_and_toggles() -> anyhow::Result<()> {
+        let project = |checked: &str| {
+            let mut files = one_page_project(
+                &format!(
+                    r##"<Page width="400" height="200">
+                          <Checkbox id="chkKeep" text="Keep my data" checked="{checked}"
+                                    position="absolute" left="20" top="30" width="240" height="20"
+                                    unchecked-image="file='assets/checkbox-0.png' dest='0,1,16,17'"
+                                    checked-image="file='assets/checkbox-2.png' dest='0,1,16,17'" />
+                        </Page>"##
+                ),
+                "{}",
+            );
+            for name in ["checkbox-0.png", "checkbox-2.png"] {
+                files.insert(format!("assets/{name}"), example_asset(name));
+            }
+            files
+        };
+
+        let checked = drawn_at_96(&project("true"), &InteractionState::default())?;
+        let unchecked = drawn_at_96(&project("false"), &InteractionState::default())?;
+
+        // Flipping a checkbox is a click, so the region and the state it reports
+        // have to be there for a box the layout gave coordinates to.
+        let region = checked
+            .actions
+            .iter()
+            .find(|region| matches!(region.action, WindowAction::ToggleCheckbox { .. }))
+            .context("an absolutely placed checkbox registers no click")?;
+        assert!(matches!(
+            &region.action,
+            WindowAction::ToggleCheckbox { id, checked } if id == "chkKeep" && *checked
+        ));
+        assert_eq!(
+            (region.left, region.top, region.right, region.bottom),
+            (20, 30, 260, 50),
+            "the region does not cover the control"
+        );
+
+        // The state chooses the artwork, so the two runs cannot draw the same
+        // pixels where the box is.
+        let artwork = |ui: &RuntimeUi| {
+            ui.layers
+                .iter()
+                .map(|layer| layer.image.pixels.clone())
+                .collect::<Vec<_>>()
+        };
+        assert!(
+            !checked.layers.is_empty(),
+            "the checkbox drew no state image"
+        );
+        assert_ne!(
+            artwork(&checked),
+            artwork(&unchecked),
+            "both states drew the same artwork"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn a_closed_language_select_draws_its_arrow_over_its_fill_and_outline() -> anyhow::Result<()> {
+        // The select is the one control a project skins with three pieces: a fill,
+        // an outline, and the arrow that says the list opens. The arrow sits in
+        // from the far edge and is centred, and both move with the display like
+        // every other measurement in the layout.
+        let markup = r##"<Page width="400" height="200">
+                  <Select id="lang" action="switch_language" position="absolute" left="10" top="10"
+                          width="96" height="26" background="#FF303F4B" border-color="#1AFFFFFF"
+                          border-width="1" border-radius="8" font-size="12"
+                          dropdown-image="assets/select-arrow.png"
+                          dropdown-open-image="assets/select-arrow-up.png"
+                          dropdown-image-width="8" dropdown-image-height="6">
+                    <Option value="zh-CN" text="简体中文" />
+                    <Option value="en-US" text="English" />
+                  </Select>
+                </Page>"##;
+        let mut files = one_page_project(markup, "{}");
+        files.insert(
+            "assets/select-arrow.png".to_string(),
+            example_asset("select-arrow.png"),
+        );
+        files.insert(
+            "assets/select-arrow-up.png".to_string(),
+            example_asset("select-arrow-up.png"),
+        );
+        // The second locale the layout offers, so the select can be read in it.
+        files.insert("locales/en-US.json".to_string(), b"{}".to_vec());
+
+        let ui = drawn_at_96(&files, &InteractionState::default())?;
+        // The fill, the outline over it, then the arrow: 10px in from the far
+        // edge, centred vertically in the control.
+        assert_eq!(ui.layers.len(), 3);
+        let fill = &ui.layers[0];
+        assert_eq!(
+            (fill.left, fill.top, fill.width, fill.height),
+            (10, 10, 96, 26)
+        );
+        assert_eq!((ui.layers[1].width, ui.layers[1].height), (96, 26));
+        let arrow = &ui.layers[2];
+        assert_eq!(
+            (arrow.left, arrow.top, arrow.width, arrow.height),
+            (10 + 96 - 8 - 10, 10 + (26 - 6) / 2, 8, 6)
+        );
+        // The arrow pointing down is the one a closed list shows.
+        let down = super::decode_image(&example_asset("select-arrow.png"))?;
+        assert_eq!(arrow.image.pixels, down.pixels);
+        // The option in use is the text the select reads, not the first one.
+        assert_eq!(visible_text(&ui.texts[0]), "简体中文");
+        assert_eq!(visible_text(&english_select(&files)?.texts[0]), "English");
+
+        // An open list points the other way, and a scaled display draws the arrow
+        // at twice the size, twice the inset from the edge.
+        let open = load_layout(
+            &files,
+            DpiContext {
+                scale: 1.0,
+                use_2x: false,
+            },
+            "zh-CN",
+            true,
+            &InteractionState::default(),
+            RuntimeMode::Installer,
+        )?;
+        let arrow = &open.layers[2];
+        let up = super::decode_image(&example_asset("select-arrow-up.png"))?;
+        assert_eq!(arrow.image.pixels, up.pixels);
+        let scaled = drawn_for_display(&files, &InteractionState::default(), 2.0, true)?;
+        let arrow = &scaled.layers[2];
+        assert_eq!(
+            (arrow.left, arrow.top, arrow.width, arrow.height),
+            (2 * (10 + 96 - 8 - 10), 2 * (10 + (26 - 6) / 2), 16, 12)
+        );
+        Ok(())
+    }
+
+    /// The same select read in another locale, so the text on it is the language
+    /// the wizard is running in rather than the first option in the layout.
+    fn english_select(files: &HashMap<String, Vec<u8>>) -> anyhow::Result<RuntimeUi> {
+        load_layout(
+            files,
+            DpiContext {
+                scale: 1.0,
+                use_2x: false,
+            },
+            "en-US",
+            false,
+            &InteractionState::default(),
+            RuntimeMode::Installer,
+        )
+    }
+
+    /// The colour a solid layer is filled with, read at its middle.
+    ///
+    /// A fill is drawn inside a rounded rectangle, so its corners stay clear;
+    /// the middle is the one pixel a radius can never clip away.
+    fn fill_color(layer: &ImageLayer) -> [u8; 4] {
+        let x = layer.image.width as usize / 2;
+        let y = layer.image.height as usize / 2;
+        let offset = (y * layer.image.width as usize + x) * 4;
+        [
+            layer.image.pixels[offset],
+            layer.image.pixels[offset + 1],
+            layer.image.pixels[offset + 2],
+            layer.image.pixels[offset + 3],
+        ]
+    }
+
+    #[test]
+    fn a_language_menu_lists_its_options_and_marks_the_one_in_use() -> anyhow::Result<()> {
+        // The menu is drawn over the page, one row per option, and the row of the
+        // language being read is filled so the list says where the user is. The
+        // highlight a user moves with the arrow keys takes over that fill, and
+        // falls back to it when the layout reserves no colour of its own.
+        let markup = |highlight: &str| {
+            format!(
+                r##"<Page width="400" height="200">
+                  <Select id="lang" action="switch_language" position="absolute" left="10" top="10"
+                          width="96" height="26" background="#FF303F4B" font-size="12"
+                          popup-width="127" popup-row-height="26" popup-padding="2"
+                          popup-background="#FF42515E"
+                          popup-selected-background="#FF495A68" {highlight}>
+                    <Option value="zh-CN" text="简体中文" />
+                    <Option value="en-US" text="English" />
+                    <Option value="hidden" text="Hidden" visible="false" />
+                  </Select>
+                </Page>"##
+            )
+        };
+        let plain = one_page_project(&markup(""), "{}");
+        let with_highlight =
+            one_page_project(&markup(r##"popup-highlight-background="#FF00C4B2""##), "{}");
+        let menu = |files: &HashMap<String, Vec<u8>>, interaction: &InteractionState| {
+            load_layout(
+                files,
+                DpiContext {
+                    scale: 1.0,
+                    use_2x: false,
+                },
+                "zh-CN",
+                true,
+                interaction,
+                RuntimeMode::Installer,
+            )
+        };
+
+        let ui = menu(&plain, &InteractionState::default())?;
+        // Two options are offered, and the one hidden in the layout is not.
+        assert_eq!(ui.language_options, ["zh-CN", "en-US"]);
+        assert_eq!(ui.overlay_texts.len(), 2);
+        assert_eq!(visible_text(&ui.overlay_texts[0]), "简体中文");
+        assert_eq!(visible_text(&ui.overlay_texts[1]), "English");
+        // The popup is its own fill plus the row of the current locale, which
+        // sits one padding step inside it.
+        assert_eq!(ui.overlay_layers.len(), 2);
+        let popup = &ui.overlay_layers[0];
+        assert_eq!(
+            (popup.left, popup.top, popup.width, popup.height),
+            (10 + 96 - 127, 10 + 26 + 4, 127, 26 * 2 + 4)
+        );
+        assert_eq!(fill_color(popup), [0x5E, 0x51, 0x42, 0xFF]);
+        let current = &ui.overlay_layers[1];
+        assert_eq!(
+            (current.left, current.top, current.width, current.height),
+            (popup.left + 2, popup.top + 2, 127 - 4, 26)
+        );
+        assert_eq!(fill_color(current), [0x68, 0x5A, 0x49, 0xFF]);
+
+        // Selecting a row switches to that locale, one region per option.
+        assert!(ui.actions.iter().any(|region| matches!(
+            region.action,
+            WindowAction::SelectLanguage(ref locale) if locale == "en-US"
+        )));
+        assert_eq!(
+            ui.actions
+                .iter()
+                .filter(|region| matches!(region.action, WindowAction::SelectLanguage(_)))
+                .count(),
+            2
+        );
+
+        // The row the arrow keys moved to is filled with the highlight colour,
+        // while the language in use keeps its own.
+        let moved = InteractionState {
+            highlighted_option: Some(1),
+            ..Default::default()
+        };
+        let highlighted = menu(&with_highlight, &moved)?;
+        assert_eq!(highlighted.overlay_layers.len(), 3);
+        let row = &highlighted.overlay_layers[2];
+        assert_eq!((row.left, row.top), (popup.left + 2, popup.top + 2 + 26));
+        assert_eq!(fill_color(row), [0xB2, 0xC4, 0x00, 0xFF]);
+
+        // A layout that reserves no highlight colour gets the selected fill.
+        let fallback = menu(&plain, &moved)?;
+        assert_eq!(fallback.overlay_layers.len(), 3);
+        let row = &fallback.overlay_layers[2];
+        assert_eq!(fill_color(row), [0x68, 0x5A, 0x49, 0xFF]);
+        Ok(())
+    }
+
+    #[test]
+    fn a_dialog_button_is_drawn_from_the_question_rather_than_the_layout() -> anyhow::Result<()> {
+        // The dialog layout is written once and serves every question, so its
+        // words come from the dialog state: the question itself, the confirming
+        // label and the dismissing one. A role nothing provides draws nothing.
+        let (mut files, _) = dialog_fixture();
+        files.insert(
+            "layouts/msgBox.xml".to_string(),
+            br##"<Page width="400" height="230" background="#FF2A3844">
+                 <Label id="lblMsg" text="placeholder" value-source="dialog:message" width="336" height="24" />
+                 <Button id="btnCancel" action="dialog_cancel" visible-with="dismiss"
+                         text="@cancel" value-source="dialog:dismiss" width="160" height="40" />
+                 <Button id="btnOK" action="dialog_ok" text="@ok" value-source="dialog:accept"
+                         width="160" height="40" />
+                 <Button id="btnOdd" action="dialog_ok" text="@ok" value-source="dialog:something"
+                         width="160" height="40" />
+                 <Label id="lblOdd" text="placeholder" value-source="dialog:something"
+                        width="160" height="24" />
+               </Page>"##
+                .to_vec(),
+        );
+        let question = DialogState {
+            kind: DialogKind::CloseConfirm,
+            message: "Discard the download?".to_string(),
+            accept_label: "Continue".to_string(),
+            dismiss_label: "Stay here".to_string(),
+        };
+        let ui = load_layout(
+            &files,
+            DpiContext {
+                scale: 1.0,
+                use_2x: false,
+            },
+            "zh-CN",
+            false,
+            &interaction_with_dialog(question),
+            RuntimeMode::Installer,
+        )?;
+        let texts: Vec<String> = ui.overlay_texts.iter().map(visible_text).collect();
+
+        // The words come from the dialog, not from the locale table the layout
+        // would otherwise read `@ok` and `@cancel` from.
+        assert!(texts.iter().any(|text| text == "Discard the download?"));
+        assert!(texts.iter().any(|text| text == "Continue"));
+        assert!(texts.iter().any(|text| text == "Stay here"));
+        assert!(!texts.iter().any(|text| text == "Exit"));
+        assert!(!texts.iter().any(|text| text == "Keep going"));
+        // A role the dialog does not answer leaves its control with no text, and
+        // the authored placeholder is not shown in its place.
+        assert!(!texts.iter().any(|text| text == "placeholder"));
+        Ok(())
+    }
+
+    #[test]
+    fn a_link_the_project_does_not_configure_stays_plain_text() -> anyhow::Result<()> {
+        // The guide's resolution order ends with a target that resolves to nothing
+        // staying plain text: the words are still shown and nothing happens when
+        // they are clicked, rather than the label failing to draw.
+        let config = serde_json::json!({
+            "resources": { "locales_dir": "locales" },
+            "links": { "terms_of_service": "https://example.test/terms" },
+            "wizard": { "pages": [{ "layout": "layouts/page.xml" }] }
+        });
+        let files = one_page_project_with(
+            config,
+            r##"<Page width="400" height="100">
+                  <Label id="terms" linkcolor="#00C4B2" color="#CCFFFFFF"
+                         position="absolute" left="0" top="0" width="380" height="20"
+                         text="read [the terms](agreement) and [the notes](missing)" />
+                </Page>"##,
+            "{}",
+        );
+        let ui = drawn_at_96(&files, &InteractionState::default())?;
+
+        let runs = &ui.texts[0].runs;
+        assert_eq!(runs.len(), 4);
+        // The historical alias reaches the configured URL...
+        assert_eq!(runs[1].text, "the terms");
+        assert_eq!(runs[1].link.as_deref(), Some("https://example.test/terms"));
+        // ...while a name the project does not carry stays a plain run: the words
+        // are there, and they are not a click target.
+        assert_eq!(runs[3].text, "the notes");
+        assert_eq!(runs[3].link, None);
+        assert_eq!(ui.text_hits.len(), 1);
+        assert!(matches!(
+            ui.text_hits[0].action,
+            WindowAction::OpenLink(ref target) if target == "https://example.test/terms"
+        ));
+        // The whole sentence is drawn, link markup and all.
+        assert_eq!(visible_text(&ui.texts[0]), "read the terms and the notes");
+        Ok(())
+    }
+
+    #[test]
+    fn pick_directory_writes_to_the_field_the_page_offers_it() {
+        // `target` names the field; without one the first writable TextInput is
+        // used, a readonly field only as a last resort, and a page that declares
+        // no field at all falls back to the one the runtime has recorded.
+        let mut interaction = InteractionState::default();
+        interaction
+            .text_input_values
+            .insert("editDir".to_string(), "C:\\Program Files\\Demo".to_string());
+
+        // The target wins over the field order.
+        let targeted = parsed_layout(
+            r#"<Page><TextInput id="first" /><Button id="browse" action="pick_directory" target="editDir" /></Page>"#,
+        );
+        assert_eq!(
+            pick_directory_target(node_with_id(&targeted, "browse"), &interaction).as_deref(),
+            Some("editDir")
+        );
+        // Without one, the first field the user can type into is used.
+        let two_fields = parsed_layout(
+            r#"<Page><TextInput id="readonly" readonly="true" /><TextInput id="writable" /><Button id="browse" action="pick_directory" /></Page>"#,
+        );
+        assert_eq!(
+            pick_directory_target(node_with_id(&two_fields, "browse"), &interaction).as_deref(),
+            Some("writable")
+        );
+        // A page whose only field is a display field still gets the path, because
+        // showing it somewhere is better than dropping the choice.
+        let display_only = parsed_layout(
+            r#"<Page><TextInput id="only" readonly="true" /><Button id="browse" action="pick_directory" /></Page>"#,
+        );
+        assert_eq!(
+            pick_directory_target(node_with_id(&display_only, "browse"), &interaction).as_deref(),
+            Some("only")
+        );
+        // A page with no field of its own falls back to what the runtime holds.
+        let no_field =
+            parsed_layout(r#"<Page><Button id="browse" action="pick_directory" /></Page>"#);
+        assert_eq!(
+            pick_directory_target(node_with_id(&no_field, "browse"), &interaction).as_deref(),
+            Some("editDir")
+        );
+    }
+
+    #[test]
+    fn text_colors_read_as_rgb_with_or_without_an_alpha_channel() {
+        // The guide says colours accept both spellings and that text drawing
+        // ignores alpha, so the two have to resolve to the same colour; anything
+        // unreadable draws white rather than nothing.
+        assert_eq!(parse_color("#00C4B2").0, parse_color("#FF00C4B2").0);
+        assert_eq!(parse_color("#FFFFFF").0, parse_color("#00FFFFFF").0);
+        let color = parse_color("#010203");
+        assert_eq!(color.0 & 0xFF, 0x01);
+        assert_eq!((color.0 >> 8) & 0xFF, 0x02);
+        assert_eq!((color.0 >> 16) & 0xFF, 0x03);
+        assert_eq!(parse_color("not a color").0, parse_color("#FFFFFF").0);
+    }
+
+    #[test]
+    fn a_typed_value_wins_over_the_bound_default() -> anyhow::Result<()> {
+        // A field bound to the project file starts at the configured path, but a
+        // value the user typed or picked has to stay on screen for the rest of
+        // the run, and the field a `disk-free:` binding reads is the same one.
+        let files = one_page_project_with(
+            serde_json::json!({
+                "resources": { "locales_dir": "locales" },
+                "install": { "default_path": "C:\\Program Files\\Demo" },
+                "wizard": { "pages": [{ "layout": "layouts/page.xml" }] }
+            }),
+            r##"<Page width="400" height="100">
+                  <TextInput id="editDir" position="absolute" left="10" top="10" width="200"
+                             height="20" value-source="config:install.default_path" />
+                </Page>"##,
+            "{}",
+        );
+        let bound = drawn_at_96(&files, &InteractionState::default())?;
+        assert_eq!(visible_text(&bound.texts[0]), "C:\\Program Files\\Demo");
+
+        let mut interaction = InteractionState::default();
+        interaction
+            .text_input_values
+            .insert("editDir".to_string(), "D:\\Games\\Demo".to_string());
+        let typed = drawn_at_96(&files, &interaction)?;
+        assert_eq!(visible_text(&typed.texts[0]), "D:\\Games\\Demo");
+        Ok(())
+    }
+
+    #[test]
+    fn a_readonly_field_shows_its_value_without_taking_edits() -> anyhow::Result<()> {
+        // `readonly="true"` is what makes a field display-only: it still draws its
+        // text, but it takes no typed characters, so it is not recorded as an
+        // editable field. `readonly="false"` says the opposite and stays editable.
+        let files = one_page_project(
+            r##"<Page width="400" height="200">
+                  <TextInput id="shown" value="C:\Program Files\Demo" readonly="true"
+                             position="absolute" left="10" top="10" width="200" height="20" />
+                  <TextInput id="editable" value="readonly=false" readonly="false"
+                             position="absolute" left="10" top="40" width="200" height="20" />
+                </Page>"##,
+            "{}",
+        );
+        let ui = drawn_at_96(&files, &InteractionState::default())?;
+        // Both fields draw their value...
+        assert_eq!(ui.texts.len(), 2);
+        assert_eq!(visible_text(&ui.texts[0]), "C:\\Program Files\\Demo");
+        // ...but only the one that accepts typing is recorded.
+        assert_eq!(ui.text_inputs.len(), 1);
+        assert_eq!(ui.text_inputs[0].id, "editable");
         Ok(())
     }
 }

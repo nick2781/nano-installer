@@ -12,5 +12,6 @@
   * [Windows compatibility](WINDOWS_COMPATIBILITY.md)
   * [Build and release](BUILD_AND_RELEASE.md)
   * [Test plan](TEST_PLAN.md)
+  * [Test coverage](TEST_COVERAGE.md)
   * [Production status](PRODUCTION_STATUS.md)
 * [中文文档](../zh-CN/README.md)

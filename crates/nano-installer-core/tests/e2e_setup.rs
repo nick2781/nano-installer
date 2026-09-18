@@ -12,17 +12,45 @@
 //! running at once cannot see each other's work.
 
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, ExitStatus, Output};
+use std::process::{Child, Command, ExitStatus, Output, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use nano_installer_core::{
     build_project, build_project_with_progress, BuildRequest, PayloadFormat,
 };
-use windows::Win32::Foundation::{BOOL, HWND, LPARAM, RECT};
+use windows::Win32::Foundation::{BOOL, HANDLE, HWND, LPARAM, RECT};
+use windows::Win32::System::Com::CoTaskMemFree;
+use windows::Win32::UI::Shell::{
+    FOLDERID_Desktop, FOLDERID_Programs, SHGetKnownFolderPath, KF_FLAG_DEFAULT,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetClassNameW, GetClientRect, GetWindowThreadProcessId, SetProcessDPIAware,
 };
+
+/// The key Windows starts a program from at sign-in.
+const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+
+/// Resolves a shell folder the way the runtime resolves it.
+///
+/// A shortcut the install wrote is looked for through the same call, so the
+/// case fails when the install put it somewhere Windows does not show rather
+/// than when it guessed a directory name.
+fn known_folder(folder: &windows::core::GUID) -> anyhow::Result<PathBuf> {
+    let raw: windows::core::PWSTR =
+        unsafe { SHGetKnownFolderPath(folder, KF_FLAG_DEFAULT, HANDLE::default()) }?;
+    let text = unsafe { raw.to_string() }?;
+    unsafe { CoTaskMemFree(Some(raw.as_ptr().cast())) };
+    Ok(PathBuf::from(text))
+}
+
+fn desktop_directory() -> anyhow::Result<PathBuf> {
+    known_folder(&FOLDERID_Desktop)
+}
+
+fn programs_directory() -> anyhow::Result<PathBuf> {
+    known_folder(&FOLDERID_Programs)
+}
 
 /// A name unique to one case in one process, so parallel cases and repeated
 /// runs do not share a registry key or an installation directory.
@@ -110,6 +138,12 @@ struct Fixture {
     setup: PathBuf,
     destination: PathBuf,
     stubs: PathBuf,
+    /// A key belonging to this case alone, for a project script to write into or
+    /// for a case to watch one value of rather than the whole uninstall entry.
+    test_key: String,
+    /// Values a case wrote into a key the machine shares, so the drop guard can
+    /// take them back even when an assertion failed before uninstall ran.
+    extra_registry_values: Vec<(String, String)>,
 }
 
 impl Fixture {
@@ -138,12 +172,14 @@ impl Fixture {
         let setup = temp.path().join("E2eProbe_Setup.exe");
         let destination = temp.path().join("installed");
         let fixture = Self {
+            test_key: format!("HKCU\\Software\\nano-installer-e2e-{id}"),
             _temp: temp,
             id,
             project,
             setup,
             destination,
             stubs,
+            extra_registry_values: Vec::new(),
         };
         fixture
             .write_project(payload, silent, include_exe)
@@ -157,7 +193,7 @@ impl Fixture {
         silent: bool,
         include_exe: bool,
     ) -> anyhow::Result<()> {
-        for directory in ["layouts", "assets", "locales", "payload"] {
+        for directory in ["layouts", "assets", "locales", "payload", "scripts"] {
             std::fs::create_dir_all(self.project.join(directory))?;
         }
         let name = "E2eProbe";
@@ -211,6 +247,9 @@ impl Fixture {
                 "pages": [{"id": "config", "layout": "layouts/configpage.xml", "title": "Options"}]
             },
             "uninstall": {"data_paths": []},
+            // A key of the case's own, so a project script has somewhere to
+            // write that is not a key a real product uses.
+            "test": {"registry_key": self.test_key},
             "advanced": {
                 "silent_mode_support": silent,
                 "update_mode_support": true,
@@ -254,6 +293,30 @@ impl Fixture {
             .next()
             .expect("the value names a directory");
         Ok(PathBuf::from(root).join(tail))
+    }
+
+    /// Rewrites the project configuration, which is how a case states the one
+    /// setting it is about without a second fixture.
+    fn edit_config(&self, edit: impl FnOnce(&mut serde_json::Value)) -> anyhow::Result<()> {
+        let path = self.project.join("installer_config.json");
+        let mut config: serde_json::Value = serde_json::from_slice(&std::fs::read(&path)?)?;
+        edit(&mut config);
+        std::fs::write(&path, serde_json::to_vec_pretty(&config)?)?;
+        Ok(())
+    }
+
+    /// Ships a project script, under the directory the builder packages.
+    fn write_script(&self, name: &str, source: &str) -> anyhow::Result<()> {
+        let scripts = self.project.join("scripts");
+        std::fs::create_dir_all(&scripts)?;
+        std::fs::write(scripts.join(name), source)?;
+        Ok(())
+    }
+
+    /// Remembers a value this case wrote into a key the machine shares.
+    fn remember_registry_value(&mut self, key: &str, name: &str) {
+        self.extra_registry_values
+            .push((key.to_string(), name.to_string()));
     }
 
     fn build(&self) -> anyhow::Result<()> {
@@ -362,6 +425,10 @@ impl Drop for Fixture {
             wait_for_removal(&self.destination);
         }
         delete_registry_key(&self.registry_key());
+        delete_registry_key(&self.test_key);
+        for (key, name) in &self.extra_registry_values {
+            delete_registry_value(key, name);
+        }
         std::fs::remove_dir_all(&self.destination).ok();
     }
 }
@@ -435,6 +502,57 @@ fn delete_registry_key(key: &str) {
         .arg(key)
         .arg("/f")
         .output();
+}
+
+/// Removes one value, leaving the key it lives in alone.
+fn delete_registry_value(key: &str, name: &str) {
+    let _ = Command::new("reg")
+        .arg("delete")
+        .arg(key)
+        .arg("/v")
+        .arg(name)
+        .arg("/f")
+        .output();
+}
+
+/// One value of a registry key, or `None` when the key or the value is absent.
+///
+/// The value may itself hold spaces, so each line is split into its columns
+/// rather than on whitespace.
+fn read_registry_string(key: &str, name: &str) -> anyhow::Result<Option<String>> {
+    let output = Command::new("reg")
+        .arg("query")
+        .arg(key)
+        .arg("/v")
+        .arg(name)
+        .output()?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    for line in text.lines() {
+        let line = line.trim();
+        let Some((found, rest)) = line.split_once("    ") else {
+            continue;
+        };
+        let Some((kind, value)) = rest.split_once("    ") else {
+            continue;
+        };
+        if kind.trim().starts_with("REG_") && found.trim().eq_ignore_ascii_case(name) {
+            return Ok(Some(value.trim().to_string()));
+        }
+    }
+    Ok(None)
+}
+
+/// Whether a key exists, which is how a case tells "the value is gone" apart
+/// from "the whole key is gone".
+fn registry_key_exists(key: &str) -> bool {
+    Command::new("reg")
+        .arg("query")
+        .arg(key)
+        .output()
+        .is_ok_and(|output| output.status.success())
 }
 
 /// Waits for the post-uninstall cleaner to remove the installation directory.
@@ -951,6 +1069,298 @@ fn a_project_without_silent_support_refuses_a_windowless_uninstall() -> anyhow::
     assert!(
         fixture.destination.join("E2eProbe.exe").is_file(),
         "the product was removed despite the refusal"
+    );
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Project scripts
+// ---------------------------------------------------------------------------
+
+/// A project that ships its own steps has them carried into the setup and run
+/// by the real runtime.
+///
+/// The in-process script tests drive the driver directly. What sits between the
+/// project folder and that driver is packaging `scripts/` into the bundle and
+/// finding it again from the stub, and a setup that loses either still passes
+/// every one of them.
+#[test]
+fn a_setup_runs_the_projects_own_install_and_uninstall_scripts() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.write_script(
+        "install.rhai",
+        r#"
+            let install_path = get_install_path();
+            if !extract_payload_with_progress(0.0, 60.0) {
+                return;
+            }
+            copy_uninstaller();
+            write_file(path_join(install_path, "script-note.txt"), "written by the project script");
+            reg_write_string(get_config_value("test.registry_key"), "InstallPath", install_path);
+            set_status_key("status.installing_uninstaller");
+            set_progress(80.0);
+        "#,
+    )?;
+    fixture.write_script("uninstall.rhai", "run_tracked_uninstall(10.0, 90.0);")?;
+    fixture.build()?;
+    fixture.install()?;
+
+    // The script's own file, the payload it extracted, and its registry value.
+    assert_eq!(
+        std::fs::read_to_string(fixture.destination.join("script-note.txt"))?,
+        "written by the project script",
+        "the project's install script never ran"
+    );
+    assert!(
+        fixture.destination.join("data/expected.bin").is_file(),
+        "extract_payload inside the script deployed nothing"
+    );
+    assert_eq!(
+        read_registry_string(&fixture.test_key, "InstallPath")?,
+        Some(fixture.destination.display().to_string()),
+        "the value the script wrote is not in the registry"
+    );
+
+    fixture.uninstall()?;
+    wait_for_removal(&fixture.destination);
+    assert!(
+        read_registry_string(&fixture.test_key, "InstallPath")?.is_none(),
+        "uninstall left the value the script wrote behind"
+    );
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Shortcuts and autostart
+// ---------------------------------------------------------------------------
+
+/// A windowless install has no checkboxes to read, so it follows the project's
+/// defaults for shortcuts and autostart, and the manifest it writes names every
+/// file and value it created outside the installation directory.
+///
+/// These entries are what the user meets before ever launching the product, and
+/// they are the only things an install writes outside its own directory. A
+/// setup that skips them still installs correctly and leaves a Start menu entry
+/// that nothing will ever take back.
+#[test]
+fn a_silent_install_writes_the_shortcuts_and_the_autostart_entry() -> anyhow::Result<()> {
+    let Some(mut fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    // Every name here is unique to this case: the files land on the real
+    // desktop and in the real Start menu, and the value lands in the Run key the
+    // rest of the machine shares, so a name another run also used would either
+    // fail this case or leave something behind.
+    let name = format!("E2eProbe-{}", fixture.id);
+    let folder = name.clone();
+    fixture.edit_config(|config| {
+        config["project"]["name"] = serde_json::Value::from(name.clone());
+        config["shortcuts"] = serde_json::json!({
+            "desktop_shortcut": true,
+            "desktop_default": true,
+            "start_menu": true,
+            "start_menu_folder": folder,
+        });
+        config["autostart"] = serde_json::json!({
+            "enabled": true,
+            "default": true,
+            "registry_key": RUN_KEY,
+            "registry_value_name": name.clone(),
+        });
+    })?;
+    fixture.remember_registry_value(RUN_KEY, &name);
+    fixture.build()?;
+    fixture.install()?;
+
+    let desktop = desktop_directory()?.join(format!("{name}.lnk"));
+    let programs = programs_directory()?.join(&name);
+    let start_menu = programs.join(format!("{name}.lnk"));
+    let uninstall_link = programs.join(format!("Uninstall {name}.lnk"));
+    assert!(
+        desktop.is_file(),
+        "the desktop shortcut is not at {}",
+        desktop.display()
+    );
+    assert!(
+        start_menu.is_file(),
+        "the Start menu shortcut is not at {}",
+        start_menu.display()
+    );
+    assert!(
+        uninstall_link.is_file(),
+        "the Start menu uninstall entry is not at {}",
+        uninstall_link.display()
+    );
+
+    // The manifest is what uninstall replays, so an artifact the manifest does
+    // not name is an artifact nothing will take back.
+    let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(
+        fixture.destination.join("nano-installer-manifest.json"),
+    )?)?;
+    let recorded: Vec<String> = manifest["shortcuts"]
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.as_str())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    for expected in [&desktop, &start_menu, &uninstall_link] {
+        let expected = expected.to_string_lossy();
+        assert!(
+            recorded
+                .iter()
+                .any(|entry| entry.eq_ignore_ascii_case(&expected)),
+            "the manifest does not list {expected}: {recorded:?}"
+        );
+    }
+    assert_eq!(
+        manifest["autostart"]["value_name"].as_str(),
+        Some(name.as_str()),
+        "the manifest does not record the autostart value it wrote"
+    );
+
+    // Windows starts this command at sign-in, so it has to name the installed
+    // executable, and quoting it is what keeps a path with a space working.
+    assert_eq!(
+        read_registry_string(RUN_KEY, &name)?,
+        Some(format!(
+            "\"{}\"",
+            fixture.destination.join("E2eProbe.exe").display()
+        )),
+        "the autostart entry does not start the installed executable"
+    );
+
+    fixture.uninstall()?;
+    wait_for_removal(&fixture.destination);
+    assert!(!desktop.exists(), "the desktop shortcut survived uninstall");
+    assert!(
+        !programs.exists(),
+        "the Start menu folder survived uninstall: {}",
+        programs.display()
+    );
+    assert!(
+        read_registry_string(RUN_KEY, &name)?.is_none(),
+        "the autostart entry survived uninstall"
+    );
+    // The Run key holds other products' entries, so uninstall removes the value
+    // it wrote and not the key around it.
+    assert!(
+        registry_key_exists(RUN_KEY),
+        "uninstall removed the Run key the machine shares"
+    );
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// A running product
+// ---------------------------------------------------------------------------
+
+/// A project can ask for running copies of its product to be closed first,
+/// which is what lets an in-place upgrade run while the application is open.
+#[test]
+fn an_install_closes_a_running_copy_of_the_product() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.edit_config(|config| {
+        config["install"]["kill_process_on_install"] = serde_json::Value::from(true);
+    })?;
+    fixture.build()?;
+
+    let stand_in = tempfile::tempdir()?;
+    let mut running = start_stand_in_product(&stand_in.path().join("product"))?;
+    // Give it the moment it needs to reach the process list the install takes
+    // its snapshot from.
+    std::thread::sleep(Duration::from_millis(500));
+    let alive = running.try_wait()?.is_none();
+
+    let installed = fixture.install();
+    let closed = wait_for_exit(&mut running, Duration::from_secs(30));
+    let _ = running.kill();
+
+    // A stand-in that died on its own would make "the install closed it" true
+    // for the wrong reason, so that is reported before anything else.
+    anyhow::ensure!(alive, "the stand-in product exited before the install ran");
+    installed?;
+    assert!(
+        closed,
+        "the install left a running copy of the product alone"
+    );
+    assert!(
+        fixture.destination.join("E2eProbe.exe").is_file(),
+        "the product was not installed after the running copy was closed"
+    );
+    Ok(())
+}
+
+/// Starts a process whose image name is the one the payload deploys.
+///
+/// Only the file name matters, because that is what the runtime matches on.
+/// `ping` is copied because it is on every Windows and keeps running for as long
+/// as it is asked to, so the case can tell "the install closed it" apart from
+/// "it was never running".
+fn start_stand_in_product(directory: &Path) -> anyhow::Result<Child> {
+    let system_root = std::env::var("SystemRoot")?;
+    std::fs::create_dir_all(directory)?;
+    let image = directory.join("E2eProbe.exe");
+    std::fs::copy(Path::new(&system_root).join("System32/ping.exe"), &image)?;
+    let child = Command::new(&image)
+        .arg("-n")
+        .arg("120")
+        .arg("127.0.0.1")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+    Ok(child)
+}
+
+/// Waits for a process to end, which is what the install is supposed to bring
+/// about.
+fn wait_for_exit(child: &mut Child, timeout: Duration) -> bool {
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        if child.try_wait().ok().flatten().is_some() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    false
+}
+
+// ---------------------------------------------------------------------------
+// A payload that cannot be installed
+// ---------------------------------------------------------------------------
+
+/// `install.exe_name` names the application the payload has to contain. A setup
+/// that deployed a payload without it would install a product that cannot
+/// start, so the run stops before it writes anything at all.
+#[test]
+fn a_payload_without_the_declared_executable_is_refused() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, false) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.build()?;
+
+    let result = fixture.install_expecting_failure()?;
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("E2eProbe.exe"),
+        "the failure should name the missing executable: {stderr}"
+    );
+    assert!(
+        !fixture.destination.exists(),
+        "a refused install still created {}",
+        fixture.destination.display()
     );
     Ok(())
 }

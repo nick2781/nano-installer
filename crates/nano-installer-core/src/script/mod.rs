@@ -453,7 +453,7 @@ mod tests {
             let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(
                 self.destination.join(install::MANIFEST_NAME),
             )?)?;
-            run_uninstall(UninstallRequest {
+            let result = run_uninstall(UninstallRequest {
                 uninstaller: self.destination.join("uninst.exe"),
                 bundle,
                 config: self.config.clone(),
@@ -463,7 +463,40 @@ mod tests {
                 stage: self.stage()?,
                 root,
                 registry_path,
-            })
+            });
+            remove_cleanup_helpers();
+            result
+        }
+    }
+
+    /// Removes the cleanup-helper copies this test process left behind.
+    ///
+    /// A finished uninstall copies its own image into the temporary directory
+    /// and starts it with `--cleanup`, because Windows will not let a process
+    /// delete the image it runs from. In the product that copy is the
+    /// uninstaller, and it deletes itself when it is done; here it is the test
+    /// binary, which knows no such flag, exits, and leaves a copy of itself
+    /// behind on every uninstall. Nothing here fails a case: a copy that is
+    /// still starting is simply tried again.
+    fn remove_cleanup_helpers() {
+        let prefix = format!("nano-installer-cleanup-{}-", std::process::id());
+        for _ in 0..40 {
+            let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else {
+                return;
+            };
+            let mut left = 0;
+            for entry in entries.flatten() {
+                if !entry.file_name().to_string_lossy().starts_with(&prefix) {
+                    continue;
+                }
+                if std::fs::remove_file(entry.path()).is_err() {
+                    left += 1;
+                }
+            }
+            if left == 0 {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
         }
     }
 
@@ -604,6 +637,901 @@ mod tests {
             std::fs::read_to_string(fixture.destination.join("replayed.txt"))?,
             "false"
         );
+        Ok(())
+    }
+
+    // The tests below cover the primitives the scripts above never call. Each
+    // one needs the same two things: a way to see what a primitive returned, and
+    // a way to leave the machine as it was found.
+
+    /// A name no other test in this process, and no real product on the
+    /// machine, is using.
+    fn unique_name(prefix: &str) -> String {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        format!(
+            "{prefix}-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        )
+    }
+
+    /// A Rust string as a Rhai string literal, so a Windows path or registry key
+    /// survives being embedded in a script.
+    fn literal(value: &str) -> String {
+        format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+    }
+
+    /// An install script that deploys the executable every fixture needs, with
+    /// `body` appended to it.
+    ///
+    /// The driver refuses an install that never deploys `App.exe`, so a script
+    /// written to exercise one primitive would otherwise fail for a missing
+    /// file instead.
+    fn deploying_script(body: &str) -> String {
+        format!(
+            r#"
+            let install_path = get_install_path();
+            copy_uninstaller();
+            write_file(path_join(install_path, "App.exe"), "app");
+            {body}
+            "#
+        )
+    }
+
+    /// The manifest an install wrote, as the uninstaller reads it.
+    fn manifest(fixture: &Fixture) -> Result<serde_json::Value> {
+        Ok(serde_json::from_slice(&std::fs::read(
+            fixture.destination.join(install::MANIFEST_NAME),
+        )?)?)
+    }
+
+    /// The `name=value` lines a script reported, so a test can compare several
+    /// values it cannot know in advance.
+    fn observations(text: &str) -> std::collections::BTreeMap<String, String> {
+        text.lines()
+            .filter_map(|line| line.split_once('='))
+            .map(|(name, value)| (name.to_string(), value.to_string()))
+            .collect()
+    }
+
+    /// The file a script writes its observations into.
+    ///
+    /// It sits in the temporary directory rather than in the fixture, so the
+    /// same script can report from an uninstall as well, and the guard removes
+    /// it whether the test passed or failed.
+    struct Observation(PathBuf);
+
+    impl Observation {
+        fn new(label: &str) -> Self {
+            Self(std::env::temp_dir().join(format!("{}.txt", unique_name(label))))
+        }
+
+        /// This file as a Rhai string literal, for embedding in a script.
+        fn script_path(&self) -> String {
+            literal(&self.0.to_string_lossy())
+        }
+
+        fn text(&self) -> Result<String> {
+            Ok(std::fs::read_to_string(&self.0)?)
+        }
+    }
+
+    impl Drop for Observation {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+
+    /// Paths a test created in the user profile.
+    ///
+    /// Shortcuts and Start Menu folders are real files the machine keeps, so the
+    /// guard removes them however the test ends: a failing assertion must not
+    /// leave the desktop or the Start Menu littered.
+    #[derive(Default)]
+    struct ProfileCleanup(Vec<PathBuf>);
+
+    impl ProfileCleanup {
+        fn keep(&mut self, path: PathBuf) {
+            self.0.push(path);
+        }
+    }
+
+    impl Drop for ProfileCleanup {
+        fn drop(&mut self) {
+            for path in self.0.iter().rev() {
+                let _ = std::fs::remove_file(path);
+                let _ = std::fs::remove_dir_all(path);
+            }
+        }
+    }
+
+    /// A value a test wrote into a key it shares with the machine.
+    ///
+    /// The uninstall removes it again, but an assertion can fail before that
+    /// happens, so the guard deletes it either way. The key itself is never
+    /// touched: it belongs to Windows.
+    struct TestRegistryValue {
+        key: String,
+        name: String,
+    }
+
+    impl Drop for TestRegistryValue {
+        fn drop(&mut self) {
+            let Ok((root, path)) = install::registry_path(&self.key) else {
+                return;
+            };
+            let _ = install::delete_registry_value(root, &path, &self.name);
+        }
+    }
+
+    /// The `REG_DWORD` under `key`, read back the way any other program would.
+    ///
+    /// `reg_read` only reads `REG_SZ`, so a dword a script wrote needs the
+    /// registry API itself to be checked.
+    fn read_dword(key: &str, name: &str) -> Result<u32> {
+        use windows::Win32::System::Registry::{
+            RegCloseKey, RegOpenKeyExW, RegQueryValueExW, KEY_QUERY_VALUE, REG_DWORD,
+            REG_VALUE_TYPE,
+        };
+
+        let (root, path) = install::registry_path(key)?;
+        let mut handle = Default::default();
+        let opened = unsafe {
+            RegOpenKeyExW(
+                root,
+                PCWSTR(install::wide(&path).as_ptr()),
+                0,
+                KEY_QUERY_VALUE,
+                &mut handle,
+            )
+        };
+        opened.ok().context("the script created its registry key")?;
+        let mut kind = REG_VALUE_TYPE::default();
+        let mut value = 0u32;
+        let mut size = std::mem::size_of::<u32>() as u32;
+        let status = unsafe {
+            RegQueryValueExW(
+                handle,
+                PCWSTR(install::wide(name).as_ptr()),
+                None,
+                Some(&mut kind),
+                Some(&mut value as *mut u32 as *mut u8),
+                Some(&mut size),
+            )
+        };
+        unsafe {
+            let _ = RegCloseKey(handle);
+        }
+        status.ok()?;
+        assert_eq!(kind, REG_DWORD);
+        Ok(value)
+    }
+
+    /// The drive root the temporary directory sits on, such as `C:\`.
+    fn temp_drive_root() -> String {
+        let temp = std::env::temp_dir();
+        let prefix = temp
+            .components()
+            .next()
+            .expect("the temporary directory names a drive");
+        format!("{}\\", prefix.as_os_str().to_string_lossy())
+    }
+
+    /// A key Windows and other products also write into, so a script that writes
+    /// here owns only the value it puts in it, never the key.
+    const SHARED_RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+
+    #[test]
+    fn every_log_level_reaches_the_failure_the_wizard_shows() -> Result<()> {
+        let fixture = fixture(
+            &deploying_script(
+                r#"
+                log_info("step one");
+                log_warn("step two");
+                log_error("step three");
+                throw "the project script gave up";
+                "#,
+            ),
+            "",
+        )?;
+        let error = fixture.install().expect_err("the script threw");
+
+        // A project author sees the wizard's error box and nothing else, so all
+        // three levels have to travel with it; a level that wrote nowhere would
+        // leave them guessing which step failed and why.
+        let text = error.to_string();
+        assert!(text.contains("info: step one"), "{text}");
+        assert!(text.contains("warn: step two"), "{text}");
+        assert!(text.contains("error: step three"), "{text}");
+        Ok(())
+    }
+
+    #[test]
+    fn file_primitives_create_copy_list_and_remove_files() -> Result<()> {
+        let report = Observation::new("script-file-primitives");
+        let fixture = fixture(
+            &deploying_script(&format!(
+                r#"
+                let docs = path_join(install_path, "docs");
+                let notes = path_join(docs, "notes.txt");
+                let missing = path_join(install_path, "missing.txt");
+                let copy = path_join(docs, "copy.txt");
+                let report = "";
+                report += "create_dir=" + create_dir(docs).to_string() + "\n";
+                report += "write_notes=" + write_file(notes, "hello").to_string() + "\n";
+                report += "write_a=" + write_file(path_join(docs, "a.txt"), "a").to_string() + "\n";
+                report += "write_b=" + write_file(path_join(docs, "b.txt"), "b").to_string() + "\n";
+                report += "exists=" + file_exists(notes).to_string() + "\n";
+                report += "missing_exists=" + file_exists(missing).to_string() + "\n";
+                report += "is_dir=" + is_dir(docs).to_string() + "\n";
+                report += "file_is_dir=" + is_dir(notes).to_string() + "\n";
+                report += "size=" + get_file_size(notes).to_string() + "\n";
+                report += "missing_size=" + get_file_size(missing).to_string() + "\n";
+                report += "text=" + read_text_file(notes) + "\n";
+                report += "missing_text=" + read_text_file(missing) + "\n";
+                let entries = list_dir(docs);
+                report += "list_count=" + entries.len().to_string() + "\n";
+                report += "lists_b=" + entries.contains("b.txt").to_string() + "\n";
+                report += "missing_list_count=" + list_dir(missing).len().to_string() + "\n";
+                report += "copied=" + copy_file(notes, copy).to_string() + "\n";
+                report += "copied_text=" + read_text_file(copy) + "\n";
+                report += "deleted=" + delete_file(path_join(docs, "a.txt")).to_string() + "\n";
+                report += "deleted_exists=" + file_exists(path_join(docs, "a.txt")).to_string() + "\n";
+                report += "delete_again=" + delete_file(path_join(docs, "a.txt")).to_string() + "\n";
+                report += "removed_dir=" + delete_dir(docs).to_string() + "\n";
+                report += "dir_gone=" + is_dir(docs).to_string() + "\n";
+                report += "relative_refused=" + delete_dir("docs").to_string() + "\n";
+                write_file({}, report);
+                "#,
+                report.script_path()
+            )),
+            "",
+        )?;
+        fixture.install()?;
+
+        // Every value a primitive produced is compared, not only the one the
+        // test is named after: the empty read, the missing-file size, or a
+        // deletion that stops being idempotent is what breaks a project script.
+        assert_eq!(
+            report.text()?,
+            concat!(
+                "create_dir=true\n",
+                "write_notes=true\n",
+                "write_a=true\n",
+                "write_b=true\n",
+                "exists=true\n",
+                "missing_exists=false\n",
+                "is_dir=true\n",
+                "file_is_dir=false\n",
+                "size=5\n",
+                "missing_size=-1\n",
+                "text=hello\n",
+                "missing_text=\n",
+                "list_count=3\n",
+                "lists_b=true\n",
+                "missing_list_count=0\n",
+                "copied=true\n",
+                "copied_text=hello\n",
+                "deleted=true\n",
+                "deleted_exists=false\n",
+                "delete_again=true\n",
+                "removed_dir=true\n",
+                "dir_gone=false\n",
+                // A relative path names nothing the script can be held to, so
+                // the recursive delete refuses it instead of guessing.
+                "relative_refused=false\n",
+            )
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn path_primitives_join_split_and_name_paths() -> Result<()> {
+        let report = Observation::new("script-path-primitives");
+        let fixture = fixture(
+            &deploying_script(&format!(
+                r#"
+                let nested = path_join(install_path, "sub/file.txt");
+                let report = "";
+                report += "join=" + nested + "\n";
+                report += "parent=" + path_parent(nested) + "\n";
+                report += "filename=" + path_filename(nested) + "\n";
+                report += "bare_parent=" + path_parent("App.exe") + "\n";
+                report += "directory=" + path_filename(install_path) + "\n";
+                report += "temp=" + get_temp_path() + "\n";
+                write_file({}, report);
+                "#,
+                report.script_path()
+            )),
+            "",
+        )?;
+        fixture.install()?;
+
+        assert_eq!(
+            report.text()?,
+            format!(
+                "join={destination}\\sub/file.txt\n\
+                 parent={destination}\\sub\n\
+                 filename=file.txt\n\
+                 bare_parent=\n\
+                 directory=installed\n\
+                 temp={temp}\n",
+                destination = fixture.destination.display(),
+                temp = std::env::temp_dir().display(),
+            )
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn registry_primitives_round_trip_and_forget_a_key_they_created() -> Result<()> {
+        let report = Observation::new("script-registry");
+        let fixture = fixture(
+            &deploying_script(&format!(
+                r#"
+                let key = get_config_value("test.registry_key");
+                let branch = key + "\\branch";
+                let report = "";
+                report += "absent=" + reg_key_exists(key).to_string() + "\n";
+                report += "absent_read=" + reg_read(key, "Name") + "\n";
+                report += "name_write=" + reg_write_string(key, "Name", "value").to_string() + "\n";
+                report += "name_read=" + reg_read(key, "Name") + "\n";
+                report += "missing_read=" + reg_read(key, "Missing") + "\n";
+                report += "dword_write=" + reg_write_dword(key, "Keep", 9).to_string() + "\n";
+                report += "dword_read=" + reg_read(key, "Keep") + "\n";
+                report += "exists=" + reg_key_exists(key).to_string() + "\n";
+                report += "branch_write=" + reg_write_string(branch, "Branch", "x").to_string() + "\n";
+                report += "branch_exists=" + reg_key_exists(branch).to_string() + "\n";
+                report += "branch_read=" + reg_read(branch, "Branch") + "\n";
+                report += "temp_write=" + reg_write_string(branch, "Temp", "x").to_string() + "\n";
+                report += "value_delete=" + reg_delete_value(branch, "Temp").to_string() + "\n";
+                report += "temp_read=" + reg_read(branch, "Temp") + "\n";
+                report += "branch_survives=" + reg_read(branch, "Branch") + "\n";
+                report += "key_delete=" + reg_delete_key(branch).to_string() + "\n";
+                report += "branch_gone=" + reg_key_exists(branch).to_string() + "\n";
+                report += "key_survives=" + reg_key_exists(key).to_string() + "\n";
+                write_file({}, report);
+                "#,
+                report.script_path()
+            )),
+            "",
+        )?;
+        fixture.install()?;
+
+        assert_eq!(
+            report.text()?,
+            concat!(
+                "absent=false\n",
+                "absent_read=\n",
+                "name_write=true\n",
+                "name_read=value\n",
+                "missing_read=\n",
+                "dword_write=true\n",
+                // `reg_read` reads `REG_SZ`, so a dword is not a value it can
+                // hand back; the test reads that one through the registry API.
+                "dword_read=\n",
+                "exists=true\n",
+                "branch_write=true\n",
+                "branch_exists=true\n",
+                "branch_read=x\n",
+                "temp_write=true\n",
+                // Deleting one value leaves the key and its other values alone,
+                // which is what makes the primitive safe on a shared key.
+                "value_delete=true\n",
+                "temp_read=\n",
+                "branch_survives=x\n",
+                "key_delete=true\n",
+                "branch_gone=false\n",
+                "key_survives=true\n",
+            )
+        );
+
+        let key = fixture.registry_key.clone();
+        let branch = format!("{key}\\branch");
+        assert_eq!(
+            install::read_registry_string(HKEY_CURRENT_USER, &subkey(&key), "Name")?,
+            Some("value".to_string())
+        );
+        assert_eq!(read_dword(&key, "Keep")?, 9);
+        assert!(!install::registry_key_exists(
+            HKEY_CURRENT_USER,
+            &subkey(&branch)
+        )?);
+        // Deleting the branch dropped it from the tracked list, so what the
+        // uninstall replays is the key the script still owns and its two values.
+        let recorded = manifest(&fixture)?;
+        assert_eq!(
+            recorded["registry_values"],
+            serde_json::json!([
+                {"path": key, "name": "Name"},
+                {"path": key, "name": "Keep"}
+            ])
+        );
+        assert_eq!(recorded["registry_keys"], serde_json::json!([key]));
+        Ok(())
+    }
+
+    #[test]
+    fn uninstalling_a_shared_key_removes_only_the_value_the_script_wrote() -> Result<()> {
+        let value_name = unique_name("nano-installer-script-test-run");
+        // The uninstall takes the value back, but the guard covers a run that
+        // fails before it gets that far.
+        let _guard = TestRegistryValue {
+            key: SHARED_RUN_KEY.to_string(),
+            name: value_name.clone(),
+        };
+        let fixture = fixture(
+            &deploying_script(&format!(
+                "reg_write_string({}, {}, path_join(install_path, \"App.exe\"));",
+                literal(SHARED_RUN_KEY),
+                literal(&value_name),
+            )),
+            r#"run_tracked_uninstall(0.0, 100.0);"#,
+        )?;
+        fixture.install()?;
+
+        let command = format!("{}\\App.exe", fixture.destination.display());
+        let recorded = manifest(&fixture)?;
+        assert_eq!(
+            recorded["registry_values"],
+            serde_json::json!([{"path": SHARED_RUN_KEY, "name": value_name}])
+        );
+        // The key holds other products' values, so the manifest may claim the
+        // value alone: a recorded key would make the uninstall delete the whole
+        // `Run` key and stop everything else on the machine from starting.
+        assert_eq!(recorded["registry_keys"], serde_json::json!([]));
+        assert_eq!(
+            install::read_registry_string(HKEY_CURRENT_USER, &subkey(SHARED_RUN_KEY), &value_name)?,
+            Some(command)
+        );
+
+        fixture.uninstall(true)?;
+
+        assert_eq!(
+            install::read_registry_string(HKEY_CURRENT_USER, &subkey(SHARED_RUN_KEY), &value_name)?,
+            None
+        );
+        assert!(install::registry_key_exists(
+            HKEY_CURRENT_USER,
+            &subkey(SHARED_RUN_KEY)
+        )?);
+        Ok(())
+    }
+
+    #[test]
+    fn out_of_range_progress_and_both_status_forms_do_not_disturb_the_install() -> Result<()> {
+        let report = Observation::new("script-progress");
+        let fixture = fixture(
+            &deploying_script(&format!(
+                r#"
+                set_progress(-1.0);
+                set_progress(150.0);
+                set_progress(100.0 / 0.0);
+                set_status("literal status");
+                set_status_key("status.installing_uninstaller");
+                let report = "";
+                report += "mode=" + get_mode() + "\n";
+                report += "cancelled=" + is_cancelled().to_string() + "\n";
+                report += "checkbox=" + get_checkbox_value("chkShotcut").to_string() + "\n";
+                write_file({}, report);
+                "#,
+                report.script_path()
+            )),
+            "",
+        )?;
+        fixture.install()?;
+
+        // The wizard is the only observer of progress and status, so a
+        // windowless run can pin this much: a percentage below zero, above a
+        // hundred, or not a number at all, and both status forms, all go through
+        // the same path, and the deployment still finishes and reports itself.
+        // A clamp that turned into a failure would abort the install here.
+        assert!(fixture.destination.join("App.exe").is_file());
+        assert!(fixture.destination.join(install::MANIFEST_NAME).is_file());
+        assert_eq!(
+            report.text()?,
+            "mode=install\ncancelled=false\ncheckbox=false\n"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn an_uninstall_script_sees_the_uninstall_mode_and_the_keep_data_checkbox() -> Result<()> {
+        // Both states of the box: a script that keeps user data reads the value
+        // the other way round from one that deletes it.
+        for keep_data in [true, false] {
+            let report = Observation::new("script-uninstall-mode");
+            let uninstall_script = format!(
+                r#"
+                let report = "";
+                report += "mode=" + get_mode() + "\n";
+                report += "keep_data=" + get_checkbox_value("keep_data").to_string() + "\n";
+                report += "unknown=" + get_checkbox_value("chkShotcut").to_string() + "\n";
+                report += "cancelled=" + is_cancelled().to_string() + "\n";
+                write_file({}, report);
+                "#,
+                report.script_path()
+            );
+            // The install only has to succeed; the uninstall is the half this
+            // test reads.
+            let fixture = fixture(&deploying_script(""), &uninstall_script)?;
+            fixture.install()?;
+            fixture.uninstall(keep_data)?;
+
+            assert_eq!(
+                report.text()?,
+                format!("mode=uninstall\nkeep_data={keep_data}\nunknown=false\ncancelled=false\n")
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn uninstalling_below_appdata_removes_the_data_only_when_the_box_is_cleared() -> Result<()> {
+        // The driver's `keep_data` flag has no other way in: a silent uninstall
+        // always keeps user data, and the interactive uninstaller's checkbox is
+        // out of reach. The directory has to sit under the real profile, because
+        // the driver refuses any data path that is not below `%APPDATA%` or
+        // `%LOCALAPPDATA%`.
+        for keep_data in [false, true] {
+            let data_name = unique_name("nano-installer-script-test-data");
+            let appdata = std::env::var("APPDATA").context("the profile names APPDATA")?;
+            let data_path = PathBuf::from(&appdata).join(&data_name);
+            // A real directory in the profile, so the guard removes it however
+            // this test ends.
+            let mut cleanup = ProfileCleanup::default();
+            cleanup.keep(data_path.clone());
+
+            let mut fixture = fixture(&deploying_script(""), r#"log_info("nothing to do");"#)?;
+            // `fixture` builds the configuration the common case needs, so the
+            // data path this case needs is added to it here.
+            fixture
+                .config
+                .as_object_mut()
+                .expect("the fixture configuration is an object")
+                .insert(
+                    "uninstall".to_string(),
+                    serde_json::json!({"data_paths": [format!("%APPDATA%\\{data_name}")]}),
+                );
+            std::fs::create_dir_all(&data_path)?;
+            std::fs::write(data_path.join("settings.ini"), "user data")?;
+            fixture.install()?;
+
+            fixture.uninstall(keep_data)?;
+
+            if keep_data {
+                // The box was left checked, so the user's settings stay exactly
+                // where they were.
+                assert_eq!(
+                    std::fs::read_to_string(data_path.join("settings.ini"))?,
+                    "user data"
+                );
+            } else {
+                // Clearing the box is the only thing that removes user data,
+                // and this is the only place that branch can be run.
+                assert!(!data_path.exists());
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn the_script_reads_the_environment_and_the_project_configuration() -> Result<()> {
+        let absent = unique_name("NANO_INSTALLER_ABSENT");
+        let report = Observation::new("script-environment");
+        let fixture = fixture(
+            &deploying_script(&format!(
+                r#"
+                let report = "";
+                report += "system_root=" + get_env("SystemRoot") + "\n";
+                report += "absent=" + get_env("{}") + "\n";
+                report += "project_name=" + get_config_value("project.name") + "\n";
+                report += "exe_name=" + get_config_value("install.exe_name") + "\n";
+                report += "missing_type=" + type_of(get_config_value("project.missing")) + "\n";
+                report += "project_type=" + type_of(get_config_value("project")) + "\n";
+                write_file({}, report);
+                "#,
+                absent,
+                report.script_path()
+            )),
+            "",
+        )?;
+        fixture.install()?;
+
+        // A variable the machine has is read exactly, and one it does not have
+        // is empty rather than an error. A configuration path that does not
+        // exist is unit and an object is a map, so a script can tell a typo from
+        // an empty value instead of comparing against a string.
+        assert_eq!(
+            report.text()?,
+            format!(
+                "system_root={}\n\
+                 absent=\n\
+                 project_name=Script Test\n\
+                 exe_name=App.exe\n\
+                 missing_type=()\n\
+                 project_type=map\n",
+                std::env::var("SystemRoot").unwrap_or_default()
+            )
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn the_script_reports_the_image_it_runs_from() -> Result<()> {
+        let report = Observation::new("script-image-path");
+        let fixture = fixture(
+            &deploying_script(&format!(
+                r#"
+                let report = "";
+                report += "exe=" + get_current_exe() + "\n";
+                report += "dir=" + get_exe_dir() + "\n";
+                write_file({}, report);
+                "#,
+                report.script_path()
+            )),
+            "",
+        )?;
+        fixture.install()?;
+
+        // The script runs inside this test binary, so the image it names has to
+        // be this test's own executable rather than, say, the bundle it reads.
+        let exe = std::env::current_exe()?;
+        let directory = exe
+            .parent()
+            .expect("the test executable lives in a directory");
+        assert_eq!(
+            report.text()?,
+            format!("exe={}\ndir={}\n", exe.display(), directory.display())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn the_script_queries_fixed_disks_and_notifies_the_shell() -> Result<()> {
+        let report = Observation::new("script-drives");
+        let drive = temp_drive_root();
+        let fixture = fixture(
+            &deploying_script(&format!(
+                r#"
+                let report = "";
+                let listed = "";
+                let drives = get_drives();
+                for entry in drives {{ listed += entry + "|"; }}
+                report += "drives=" + listed + "\n";
+                let space = get_drive_space({});
+                report += "space_count=" + space.len().to_string() + "\n";
+                let free = space[0];
+                let total = space[1];
+                let positive = free > 0;
+                let fits = free <= total;
+                report += "free_positive=" + positive.to_string() + "\n";
+                report += "free_within_total=" + fits.to_string() + "\n";
+                // A shell notification returns nothing and cannot fail, so the
+                // only thing a script can rely on is that it carries on after
+                // it, which the line below proves.
+                shell_notify();
+                report += "notified=true\n";
+                write_file({}, report);
+                "#,
+                literal(&drive),
+                report.script_path()
+            )),
+            "",
+        )?;
+        fixture.install()?;
+
+        let text = report.text()?;
+        let observed = observations(&text);
+        let listed = observed
+            .get("drives")
+            .expect("the script listed the fixed disks");
+        let drives = listed
+            .split('|')
+            .filter(|entry| !entry.is_empty())
+            .collect::<Vec<_>>();
+        for entry in &drives {
+            assert!(
+                entry.len() == 3 && entry.ends_with(":\\"),
+                "{entry} is a drive root such as C:\\"
+            );
+        }
+        // The tests run from the temporary directory, so its drive is one of the
+        // fixed disks that has to be reported. Removable media and network
+        // shares are deliberately absent.
+        assert!(drives.contains(&drive.as_str()));
+        assert_eq!(observed.get("space_count").map(String::as_str), Some("2"));
+        assert_eq!(
+            observed.get("free_positive").map(String::as_str),
+            Some("true")
+        );
+        assert_eq!(
+            observed.get("free_within_total").map(String::as_str),
+            Some("true")
+        );
+        assert_eq!(observed.get("notified").map(String::as_str), Some("true"));
+        Ok(())
+    }
+
+    #[test]
+    fn a_script_runs_a_command_and_sees_its_exit_code() -> Result<()> {
+        let report = Observation::new("script-run-command");
+        let missing = unique_name("nano-installer-no-such-command");
+        let fixture = fixture(
+            &deploying_script(&format!(
+                r#"
+                // The command shell is the one command every Windows machine
+                // has, so its exit code is the one the script has to see.
+                let shell = get_env("ComSpec");
+                let report = "";
+                report += "three=" + run_command(shell, ["/C", "exit 3"]).to_string() + "\n";
+                report += "zero=" + run_command(shell, ["/C", "exit 0"]).to_string() + "\n";
+                let absent = path_join(get_temp_path(), "{missing}.exe");
+                report += "missing=" + run_command(absent, ["arg"]).to_string() + "\n";
+                write_file({report}, report);
+                "#,
+                report = report.script_path()
+            )),
+            "",
+        )?;
+        fixture.install()?;
+
+        // A command that cannot be started reports -1 rather than an exit code,
+        // so a script can tell "it ran and failed" from "it never ran".
+        assert_eq!(report.text()?, "three=3\nzero=0\nmissing=-1\n");
+        Ok(())
+    }
+
+    #[test]
+    fn a_script_recognises_a_running_process_by_its_image_name() -> Result<()> {
+        let report = Observation::new("script-process-check");
+        let running = std::env::current_exe()?
+            .file_name()
+            .expect("the test executable has a file name")
+            .to_string_lossy()
+            .to_string();
+        let absent = format!("{}.exe", unique_name("nano-installer-no-such-process"));
+        let fixture = fixture(
+            &deploying_script(&format!(
+                r#"
+                let report = "";
+                report += "running=" + is_process_running({}).to_string() + "\n";
+                report += "absent=" + is_process_running({}).to_string() + "\n";
+                write_file({}, report);
+                "#,
+                literal(&running),
+                literal(&absent),
+                report.script_path()
+            )),
+            "",
+        )?;
+        fixture.install()?;
+
+        // The script runs in this test's own process, so its image name is the
+        // one process the check has to find. This is what stops an install from
+        // replacing a product while it is running.
+        assert_eq!(report.text()?, "running=true\nabsent=false\n");
+        Ok(())
+    }
+
+    #[test]
+    fn an_install_script_creates_shortcuts_the_uninstall_takes_back() -> Result<()> {
+        let desktop_name = unique_name("nano-installer-script-test-desktop");
+        let menu_name = unique_name("nano-installer-script-test-menu");
+        let folder_name = unique_name("nano-installer-script-test-folder");
+        let uninstall_name = unique_name("nano-installer-script-test-uninstall");
+
+        // These are real links in the profile, so the guard removes them however
+        // the test ends.
+        let desktop_link = crate::shell::desktop_directory()?.join(format!("{desktop_name}.lnk"));
+        let folder = crate::shell::programs_directory()?.join(&folder_name);
+        let menu_link = folder.join(format!("{menu_name}.lnk"));
+        let uninstall_link = folder.join(format!("{uninstall_name}.lnk"));
+        let mut cleanup = ProfileCleanup::default();
+        cleanup.keep(desktop_link.clone());
+        cleanup.keep(menu_link.clone());
+        cleanup.keep(uninstall_link.clone());
+        cleanup.keep(folder.clone());
+
+        let fixture = fixture(
+            &deploying_script(&format!(
+                r#"
+                create_desktop_shortcut({desktop}, path_join(install_path, "App.exe"));
+                create_start_menu_shortcut({menu}, path_join(install_path, "App.exe"), {folder});
+                create_uninstall_shortcut({uninstall}, path_join(install_path, "uninst.exe"), {folder});
+                "#,
+                desktop = literal(&desktop_name),
+                menu = literal(&menu_name),
+                folder = literal(&folder_name),
+                uninstall = literal(&uninstall_name),
+            )),
+            r#"run_tracked_uninstall(0.0, 100.0);"#,
+        )?;
+        fixture.install()?;
+
+        // Each link has to land where Windows looks for it, and the manifest has
+        // to name it: a link the manifest does not know about stays on the
+        // desktop as a dead icon after the product is gone.
+        assert!(desktop_link.is_file());
+        assert!(menu_link.is_file());
+        assert!(uninstall_link.is_file());
+        let recorded = manifest(&fixture)?;
+        assert_eq!(
+            recorded["shortcuts"],
+            serde_json::json!([
+                desktop_link.to_string_lossy(),
+                menu_link.to_string_lossy(),
+                uninstall_link.to_string_lossy()
+            ])
+        );
+        assert_eq!(
+            recorded["shortcut_dirs"],
+            serde_json::json!([folder.to_string_lossy()])
+        );
+
+        fixture.uninstall(true)?;
+
+        assert!(!desktop_link.exists());
+        assert!(!menu_link.exists());
+        assert!(!uninstall_link.exists());
+        // The Start Menu folder the installer created goes with them, so the
+        // menu keeps no empty product folder.
+        assert!(!folder.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn a_script_deletes_the_desktop_shortcut_and_the_start_menu_folder_it_created() -> Result<()> {
+        let desktop_name = unique_name("nano-installer-script-test-remove-desktop");
+        let menu_name = unique_name("nano-installer-script-test-remove-menu");
+        let folder_name = unique_name("nano-installer-script-test-remove-folder");
+        let report = Observation::new("script-delete-shortcuts");
+
+        let desktop_link = crate::shell::desktop_directory()?.join(format!("{desktop_name}.lnk"));
+        let folder = crate::shell::programs_directory()?.join(&folder_name);
+        let menu_link = folder.join(format!("{menu_name}.lnk"));
+        let mut cleanup = ProfileCleanup::default();
+        cleanup.keep(desktop_link.clone());
+        cleanup.keep(menu_link.clone());
+        cleanup.keep(folder.clone());
+
+        let fixture = fixture(
+            // The install only has to leave the links behind; the uninstall is
+            // the half this test reads.
+            &deploying_script(&format!(
+                r#"
+                create_desktop_shortcut({desktop}, path_join(install_path, "App.exe"));
+                create_start_menu_shortcut({menu}, path_join(install_path, "App.exe"), {folder});
+                "#,
+                desktop = literal(&desktop_name),
+                menu = literal(&menu_name),
+                folder = literal(&folder_name),
+            )),
+            &format!(
+                r#"
+                // Both primitives report whether they removed anything, which is
+                // what a script checks before it finishes; the links are gone by
+                // then, so the report is the only witness left.
+                let report = "";
+                report += "desktop=" + delete_desktop_shortcut({desktop}).to_string() + "\n";
+                report += "folder=" + delete_start_menu_folder({folder}).to_string() + "\n";
+                write_file({report}, report);
+                "#,
+                desktop = literal(&desktop_name),
+                folder = literal(&folder_name),
+                report = report.script_path(),
+            ),
+        )?;
+        fixture.install()?;
+        assert!(desktop_link.is_file());
+        assert!(menu_link.is_file());
+
+        fixture.uninstall(true)?;
+
+        assert_eq!(report.text()?, "desktop=true\nfolder=true\n");
+        assert!(!desktop_link.exists());
+        assert!(!menu_link.exists());
+        assert!(!folder.exists());
         Ok(())
     }
 }

@@ -1657,7 +1657,7 @@ fn spawn_cleanup_helper(destination: &Path, uninstaller: &Path) {
 
 fn try_spawn_cleanup_helper(destination: &Path, uninstaller: &Path) -> Result<()> {
     use std::os::windows::process::CommandExt;
-    use std::process::Command;
+    use std::process::{Command, Stdio};
     use windows::Win32::System::Threading::CREATE_NO_WINDOW;
 
     let source = std::env::current_exe().context("cannot locate the running uninstaller")?;
@@ -1687,6 +1687,12 @@ fn try_spawn_cleanup_helper(destination: &Path, uninstaller: &Path) -> Result<()
         .arg(super::CLEANUP_FLAG)
         .arg(destination)
         .arg(uninstaller)
+        // The helper has nothing to say: it runs after the uninstall is over and
+        // reports no error of its own, so inherited handles would only put its
+        // output in front of whoever started the uninstall.
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .creation_flags(CREATE_NO_WINDOW.0)
         .spawn();
     match spawned {

@@ -1642,11 +1642,17 @@ fn tool_icon() -> egui::IconData {
 #[cfg(test)]
 mod tests {
     use super::{
-        compact_path, format_bytes, format_inspection_time, format_log_timestamp, highlight_log,
-        log_text, parameter_field_width, quote_arg, should_replace_output, stage_progress,
-        tool_icon, tr, BuilderApp, UiLanguage,
+        compact_path, configure_menu, format_bytes, format_inspection_time, format_log_timestamp,
+        highlight_log, log_text, parameter_field_width, quote_arg, should_replace_output,
+        stage_progress, tool_icon, tr, BuilderApp, StatusTone, UiLanguage, WorkerMessage,
+        WorkspaceTab,
     };
-    use nano_installer_core::BuildStage;
+    use eframe::egui;
+    use nano_installer_core::{BuildEvent, BuildRequest, BuildResult, BuildStage};
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::mpsc;
+    use std::time::Duration;
 
     #[test]
     fn formats_gui_sizes() {
@@ -1764,6 +1770,745 @@ mod tests {
         assert!(app.summary.is_none());
         assert!(app.logs.is_empty());
         assert!(app.result.is_none());
+    }
+
+    /// Builds the window state without a desktop session.
+    ///
+    /// The app is created through the constructor eframe keeps for tests, so a
+    /// case drives the state the window holds and never opens one.
+    fn headless_app() -> BuilderApp {
+        let creation = eframe::CreationContext::_new_kittest(egui::Context::default());
+        BuilderApp::new(&creation)
+    }
+
+    /// A project folder on disk, removed when the case ends.
+    ///
+    /// The window reads a project rather than writing one, so a case needs the
+    /// tree the inspection walks: `installer_config.json` beside the resource
+    /// directories, a first-page layout, a default locale file, and a payload
+    /// whose signature names the archive format.
+    struct TestProject {
+        path: PathBuf,
+    }
+
+    impl TestProject {
+        fn create(label: &str) -> Self {
+            static NEXT: AtomicUsize = AtomicUsize::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "nano-installer-gui-{}-{}-{label}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            let _ = std::fs::remove_dir_all(&path);
+            for directory in ["layouts", "assets", "locales", "payload", "stubs"] {
+                std::fs::create_dir_all(path.join(directory)).expect("project directory tree");
+            }
+            std::fs::write(path.join("locales/en-US.json"), "{}").expect("default locale file");
+            std::fs::write(
+                path.join("layouts/configpage.xml"),
+                r#"<Page width="720" height="450"><Label text="Probe" /></Page>"#,
+            )
+            .expect("first page layout");
+            // Six bytes is the shortest payload the inspection accepts: it
+            // reads the signature and stops there, so no case needs an archive.
+            std::fs::write(path.join("payload/app.zip"), b"PK\x03\x04\x00\x00").expect("payload");
+            let project = Self { path };
+            project.write_config("Probe", "Probe_Setup.exe", &["en-US"]);
+            project
+        }
+
+        /// Writes the project file, which is where every name and default the
+        /// window shows afterwards comes from.
+        fn write_config(&self, name: &str, installer_name: &str, supported_locales: &[&str]) {
+            let locales = supported_locales
+                .iter()
+                .map(|locale| format!("\"{locale}\""))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let config = format!(
+                r#"{{
+  "project": {{ "name": "{name}", "version": "1.0.0", "file_version": "1.0.0.0" }},
+  "output": {{ "installer_name": "{installer_name}", "uninstaller_name": "uninst.exe" }},
+  "localization": {{ "default_locale": "en-US", "supported_locales": [{locales}] }},
+  "resources": {{ "layouts_dir": "layouts", "assets_dir": "assets", "locales_dir": "locales", "payload_file": "payload/app.zip" }},
+  "wizard": {{ "pages": [{{ "id": "config", "layout": "layouts/configpage.xml" }}] }}
+}}
+"#
+            );
+            std::fs::write(self.config_path(), config).expect("project file");
+        }
+
+        fn config_path(&self) -> PathBuf {
+            self.path.join("installer_config.json")
+        }
+
+        /// Where the inspection resolves the setup this project builds.
+        fn output_path(&self, installer_name: &str) -> PathBuf {
+            self.path.join("dist").join(installer_name)
+        }
+
+        fn display(&self) -> String {
+            self.path.display().to_string()
+        }
+    }
+
+    impl Drop for TestProject {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
+
+    /// Waits for the build the app started in its worker thread.
+    ///
+    /// A case that reads the outcome has to let the thread reach it, and a
+    /// thread that never finishes fails the case rather than leaving it to read
+    /// a state no build produced.
+    fn wait_for_build(app: &mut BuilderApp) {
+        for _ in 0..600 {
+            app.poll_worker();
+            if !app.building {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        panic!("the build worker did not finish");
+    }
+
+    /// Draws the window's panels, which is everything `update` does but the
+    /// frame, because a frame needs a window.
+    ///
+    /// Laying the panels out is not allowed to change what they show, so the
+    /// log and the status line are compared around every draw.
+    fn draw_panels(app: &mut BuilderApp, context: &egui::Context) {
+        let logs = app.logs.clone();
+        let status = app.status.clone();
+        let _ = context.run(egui::RawInput::default(), |context| {
+            egui::TopBottomPanel::top("menu").show(context, |ui| app.show_menu(context, ui));
+            egui::SidePanel::left("project_panel").show(context, |ui| app.show_project_panel(ui));
+            egui::CentralPanel::default().show(context, |ui| match app.tab {
+                WorkspaceTab::Build => app.show_build_tab(context, ui),
+                WorkspaceTab::Parameters => app.show_parameters_tab(ui),
+            });
+        });
+        assert_eq!(app.logs, logs, "drawing changed the log");
+        assert_eq!(app.status, status, "drawing changed the status line");
+    }
+
+    /// Opening a project reads the folder the user picked.
+    ///
+    /// Every name, path, and default the window shows afterwards comes out of
+    /// that folder, so the case points the app at one and expects the summary
+    /// to be filled from the file on disk.
+    #[test]
+    fn open_project_reads_the_folder_that_holds_installer_config_json() {
+        let project = TestProject::create("open");
+        let mut app = headless_app();
+        app.language = UiLanguage::English;
+        app.project_dir = project.display();
+
+        app.validate_project();
+
+        let summary = app.summary.as_ref().expect("project summary");
+        assert_eq!(summary.project_name, "Probe");
+        assert_eq!(summary.output_path, project.output_path("Probe_Setup.exe"));
+        assert!(summary.warnings.is_empty(), "{:?}", summary.warnings);
+        assert!(app.validation_error.is_none());
+        assert!(app.last_inspected.is_some());
+        assert!(!app.project_dirty);
+        assert_eq!(app.status_tone, StatusTone::Success);
+        assert!(app.logs.iter().any(
+            |line| line.ends_with(&format!("Project inspection passed: {}", project.display()))
+        ));
+    }
+
+    /// A folder that holds no project file is refused by name.
+    ///
+    /// Picking the wrong folder is the common mistake, and a window that
+    /// reported nothing would leave the user guessing which file it wanted.
+    #[test]
+    fn open_project_names_the_missing_project_file() {
+        let project = TestProject::create("no-config");
+        std::fs::remove_file(project.config_path()).expect("remove the project file");
+        let mut app = headless_app();
+        app.language = UiLanguage::English;
+        app.project_dir = project.display();
+
+        app.validate_project();
+
+        assert!(app.summary.is_none());
+        assert!(app.last_inspected.is_none());
+        assert_eq!(app.status_tone, StatusTone::Error);
+        let error = app.validation_error.as_ref().expect("validation error");
+        assert!(error.contains("installer_config.json"), "{error}");
+        assert!(error.contains(&project.display()), "{error}");
+        assert!(app.logs.iter().any(
+            |line| line.contains("Validation failed") && line.contains("installer_config.json")
+        ));
+    }
+
+    /// Refreshing keeps an output path chosen for this project.
+    ///
+    /// The field may point anywhere, and a refresh that reset it would move the
+    /// next setup back into the project tree without saying so.
+    #[test]
+    fn refresh_keeps_a_custom_output_path_for_the_same_project() {
+        let project = TestProject::create("refresh-same");
+        let mut app = headless_app();
+        app.project_dir = project.display();
+        app.validate_project();
+        app.output_path = "C:\\builds\\Probe_Setup.exe".to_string();
+        app.output_custom = true;
+
+        app.validate_project();
+
+        assert_eq!(app.output_path, "C:\\builds\\Probe_Setup.exe");
+        assert!(app.output_custom);
+    }
+
+    /// A custom output path belongs to the project it was chosen for.
+    ///
+    /// Switching projects makes that path meaningless, and keeping it would
+    /// write the new project's setup into a folder the new project never
+    /// configured.
+    #[test]
+    fn refresh_replaces_a_custom_output_path_when_the_project_changes() {
+        let first = TestProject::create("refresh-first");
+        let second = TestProject::create("refresh-second");
+        second.write_config("Second", "Second_Setup.exe", &["en-US"]);
+        let mut app = headless_app();
+        app.project_dir = first.display();
+        app.validate_project();
+        app.output_path = "C:\\builds\\Probe_Setup.exe".to_string();
+        app.output_custom = true;
+
+        app.project_dir = second.display();
+        app.validate_project();
+
+        assert_eq!(
+            app.output_path,
+            second.output_path("Second_Setup.exe").display().to_string()
+        );
+        assert!(!app.output_custom);
+    }
+
+    /// Reset output puts the project's own output path back in the field.
+    ///
+    /// The button restores the summary's output path, so that path has to be
+    /// the project's `dist/<output.installer_name>` and nothing else; a case
+    /// that let it drift would hide a reset pointing the next build at the
+    /// wrong file.
+    #[test]
+    fn reset_output_restores_the_dist_path_named_by_the_project() {
+        let project = TestProject::create("reset-output");
+        project.write_config("Probe", "Custom_Setup.exe", &["en-US"]);
+        let mut app = headless_app();
+        app.project_dir = project.display();
+        app.validate_project();
+        app.output_path = "C:\\builds\\elsewhere.exe".to_string();
+        app.output_custom = true;
+
+        let restored = app
+            .summary
+            .as_ref()
+            .expect("project summary")
+            .output_path
+            .clone();
+
+        assert_eq!(restored, project.output_path("Custom_Setup.exe"));
+        assert_eq!(restored.parent(), Some(project.path.join("dist").as_path()));
+    }
+
+    /// Parameters carry the three paths into the build request.
+    ///
+    /// The request is all the worker thread sees, so every field has to be
+    /// trimmed into it: a path that stayed on screen would send the build to
+    /// the builder's own defaults instead.
+    #[test]
+    fn parameters_carry_the_project_output_and_runtime_directory_into_the_request() {
+        let project = TestProject::create("request");
+        let mut app = headless_app();
+        app.project_dir = format!("  {}  ", project.display());
+        app.output_path = format!(" {} ", project.output_path("Probe_Setup.exe").display());
+        app.stub_directory = project.path.join("stubs").display().to_string();
+        app.validate_project();
+
+        let request = app.make_request().expect("build request");
+
+        assert_eq!(request.project_dir, project.path);
+        assert_eq!(request.output, Some(project.output_path("Probe_Setup.exe")));
+        assert_eq!(request.stub_directory, Some(project.path.join("stubs")));
+        assert_eq!(
+            app.command_preview(),
+            format!(
+                "nano-installer-native-x64.exe build --project \"{}\" --output \"{}\" --stubs \"{}\"",
+                project.display(),
+                project.output_path("Probe_Setup.exe").display(),
+                project.path.join("stubs").display()
+            )
+        );
+    }
+
+    /// An empty runtime directory leaves the stub search automatic.
+    ///
+    /// "Use automatic stub search" clears the field, and an empty path sent as
+    /// a directory would be searched first and fail there, so the request has
+    /// to carry no override at all and the preview has to offer none.
+    #[test]
+    fn an_empty_runtime_directory_leaves_the_stub_search_automatic() {
+        let project = TestProject::create("auto-stub");
+        let mut app = headless_app();
+        app.project_dir = project.display();
+        app.output_path = project.output_path("Probe_Setup.exe").display().to_string();
+        app.validate_project();
+        app.stub_directory = project.path.join("stubs").display().to_string();
+        assert_eq!(
+            app.make_request()
+                .expect("request with an override")
+                .stub_directory,
+            Some(project.path.join("stubs"))
+        );
+
+        app.stub_directory.clear();
+        let request = app.make_request().expect("request without an override");
+
+        assert!(request.stub_directory.is_none());
+        assert!(request.output.is_some());
+        assert!(!app.command_preview().contains("--stubs"));
+        assert!(app.command_preview().contains("--project"));
+    }
+
+    /// A build in flight refuses a second packaging task.
+    ///
+    /// The buttons are disabled while one runs, and this is the check behind
+    /// them: two launches at once would write the same output file.
+    #[test]
+    fn a_running_build_refuses_a_second_one() {
+        let project = TestProject::create("busy");
+        let mut app = headless_app();
+        app.language = UiLanguage::English;
+        app.project_dir = project.display();
+        app.output_path = project.output_path("Probe_Setup.exe").display().to_string();
+        app.validate_project();
+        app.building = true;
+        app.last_build_failed = true;
+        app.last_request = Some(BuildRequest::new(project.path.clone()));
+        let context = egui::Context::default();
+        let logs = app.logs.clone();
+
+        app.start_build(&context);
+        app.retry_build(&context);
+
+        assert!(app.building);
+        assert!(app.receiver.is_none());
+        assert_eq!(
+            app.last_request
+                .as_ref()
+                .map(|request| request.project_dir.clone()),
+            Some(project.path.clone())
+        );
+        assert_eq!(app.logs, logs);
+    }
+
+    /// Retry repeats the failed build with the parameters it stored.
+    ///
+    /// The point of a retry is that only a file on disk changed, so the case
+    /// edits the on-screen fields after the failure and expects the worker to
+    /// receive the stored request rather than the form.
+    #[test]
+    fn retry_repeats_a_failed_build_with_the_parameters_it_stored() {
+        let project = TestProject::create("retry");
+        let missing = project.path.join("gone");
+        let mut app = headless_app();
+        app.language = UiLanguage::English;
+        app.project_dir = project.display();
+        app.output_path = project.output_path("Probe_Setup.exe").display().to_string();
+        app.validate_project();
+        app.last_request = Some(BuildRequest::new(missing.clone()));
+        app.last_build_failed = true;
+        app.project_dir = project.path.join("elsewhere").display().to_string();
+        app.output_path = "C:\\builds\\other.exe".to_string();
+        let context = egui::Context::default();
+
+        app.retry_build(&context);
+        wait_for_build(&mut app);
+
+        assert_eq!(
+            app.last_request
+                .as_ref()
+                .map(|request| request.project_dir.clone()),
+            Some(missing.clone())
+        );
+        assert!(app
+            .logs
+            .iter()
+            .any(|line| line.ends_with("Retrying last build")));
+        let failure = app
+            .logs
+            .iter()
+            .find(|line| line.contains("Error:"))
+            .expect("the retried build failed");
+        assert!(
+            failure.contains(&missing.display().to_string()),
+            "{failure}"
+        );
+        assert!(app.last_build_failed);
+    }
+
+    /// Build setup re-reads a project that changed on screen.
+    ///
+    /// Editing the project directory marks the summary as out of date, so the
+    /// build has to inspect the folder again before it starts and refuse when
+    /// the file no longer reads, rather than package what the sidebar still
+    /// describes.
+    #[test]
+    fn build_setup_rechecks_a_project_marked_dirty_before_it_starts() {
+        let project = TestProject::create("dirty");
+        let mut app = headless_app();
+        app.language = UiLanguage::English;
+        app.project_dir = project.display();
+        app.output_path = project.output_path("Probe_Setup.exe").display().to_string();
+        app.validate_project();
+        std::fs::write(project.config_path(), "{ \"project\": ").expect("break the project file");
+        app.project_dirty = true;
+        let context = egui::Context::default();
+
+        app.start_build(&context);
+
+        assert!(!app.building);
+        assert!(app.last_request.is_none());
+        assert!(app.summary.is_none());
+        let error = app.validation_error.as_ref().expect("validation error");
+        assert!(error.contains("invalid project config"), "{error}");
+        assert!(app
+            .logs
+            .iter()
+            .any(|line| line.contains("Validation failed")));
+    }
+
+    /// A build reads the project from disk in its worker thread.
+    ///
+    /// The sidebar summary is a snapshot of the last inspection. Deleting the
+    /// project file behind that snapshot has to fail the build naming the file,
+    /// because the worker inspects the folder again rather than trusting what
+    /// the window still shows.
+    #[test]
+    fn a_build_reads_the_project_from_disk_in_its_worker_thread() {
+        let project = TestProject::create("worker");
+        let mut app = headless_app();
+        app.language = UiLanguage::English;
+        app.project_dir = project.display();
+        app.output_path = project.output_path("Probe_Setup.exe").display().to_string();
+        app.validate_project();
+        std::fs::remove_file(project.config_path()).expect("remove the project file");
+        let context = egui::Context::default();
+
+        app.start_build(&context);
+        wait_for_build(&mut app);
+
+        assert!(app.summary.is_some(), "the screen kept its summary");
+        assert!(app.logs.iter().any(|line| line.ends_with("Build started")));
+        let failure = app
+            .logs
+            .iter()
+            .find(|line| line.contains("Error:"))
+            .expect("the build failed");
+        assert!(failure.contains("installer_config.json"), "{failure}");
+        assert!(failure.contains(&project.display()), "{failure}");
+        let error = app.validation_error.as_ref().expect("build error");
+        assert!(error.contains("installer_config.json"), "{error}");
+        assert!(app.last_build_failed);
+    }
+
+    /// The log keeps the lines the view has scrolled past.
+    ///
+    /// Save log writes the stored lines and Copy all copies the same text, so
+    /// what those export is the log itself rather than the handful of lines the
+    /// panel can show at once: the case fills it well past that and checks
+    /// every line is still there, in its original wording, under its own
+    /// timestamp.
+    #[test]
+    fn the_log_keeps_the_lines_the_view_scrolled_past() {
+        let mut app = headless_app();
+        let timestamp_width = format_log_timestamp(2026, 9, 15, 7, 5, 9, 42).len() - 1;
+
+        for index in 0..400 {
+            app.append_log(format!("step {index} 中文 C:\\builds\\输出.exe"));
+        }
+
+        assert_eq!(app.logs.len(), 400);
+        for (index, line) in app.logs.iter().enumerate() {
+            let (timestamp, message) = line.split_once("] ").expect("a timestamped line");
+            assert!(timestamp.starts_with('['), "{line}");
+            assert_eq!(timestamp.len(), timestamp_width, "{line}");
+            assert_eq!(message, format!("step {index} 中文 C:\\builds\\输出.exe"));
+        }
+        assert!(app
+            .logs
+            .first()
+            .expect("first line")
+            .ends_with("step 0 中文 C:\\builds\\输出.exe"));
+        assert!(app
+            .logs
+            .last()
+            .expect("last line")
+            .ends_with("step 399 中文 C:\\builds\\输出.exe"));
+    }
+
+    /// Build messages reach the log in the order the worker sent them.
+    ///
+    /// The wording of these lines is the builder's, including the first pass
+    /// under the `Uninstaller bundle:` heading and the repeated directory names
+    /// of the second one. The window is a pass-through, so the case feeds that
+    /// sequence and checks nothing is merged or dropped on the way, that the
+    /// payload is named once, and that both passes stay visible.
+    #[test]
+    fn build_messages_reach_the_log_in_the_order_the_worker_sent_them() {
+        let sent = [
+            "Uninstaller bundle: Collected layouts/: 8 files (12.0 KiB)",
+            "Uninstaller bundle: Collected assets/: 30 files (1.20 MiB)",
+            "Uninstaller bundle: Collected locales/: 11 files (48.0 KiB)",
+            "Uninstaller bundle: Collected scripts/: 2 files (9.0 KiB)",
+            "Collected layouts/: 8 files (12.0 KiB)",
+            "Collected assets/: 30 files (1.20 MiB)",
+            "Collected locales/: 11 files (48.0 KiB)",
+            "Collected scripts/: 2 files (9.0 KiB)",
+            "Added payload payload/app.7z (150.00 MiB, already compressed)",
+        ];
+        let closing = "Created C:\\builds\\Probe_Setup.exe";
+        let (sender, receiver) = mpsc::channel();
+        for message in sent {
+            sender
+                .send(WorkerMessage::Progress(BuildEvent {
+                    stage: BuildStage::Packing,
+                    message: message.to_string(),
+                }))
+                .expect("send a build event");
+        }
+        sender
+            .send(WorkerMessage::Progress(BuildEvent {
+                stage: BuildStage::Complete,
+                message: closing.to_string(),
+            }))
+            .expect("send the closing event");
+        let mut app = headless_app();
+        app.language = UiLanguage::English;
+        app.receiver = Some(receiver);
+
+        app.poll_worker();
+
+        let logged: Vec<&str> = app
+            .logs
+            .iter()
+            .map(|line| {
+                line.split_once("] ")
+                    .map(|(_, message)| message)
+                    .unwrap_or(line.as_str())
+            })
+            .collect();
+        let mut expected = sent.to_vec();
+        expected.push(closing);
+        assert_eq!(logged, expected);
+        assert_eq!(app.progress, 1.0);
+        assert_eq!(app.status, tr(UiLanguage::English, "build_complete"));
+        assert_eq!(
+            app.logs
+                .iter()
+                .filter(|line| line.contains("Added payload"))
+                .count(),
+            1
+        );
+        assert_eq!(
+            app.logs
+                .iter()
+                .filter(|line| line.ends_with("Collected assets/: 30 files (1.20 MiB)"))
+                .count(),
+            2
+        );
+    }
+
+    /// Menus keep their width and their labels on one line.
+    ///
+    /// The menu bar is laid out once and then re-read after the interface
+    /// language is switched, so a label that wrapped onto a second line would
+    /// move the menus beside it every time the user changes the language.
+    #[test]
+    fn menu_labels_stay_on_one_line_in_both_languages() {
+        const MENU_KEYS: [&str; 15] = [
+            "file",
+            "open_project_menu",
+            "open_config",
+            "open_output",
+            "exit",
+            "build",
+            "refresh_project",
+            "build_setup",
+            "retry_last",
+            "view",
+            "workspace",
+            "parameters",
+            "clear",
+            "language",
+            "help",
+        ];
+        for key in MENU_KEYS {
+            for language in [UiLanguage::English, UiLanguage::SimplifiedChinese] {
+                let label = tr(language, key);
+                assert!(!label.is_empty(), "{key} has no label");
+                assert!(
+                    !label.contains('\n') && !label.contains('\r'),
+                    "{key} is not a single line"
+                );
+            }
+        }
+        for language in [UiLanguage::English, UiLanguage::SimplifiedChinese] {
+            let label = language.label();
+            assert!(!label.contains('\n') && !label.contains('\r'));
+        }
+
+        egui::__run_test_ui(|ui| {
+            configure_menu(ui, 220.0);
+            assert!(ui.min_rect().width() >= 220.0);
+            assert_eq!(ui.style().wrap_mode, Some(egui::TextWrapMode::Extend));
+        });
+    }
+
+    /// The panels draw in every state the guide describes.
+    ///
+    /// No case here can open a window, so the states are laid out against a
+    /// headless context instead: nothing open, a project inspected, a build
+    /// running, a build that failed, and a finished one, in both interface
+    /// languages. A state that cannot be drawn at all would leave the user with
+    /// a blank window, and a draw that changed the state it shows would be
+    /// worse.
+    #[test]
+    fn the_panels_draw_in_every_state_they_can_be_in() {
+        let project = TestProject::create("draw");
+        let context = egui::Context::default();
+        let mut app = headless_app();
+
+        draw_panels(&mut app, &context);
+        app.tab = WorkspaceTab::Parameters;
+        draw_panels(&mut app, &context);
+        app.tab = WorkspaceTab::Build;
+
+        app.project_dir = project.display();
+        app.output_path = project.output_path("Probe_Setup.exe").display().to_string();
+        app.validate_project();
+        draw_panels(&mut app, &context);
+
+        app.building = true;
+        app.progress = 0.52;
+        draw_panels(&mut app, &context);
+        app.building = false;
+
+        app.last_build_failed = true;
+        app.validation_error = Some("packing failed".to_string());
+        draw_panels(&mut app, &context);
+
+        app.result = Some(BuildResult {
+            summary: app.summary.clone().expect("project summary"),
+            stub_path: PathBuf::from("lzma-stub-native.exe"),
+            bundle_size: 1_024,
+            output_size: 4_096,
+        });
+        draw_panels(&mut app, &context);
+
+        app.language = UiLanguage::SimplifiedChinese;
+        app.tab = WorkspaceTab::Parameters;
+        draw_panels(&mut app, &context);
+        app.tab = WorkspaceTab::Build;
+        draw_panels(&mut app, &context);
+
+        assert!(app.summary.is_some());
+        assert!(app.result.is_some());
+    }
+
+    /// What the inspection found reaches the sidebar and the log.
+    ///
+    /// The guide lists a 1x PNG without its 2x pair, a locale missing page text
+    /// the default locale defines, and a language listed with no file behind
+    /// it, so the case builds all three and expects the one inspection to fill
+    /// the count the sidebar shows and the lines the log carries.
+    #[test]
+    fn inspection_findings_reach_the_sidebar_and_the_log() {
+        let project = TestProject::create("warnings");
+        project.write_config("Probe", "Probe_Setup.exe", &["en-US", "ja-JP", "ru-RU"]);
+        std::fs::write(
+            project.path.join("layouts/configpage.xml"),
+            r#"<Page width="720" height="450"><Label text="@title" /></Page>"#,
+        )
+        .expect("first page layout");
+        std::fs::write(
+            project.path.join("locales/en-US.json"),
+            r#"{"title":"Probe"}"#,
+        )
+        .expect("default locale file");
+        std::fs::write(project.path.join("locales/ja-JP.json"), "{}").expect("locale file");
+        std::fs::write(project.path.join("assets/logo.png"), b"png").expect("1x asset");
+        let mut app = headless_app();
+        app.language = UiLanguage::English;
+        app.project_dir = project.display();
+
+        app.validate_project();
+
+        let warnings = app
+            .summary
+            .as_ref()
+            .expect("project summary")
+            .warnings
+            .clone();
+        assert_eq!(warnings.len(), 3, "{warnings:?}");
+        assert!(warnings.contains(&"missing DPI pair for assets/logo.png".to_string()));
+        assert!(warnings
+            .iter()
+            .any(|warning| warning.contains("locales/ja-JP.json is missing 1 page text(s)")));
+        assert!(warnings
+            .iter()
+            .any(|warning| warning.contains("localization.supported_locales lists ru-RU")));
+        for warning in &warnings {
+            assert!(
+                app.logs
+                    .iter()
+                    .any(|line| line.ends_with(&format!("Warning: {warning}"))),
+                "{warning} is not in the log"
+            );
+        }
+    }
+
+    /// A project file that cannot be read is reported, not fatal.
+    ///
+    /// These files are edited by hand, so the window has to survive one that
+    /// went wrong: the case breaks the JSON and then a layout and expects the
+    /// reason in the sidebar and in the log instead of a panic.
+    #[test]
+    fn a_broken_project_file_is_reported_to_the_user() {
+        let project = TestProject::create("broken-json");
+        let mut app = headless_app();
+        app.language = UiLanguage::English;
+        app.project_dir = project.display();
+        std::fs::write(project.config_path(), "{ \"project\": ").expect("break the project file");
+
+        app.validate_project();
+
+        assert!(app.summary.is_none());
+        assert_eq!(app.status_tone, StatusTone::Error);
+        let error = app.validation_error.as_ref().expect("validation error");
+        assert!(error.contains("invalid project config"), "{error}");
+        assert!(error.contains("installer_config.json"), "{error}");
+
+        project.write_config("Probe", "Probe_Setup.exe", &["en-US"]);
+        std::fs::write(
+            project.path.join("layouts/configpage.xml"),
+            r#"<Page><Label text="@title">"#,
+        )
+        .expect("break the first page layout");
+
+        app.validate_project();
+
+        assert!(app.summary.is_none());
+        let error = app.validation_error.as_ref().expect("validation error");
+        assert!(error.contains("invalid layout"), "{error}");
+        assert!(error.contains("configpage.xml"), "{error}");
     }
 
     #[test]
