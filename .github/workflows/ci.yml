@@ -115,12 +115,17 @@ jobs:
       # the uninstaller it deployed. It installs below the temporary directory
       # and registers under a per-case HKCU key, so it needs no product payload
       # and touches nothing outside the machine it runs on.
-      - name: Build the runtime stubs the suite embeds
-        run: cargo build --locked -p nano-installer-stub-lzma -p nano-installer-stub-zlib -p nano-installer-uninstaller
-
-      # NANO_INSTALLER_E2E_REQUIRE_STUBS turns "the stubs are missing" from a
-      # skip into a failure, so a job that validated nothing cannot look green.
+      #
+      # One script builds the runtimes the suite embeds, runs it with the skip
+      # turned into a failure, and writes the report the artifact below holds, so
+      # what a reader looks at afterwards is what this job ran.
       - name: Build a setup, install it, and uninstall it
-        env:
-          NANO_INSTALLER_E2E_REQUIRE_STUBS: "1"
-        run: cargo test --locked -p nano-installer-core --test e2e_setup
+        shell: powershell
+        run: .\scripts\run_e2e_setup.ps1
+
+      - name: Upload the suite report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-report
+          path: target/e2e-report.txt

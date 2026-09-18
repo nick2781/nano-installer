@@ -8,13 +8,16 @@ cargo test --locked --workspace
 .\scripts\build.ps1 -Project examples\TapTap
 ```
 
-安装包级用例会真的构建并运行安装包，所以要先把运行时构建出来：
+安装包级用例会真的构建并运行安装包，所以需要构建器要内嵌的那三个运行时。一个脚本把构建和测试一起做完，
+并把整次运行写进 `target/e2e-report.txt`，CI 作业把它作为产物留着：
 
 ```powershell
-cargo build -p nano-installer-stub-lzma -p nano-installer-stub-zlib -p nano-installer-uninstaller
-$env:NANO_INSTALLER_E2E_REQUIRE_STUBS = "1"
-cargo test -p nano-installer-core --test e2e_setup
+.\scripts\run_e2e_setup.ps1
+.\scripts\run_e2e_setup.ps1 -RequireDesktop    # 在有桌面会话的机器上
 ```
+
+报告里写明跑的是哪个提交、跑了哪些命令、开了哪些要求，以及最后那行统计，终端关掉之后还能回看。
+`NANO_INSTALLER_E2E_REQUIRE_STUBS=1` 由脚本自己设；`-RequireDesktop` 再加上桌面会话那条要求。
 
 单元测试覆盖 bundle 往返、payload 打包、按钮命中测试、临时目录部署、manifest 写入、拒绝覆盖已有
 目录、升级与旧文件清理、失败回滚，以及卸载时的快捷方式与用户数据规则。布局测试覆盖嵌套流式容器

@@ -16,6 +16,7 @@
 
 - Format: `cargo fmt --all -- --check`
 - Test: `cargo test --locked --workspace`
+- Setup end-to-end suite: `.\scripts\run_e2e_setup.ps1`
 - Lint: `cargo clippy --locked --workspace --all-targets -- -D warnings`
 - Release: `.\scripts\build.ps1`
 - Release plus TapTap setup: `.\scripts\build.ps1 -Project examples\TapTap`

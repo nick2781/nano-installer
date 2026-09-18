@@ -8,13 +8,18 @@ cargo test --locked --workspace
 .\scripts\build.ps1 -Project examples\TapTap
 ```
 
-The setup-level suite builds a setup and runs it, so build the runtime executables first:
+The setup-level suite builds a setup and runs it, so it needs the runtime executables the builder
+embeds. One script builds them, runs the suite, and writes the whole run to `target/e2e-report.txt`,
+which the CI job keeps as an artifact:
 
 ```powershell
-cargo build -p nano-installer-stub-lzma -p nano-installer-stub-zlib -p nano-installer-uninstaller
-$env:NANO_INSTALLER_E2E_REQUIRE_STUBS = "1"
-cargo test -p nano-installer-core --test e2e_setup
+.\scripts\run_e2e_setup.ps1
+.\scripts\run_e2e_setup.ps1 -RequireDesktop    # on a machine with a desktop session
 ```
+
+The report names the commit it ran against, the commands, the requirements and the summary line, so
+a result can still be read after the terminal that produced it is gone. The script sets
+`NANO_INSTALLER_E2E_REQUIRE_STUBS=1` itself; `-RequireDesktop` adds the desktop requirement.
 
 Unit tests cover bundle roundtrip, payload embedding, button hit testing, temporary-directory
 deployment, manifest writing, refusing to overwrite an existing directory, upgrades and stale-file
