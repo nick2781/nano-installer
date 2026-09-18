@@ -21,6 +21,17 @@ The report names the commit it ran against, the commands, the requirements and t
 a result can still be read after the terminal that produced it is gone. The script sets
 `NANO_INSTALLER_E2E_REQUIRE_STUBS=1` itself; `-RequireDesktop` adds the desktop requirement.
 
+The whole workspace suite runs through a script too, and writes the same kind of report:
+
+```powershell
+.\scripts\run_tests.ps1
+```
+
+`target/test-report.txt` holds the commit, the toolchain, the command, the whole output, the result
+line of every target and the totals, and the CI job keeps it as the `test-report` artifact. The
+setup-level cases build and run real installers, so they need the runtime executables the builder
+embeds and skip without them; a full check runs both scripts.
+
 Every behaviour these documents promise sits next to the case that holds it in
 [Test coverage](TEST_COVERAGE.md), layer by layer, including what no automated case reaches yet.
 

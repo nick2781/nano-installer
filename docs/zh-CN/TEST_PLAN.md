@@ -19,6 +19,16 @@ cargo test --locked --workspace
 报告里写明跑的是哪个提交、跑了哪些命令、开了哪些要求，以及最后那行统计，终端关掉之后还能回看。
 `NANO_INSTALLER_E2E_REQUIRE_STUBS=1` 由脚本自己设；`-RequireDesktop` 再加上桌面会话那条要求。
 
+整个工作区套件也由一个脚本运行，并写出同类的报告：
+
+```powershell
+.\scripts\run_tests.ps1
+```
+
+`target/test-report.txt` 里写明提交、工具链、命令、完整输出、每个目标的结果行和总计，CI 作业把它
+作为 `test-report` 产物留着。安装包级用例会真的构建并运行安装包，所以需要构建器内嵌的那三个运行时，
+缺了就跳过；要完整检查就把两个脚本都跑一遍。
+
 这几份文档承诺的每一条行为，以及守住它的那条用例，都按层列在[测试覆盖](TEST_COVERAGE.md)里，
 也包括目前还没有自动化用例覆盖的部分。
 
