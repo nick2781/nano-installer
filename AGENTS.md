@@ -21,6 +21,7 @@
 - Release plus TapTap setup: `.\scripts\build.ps1 -Project examples\TapTap`
 - Backend smoke test: `.\scripts\smoke_backends.ps1`
 - Example-only rebuild: `.\target\release\nano-installer-native-x64.exe build --project examples\TapTap`
+- Setup screenshots: `.\scripts\capture_setup_snapshots.ps1`
 
 All published executables target `x86_64-win7-windows-msvc`. Do not introduce a Win32, ANSI, or separate Windows 10 artifact.
 
@@ -38,4 +39,5 @@ All published executables target `x86_64-win7-windows-msvc`. Do not introduce a 
 - Run the Win7 PE import audit for the builder, every stub, and each generated setup.
 - Test archive extraction with real ZIP and 7z files after changing a backend.
 - Treat generated setup size and per-stub size as release metrics; update documentation when they materially change.
+- Capture the example setup's first page with `.\scripts\capture_setup_snapshots.ps1`, which checks it against the project's own layout; it needs a desktop session, and reading the PNGs with a model needs one running locally.
 - Preserve unrelated worktree changes in the working tree.

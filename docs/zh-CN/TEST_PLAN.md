@@ -35,17 +35,57 @@ cargo test -p nano-installer-core --test e2e_setup
   配置的 `%TEMP%` 路径会被展开、`--dir` 优先于配置路径，未声明支持或参数写错的运行不落任何文件。
 - 升级：第二次安装覆盖第一次时删掉新版 payload 不再包含的文件，同时保留 payload 不属于它的文件。
 - 卸载：产品、注册项与目录一并消失；目录里还有用户自己加的文件时保留目录。
+- 窗口：安装包真的开出向导窗口，客户区尺寸与项目声明的一致；不开窗口的运行看不到这一层。
 
 每个用例都自造 fixture，不含任何产品 payload 与第三方素材，安装到临时目录下，并注册到只属于这个
 用例的注册表键，所以并行执行互不干扰，重复运行也不会冲突；即使断言失败也会自己清理。运行时 stub
 缺失时用例打印跳过并计为通过，所以真正验证安装包的 job 会设置 `NANO_INSTALLER_E2E_REQUIRE_STUBS=1`，
-把跳过变成失败。
+把跳过变成失败。窗口用例还要求可交互的桌面会话：以服务方式启动的进程没有窗口站，开不出窗口，
+那里同样跳过，`NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` 能把这次跳过也变成失败。
+
+## 截图快照
+
+快照要桌面会话的理由和窗口用例一样，所以它在有桌面的机器上跑，不放在构建代理上。
+
+`scripts/capture_setup_snapshots.ps1` 会构建示例安装包，把它打开的那一页拍下来：每个支持的语言各一张，
+另加一张 150% 缩放的：
+
+```powershell
+cargo build -p nano-installer-native-cli -p nano-installer-stub-lzma -p nano-installer-stub-zlib -p nano-installer-uninstaller
+.\scripts\capture_setup_snapshots.ps1
+```
+
+PNG 与 `manifest.json` 落在 `target/setup-snapshots` 下。每张快照都拿它自己的项目来核对，
+所以下面这些是从 `examples/TapTap` 里读出来的，不是写在脚本里的：
+
+- 客户区与页面声明一致，150% 缩放时跟着放大。
+- 四个角都在窗口区域之外，也就是角是被切掉的。
+- Logo 与标语画出了图案，而不是一块纯色。
+- 安装按钮与版本行用布局里声明的颜色画出了文字。
+- 整张图的颜色数远多于一张空白页。
+- 按钮和版本行在不同语言下像素不同，说明语言确实传到了页面上。
+
+只拍第一页，payload 里有没有东西并不重要。示例的 payload 是 150 MB 的归档，仓库不跟踪它，
+没解包过示例的机器上没有这个文件，脚本会用一个同格式的空归档来构建，跑完再删掉。
+
+示例要求提权，UAC 确认框会挡在窗口前面，无人值守就跑不下去。脚本在构建时清掉 `install.require_admin`，
+构建完按原字节写回；`-KeepElevation` 保持原样构建，由人点掉确认框。
+
+字形对不对是判断，不是算式，所以快照还要有人看。`scripts/review_setup_snapshots.ps1` 把每张图和对应的
+期望交给本机的视觉模型，并把 `review.md` 写在图片旁边：
+
+```powershell
+.\scripts\review_setup_snapshots.ps1                    # 本机 Ollama，http://127.0.0.1:11434/v1
+.\scripts\review_setup_snapshots.ps1 -Endpoint http://127.0.0.1:1234/v1 -Model <模型名>
+```
+
+它只连本机的 OpenAI 兼容端点，连不上就说一句然后停下，图片和期望原样留在目录里给人看。
 
 ## 手动检查
 
+上面那些快照已经核对过客户区、切角、图片，以及按钮和版本行是否跟着语言变。剩下的得有人在机器前看：
 启动 `examples/TapTap/dist/TapTap_Setup.exe`，确认：
 
-- 客户区 720x450，无系统标题栏。
 - 背景、Logo、标语与按钮图片可见，透明通道正确。
 - 安装按钮与版本文案使用预期语言。
 - 顶部空白区域可拖动窗口。

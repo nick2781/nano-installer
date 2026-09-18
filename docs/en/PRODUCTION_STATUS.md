@@ -62,12 +62,27 @@ files and registry entries, so validate them in a disposable virtual machine onl
   project it writes itself and runs it against a real installation: files land on disk byte for
   byte, the manifest and the uninstall entry are written, an upgrade drops stale files and keeps
   files it does not own, and an uninstall removes the product, the registration, and the directory.
+  One of its thirteen cases opens the wizard window and measures the client area it drew, which
+  needs an interactive desktop session, so that case skips where there is none and
+  `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` makes the skip a failure. The other twelve pass on Windows
+  11 and in CI.
+- `scripts/capture_setup_snapshots.ps1` builds the example setup and photographs the page it opens in
+  Chinese, English, and Russian, plus once at 150% scaling, then checks every snapshot against the
+  project's own layout: the client area, the cut corners, artwork in the logo and the tagline, text
+  drawn in the colour the layout declares, and a button and version line that differ per locale. It
+  runs on a machine with a desktop session, and it photographs the first page only, so a clone that
+  never unpacked the example's payload builds against an empty archive of the same format.
 
 ## Blocking a release
 
 1. No code signing. Authenticode (including dual signing) is not wired up, and there is no
-   certificate.
+   certificate: `scripts/sign.ps1` signs and verifies a file once one is supplied, but the build
+   never calls it.
 2. No acceptance run on a real Windows 7 SP1 machine.
+
+Neither one is something the test suites can settle: the first needs a certificate, and the second
+needs a Windows 7 SP1 machine. However green the automated runs get, these two stay open; what the
+suites do prove is reproducible on any Windows machine.
 
 ## Known limitations
 

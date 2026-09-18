@@ -12,11 +12,16 @@
 //! running at once cannot see each other's work.
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Child, Command, ExitStatus, Output};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
 
 use nano_installer_core::{
     build_project, build_project_with_progress, BuildRequest, PayloadFormat,
+};
+use windows::Win32::Foundation::{BOOL, HWND, LPARAM, RECT};
+use windows::Win32::UI::WindowsAndMessaging::{
+    EnumWindows, GetClassNameW, GetClientRect, GetWindowThreadProcessId, SetProcessDPIAware,
 };
 
 /// A name unique to one case in one process, so parallel cases and repeated
@@ -895,4 +900,158 @@ fn a_project_without_silent_support_refuses_a_windowless_uninstall() -> anyhow::
         "the product was removed despite the refusal"
     );
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// The window
+// ---------------------------------------------------------------------------
+
+/// The class name the runtime registers its window under.
+const RUNTIME_WINDOW_CLASS: &str = "NanoInstallerNativeRuntime";
+
+/// Opens the real setup without `--silent` and waits for its wizard window.
+///
+/// This is the one seam no windowless case can reach. A layout that fails to
+/// load, a bundle that lost its assets, or a window class that was never
+/// registered still leaves a silent install working and every check that only
+/// reads files passing, so the window itself has to be looked at once. Nothing
+/// is clicked: the setup is closed the moment it has drawn, and the page it drew
+/// is what the client area is measured against.
+///
+/// Opening a window needs an interactive desktop session. A process that has
+/// none, which is how a build agent started as a service runs, cannot, so the
+/// case skips there and says why. On a machine that is meant to have a desktop,
+/// `NANO_INSTALLER_E2E_REQUIRE_DESKTOP` turns that skip into a failure, because
+/// a check that never ran must not pass for one that did.
+#[test]
+fn the_setup_opens_its_wizard_window() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::SevenZip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.build()?;
+
+    // The client area is read in real pixels, so the run and the reader are
+    // pinned to the same scale: on a scaled display a window measured through
+    // the scaling answers with the display rather than with the layout.
+    let _ = unsafe { SetProcessDPIAware() };
+    let mut setup = Command::new(&fixture.setup)
+        .env("NANO_INSTALLER_TEST_DPI", "96")
+        .spawn()?;
+
+    let waited = wait_for_runtime_window(&mut setup, Instant::now() + Duration::from_secs(30));
+
+    // The window is measured while its process is still alive, because closing
+    // the process closes the window and takes the handle with it.
+    let measured = match &waited {
+        WindowWait::Found(window) => Some(client_size(*window)),
+        WindowWait::Exited(_) | WindowWait::Timeout => None,
+    };
+    let _ = setup.kill();
+    let _ = setup.wait();
+
+    let Some((width, height)) = measured else {
+        let reason = match waited {
+            WindowWait::Exited(status) => format!("the setup {status} instead of opening a window"),
+            WindowWait::Timeout => "no window appeared within 30 seconds".to_string(),
+            // Measured above, so a window that was found cannot arrive here.
+            WindowWait::Found(_) => "the window could not be measured".to_string(),
+        };
+        return skip_missing_desktop(&reason);
+    };
+
+    assert_eq!(
+        (width, height),
+        (720, 450),
+        "the wizard window measures {width}x{height}, not the 720x450 client area its project declares"
+    );
+    assert!(
+        !fixture.destination.exists(),
+        "looking at the wizard installed something"
+    );
+    Ok(())
+}
+
+/// Reports that this machine cannot open a window.
+fn skip_missing_desktop(reason: &str) -> anyhow::Result<()> {
+    let required =
+        std::env::var_os("NANO_INSTALLER_E2E_REQUIRE_DESKTOP").is_some_and(|value| value != "0");
+    anyhow::ensure!(!required, "the wizard window never appeared: {reason}");
+    eprintln!("skipping: no wizard window ({reason})");
+    Ok(())
+}
+
+/// How the wait for the runtime's window ended.
+enum WindowWait {
+    /// The window the runtime owns, found by class and by owning process.
+    Found(HWND),
+    /// The process ended before it opened a window, with its status.
+    Exited(ExitStatus),
+    /// No window appeared before the deadline.
+    Timeout,
+}
+
+/// Waits for the runtime's window, polling because the window is created a
+/// moment after the process starts.
+fn wait_for_runtime_window(setup: &mut Child, deadline: Instant) -> WindowWait {
+    while Instant::now() < deadline {
+        if let Some(status) = setup.try_wait().expect("the setup process can be polled") {
+            return WindowWait::Exited(status);
+        }
+        if let Some(window) = runtime_window(setup.id()) {
+            return WindowWait::Found(window);
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    WindowWait::Timeout
+}
+
+/// What one walk over the top-level windows collects.
+struct WindowLookup {
+    process_id: u32,
+    found: Option<HWND>,
+}
+
+/// The window of `process_id` whose class is the runtime's, if the process has
+/// one. Class and owner together say the window belongs to this run: the silent
+/// cases open no window at all, and a window another process left behind belongs
+/// to another process.
+fn runtime_window(process_id: u32) -> Option<HWND> {
+    let mut lookup = WindowLookup {
+        process_id,
+        found: None,
+    };
+    let parameter = LPARAM(&mut lookup as *mut WindowLookup as isize);
+    // A machine with no window station fails the walk, which is the same answer
+    // to the caller as a walk that found nothing.
+    let _ = unsafe { EnumWindows(Some(visit_window), parameter) };
+    lookup.found
+}
+
+/// The callback the walk runs per top-level window. Windows written in C pass a
+/// context pointer along, and returning zero stops the walk.
+unsafe extern "system" fn visit_window(window: HWND, parameter: LPARAM) -> BOOL {
+    let lookup = &mut *(parameter.0 as *mut WindowLookup);
+    let mut owner = 0u32;
+    GetWindowThreadProcessId(window, Some(&mut owner));
+    if owner == lookup.process_id && window_class(window) == RUNTIME_WINDOW_CLASS {
+        lookup.found = Some(window);
+        return BOOL(0);
+    }
+    BOOL(1)
+}
+
+/// The class name of a window.
+fn window_class(window: HWND) -> String {
+    let mut name = [0u16; 256];
+    let length = unsafe { GetClassNameW(window, &mut name) };
+    let length = usize::try_from(length).unwrap_or(0).min(name.len());
+    String::from_utf16_lossy(&name[..length])
+}
+
+/// The client area of a window, which is the page the runtime drew.
+fn client_size(window: HWND) -> (i32, i32) {
+    let mut rect = RECT::default();
+    unsafe { GetClientRect(window, &mut rect) }.expect("the window has a client area");
+    (rect.right - rect.left, rect.bottom - rect.top)
 }

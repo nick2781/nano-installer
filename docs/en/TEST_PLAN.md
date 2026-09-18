@@ -45,18 +45,69 @@ that setup and the uninstaller it deployed.
   leaves a file the payload does not own alone.
 - Uninstall: the product, the registration, and the directory go; a directory holding a file the
   user added survives.
+- Window: the setup opens its wizard window, and the client area matches the size the project
+  declares. A run without a window reaches none of that.
 
 Every case generates its fixture, carries no product payload and no third-party assets, installs
 below the temporary directory, and registers under a registry key naming only that case, so parallel
 cases cannot see each other and repeated runs do not collide. A case that fails still cleans up
 after itself. Without the runtime stubs the suite prints a skip and passes, so a job that validates
-setups sets `NANO_INSTALLER_E2E_REQUIRE_STUBS=1` to turn that skip into a failure.
+setups sets `NANO_INSTALLER_E2E_REQUIRE_STUBS=1` to turn that skip into a failure. The window case
+needs an interactive desktop session on top of that, which a process started as a service has no
+window station for: it skips there, and `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` turns that skip into
+a failure.
+
+## Screenshot snapshots
+
+The snapshots need a desktop session for the same reason the window case does, so they are taken on
+a machine rather than on a build agent.
+
+`scripts/capture_setup_snapshots.ps1` builds the example setup and photographs the page it opens,
+once per supported locale and once at 150% scaling:
+
+```powershell
+cargo build -p nano-installer-native-cli -p nano-installer-stub-lzma -p nano-installer-stub-zlib -p nano-installer-uninstaller
+.\scripts\capture_setup_snapshots.ps1
+```
+
+The PNGs and a `manifest.json` land in `target/setup-snapshots`. Each snapshot is checked against
+the project it came from, so what is verified is read out of `examples/TapTap` rather than written
+into the script:
+
+- The client area matches the page, and 150% scaling scales it.
+- Every corner falls outside the window region, so the corners are cut.
+- The logo and the tagline drew artwork instead of a flat rectangle.
+- The install button and the version line drew text in the colour their layout declares.
+- The page holds far more colours than a blank one.
+- The button and the version line differ between locales, so the language reached the page.
+
+Only the first page is photographed, so nothing has to be inside the payload. The example's payload
+is a 150 MB archive the repository does not track, and a clone that never unpacked the example has
+no such file, so the script builds against an empty archive of the same format and removes it again.
+
+The example asks for elevation, and the consent prompt would sit in front of the window and stop an
+unattended run. The script clears `install.require_admin` for the build and puts the file back byte
+for byte afterwards; `-KeepElevation` builds the project as it stands and waits for a person to
+answer the prompt.
+
+Whether the glyphs read correctly is a judgement rather than an equation, so the snapshots are also
+meant to be looked at. `scripts/review_setup_snapshots.ps1` hands each page and its expectation to a
+vision model running on this machine, and writes `review.md` next to the PNGs:
+
+```powershell
+.\scripts\review_setup_snapshots.ps1                       # Ollama on http://127.0.0.1:11434/v1
+.\scripts\review_setup_snapshots.ps1 -Endpoint http://127.0.0.1:1234/v1 -Model <name>
+```
+
+It talks to a local OpenAI-compatible endpoint only, and when nothing answers it says so and stops,
+leaving the snapshots and their expectations for a person to read.
 
 ## Manual checks
 
-Start `examples/TapTap/dist/TapTap_Setup.exe` and confirm:
+The snapshots already cover the client area, the cut corners, the images, and whether the button and
+the version line follow the language. What remains needs someone at the machine: start
+`examples/TapTap/dist/TapTap_Setup.exe` and confirm:
 
-- The client area is 720x450 with no system title bar.
 - Background, logo, tagline, and button images are visible with correct transparency.
 - The install button and version text use the expected locale.
 - The empty area at the top drags the window.
