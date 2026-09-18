@@ -1842,24 +1842,9 @@ impl BundleIndex {
         let mut file = std::fs::File::open(exe)
             .with_context(|| format!("failed to open {}", exe.display()))?;
         let length = file.metadata()?.len();
-        if length < 16 {
+        let Some((start, size)) = read_bundle_footer(&mut file, length)? else {
             return Ok(None);
-        }
-        let mut footer = [0u8; 16];
-        file.seek(SeekFrom::Start(length - 16))?;
-        file.read_exact(&mut footer)?;
-        if &footer[8..] != FOOTER_MAGIC {
-            return Ok(None);
-        }
-        let size = u64::from_le_bytes(footer[..8].try_into()?);
-        // checked arithmetic: a corrupt footer can carry a size that overflows
-        // the addition before the subtraction ever applies.
-        let footer_size = 16u64
-            .checked_add(size)
-            .context("invalid native bundle size")?;
-        let start = length
-            .checked_sub(footer_size)
-            .context("invalid native bundle size")?;
+        };
         let files = parse_bundle_index(&mut file, start, size)?;
         Ok(Some(Self {
             exe: exe.to_path_buf(),
@@ -1943,6 +1928,42 @@ impl BundleIndex {
         }
         Ok(files)
     }
+}
+
+/// How far back from the end of the file the bundle footer is looked for.
+///
+/// The build writes the footer last, but it is not the last thing in a setup
+/// that has been signed: Authenticode appends its certificate table behind the
+/// whole file, a few kilobytes of signature and timestamp. Nothing else follows
+/// a build, so this window covers a signature with room to spare.
+const FOOTER_SEARCH_WINDOW: u64 = 1 << 20;
+
+/// The offset and length of the appended bundle, read from the footer that ends
+/// it. Returns `None` when the file carries no footer.
+fn read_bundle_footer(file: &mut std::fs::File, length: u64) -> Result<Option<(u64, u64)>> {
+    let window = length.min(FOOTER_SEARCH_WINDOW);
+    if window < 16 {
+        return Ok(None);
+    }
+    let window_start = length - window;
+    let mut tail = vec![0u8; window as usize];
+    file.seek(SeekFrom::Start(window_start))?;
+    file.read_exact(&mut tail)?;
+    // Backwards, because the footer that describes this bundle is the last one
+    // in the file, whatever an integrator has appended behind it.
+    for magic_at in (8..=tail.len() - 8).rev() {
+        if &tail[magic_at..magic_at + 8] != FOOTER_MAGIC {
+            continue;
+        }
+        let size = u64::from_le_bytes(tail[magic_at - 8..magic_at].try_into()?);
+        // checked arithmetic: a corrupt footer can carry a size that runs past
+        // the start of the file.
+        let start = (window_start + magic_at as u64 - 8)
+            .checked_sub(size)
+            .context("invalid native bundle size")?;
+        return Ok(Some((start, size)));
+    }
+    Ok(None)
 }
 
 /// Reads the bundle directory without loading any file contents.
@@ -7154,8 +7175,8 @@ mod tests {
         validate_output_filename, word_end_after, word_range, word_start_before, wrap_lines, wraps,
         BundleIndex, DialogKind, DialogState, DpiContext, DpiSettings, FlowAxis, FlowItem,
         InteractionState, LayerRect, LayoutContext, LayoutOutput, PayloadFormat, RuntimeMode,
-        RuntimeUi, TextAlignment, TextHit, TextInputRegion, TextSnapshot, WindowAction, COLORREF,
-        FOOTER_MAGIC,
+        RuntimeUi, TextAlignment, TextHit, TextInputRegion, TextSnapshot, WindowAction,
+        BUNDLE_MAGIC, BUNDLE_VERSION, COLORREF, FOOTER_MAGIC,
     };
     use anyhow::Context;
     use std::collections::HashMap;
@@ -7272,6 +7293,27 @@ mod tests {
         bytes.extend_from_slice(FOOTER_MAGIC);
         std::fs::write(&truncated, &bytes)?;
         assert!(BundleIndex::read(&truncated).is_err());
+        Ok(())
+    }
+
+    /// A signed setup is still a setup. Authenticode appends its certificate
+    /// table behind everything the build wrote, and a footer read from the last
+    /// bytes of the file reported exactly that as "no bundle at all".
+    #[test]
+    fn bundle_index_reads_a_bundle_that_a_signature_follows() -> anyhow::Result<()> {
+        let temp = tempfile::tempdir()?;
+        let image = temp.path().join("setup.exe");
+        let mut bundle = BUNDLE_MAGIC.to_vec();
+        bundle.extend_from_slice(&BUNDLE_VERSION.to_le_bytes());
+        bundle.extend_from_slice(&0u32.to_le_bytes());
+        write_setup_image(&image, &bundle)?;
+
+        let mut signed = std::fs::read(&image)?;
+        signed.extend_from_slice(&[0x5Au8; 1024]);
+        std::fs::write(&image, signed)?;
+
+        let index = BundleIndex::read(&image)?.context("the bundle is behind the signature")?;
+        assert!(index.files.is_empty());
         Ok(())
     }
 

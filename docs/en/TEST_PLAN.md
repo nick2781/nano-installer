@@ -47,6 +47,8 @@ that setup and the uninstaller it deployed.
   user added survives.
 - Window: the setup opens its wizard window, and the client area matches the size the project
   declares. A run without a window reaches none of that.
+- Signed setup: a certificate table appended behind the bundle, which is what Authenticode writes
+  when the release pipeline signs the file, keeps the runtime able to find its own resources.
 
 Every case generates its fixture, carries no product payload and no third-party assets, installs
 below the temporary directory, and registers under a registry key naming only that case, so parallel
@@ -56,6 +58,11 @@ setups sets `NANO_INSTALLER_E2E_REQUIRE_STUBS=1` to turn that skip into a failur
 needs an interactive desktop session on top of that, which a process started as a service has no
 window station for: it skips there, and `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` turns that skip into
 a failure.
+
+Signing a built setup belongs to the release pipeline rather than to this suite: `scripts/sign.ps1`
+signs a file with the certificate `NANO_INSTALLER_CERT_THUMBPRINT` names and verifies the result.
+What the suite covers is the part no certificate changes, which is that the file still reads its own
+resources once the signature has been appended.
 
 ## Screenshot snapshots
 

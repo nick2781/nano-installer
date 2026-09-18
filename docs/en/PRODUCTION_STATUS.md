@@ -62,10 +62,12 @@ files and registry entries, so validate them in a disposable virtual machine onl
   project it writes itself and runs it against a real installation: files land on disk byte for
   byte, the manifest and the uninstall entry are written, an upgrade drops stale files and keeps
   files it does not own, and an uninstall removes the product, the registration, and the directory.
-  One of its thirteen cases opens the wizard window and measures the client area it drew, which
+  One of its fourteen cases opens the wizard window and measures the client area it drew, which
   needs an interactive desktop session, so that case skips where there is none and
-  `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` makes the skip a failure. The other twelve pass on Windows
-  11 and in CI.
+  `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` makes the skip a failure. The other thirteen pass on
+  Windows 11 and in CI.
+- A setup stays a setup after signing: a certificate table appended behind the bundle, which is what
+  Authenticode writes into the file, no longer hides the footer the runtime reads its resources from.
 - `scripts/capture_setup_snapshots.ps1` builds the example setup and photographs the page it opens in
   Chinese, English, and Russian, plus once at 150% scaling, then checks every snapshot against the
   project's own layout: the client area, the cut corners, artwork in the logo and the tagline, text
@@ -73,16 +75,29 @@ files and registry entries, so validate them in a disposable virtual machine onl
   runs on a machine with a desktop session, and it photographs the first page only, so a clone that
   never unpacked the example's payload builds against an empty archive of the same format.
 
+## Signing
+
+The builder does not sign anything, and it should not. A setup and its uninstaller are signed by the
+release pipeline that publishes them, exactly as an NSIS installer is signed by the product that
+builds it: NSIS only offers `!finalize` and `!uninstfinalize`, hooks that hand the generated file to
+a command, and signs nothing itself. `scripts/sign.ps1` does that job here, signing a file with the
+certificate `NANO_INSTALLER_CERT_THUMBPRINT` names and verifying the result; the build never calls
+it.
+
+What this project owes that pipeline is an artifact that signing does not break, because Authenticode
+appends its certificate table behind everything the build wrote and the bundle footer stops being the
+last thing in the file. The runtime searches the tail of the file for the footer instead of reading
+its final bytes, `a_setup_with_a_signature_appended_still_installs` holds that in place, and a setup
+signed with signtool and a locally issued certificate was installed on Windows 11.
+
 ## Blocking a release
 
-1. No code signing. Authenticode (including dual signing) is not wired up, and there is no
-   certificate: `scripts/sign.ps1` signs and verifies a file once one is supplied, but the build
-   never calls it.
-2. No acceptance run on a real Windows 7 SP1 machine.
+1. No acceptance run on a real Windows 7 SP1 machine. The suites and the snapshots run on Windows 11;
+   Windows 7 SP1 is a platform a setup claims to support and the one nothing has been observed on,
+   and no such machine is available at the moment.
 
-Neither one is something the test suites can settle: the first needs a certificate, and the second
-needs a Windows 7 SP1 machine. However green the automated runs get, these two stay open; what the
-suites do prove is reproducible on any Windows machine.
+Until that run happens, the automated results are what there is: they hold on Windows 11, and on
+Windows 7 SP1 nothing has been observed.
 
 ## Known limitations
 

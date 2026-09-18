@@ -563,6 +563,59 @@ fn the_payload_format_selects_the_runtime_that_gets_embedded() -> anyhow::Result
     Ok(())
 }
 
+/// A setup an integrator has signed is still a setup.
+///
+/// Signing is the release pipeline's step, not the builder's, and Authenticode
+/// appends its certificate table behind everything the build wrote, footer
+/// included. A runtime that only looked at the last bytes of its own file found
+/// no bundle at all and refused to install, so this is what a signed setup has
+/// to survive.
+#[test]
+fn a_setup_with_a_signature_appended_still_installs() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.build()?;
+    append_certificate_table(&fixture.setup)?;
+
+    let output = fixture.install()?;
+    assert!(
+        output.status.success(),
+        "a setup with a signature appended refused to install: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        fixture.destination.join("E2eProbe.exe").is_file(),
+        "a setup with a signature appended deployed nothing"
+    );
+    assert!(
+        fixture.read_uninstall_entry()?.is_some(),
+        "a setup with a signature appended registered nothing"
+    );
+    Ok(())
+}
+
+/// Appends a certificate table the way Authenticode does: a length, a revision
+/// and a type in front of the signature blob, all of it behind the bundle.
+///
+/// The bytes stand in for a real signature, which this suite has no certificate
+/// to produce; what matters to the runtime is only that the footer is no longer
+/// the last thing in the file.
+fn append_certificate_table(setup: &Path) -> anyhow::Result<()> {
+    let signature = [0x5Au8; 1024];
+    let mut table = Vec::with_capacity(signature.len() + 8);
+    table.extend_from_slice(&u32::try_from(signature.len() + 8)?.to_le_bytes());
+    table.extend_from_slice(&0x0200u16.to_le_bytes());
+    table.extend_from_slice(&0x0002u16.to_le_bytes());
+    table.extend_from_slice(&signature);
+
+    let mut bytes = std::fs::read(setup)?;
+    bytes.extend_from_slice(&table);
+    std::fs::write(setup, bytes)?;
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Install
 // ---------------------------------------------------------------------------
