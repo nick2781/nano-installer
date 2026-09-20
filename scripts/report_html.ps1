@@ -88,7 +88,8 @@ function Write-ReportHtml {
         [array]$Sections = @(),
         [array]$Notes = @(),
         [string]$Language = "en-US",
-        [hashtable]$Text = $null
+        [hashtable]$Text = $null,
+        [array]$Guide = @()
     )
 
     if ($null -eq $Text) {
@@ -103,6 +104,7 @@ function Write-ReportHtml {
     $snapshotsHeading = Get-ReportPhrase -Text $Text -Key "snapshots.heading"
     $expectationHeading = Get-ReportPhrase -Text $Text -Key "snapshots.expectation"
     $outputSummary = Get-ReportPhrase -Text $Text -Key "output.summary"
+    $guideHeading = Get-ReportPhrase -Text $Text -Key "guide.heading"
     $caseColumn = Get-ReportPhrase -Text $Text -Key "cases.column.case"
     $resultColumn = Get-ReportPhrase -Text $Text -Key "cases.column.result"
     $whatColumn = Get-ReportPhrase -Text $Text -Key "cases.column.what"
@@ -209,6 +211,8 @@ figcaption { margin-top: 10px; font-size: 12.5px; color: var(--muted); }
 figcaption .file { color: var(--faint); }
 ul.checks { margin: 8px 0 10px; padding-left: 18px; }
 ul.checks li { margin-bottom: 2px; }
+ul.guide { margin: 0; padding-left: 18px; color: var(--muted); }
+ul.guide li { margin-bottom: 6px; }
 ul.notes { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13px; }
 ul.notes li { margin-bottom: 4px; }
 footer { border-top: 1px solid var(--border); margin-top: 24px; padding-top: 16px; color: var(--faint); font-size: 12px; }
@@ -233,6 +237,17 @@ footer p { margin: 0 0 6px; }
     if ($failed) { $pill = "failed" }
     $html.Add("<span class=""pill $pill"">$(ConvertTo-ReportHtml $verdictLabel)</span>")
     $html.Add("</header>")
+
+    if ($Guide.Count -gt 0) {
+        $html.Add("<section class=""card"">")
+        $html.Add("<h2>$(ConvertTo-ReportHtml $guideHeading)</h2>")
+        $html.Add("<ul class=""guide"">")
+        foreach ($item in $Guide) {
+            $html.Add("<li>$(ConvertTo-ReportHtml $item)</li>")
+        }
+        $html.Add("</ul>")
+        $html.Add("</section>")
+    }
 
     if ($Stats.Count -gt 0) {
         $html.Add("<section class=""stats"">")
@@ -318,8 +333,15 @@ footer p { margin: 0 0 6px; }
         }
         $html.Add("</tr></thead>")
         $html.Add("<tbody>")
+        $rowIds = @()
+        if ($table.ContainsKey("RowIds")) { $rowIds = @($table.RowIds) }
+        $rowIndex = 0
         foreach ($row in $table.Rows) {
-            $html.Add("<tr>")
+            $rowAttribute = ""
+            if ($rowIndex -lt $rowIds.Count -and $rowIds[$rowIndex]) {
+                $rowAttribute = " id=""$($rowIds[$rowIndex])"""
+            }
+            $html.Add("<tr$rowAttribute>")
             $index = 0
             foreach ($cell in $row) {
                 $class = ""
@@ -337,6 +359,7 @@ footer p { margin: 0 0 6px; }
                 $index++
             }
             $html.Add("</tr>")
+            $rowIndex++
         }
         $html.Add("</tbody>")
         $html.Add("</table>")

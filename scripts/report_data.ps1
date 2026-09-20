@@ -144,6 +144,136 @@ function Get-TestCatalog {
     return $catalog
 }
 
+# One cell of a report table: its text, and the class, tooltip, link or second
+# line that cell carries.
+function New-ReportCell {
+    param([string]$Text, [string]$Class = "", [string]$Title = "", [string]$Link = "", [string]$Sub = "")
+
+    $cell = @{ Text = $Text }
+    if ($Class) { $cell["Class"] = $Class }
+    if ($Title) { $cell["Title"] = $Title }
+    if ($Link) { $cell["Link"] = $Link }
+    if ($Sub) { $cell["Sub"] = $Sub }
+    return $cell
+}
+
+# The coverage document's layer table: what the cases of a layer are for, and
+# what passing them does not prove. It is read the way the behaviour tables are,
+# and it is the only four-column table in the document, so a row is a layer row
+# when it has four cells and its second one carries the count the layer
+# declares; the heading above them declares none.
+function Get-TestLayerCatalog {
+    param([string]$RepoRoot, [string]$Language = "en-US")
+
+    $layers = New-Object System.Collections.Generic.List[object]
+    $documentLanguage = Get-ReportDocLanguage -Language $Language
+    $coveragePath = Join-Path $RepoRoot "docs/$documentLanguage/TEST_COVERAGE.md"
+    if (-not (Test-Path -LiteralPath $coveragePath -PathType Leaf)) {
+        return @()
+    }
+    $started = $false
+    foreach ($line in [System.IO.File]::ReadAllLines($coveragePath)) {
+        if (-not $line.StartsWith("|")) {
+            if ($started) { break }
+            continue
+        }
+        $cells = @($line.Split("|") | Select-Object -Skip 1)
+        if ($cells.Count -ne 5) {
+            continue
+        }
+        $name = $cells[0].Trim()
+        $count = $cells[1].Trim()
+        if (-not $started) {
+            if ($count -notmatch "\d") { continue }
+            $started = $true
+        }
+        if ($name.Length -eq 0 -or $name -match "^-+$") {
+            continue
+        }
+        $layers.Add(@{
+            Name        = $name
+            Count       = $count
+            Proves      = $cells[2].Trim()
+            CannotProve = $cells[3].Trim()
+        })
+    }
+    return $layers.ToArray()
+}
+
+# Which layer of the suite a target belongs to. A result line names the binary
+# that ran the cases, the binary is named after the crate, and the crate is what
+# says which layer a target is: the core library, the setup end-to-end cases,
+# the project inspection, the visual builder, or an extraction runtime. A binary
+# the coverage document gives no layer -- the workspace also builds the command
+# line tool and runs doc-tests -- is a target of its own rather than a guess.
+function Get-TargetLayerKey {
+    param([string]$Target)
+
+    $crate = $Target
+    if ($Target -match "\(([^)]+)\)") {
+        $crate = $Matches[1]
+    }
+    $crate = Split-Path -Leaf $crate
+    $crate = $crate -replace "-[0-9a-f]{6,}\.exe$", ""
+    if ($crate -like "*nano_installer_core*") { return "core" }
+    if ($crate -like "*e2e_setup*") { return "e2e" }
+    if ($crate -like "*project_inspection*") { return "inspection" }
+    if ($crate -like "*nano_installer_gui*") { return "gui" }
+    if ($crate -like "*lzma_stub_native*" -or $crate -like "*zlib_stub_native*") { return "runtime" }
+    return "unknown"
+}
+
+# The layers a report explains: the rows the coverage document gives the layers
+# this run has targets in, and a row of the report's own words for a layer the
+# document does not name, so no target is left without one.
+function Get-ReportLayerTable {
+    param([hashtable]$Text, [object[]]$Document, [string[]]$Keys = @())
+
+    $layers = New-Object System.Collections.Generic.List[object]
+    $names = New-Object System.Collections.Generic.List[string]
+    foreach ($key in $Keys) {
+        $names.Add((Get-ReportPhrase -Text $Text -Key "layer.$key"))
+    }
+    foreach ($row in $Document) {
+        if ($names.Contains($row.Name)) {
+            $layers.Add(@{
+                Anchor      = "layer-$($layers.Count)"
+                Name        = $row.Name
+                Count       = $row.Count
+                Proves      = $row.Proves
+                CannotProve = $row.CannotProve
+            })
+        }
+    }
+    foreach ($name in $names) {
+        $known = $false
+        foreach ($layer in $layers) {
+            if ($layer.Name -eq $name) { $known = $true }
+        }
+        if (-not $known) {
+            $layers.Add(@{
+                Anchor      = "layer-$($layers.Count)"
+                Name        = $name
+                Count       = ""
+                Proves      = (Get-ReportPhrase -Text $Text -Key "layers.nameless")
+                CannotProve = ""
+            })
+        }
+    }
+    return $layers.ToArray()
+}
+
+# Where each layer's row sits, so a target can point at what its layer proves.
+function Get-ReportLayerAnchor {
+    param([object[]]$Layers)
+
+    $anchors = @{}
+    foreach ($layer in $Layers) {
+        $anchors[$layer.Name] = "#$($layer.Anchor)"
+    }
+    return $anchors
+}
+
 # One row for a cases table: what the case is called, where it sits, and what it
 # holds. The doc comment above the case says what it checks; a case that has none
 # is described by its own name, so no row is ever blank.

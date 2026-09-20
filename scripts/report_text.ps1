@@ -105,6 +105,21 @@ function Get-ReportDocLanguage {
     return $Language
 }
 
+# The few lines that say how to read the page: what a verdict means, what a
+# normal run looks like, and where a case's own words come from. The document
+# path is the coverage document this language reads its behaviours from.
+function Get-ReportGuide {
+    param([hashtable]$Text, [string]$DocumentPath)
+
+    return @(
+        (Get-ReportPhrase -Text $Text -Key "guide.cases" -Values @($DocumentPath)),
+        (Get-ReportPhrase -Text $Text -Key "guide.passed"),
+        (Get-ReportPhrase -Text $Text -Key "guide.failed"),
+        (Get-ReportPhrase -Text $Text -Key "guide.ignored"),
+        (Get-ReportPhrase -Text $Text -Key "guide.normal")
+    )
+}
+
 # One word for a case's outcome, whatever shape the reader meets it in: the tool
 # prints "ok", "FAILED" or "ignored", and the table says the same outcome in the
 # report's language.

@@ -172,6 +172,24 @@ if ($null -ne $suite) {
     $suiteLines = @($suite.Output)
 }
 $catalog = Get-TestCatalog -RepoRoot $repoRoot -Language $Language
+
+# The one layer this suite has, and what the coverage document says its cases
+# are for, so the report says what these 18 cases prove and what they do not.
+$documentLanguage = Get-ReportDocLanguage -Language $Language
+$documentPath = "docs/$documentLanguage/TEST_COVERAGE.md"
+$layerDocument = Get-TestLayerCatalog -RepoRoot $repoRoot -Language $Language
+$layers = Get-ReportLayerTable -Text $text -Document $layerDocument -Keys @("e2e")
+$layerRows = New-Object System.Collections.Generic.List[object]
+$layerIds = New-Object System.Collections.Generic.List[string]
+foreach ($layer in $layers) {
+    $layerIds.Add($layer.Anchor)
+    $layerRows.Add(@(
+        (New-ReportCell $layer.Name),
+        (New-ReportCell $layer.Count),
+        (New-ReportCell $layer.Proves),
+        (New-ReportCell $layer.CannotProve)
+    ))
+}
 $caseRows = New-Object System.Collections.Generic.List[object]
 foreach ($line in $suiteLines) {
     if ($line -match "^test ([A-Za-z0-9_:]+) \.\.\. (ok|FAILED|ignored)(?:,\s*(.*))?$") {
@@ -189,7 +207,8 @@ if ($caseRows.Count -gt 0) {
     $caseFailed = @($caseRows | Where-Object { $_.Result -eq "FAILED" }).Count
     $caseIgnored = @($caseRows | Where-Object { $_.Result -eq "ignored" }).Count
     $caseCounts = Get-ReportCounts -Text $text -Passed $casePassed -Failed $caseFailed -Ignored $caseIgnored -All
-    $caseGroups = @(@{ Target = "tests\e2e_setup.rs"; Counts = $caseCounts; Rows = $caseRows.ToArray() })
+    $caseHeading = Get-ReportPhrase -Text $text -Key "cases.group" -Values @((Get-ReportPhrase -Text $text -Key "layer.e2e"), "tests\e2e_setup.rs")
+    $caseGroups = @(@{ Target = $caseHeading; Counts = $caseCounts; Rows = $caseRows.ToArray() })
 }
 
 $images = @(Get-SnapshotGallery -Directory (Join-Path $repoRoot "target/setup-snapshots") -Text $text)
@@ -203,11 +222,25 @@ if ($caseRows.Count -gt 0) {
 }
 $notes.Add((Get-ReportPhrase -Text $text -Key "notes.textfile" -Values @($reportName)))
 $notes.Add((Get-ReportPhrase -Text $text -Key "e2e.notes.snapshots"))
+$notes.Add((Get-ReportPhrase -Text $text -Key "notes.layers" -Values @($documentPath)))
+$guide = Get-ReportGuide -Text $text -DocumentPath $documentPath
 
 Write-ReportHtml -Path $htmlPath -Title (Get-ReportPhrase -Text $text -Key "title.e2e") `
     -Subtitle (Get-ReportPhrase -Text $text -Key "subtitle.runat" -Values @($runAt)) `
-    -Language $Language -Text $text `
+    -Language $Language -Text $text -Guide $guide `
     -Verdict $verdict -Fields $fields -Stats $stats -Cases $caseGroups -Images $images `
+    -Tables @(@{
+        Heading = (Get-ReportPhrase -Text $text -Key "layers.heading")
+        Headers = @(
+            (Get-ReportPhrase -Text $text -Key "layers.column.layer"),
+            (Get-ReportPhrase -Text $text -Key "layers.column.cases"),
+            (Get-ReportPhrase -Text $text -Key "layers.column.proves"),
+            (Get-ReportPhrase -Text $text -Key "layers.column.cannotprove")
+        )
+        Rows = $layerRows
+        RowIds = $layerIds
+        NumericFrom = 99
+    }) `
     -Sections $sections.ToArray() -Notes $notes.ToArray()
 
 if ($null -ne $suite) {

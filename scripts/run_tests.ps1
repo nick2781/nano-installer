@@ -104,17 +104,6 @@ function Get-CommitDescription {
     return $head
 }
 
-function New-ReportCell {
-    param([string]$Text, [string]$Class = "", [string]$Title = "", [string]$Link = "", [string]$Sub = "")
-
-    $cell = @{ Text = $Text }
-    if ($Class) { $cell["Class"] = $Class }
-    if ($Title) { $cell["Title"] = $Title }
-    if ($Link) { $cell["Link"] = $Link }
-    if ($Sub) { $cell["Sub"] = $Sub }
-    return $cell
-}
-
 $toolchain = (Invoke-NativeStep { cargo --version }).Output -join "; "
 $rustcVersion = (Invoke-NativeStep { rustc --version }).Output -join "; "
 $commit = Get-CommitDescription
@@ -174,11 +163,20 @@ Write-Phase "result files written"
 $catalog = Get-TestCatalog -RepoRoot $repoRoot -Language $Language
 Write-Phase "case catalog read: $($catalog.Count) entries"
 
+# Every target below belongs to one layer of the suite, and the coverage
+# document says what that layer's cases are for and what passing them does not
+# prove, so a target is not left as a binary path and a count. Which layers this
+# run has is known once its targets are read, so the table is built after them.
+$documentLanguage = Get-ReportDocLanguage -Language $Language
+$documentPath = "docs/$documentLanguage/TEST_COVERAGE.md"
+$layerDocument = Get-TestLayerCatalog -RepoRoot $repoRoot -Language $Language
+
 # One pass over the output builds both tables: a target's row comes from the
 # "Running" line that introduces it and the "test result" line that closes it,
 # and every case line between them belongs to it.
 $rows = New-Object System.Collections.Generic.List[object]
 $rowTargets = New-Object System.Collections.Generic.List[string]
+$rowLayers = New-Object System.Collections.Generic.List[string]
 $caseGroups = New-Object System.Collections.Generic.List[object]
 $cases = $null
 $target = "the suite"
@@ -219,7 +217,9 @@ foreach ($line in $printed) {
         if ($state -eq "FAILED") { $stateClass = "t-bad" }
         $stateLabel = Get-ReportResultLabel -Text $text -Result $state
         $rowTargets.Add($target)
+        $rowLayers.Add((Get-TargetLayerKey -Target $target))
         $rows.Add(@(
+            (New-ReportCell ""),
             (New-ReportCell $name "" $binary "" $binary),
             (New-ReportCell $stateLabel $stateClass),
             (New-ReportCell $passedHere),
@@ -230,6 +230,28 @@ foreach ($line in $printed) {
     }
 }
 
+# One row per layer this run has a target in, and the layer every target row
+# names, so a reader can start from what a layer proves rather than from a
+# binary path.
+$layers = Get-ReportLayerTable -Text $text -Document $layerDocument -Keys @($rowLayers | Select-Object -Unique)
+$layerAnchor = Get-ReportLayerAnchor -Layers $layers
+$layerRows = New-Object System.Collections.Generic.List[object]
+$layerIds = New-Object System.Collections.Generic.List[string]
+foreach ($layer in $layers) {
+    $layerIds.Add($layer.Anchor)
+    $layerRows.Add(@(
+        (New-ReportCell $layer.Name),
+        (New-ReportCell $layer.Count),
+        (New-ReportCell $layer.Proves),
+        (New-ReportCell $layer.CannotProve)
+    ))
+}
+for ($index = 0; $index -lt $rows.Count; $index++) {
+    $layerName = Get-ReportPhrase -Text $text -Key "layer.$($rowLayers[$index])"
+    $rows[$index][0] = (New-ReportCell $layerName "" "" $layerAnchor[$layerName])
+}
+Write-Phase "layer table read: $($layers.Count) layer(s)"
+
 $groups = New-Object System.Collections.Generic.List[object]
 foreach ($group in $caseGroups) {
     if ($group.Rows.Count -eq 0) {
@@ -239,7 +261,9 @@ foreach ($group in $caseGroups) {
     $groupFailed = @($group.Rows | Where-Object { $_.Result -eq "FAILED" }).Count
     $groupIgnored = @($group.Rows | Where-Object { $_.Result -eq "ignored" }).Count
     $counts = Get-ReportCounts -Text $text -Passed $groupPassed -Failed $groupFailed -Ignored $groupIgnored
-    $groups.Add(@{ Target = $group.Target; Counts = $counts; Rows = $group.Rows })
+    $groupLayer = Get-ReportPhrase -Text $text -Key "layer.$(Get-TargetLayerKey -Target $group.Target)"
+    $heading = Get-ReportPhrase -Text $text -Key "cases.group" -Values @($groupLayer, $group.Target)
+    $groups.Add(@{ Target = $heading; Source = $group.Target; Counts = $counts; Rows = $group.Rows })
 }
 
 # A target row in the target table points at the cases that ran in it, so the
@@ -247,12 +271,12 @@ foreach ($group in $caseGroups) {
 # run, said twice, from two different readings of it.
 $anchorByTarget = @{}
 for ($index = 0; $index -lt $groups.Count; $index++) {
-    $anchorByTarget[$groups[$index].Target] = "#cases-$index"
+    $anchorByTarget[$groups[$index].Source] = "#cases-$index"
 }
 $linked = 0
 while ($linked -lt $rows.Count) {
     if ($anchorByTarget.ContainsKey($rowTargets[$linked])) {
-        $rows[$linked][0]["Link"] = $anchorByTarget[$rowTargets[$linked]]
+        $rows[$linked][1]["Link"] = $anchorByTarget[$rowTargets[$linked]]
     }
     $linked++
 }
@@ -294,6 +318,8 @@ else {
 }
 $notes.Add((Get-ReportPhrase -Text $text -Key "notes.setupcases"))
 $notes.Add((Get-ReportPhrase -Text $text -Key "notes.textfile" -Values @($reportName)))
+$notes.Add((Get-ReportPhrase -Text $text -Key "notes.layers" -Values @($documentPath)))
+$guide = Get-ReportGuide -Text $text -DocumentPath $documentPath
 
 $stats = @(
     @{ Value = $passed; Label = (Get-ReportPhrase -Text $text -Key "stats.passed"); Tone = "ok" },
@@ -312,21 +338,36 @@ if ($failed -gt 0 -or $code -ne 0) { $verdict = "failed" }
 
 Write-ReportHtml -Path $htmlPath -Title (Get-ReportPhrase -Text $text -Key "title.tests") `
     -Subtitle (Get-ReportPhrase -Text $text -Key "subtitle.runat" -Values @($runAt)) `
-    -Language $Language -Text $text `
+    -Language $Language -Text $text -Guide $guide `
     -Verdict $verdict -Fields $fields -Stats $stats `
-    -Tables @(@{
-        Heading = (Get-ReportPhrase -Text $text -Key "targets.heading")
-        Headers = @(
-            (Get-ReportPhrase -Text $text -Key "targets.target"),
-            (Get-ReportPhrase -Text $text -Key "targets.result"),
-            (Get-ReportPhrase -Text $text -Key "targets.passed"),
-            (Get-ReportPhrase -Text $text -Key "targets.failed"),
-            (Get-ReportPhrase -Text $text -Key "targets.ignored"),
-            (Get-ReportPhrase -Text $text -Key "targets.time")
-        )
-        Rows = $rows
-        NumericFrom = 2
-    }) `
+    -Tables @(
+        @{
+            Heading = (Get-ReportPhrase -Text $text -Key "targets.heading")
+            Headers = @(
+                (Get-ReportPhrase -Text $text -Key "targets.layer"),
+                (Get-ReportPhrase -Text $text -Key "targets.target"),
+                (Get-ReportPhrase -Text $text -Key "targets.result"),
+                (Get-ReportPhrase -Text $text -Key "targets.passed"),
+                (Get-ReportPhrase -Text $text -Key "targets.failed"),
+                (Get-ReportPhrase -Text $text -Key "targets.ignored"),
+                (Get-ReportPhrase -Text $text -Key "targets.time")
+            )
+            Rows = $rows
+            NumericFrom = 3
+        },
+        @{
+            Heading = (Get-ReportPhrase -Text $text -Key "layers.heading")
+            Headers = @(
+                (Get-ReportPhrase -Text $text -Key "layers.column.layer"),
+                (Get-ReportPhrase -Text $text -Key "layers.column.cases"),
+                (Get-ReportPhrase -Text $text -Key "layers.column.proves"),
+                (Get-ReportPhrase -Text $text -Key "layers.column.cannotprove")
+            )
+            Rows = $layerRows
+            RowIds = $layerIds
+            NumericFrom = 99
+        }
+    ) `
     -Cases $groups.ToArray() `
     -Images $images `
     -Sections @(@{ Heading = (Get-ReportPhrase -Text $text -Key "output.heading"); Summary = "$ $suiteCommand"; Lines = $printed; Open = ($verdict -eq "failed") }) `
