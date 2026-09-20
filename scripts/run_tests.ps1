@@ -300,7 +300,7 @@ $snapshotDirectory = $Snapshots
 if (-not [System.IO.Path]::IsPathRooted($snapshotDirectory)) {
     $snapshotDirectory = Join-Path $repoRoot $snapshotDirectory
 }
-$images = @(Get-SnapshotGallery -Directory $snapshotDirectory -Text $text)
+$images = @(Get-SnapshotGallery -Directory $snapshotDirectory -Text $text -Language $Language)
 
 $notes = New-Object System.Collections.Generic.List[string]
 if ($skipping.Count -gt 0) {
@@ -323,6 +323,10 @@ if ($casesPassed -eq $passed -and $casesFailed -eq $failed -and $casesIgnored -e
 }
 else {
     $notes.Add((Get-ReportPhrase -Text $text -Key "notes.cases.mismatch" -Values @($casesPassed, $casesFailed, $casesIgnored, $passed, $failed, $ignored)))
+}
+$undescribed = Get-UndescribedCaseNote -Text $text -RepoRoot $repoRoot -Language $Language -Cases @($groups | ForEach-Object { $_.Rows })
+if ($undescribed) {
+    $notes.Add($undescribed)
 }
 if ($images.Count -gt 0) {
     $notes.Add((Get-ReportPhrase -Text $text -Key "notes.snapshots"))

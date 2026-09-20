@@ -31,9 +31,10 @@ The whole workspace suite runs through a script too, and writes the same kind of
 `target/test-report.txt` holds the commit, the toolchain, the command, the whole output, the result
 line of every target and the totals, and `target/test-report.html` is the same run as a page: a
 verdict, a figure per outcome, every case that failed first, a row per target, one row per case and
-the output with its result lines coloured. A case row says what that case holds, which is the doc
-comment above it in the sources or its own name when it carries none, and which behaviours and
-settings [Test coverage](TEST_COVERAGE.md) says break when it fails. The page keeps its two readings
+the output with its result lines coloured. A case row says what that case holds: the doc comment
+above it in the sources, or its own name when it carries none -- the Chinese page reads its own table
+of case descriptions instead, docs/zh-CN/TEST_CASES.md -- and the behaviours and settings
+[Test coverage](TEST_COVERAGE.md) says break when it fails. The page keeps its two readings
 of one run tied together: a target's row links to the cases that ran in it, and the closing note
 states the totals the case rows and the result lines agree on. A behaviour card lists every
 behaviour that document names, with the cases this run ran for it, how those cases ended and the
@@ -42,10 +43,9 @@ builds and installs a real setup -- so a behaviour whose cases it names but whic
 run; the part of the document that admits no case covers a thing sits in the same card, which states
 what was not tested rather than leaving it to be assumed. Once
 `scripts/capture_setup_snapshots.ps1` has photographed a real setup, the page shows those pages too,
-each captioned with its size, language, display scaling and the layout file it was drawn from, and
-with what the capture measured on it; the capture photographs the wizard's first page only, so the
-later pages have no photograph. That capture needs a desktop session, so a build agent's page has
-none.
+one section per page, each captioned with its size, language, display scaling and the layout file it
+was drawn from, and with what the capture measured on it. The capture photographs every page the
+project declares, and it needs a desktop session, so a build agent's page has none.
 
 The CI job keeps both as the `test-report` artifact, and `run_e2e_setup.ps1` writes the same pair as
 `target/e2e-report.html` and `target/e2e-report.txt`. The setup-level cases build and run real
@@ -114,8 +114,12 @@ resources once the signature has been appended.
 The snapshots need a desktop session for the same reason the window case does, so they are taken on
 a machine rather than on a build agent.
 
-`scripts/capture_setup_snapshots.ps1` builds the example setup and photographs the page it opens,
-once per supported locale and once at 150% scaling:
+`scripts/capture_setup_snapshots.ps1` builds the example setup and photographs every page the
+project declares. The wizard's first page is the one a reader meets, so it is photographed once per
+supported locale and once at each higher scaling (150% and 200% by default); every other page is
+photographed once. A setup opens the page `wizard.pages[0]` names and nothing else, so the script
+places the page it wants first for that build, and writes the project's configuration back byte for
+byte afterwards:
 
 ```powershell
 cargo build -p nano-installer-native-cli -p nano-installer-stub-lzma -p nano-installer-stub-zlib -p nano-installer-uninstaller
@@ -126,16 +130,23 @@ The PNGs and a `manifest.json` land in `target/setup-snapshots`. Each snapshot i
 the project it came from, so what is verified is read out of `examples/TapTap` rather than written
 into the script:
 
-- The client area matches the page, and 150% scaling scales it.
-- Every corner falls outside the window region, so the corners are cut.
-- The logo and the tagline drew artwork instead of a flat rectangle.
-- The install button and the version line drew text in the colour their layout declares.
+- The client area matches the page, and scaling scales it by its own factor -- each page by its own
+  layout, so the uninstaller's pages come out 574x358.
+- A page whose layout declares a rounded corner comes out with every corner outside the window
+  region, so its corners are cut.
+- Every image and label the layout places by absolute coordinates drew something: an image holds more
+  than one colour, and a label holds text pixels in the colour its layout declares.
 - The page holds far more colours than a blank one.
-- The button and the version line differ between locales, so the language reached the page.
+- No two pages came out as the same picture, so each snapshot really is the page it asked for.
+- On the first page, the button and the version line differ between locales, so the language reached
+  the page.
 
-Only the first page is photographed, so nothing has to be inside the payload. The example's payload
-is a 150 MB archive the repository does not track, and a clone that never unpacked the example has
-no such file, so the script builds against an empty archive of the same format and removes it again.
+A page is drawn rather than reached: the uninstaller's pages appear without an uninstall having run,
+and what a page shows once the flow gets there is held by the cases under Pages and controls. Nothing
+has to be inside the payload either, since a page is drawn before anything is unpacked. The example's
+payload is a 150 MB archive the repository does not track, and a clone that never unpacked the example
+has no such file, so the script builds against an empty archive of the same format and removes it
+again.
 
 The example asks for elevation, and the consent prompt would sit in front of the window and stop an
 unattended run. The script clears `install.require_admin` for the build and puts the file back byte
@@ -156,8 +167,8 @@ leaving the snapshots and their expectations for a person to read.
 
 ## Manual checks
 
-The snapshots already cover the client area, the cut corners, the images, and whether the button and
-the version line follow the language. What remains needs someone at the machine: start
+The snapshots already cover the client area, the rounded corners, the images and labels a layout
+places, and whether the first page's button and version line follow the language. What remains needs someone at the machine: start
 `examples/TapTap/dist/TapTap_Setup.exe` and confirm:
 
 - Background, logo, tagline, and button images are visible with correct transparency.

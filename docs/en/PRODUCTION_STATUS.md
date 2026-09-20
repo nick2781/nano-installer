@@ -68,12 +68,16 @@ files and registry entries, so validate them in a disposable virtual machine onl
   Windows 11 and in CI.
 - A setup stays a setup after signing: a certificate table appended behind the bundle, which is what
   Authenticode writes into the file, no longer hides the footer the runtime reads its resources from.
-- `scripts/capture_setup_snapshots.ps1` builds the example setup and photographs the page it opens in
-  Chinese, English, and Russian, plus once at 150% scaling, then checks every snapshot against the
-  project's own layout: the client area, the cut corners, artwork in the logo and the tagline, text
-  drawn in the colour the layout declares, and a button and version line that differ per locale. It
-  runs on a machine with a desktop session, and it photographs the first page only, so a clone that
-  never unpacked the example's payload builds against an empty archive of the same format.
+- `scripts/capture_setup_snapshots.ps1` builds the example setup and photographs every page the
+  project declares: the wizard's first page in Chinese, English, and Russian, plus one at each higher
+  scaling (150% and 200% by default), and one picture of each of the other pages. Every snapshot is then checked against its own
+  page: the client area, the corners of a page that declares a rounded one, every image and label the
+  layout places by absolute coordinates, the page's colours, and that no two pages came out as the
+  same picture -- plus, on the first page, a button and version line that differ per locale. It runs
+  on a machine with a desktop session, and it places the page it wants first for each build, writing
+  the project's configuration back byte for byte, so a clone that never unpacked the example's payload
+  builds against an empty archive of the same format. A page is drawn rather than reached: the
+  uninstaller's pages are in the pictures without an uninstall having run.
 
 ## Signing
 

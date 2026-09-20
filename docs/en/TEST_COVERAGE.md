@@ -17,7 +17,7 @@ extraction runtimes. The setup-level cases need real runtime executables built f
 | Project inspection | 4 | the summary and the warning list the builder shows before a build | |
 | Visual builder | 29 | the window's own state, parameters, log and warnings | clicking the real controls |
 | Extraction runtimes | 2 | a broken archive, and an unsafe path inside one, are refused | extracting an archive that is sound -- the setup-level cases run a real runtime over a real payload |
-| Snapshots | 4 pages | what the example's first page actually looks like, measured rather than judged | whether a glyph reads correctly |
+| Snapshots | 6 pages | what every page of the example actually looks like, measured rather than judged | whether a glyph reads correctly, and what happens once the flow reaches a page |
 
 ## Configuration
 

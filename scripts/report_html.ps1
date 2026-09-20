@@ -222,9 +222,11 @@ pre.expectation { margin: 0; padding: 12px 14px; white-space: pre-wrap; font-siz
 .l-skip { color: var(--warn); }
 .l-warn { color: var(--warn); }
 .l-meta { color: var(--faint); }
-.snapshots { display: grid; gap: 24px; }
+.page-heading { font-size: 14px; margin: 0 0 16px; }
+.page-heading .file { color: var(--faint); font-weight: 400; }
+.snapshots { display: grid; gap: 24px; margin-bottom: 28px; }
 figure { margin: 0; }
-figure img { display: block; width: 100%; height: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--code); }
+figure img { display: block; max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--code); }
 figcaption { margin-top: 10px; font-size: 12.5px; color: var(--muted); }
 figcaption .file { color: var(--faint); }
 ul.checks { margin: 8px 0 10px; padding-left: 18px; }
@@ -514,16 +516,24 @@ footer p { margin: 0 0 6px; }
     if ($Images.Count -gt 0) {
         $html.Add("<section class=""card"">")
         $html.Add("<h2>$(ConvertTo-ReportHtml $snapshotsHeading)</h2>")
-        $html.Add("<div class=""snapshots"">")
+        $page = ""
         foreach ($image in $Images) {
+            if ($image.PageId -ne $page) {
+                if ($page -ne "") {
+                    $html.Add("</div>")
+                }
+                $page = $image.PageId
+                $html.Add("<h3 class=""page-heading"">$(ConvertTo-ReportHtml $image.Heading) <span class=""file mono"">$(ConvertTo-ReportHtml $image.Layout)</span></h3>")
+                $html.Add("<div class=""snapshots"">")
+            }
             $html.Add("<figure>")
             $html.Add("<img src=""$($image.Source)"" alt=""$(ConvertTo-ReportHtml $image.Alt)"">")
             $html.Add("<figcaption>")
             $html.Add("<span class=""file mono"">$(ConvertTo-ReportHtml $image.File)</span> - $(ConvertTo-ReportHtml $image.Caption)")
-            if ($image.Asserts.Count -gt 0) {
+            if ($image.Checks.Count -gt 0) {
                 $html.Add("<ul class=""checks"">")
-                foreach ($assert in $image.Asserts) {
-                    $html.Add("<li>$(ConvertTo-ReportHtml $assert)</li>")
+                foreach ($check in $image.Checks) {
+                    $html.Add("<li>$(ConvertTo-ReportHtml $check)</li>")
                 }
                 $html.Add("</ul>")
             }
@@ -533,7 +543,9 @@ footer p { margin: 0 0 6px; }
             $html.Add("</figcaption>")
             $html.Add("</figure>")
         }
-        $html.Add("</div>")
+        if ($page -ne "") {
+            $html.Add("</div>")
+        }
         $html.Add("</section>")
     }
 

@@ -13,5 +13,6 @@
   * [构建与发布](BUILD_AND_RELEASE.md)
   * [测试计划](TEST_PLAN.md)
   * [测试覆盖](TEST_COVERAGE.md)
+  * [用例说明](TEST_CASES.md)
   * [当前生产状态](PRODUCTION_STATUS.md)
 * [English docs](../en/README.md)

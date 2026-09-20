@@ -1,22 +1,40 @@
 <#
-    Captures the first page the example setup draws.
+    Captures the pages the example setup draws.
 
     The subject is examples/TapTap itself: the script builds a real setup from
-    the project into target/, then saves the window it opens as a PNG, once per
-    supported locale and once at 150% scaling. It never presses the install
-    button, so nothing is deployed - the window is closed as soon as the picture
-    is taken, and the project is left exactly as it was found. A project whose
-    declared payload archive is not there, which is the case for a clone that
-    never unpacked the example, is built against an empty archive of the same
-    format; only the first page is photographed, so nothing has to be inside it.
+    the project, then saves the window it opens as a PNG. It photographs every
+    page the project declares -- the wizard's and the uninstaller's -- because a
+    setup opens the first page of the wizard and nothing else: for each page the
+    build runs with that page placed first, and the project's configuration is
+    written back byte for byte once the captures are done. A page captured this
+    way is drawn, not reached, and the report says so: the uninstaller's pages
+    appear here without an uninstall ever having run.
 
-    The page size, the regions that must hold artwork, and the text the labels
-    must show are all read from the project itself, so a layout that moves is
-    measured where it moved to. What is checked is arithmetic and runs on any
-    machine: the client area matches the page, the images drew artwork rather
-    than a flat rectangle, the button and the version line drew text, the page
-    holds far more colours than an empty one, and the button reads differently
-    in each language.
+    The wizard's first page is the one a reader meets, so it is captured once
+    per supported locale and once at each scaling the -Dpi list names. The
+    default list captures 100%, 150% and 200%, so a page a reader sees at 200%
+    on their own display is in the report at 200% too: the picture of a scaled
+    window is the scaled number of pixels, not the 100% one stretched. Every
+    other page is captured once, in the default locale at 100%, since what it
+    adds is the page itself rather than another scaling of it. The script never
+    presses the install button, so nothing is deployed: the window is closed as
+    soon as the picture is taken, and the project is left exactly as it was
+    found. A project whose declared payload archive is not there, which is the
+    case for a clone that never unpacked the example, is built against an empty
+    archive of the same format; a page is drawn before anything is unpacked, so
+    nothing has to be inside it.
+
+    The page size, the elements that must hold artwork or text, and the words
+    the labels show are all read from each page's own layout, so a layout that
+    moves is measured where it moved to. What is checked is arithmetic and runs
+    on any machine: the client area matches the page, every image and label the
+    layout places by absolute coordinates drew something rather than a flat
+    patch, no page holds so few colours that it cannot have drawn, and no two
+    pages came out as the same picture -- two identical pages would mean the
+    page a snapshot asked for never reached the setup. The wizard's first page
+    is the one a reader studies, so its logo, tagline, install button and
+    version line are held to a bar that catches a half-drawn page rather than
+    only a blank one.
 
     Whether the glyphs read correctly is a judgement rather than an equation, so
     the script also writes manifest.json holding what each snapshot is meant to
@@ -29,7 +47,7 @@ param(
     [string]$Builder,
     [string]$StubDirectory,
     [string[]]$Locales,
-    [int[]]$Dpi = @(96, 144),
+    [int[]]$Dpi = @(96, 144, 192),
     # Builds the project exactly as it stands, elevation request included. The
     # consent prompt then has to be answered by hand before the window appears.
     [switch]$KeepElevation
@@ -201,21 +219,29 @@ if (-not (Test-Path -LiteralPath (Join-Path $projectRoot "installer_config.json"
     throw "Project not found: $projectRoot"
 }
 
-# The regions a drawn page is checked in, taken from the layout the runtime
-# opens first. The ids are the ones the manual checklist names: the logo and the
-# tagline are artwork, the install button and the version line carry text.
-$artwork = @(
-    @{ Id = "logo"; Description = "logo" },
-    @{ Id = "tagline"; Description = "tagline" }
-)
-$text = @(
-    @{ Id = "btnInstall"; Description = "install button"; MinimumPixels = 100 },
-    @{ Id = "lblVersion"; Description = "version line"; MinimumPixels = 100 }
-)
+# What a page is checked on, read from the page's own layout rather than from a
+# list of ids: an element the layout places by absolute coordinates is measured
+# where it was placed, and the element's id names it in the report. A layout that
+# positions by container -- a page built out of VBox and HBox -- leaves nothing
+# for an element check to measure, and such a page keeps the checks that need no
+# element: its size, its colours, its shape, and its difference from the others.
+#
+# The bar is low on purpose. A snapshot is worth reporting when a region that
+# should hold something holds nothing, while telling "drew slightly less than
+# expected" apart from "did not draw" needs a person, and this script has none.
+# The four parts of the first page are the ones a reader studies, so those are
+# held high.
+$minimumArtworkColors = 2
+$minimumTextPixels = 16
+$scrutinised = @{
+    "logo"       = @{ Kind = "artwork"; MinimumColors = 16 }
+    "tagline"    = @{ Kind = "artwork"; MinimumColors = 16 }
+    "btnInstall" = @{ Kind = "text"; MinimumPixels = 100 }
+    "lblVersion" = @{ Kind = "text"; MinimumPixels = 100 }
+}
 # An image that never decoded, or a label that never painted, leaves one colour
 # where the layout asked for content; anything actually drawn clears these by a
 # wide margin. A page of nothing but a fill holds one colour, not sixty-four.
-$minimumArtworkColors = 16
 $minimumPageColors = 64
 # Text is smoothed, so only the middle of a stroke keeps the declared colour and
 # its edges lean towards the background. The margin is wide enough to count a
@@ -279,7 +305,12 @@ function ConvertTo-Pixels {
     return $value
 }
 
-function Get-ElementRect {
+# Where an element sits on the page: the rectangle it declares, plus the offset
+# of every absolute ancestor between it and the page, which is how the runtime
+# places it. An element the layout sizes or positions in percentages, or one a
+# container lays out, has no rectangle here and is left out of the checks rather
+# than failed on arithmetic the runtime does differently.
+function Get-AbsoluteElementRect {
     param([System.Xml.XmlElement]$Node, [double]$Scale)
 
     $left = ConvertTo-Pixels -Node $Node -Attribute "left"
@@ -289,11 +320,169 @@ function Get-ElementRect {
     if ($null -eq $left -or $null -eq $top -or $null -eq $width -or $null -eq $height) {
         return $null
     }
+    $ancestor = $Node.ParentNode
+    while ($null -ne $ancestor -and $ancestor -is [System.Xml.XmlElement]) {
+        if ($ancestor.LocalName -eq "Page") {
+            break
+        }
+        if ($ancestor.GetAttribute("position") -eq "absolute") {
+            $offsetLeft = ConvertTo-Pixels -Node $ancestor -Attribute "left"
+            $offsetTop = ConvertTo-Pixels -Node $ancestor -Attribute "top"
+            if ($null -ne $offsetLeft) { $left += $offsetLeft }
+            if ($null -ne $offsetTop) { $top += $offsetTop }
+        }
+        $ancestor = $ancestor.ParentNode
+    }
     return @{
         Left   = [int][Math]::Round($left * $Scale)
         Top    = [int][Math]::Round($top * $Scale)
         Right  = [int][Math]::Round(($left + $width) * $Scale)
         Bottom = [int][Math]::Round(($top + $height) * $Scale)
+    }
+}
+
+# A layout hides an element with visible="false", and hiding a container hides
+# everything the container holds, so a hidden element is not measured.
+function Test-ElementVisible {
+    param([System.Xml.XmlElement]$Node)
+
+    $current = $Node
+    while ($null -ne $current -and $current -is [System.Xml.XmlElement]) {
+        if ($current.GetAttribute("visible") -eq "false") {
+            return $false
+        }
+        $current = $current.ParentNode
+    }
+    return $true
+}
+
+# Every element of a page the checks can measure: it carries an id, it is one of
+# the tags that draws, it is visible as the layout stands, and it sits at an
+# absolute rectangle. An image is measured for artwork and a label for text in
+# the colour the layout declares; anything else is left to the reader, since a
+# progress bar with nothing running has nothing filled.
+function Get-PageElements {
+    param([xml]$Layout, [double]$Scale)
+
+    $elements = New-Object System.Collections.Generic.List[object]
+    $seen = @{}
+    foreach ($node in $Layout.SelectNodes("//*[@id]")) {
+        $id = [string]$node.GetAttribute("id")
+        if (-not $id -or $seen.ContainsKey($id)) {
+            continue
+        }
+        $seen[$id] = $true
+        if (-not (Test-ElementVisible -Node $node)) {
+            continue
+        }
+        $tag = $node.LocalName
+        if ($tag -notin @("Image", "Icon", "Button", "Label", "Checkbox", "TextInput")) {
+            continue
+        }
+        $rect = Get-AbsoluteElementRect -Node $node -Scale $Scale
+        if ($null -eq $rect) {
+            continue
+        }
+        $text = [string]$node.GetAttribute("text")
+        $hasArtwork = $node.HasAttribute("src") -or $node.HasAttribute("normal-image") -or
+            $node.HasAttribute("background-image")
+        if ($tag -eq "Image" -or $tag -eq "Icon" -or ($hasArtwork -and -not $text)) {
+            $elements.Add(@{ Id = $id; Kind = "artwork"; Rect = $rect })
+            continue
+        }
+        $declared = ConvertFrom-ArgbHex -Value $node.GetAttribute("color")
+        if ($null -eq $declared -or -not $text) {
+            continue
+        }
+        # A label whose text comes from the run rather than from the layout --
+        # a progress line, say -- shows nothing while nothing is running, so it
+        # is not measured. A value read from the configuration is there.
+        $source = [string]$node.GetAttribute("value-source")
+        if ($source -and -not $source.StartsWith("config:")) {
+            continue
+        }
+        $elements.Add(@{
+            Id         = $id
+            Kind       = "text"
+            Rect       = $rect
+            Colour     = $declared
+            ColourText = $node.GetAttribute("color")
+        })
+    }
+    return $elements.ToArray()
+}
+
+# The pages the project declares, in the order it declares them, each named by
+# the list it came from and numbered as a person counts it. The title is the
+# project's own name for the page, which the locale files do not translate.
+function Get-DeclaredPages {
+    param($Config)
+
+    $pages = New-Object System.Collections.Generic.List[object]
+    foreach ($declaration in @(
+            @{ Field = "pages"; Role = "install" },
+            @{ Field = "uninstall_pages"; Role = "uninstall" })) {
+        $list = $Config.wizard.PSObject.Properties[$declaration.Field]
+        if ($null -eq $list -or $null -eq $list.Value) {
+            continue
+        }
+        $index = 0
+        foreach ($entry in $list.Value) {
+            $layout = [string]$entry.layout
+            if (-not $layout) {
+                continue
+            }
+            $index++
+            $title = Split-Path -Leaf $layout
+            $named = $entry.PSObject.Properties["title"]
+            if ($null -ne $named -and [string]$named.Value) {
+                $title = [string]$named.Value
+            }
+            $pages.Add(@{
+                Id     = "$($declaration.Role)-$index"
+                Role   = $declaration.Role
+                Index  = $index
+                Layout = $layout
+                Title  = $title
+            })
+        }
+    }
+    return $pages.ToArray()
+}
+
+# The project's configuration with one page placed first, and with the elevation
+# request cleared unless -KeepElevation asked to keep it. A setup opens
+# wizard.pages[0], so that is the entry a page is captured through; nothing else
+# in the file is touched, and the file itself is written back byte for byte when
+# the captures are done.
+function Get-PatchedConfig {
+    param([byte[]]$Bytes, [string]$Layout, [switch]$KeepElevation)
+
+    $text = [System.Text.Encoding]::UTF8.GetString($Bytes)
+    $pattern = '("pages"\s*:\s*\[\s*\{[^}]*?"layout"\s*:\s*")[^"]+(")'
+    $match = [regex]::Match($text, $pattern)
+    if (-not $match.Success) {
+        throw "No wizard.pages[0].layout to place a page in"
+    }
+    $patched = $text.Substring(0, $match.Groups[1].Index + $match.Groups[1].Length) +
+        $Layout + $text.Substring($match.Groups[2].Index)
+    if (-not $KeepElevation -and $patched -match '"require_admin"\s*:\s*true') {
+        $patched = [regex]::Replace($patched, '("require_admin"\s*:\s*)true', '${1}false')
+    }
+    return (New-Object System.Text.UTF8Encoding($false)).GetBytes($patched)
+}
+
+# The whole picture as one hash, so two pages can be told apart without
+# comparing them pixel by pixel.
+function Get-ImageFingerprint {
+    param($Image)
+
+    $hash = [System.Security.Cryptography.MD5]::Create()
+    try {
+        return [BitConverter]::ToString($hash.ComputeHash($Image.Bytes))
+    }
+    finally {
+        $hash.Dispose()
     }
 }
 
@@ -462,77 +651,76 @@ function Save-Snapshot {
 }
 
 function Test-Snapshot {
-    param([string]$Path, [int]$Dpi, [hashtable]$Page, $Layout, [hashtable]$Window)
+    param([string]$Path, [int]$Dpi, [hashtable]$Page, [hashtable]$Size, [xml]$Layout, [hashtable]$Window)
 
     $problems = New-Object System.Collections.Generic.List[string]
-    $asserted = New-Object System.Collections.Generic.List[string]
+    $asserted = New-Object System.Collections.Generic.List[object]
     $regions = @{}
     $scale = $Dpi / 96.0
     $image = Get-SnapshotPixels -Path $Path
 
-    $expectedWidth = [int][Math]::Round($Page.Width * $scale)
-    $expectedHeight = [int][Math]::Round($Page.Height * $scale)
+    $expectedWidth = [int][Math]::Round($Size.Width * $scale)
+    $expectedHeight = [int][Math]::Round($Size.Height * $scale)
     if ($image.Width -ne $expectedWidth -or $image.Height -ne $expectedHeight) {
         $problems.Add("the client area is $($image.Width)x$($image.Height), the page declares ${expectedWidth}x${expectedHeight}")
     }
     else {
-        $asserted.Add("client area ${expectedWidth}x${expectedHeight}")
+        $asserted.Add(@{ k = "size"; v = @("$expectedWidth", "$expectedHeight") })
     }
 
+    # A page that declares a rounded corner has to come out rounded; a page that
+    # declares none is free to come out either way, and only says which it did.
+    $radius = ConvertTo-Pixels -Node $Layout.Page -Attribute "border-radius"
+    $rounded = ($null -ne $radius -and $radius -gt 0)
     if ($null -eq $Window.CornerPoints) {
-        $asserted.Add("the window region was unreadable, so its shape was not checked")
+        $asserted.Add(@{ k = "region" })
     }
     elseif ($Window.CornerPoints -eq 0 -and $Window.MiddleInside -eq 1) {
-        $asserted.Add("every corner falls outside the window region, so the corners are cut")
+        $asserted.Add(@{ k = "corners" })
+    }
+    elseif ($rounded) {
+        $problems.Add("$($Window.CornerPoints) of 4 corner points fall inside the window region, and the page declares a border-radius of $radius, so its corners are not cut")
     }
     else {
-        $problems.Add("$($Window.CornerPoints) of 4 corner points fall inside the window region, so its corners are not rounded")
+        $asserted.Add(@{ k = "square" })
     }
 
-    foreach ($check in $artwork) {
-        $node = $Layout.SelectSingleNode("//*[@id='$($check.Id)']")
-        if ($null -eq $node) {
-            $problems.Add("the layout no longer declares <$($check.Id)>")
+    $measured = @{}
+    foreach ($element in (Get-PageElements -Layout $Layout -Scale $scale)) {
+        $rule = @{ MinimumColors = $minimumArtworkColors; MinimumPixels = $minimumTextPixels }
+        $scrutiny = $scrutinised[$element.Id]
+        if ($null -ne $scrutiny -and $scrutiny.Kind -eq $element.Kind) {
+            $rule = $scrutiny
+        }
+        $measured[$element.Id] = $true
+        if ($element.Kind -eq "artwork") {
+            $stats = Get-RegionStats -Image $image -Rect $element.Rect
+            if ($stats.Colors -lt $rule.MinimumColors) {
+                $problems.Add("the <$($element.Id)> drew $($stats.Colors) colours, so it did not draw")
+            }
+            else {
+                $asserted.Add(@{ k = "artwork"; v = @($element.Id, "$($stats.Colors)") })
+            }
             continue
         }
-        $rect = Get-ElementRect -Node $node -Scale $scale
-        if ($null -eq $rect) {
-            $problems.Add("<$($check.Id)> has no absolute rectangle to check")
-            continue
-        }
-        $stats = Get-RegionStats -Image $image -Rect $rect
-        if ($stats.Colors -lt $minimumArtworkColors) {
-            $problems.Add("the $($check.Description) drew $($stats.Colors) colours, so it is a flat rectangle rather than artwork")
+        $stats = Get-RegionStats -Image $image -Rect $element.Rect -Target $element.Colour
+        if ($stats.TargetPixels -lt $rule.MinimumPixels) {
+            $problems.Add("the <$($element.Id)> drew $($stats.TargetPixels) pixels in $($element.ColourText), so its text is missing")
         }
         else {
-            $asserted.Add("the $($check.Description) drew artwork ($($stats.Colors) colours)")
+            $asserted.Add(@{ k = "text"; v = @($element.Id, "$($stats.TargetPixels)", $element.ColourText) })
         }
+        $regions[$element.Id] = Get-RegionFingerprint -Image $image -Rect $element.Rect
     }
 
-    foreach ($check in $text) {
-        $node = $Layout.SelectSingleNode("//*[@id='$($check.Id)']")
-        if ($null -eq $node) {
-            $problems.Add("the layout no longer declares <$($check.Id)>")
-            continue
+    # The four parts a reader studies are the first page's own, so a layout that
+    # no longer declares one of them is reported rather than quietly left out.
+    if ($Page.Role -eq "install" -and $Page.Index -eq 1) {
+        foreach ($id in ($scrutinised.Keys | Sort-Object)) {
+            if (-not $measured.ContainsKey($id)) {
+                $problems.Add("the layout of the first page no longer declares <$id>")
+            }
         }
-        $rect = Get-ElementRect -Node $node -Scale $scale
-        if ($null -eq $rect) {
-            $problems.Add("<$($check.Id)> has no absolute rectangle to check")
-            continue
-        }
-        $declared = ConvertFrom-ArgbHex -Value $node.GetAttribute("color")
-        if ($null -eq $declared) {
-            $problems.Add("<$($check.Id)> declares no opaque text colour to look for")
-            continue
-        }
-        $stats = Get-RegionStats -Image $image -Rect $rect -Target $declared
-        if ($stats.TargetPixels -lt $check.MinimumPixels) {
-            $problems.Add("the $($check.Description) drew $($stats.TargetPixels) pixels in its declared colour $($node.GetAttribute('color')), so its text is missing")
-        }
-        else {
-            $asserted.Add("the $($check.Description) drew text ($($stats.TargetPixels) pixels in $($node.GetAttribute('color')))")
-        }
-        $regions[$check.Id] = Get-RegionFingerprint -Image $image -Rect $rect
     }
 
     $colors = New-Object System.Collections.Generic.HashSet[int]
@@ -546,44 +734,71 @@ function Test-Snapshot {
         $problems.Add("the page holds $($colors.Count) distinct colours, so it did not draw")
     }
     else {
-        $asserted.Add("$($colors.Count) distinct colours on the page")
+        $asserted.Add(@{ k = "colours"; v = @("$($colors.Count)") })
     }
 
-    return @{ Problems = $problems; Asserted = $asserted; Regions = $regions }
+    return @{
+        Problems    = $problems
+        Asserted    = $asserted.ToArray()
+        Regions     = $regions
+        Fingerprint = (Get-ImageFingerprint -Image $image)
+    }
 }
 
-function Get-Expectation {
-    param([string]$Locale, [int]$Dpi, [hashtable]$Page, $Config, $LocaleText)
+# What a page is meant to show, for the vision review. Whether glyphs read as
+# words is a judgement, so every page is described in words, and the strings the
+# locale supplies are quoted from the locale file its picture was taken with.
+function Get-PageExpectation {
+    param([hashtable]$Page, [hashtable]$Size, [string]$Locale, [int]$Dpi, $Config, $LocaleText)
 
     $scale = $Dpi / 96.0
-    $width = [int][Math]::Round($Page.Width * $scale)
-    $height = [int][Math]::Round($Page.Height * $scale)
+    $width = [int][Math]::Round($Size.Width * $scale)
+    $height = [int][Math]::Round($Size.Height * $scale)
     $scaling = [int][Math]::Round($scale * 100)
-    $installButton = $LocaleText.install_button
-    $versionPrefix = $LocaleText.version_info
-    $agreement = $LocaleText.agree_full
-    $version = $Config.project.version
-    return @"
-The first page of the TapTap setup, captured in $Locale at $scaling% display scaling ($width x $height client area).
-It is a borderless dark window with a background image, rounded corners, a language selector in the top right, and a minimize button and a close button beside it.
-In the middle of the page a logo and, just under it, a tagline image must both be visible, not blank and not a white box.
-Under them a blue install button must read exactly: "$installButton".
-Near the bottom a version line, centred, must read exactly: "$versionPrefix$version".
-Below that a checkbox line must show the agreement text: "$agreement".
-Report anything wrong: missing glyphs shown as boxes, mojibake, clipped or overlapping text, a missing or blank image, a wrong language, or a region that did not draw at all.
-"@
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add("The $($Page.Title) page of the $($Config.project.name) setup, the layout $($Page.Layout), captured in $Locale at $scaling% display scaling ($width x $height client area).")
+    switch (Split-Path -Leaf $Page.Layout) {
+        "configpage.xml" {
+            $lines.Add("It is a borderless dark window with a background image and rounded corners: a language selector, a minimise button and a close button in the top right, a logo and, under it, a tagline image in the middle, and below them the install button, the install folder field, three checkboxes, a version line and the agreement line.")
+            $lines.Add("The install button must read exactly: ""$($LocaleText.install_button)"".")
+            $lines.Add("The version line must read exactly: ""$($LocaleText.version_info)$($Config.project.version)"".")
+            $lines.Add("The agreement line must show: ""$($LocaleText.agree_full)"".")
+        }
+        "installingpage.xml" {
+            $lines.Add("It is the same window with a progress bar across the middle and a status line under it. No install is running while this picture is taken, so the bar may still be empty and the status line blank, but both must be drawn rather than missing.")
+        }
+        "finishpage.xml" {
+            $lines.Add("It is the same window with a logo and, under it, a tagline image in the middle, a blue button below them, and a completion line near the bottom.")
+            $lines.Add("The button must read exactly: ""$($LocaleText.launch_button)"".")
+            $lines.Add("The completion line must read exactly: ""$($LocaleText.install_complete)"".")
+        }
+        "uninstallpage.xml" {
+            $lines.Add("It is a smaller dark window: a logo at the top, a confirmation question in the middle, a checkbox under it, and two buttons at the bottom.")
+            $lines.Add("The question must read exactly: ""$($LocaleText.uninstall_confirm)"".")
+            $lines.Add("The checkbox must read: ""$($LocaleText.reserve_data)"".")
+            $lines.Add("The two buttons must read exactly: ""$($LocaleText.not_now)"" and ""$($LocaleText.uninstall_button)"".")
+        }
+        "uninstallingpage.xml" {
+            $lines.Add("It is a smaller dark window with a progress bar across it and a status line under the bar. No uninstall is running while this picture is taken, so the bar may still be empty and the status line blank, but both must be drawn rather than missing.")
+        }
+        "uninstallfinishpage.xml" {
+            $lines.Add("It is a smaller dark window with a logo at the top, a completion line under it, and one button below.")
+            $lines.Add("The completion line must read exactly: ""$($LocaleText.uninstall_complete)"".")
+            $lines.Add("The button must read exactly: ""$($LocaleText.uninstall_done)"".")
+        }
+        default {
+            $lines.Add("Its layout places the elements below; check that each of them drew.")
+        }
+    }
+    $lines.Add("Report anything wrong: missing glyphs shown as boxes, mojibake, clipped or overlapping text, a missing or blank image, a wrong language, or a region that did not draw at all.")
+    return ($lines -join "`r`n")
 }
 
-# The project decides what is captured: its supported locales and the layout of
-# the page it opens first.
+# The project decides what is captured: its supported locales and the pages it
+# declares. A setup opens the first page of the wizard and nothing else, so a
+# page is captured by building the setup with that page placed first, and the
+# project's configuration is written back byte for byte afterwards.
 $config = Read-JsonFile -Path (Join-Path $projectRoot "installer_config.json")
-$pageLayoutPath = Join-Path $projectRoot ([string]$config.wizard.pages[0].layout)
-[xml]$layout = Get-Content -Raw -Encoding UTF8 -LiteralPath $pageLayoutPath
-$page = @{
-    Width  = [double]$layout.Page.width
-    Height = [double]$layout.Page.height
-    Layout = [string]$config.wizard.pages[0].layout
-}
 $defaultLocale = [string]$config.localization.default_locale
 if (-not $Locales -or $Locales.Count -eq 0) {
     $Locales = @($config.localization.supported_locales)
@@ -596,40 +811,34 @@ foreach ($locale in $Locales) {
     }
     $localeText[$locale] = Read-JsonFile -Path $file
 }
-
-# The first scaling captures every locale; the later ones only the default, so a
-# scaling problem is caught without multiplying the whole run by the scaling.
-$targets = New-Object System.Collections.Generic.List[object]
-for ($index = 0; $index -lt $Dpi.Count; $index++) {
-    $scaling = $Dpi[$index]
-    $wanted = $Locales
-    if ($index -gt 0) { $wanted = @($defaultLocale) }
-    foreach ($locale in $wanted) {
-        $targets.Add(@{ Locale = $locale; Dpi = $scaling })
-    }
+$declaredPages = @(Get-DeclaredPages -Config $config)
+if ($declaredPages.Count -eq 0) {
+    throw "The project declares no page to capture: $projectRoot"
 }
 
 $problems = New-Object System.Collections.Generic.List[string]
 $snapshots = New-Object System.Collections.Generic.List[object]
+$pageSizes = @{}
+$pageFingerprints = @{}
 $fingerprints = @{}
 
 # The example asks for elevation, and that request is written into the setup's
 # requestedExecutionLevel: Windows shows its consent prompt before the window
 # exists, so an unattended run would stop on the prompt. Clearing the flag for
-# the build is the documented way to get a setup that never prompts, so this
+# the builds is the documented way to get a setup that never prompts, so this
 # clears it, builds, and puts the file back byte for byte afterwards.
 # -KeepElevation leaves the project alone and waits for a hand on the prompt.
 $configPath = Join-Path $projectRoot "installer_config.json"
 $configBytes = [System.IO.File]::ReadAllBytes($configPath)
-$clearedElevation = $false
+$patchedConfig = $false
 
 # The example's payload is a 150 MB archive the repository does not track, so a
 # machine that has never unpacked the example has no payload, and the build
 # refuses to run without one. The build reads the declared archive's format and
-# embeds it untouched, the first page does not depend on what is inside it, and a
-# run that photographs the page never installs anything. A project that has no
-# payload therefore gets an empty archive of the declared format for this build,
-# and gets it removed again afterwards.
+# embeds it untouched, a page is drawn before anything is unpacked, and a run
+# that photographs a page never installs anything. A project that has no payload
+# therefore gets an empty archive of the declared format for these builds, and
+# gets it removed again afterwards.
 $payloadDeclared = $null
 $resources = $config.PSObject.Properties["resources"]
 if ($null -ne $resources) {
@@ -659,71 +868,131 @@ try {
     if ($KeepElevation) {
         Write-Output "Keeping install.require_admin as declared; answer the consent prompt when it appears"
     }
-    elseif ([System.Text.Encoding]::UTF8.GetString($configBytes) -match '"require_admin"\s*:\s*true') {
-        $patched = [regex]::Replace(
-            [System.Text.Encoding]::UTF8.GetString($configBytes),
-            '("require_admin"\s*:\s*)true',
-            '${1}false')
-        [System.IO.File]::WriteAllBytes($configPath, (New-Object System.Text.UTF8Encoding($false)).GetBytes($patched))
-        $clearedElevation = $true
-        Write-Output "Cleared install.require_admin for this build"
+    else {
+        Write-Output "Cleared install.require_admin for these builds"
     }
 
     $setup = Join-Path $OutputDirectory "TapTap_Setup.exe"
-    Write-Output "Building $($config.project.name) with $Builder"
-    $build = Invoke-NativeCapture { & $Builder build --project $projectRoot --output $setup --stubs $StubDirectory }
-    if ($build.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $setup -PathType Leaf)) {
-        throw "The setup did not build: $($build.Output -join [Environment]::NewLine)"
-    }
-
-    foreach ($target in $targets) {
-        $name = "$($target.Locale)-$($target.Dpi)dpi"
-        $path = Join-Path $OutputDirectory "$name.png"
-        Write-Output "Capturing $name"
-        $capture = Save-Snapshot -Setup $setup -Locale $target.Locale -Dpi $target.Dpi -Path $path
-        Write-Output "  window at $($capture.Window)"
-        $result = Test-Snapshot -Path $path -Dpi $target.Dpi -Page $page -Layout $layout -Window $capture
-        foreach ($problem in $result.Problems) {
-            $problems.Add("${name}: $problem")
-        }
-        foreach ($id in $result.Regions.Keys) {
-            $fingerprints["$name/$id"] = $result.Regions[$id]
-        }
-        $snapshots.Add([ordered]@{
-            file        = "$name.png"
-            locale      = $target.Locale
-            dpi         = $target.Dpi
-            scaling     = [int][Math]::Round(($target.Dpi / 96.0) * 100)
-            width       = [int][Math]::Round($page.Width * ($target.Dpi / 96.0))
-            height      = [int][Math]::Round($page.Height * ($target.Dpi / 96.0))
-            asserted    = @($result.Asserted)
-            expectation = Get-Expectation -Locale $target.Locale -Dpi $target.Dpi -Page $page -Config $config -LocaleText $localeText[$target.Locale]
-        })
-        Write-Output "  $($result.Asserted -join '; ')"
-    }
-
-    # The same button region in two languages has to differ: identical pixels
-    # would mean the locale never reached the page.
-    $first = $targets[0]
-    foreach ($target in $targets) {
-        if ($target.Dpi -ne $first.Dpi -or $target.Locale -eq $first.Locale) { continue }
-        foreach ($id in $text | ForEach-Object { $_.Id }) {
-            $left = $fingerprints["$($first.Locale)-$($first.Dpi)dpi/$id"]
-            $right = $fingerprints["$($target.Locale)-$($target.Dpi)dpi/$id"]
-            if ($null -eq $left -or $null -eq $right) { continue }
-            if ($left -eq $right) {
-                $problems.Add("$($first.Locale) and $($target.Locale) drew <$id> pixel for pixel the same, so the locale never reached it")
-            }
-            else {
-                Write-Output "  <$id> differs between $($first.Locale) and $($target.Locale)"
+    foreach ($page in $declaredPages) {
+        # The wizard's first page is the one a reader meets: every locale, and
+        # every scaling -Dpi names. Every other page is captured once, in the
+        # default locale at 100%, because what it adds is the page itself.
+        $targets = New-Object System.Collections.Generic.List[object]
+        if ($page.Role -eq "install" -and $page.Index -eq 1) {
+            for ($index = 0; $index -lt $Dpi.Count; $index++) {
+                $wanted = $Locales
+                if ($index -gt 0) { $wanted = @($defaultLocale) }
+                foreach ($locale in $wanted) {
+                    $targets.Add(@{ Locale = $locale; Dpi = $Dpi[$index] })
+                }
             }
         }
+        else {
+            $targets.Add(@{ Locale = $defaultLocale; Dpi = 96 })
+        }
+
+        [System.IO.File]::WriteAllBytes($configPath, (Get-PatchedConfig -Bytes $configBytes -Layout $page.Layout -KeepElevation:$KeepElevation))
+        $patchedConfig = $true
+        Write-Output "Building $($config.project.name) with $($page.Layout) first, using $Builder"
+        $build = Invoke-NativeCapture { & $Builder build --project $projectRoot --output $setup --stubs $StubDirectory }
+        if ($build.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $setup -PathType Leaf)) {
+            throw "The setup did not build: $($build.Output -join [Environment]::NewLine)"
+        }
+
+        $layoutPath = Join-Path $projectRoot $page.Layout
+        if (-not (Test-Path -LiteralPath $layoutPath -PathType Leaf)) {
+            throw "Layout not found: $layoutPath"
+        }
+        [xml]$layout = Get-Content -Raw -Encoding UTF8 -LiteralPath $layoutPath
+        $size = @{ Width = [double]$layout.Page.width; Height = [double]$layout.Page.height }
+        $pageSizes[$page.Id] = $size
+
+        foreach ($target in $targets) {
+            $name = "$($page.Id)-$($target.Locale)-$($target.Dpi)dpi"
+            $path = Join-Path $OutputDirectory "$name.png"
+            Write-Output "Capturing $name"
+            $capture = Save-Snapshot -Setup $setup -Locale $target.Locale -Dpi $target.Dpi -Path $path
+            Write-Output "  window at $($capture.Window)"
+            $result = Test-Snapshot -Path $path -Dpi $target.Dpi -Page $page -Size $size -Layout $layout -Window $capture
+            foreach ($problem in $result.Problems) {
+                $problems.Add("${name}: $problem")
+            }
+            foreach ($id in $result.Regions.Keys) {
+                $fingerprints["$name/$id"] = $result.Regions[$id]
+            }
+            if ($target.Locale -eq $defaultLocale -and $target.Dpi -eq 96) {
+                $pageFingerprints[$page.Id] = $result.Fingerprint
+            }
+            $snapshots.Add([ordered]@{
+                file        = "$name.png"
+                page        = $page.Id
+                locale      = $target.Locale
+                dpi         = $target.Dpi
+                scaling     = [int][Math]::Round(($target.Dpi / 96.0) * 100)
+                width       = [int][Math]::Round($size.Width * ($target.Dpi / 96.0))
+                height      = [int][Math]::Round($size.Height * ($target.Dpi / 96.0))
+                asserted    = $result.Asserted
+                expectation = Get-PageExpectation -Page $page -Size $size -Locale $target.Locale -Dpi $target.Dpi -Config $config -LocaleText $localeText[$target.Locale]
+            })
+            Write-Output "  $($result.Asserted.Count) check(s) measured"
+        }
+
+        # The same element in two languages has to differ: identical pixels would
+        # mean the locale never reached the page. Only the first page is captured
+        # in more than one language.
+        if ($page.Role -eq "install" -and $page.Index -eq 1) {
+            $first = $targets[0]
+            foreach ($target in $targets) {
+                if ($target.Dpi -ne $first.Dpi -or $target.Locale -eq $first.Locale) { continue }
+                foreach ($id in @($scrutinised.Keys)) {
+                    $left = $fingerprints["$($page.Id)-$($first.Locale)-$($first.Dpi)dpi/$id"]
+                    $right = $fingerprints["$($page.Id)-$($target.Locale)-$($target.Dpi)dpi/$id"]
+                    if ($null -eq $left -or $null -eq $right) { continue }
+                    if ($left -eq $right) {
+                        $problems.Add("$($first.Locale) and $($target.Locale) drew <$id> pixel for pixel the same, so the locale never reached it")
+                    }
+                    else {
+                        Write-Output "  <$id> differs between $($first.Locale) and $($target.Locale)"
+                    }
+                }
+            }
+        }
+    }
+
+    # Two pages that came out pixel for pixel the same would mean the page a
+    # snapshot asked for never reached the setup: every picture would be the
+    # wizard's first page.
+    $firstPage = $declaredPages[0]
+    foreach ($page in $declaredPages) {
+        if ($page.Id -eq $firstPage.Id) { continue }
+        $fingerprint = $pageFingerprints[$page.Id]
+        if (-not $fingerprint) { continue }
+        if ($fingerprint -eq $pageFingerprints[$firstPage.Id]) {
+            $problems.Add("$($page.Id) came out pixel for pixel the same as $($firstPage.Id), so the page never reached the setup")
+            continue
+        }
+        foreach ($snapshot in $snapshots) {
+            if ($snapshot["page"] -eq $page.Id -and $snapshot["locale"] -eq $defaultLocale -and $snapshot["dpi"] -eq 96) {
+                $snapshot["asserted"] = $snapshot["asserted"] + @(@{ k = "differs" })
+            }
+        }
+        Write-Output "  $($page.Id) differs from $($firstPage.Id)"
     }
 
     $manifest = [ordered]@{
         setup     = "TapTap_Setup.exe"
         project   = $config.project.name
-        page      = [ordered]@{ layout = $page.Layout; width = $page.Width; height = $page.Height }
+        pages     = @(foreach ($page in $declaredPages) {
+                [ordered]@{
+                    id     = $page.Id
+                    role   = $page.Role
+                    index  = $page.Index
+                    title  = $page.Title
+                    layout = $page.Layout
+                    width  = [int][Math]::Round($pageSizes[$page.Id].Width)
+                    height = [int][Math]::Round($pageSizes[$page.Id].Height)
+                }
+            })
         snapshots = $snapshots
     }
     [System.IO.File]::WriteAllText(
@@ -732,7 +1001,7 @@ try {
         (New-Object System.Text.UTF8Encoding($false)))
 }
 finally {
-    if ($clearedElevation) {
+    if ($patchedConfig) {
         [System.IO.File]::WriteAllBytes($configPath, $configBytes)
         Write-Output "Restored $configPath"
     }
@@ -747,4 +1016,4 @@ if ($problems.Count -gt 0) {
     throw "$($problems.Count) snapshot check(s) failed"
 }
 
-Write-Output "Captured and checked $($snapshots.Count) snapshot(s) in $OutputDirectory"
+Write-Output "Captured and checked $($snapshots.Count) snapshot(s) of $(@($declaredPages).Count) page(s) in $OutputDirectory"

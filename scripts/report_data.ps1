@@ -7,16 +7,19 @@
     - Get-TestCatalog reads every case out of the Rust sources it can find under
       crates/: the doc comment above a #[test] says what the case checks, and
       the covered behaviours come from docs/<language>/TEST_COVERAGE.md, so the
-      chips beside a case read in the report's language. The doc comments are
-      the sources' own English and are shown as they are written. A case with no
-      doc comment is described by its own name.
+      chips beside a case read in the report's language. What a case checks is
+      read from docs/<language>/TEST_CASES.md where that document exists, since
+      the doc comments are the sources' own English; a case it does not name
+      falls back to the doc comment above it, or to its own name.
     - Get-TestCoverage reads that same document the other way round: every
       behaviour it promises with the cases it names for it, and the part of it
       that admits no case covers a thing. A report that lists a behaviour's
       cases beside their outcome says what was tested, not only what passed.
     - Get-SnapshotGallery reads the manifest capture_setup_snapshots.ps1 writes
-      beside its page photographs, so a report can show the pages of a real
-      setup and what the capture measured on each of them.
+      beside its page photographs, so a report can show every page of a real
+      setup and what the capture measured on each of them. The manifest names
+      each page, and records each check by name rather than in words, so the
+      report says both in the language it is read in.
 #>
 
 . (Join-Path $PSScriptRoot "report_text.ps1")
@@ -96,7 +99,12 @@ function Get-TestCatalog {
             foreach ($match in [regex]::Matches($cases, '`([A-Za-z0-9_:]+)`')) {
                 $name = $match.Groups[1].Value
                 if (-not $catalog.ContainsKey($name)) {
-                    $catalog[$name] = @{ Doc = ""; Protects = (New-Object System.Collections.Generic.List[string]) }
+                    $catalog[$name] = @{
+                        Doc       = ""
+                        Protects  = (New-Object System.Collections.Generic.List[string])
+                        Source    = $false
+                        Described = $false
+                    }
                 }
                 if (-not $catalog[$name].Protects.Contains($behaviour)) {
                     $catalog[$name].Protects.Add($behaviour)
@@ -125,7 +133,9 @@ function Get-TestCatalog {
                         $comment.Insert(0, $trimmed.Substring(3).Trim())
                     }
                     elseif ($trimmed.StartsWith("#[")) {
-                        if ($trimmed -match "\btest\b") {
+                        # The attribute that is the case itself, not a cfg(test)
+                        # helper that happens to mention tests.
+                        if ($trimmed -match '^#\[[A-Za-z_0-9:]*test\b') {
                             $isCase = $true
                         }
                     }
@@ -138,12 +148,53 @@ function Get-TestCatalog {
                 }
                 $text = (@($comment | Where-Object { $_.Length -gt 0 }) -join " ").Trim()
                 if (-not $catalog.ContainsKey($name)) {
-                    $catalog[$name] = @{ Doc = ""; Protects = (New-Object System.Collections.Generic.List[string]) }
+                    $catalog[$name] = @{
+                        Doc       = ""
+                        Protects  = (New-Object System.Collections.Generic.List[string])
+                        Source    = $false
+                        Described = $false
+                    }
                 }
                 if ($text.Length -gt 0) {
                     $catalog[$name].Doc = $text
                 }
+                $catalog[$name].Source = $true
             }
+        }
+    }
+
+    # The report's own language may keep a table of its own words for the cases,
+    # one row per case, beside the coverage document. A case the table names is
+    # described in the reader's language; a case it does not name keeps the doc
+    # comment above it, or its own name. The table is read last on purpose: when
+    # it and the sources both have something to say, the table is what a reader
+    # of that language is shown.
+    $casesPath = Join-Path $RepoRoot "docs/$documentLanguage/TEST_CASES.md"
+    if (Test-Path -LiteralPath $casesPath -PathType Leaf) {
+        foreach ($line in [System.IO.File]::ReadAllLines($casesPath)) {
+            if (-not $line.StartsWith("|")) {
+                continue
+            }
+            $cells = @($line.Split("|") | Select-Object -Skip 1)
+            if ($cells.Count -lt 3) {
+                continue
+            }
+            $named = [regex]::Match($cells[0], '`([A-Za-z0-9_:]+)`')
+            $described = $cells[1].Trim()
+            if (-not $named.Success -or $described.Length -eq 0) {
+                continue
+            }
+            $name = $named.Groups[1].Value
+            if (-not $catalog.ContainsKey($name)) {
+                $catalog[$name] = @{
+                    Doc       = ""
+                    Protects  = (New-Object System.Collections.Generic.List[string])
+                    Source    = $false
+                    Described = $false
+                }
+            }
+            $catalog[$name].Doc = $described
+            $catalog[$name].Described = $true
         }
     }
 
@@ -372,17 +423,20 @@ function Get-CaseRow {
     $name = Get-CaseName -Path $Path
     $what = ConvertTo-CaseSentence -Name $name
     $protects = @()
+    $described = $false
     if ($Catalog.ContainsKey($name)) {
         if ($Catalog[$name].Doc) { $what = $Catalog[$name].Doc }
+        if ($Catalog[$name].Described) { $described = $true }
         $protects = @($Catalog[$name].Protects)
     }
     return @{
-        Name     = $name
-        Module   = Get-CaseModule -Path $Path
-        Result   = $Result
-        Note     = $Note
-        What     = $what
-        Protects = $protects
+        Name      = $name
+        Module    = Get-CaseModule -Path $Path
+        Result    = $Result
+        Note      = $Note
+        What      = $what
+        Protects  = $protects
+        Described = $described
     }
 }
 
@@ -455,12 +509,14 @@ function Select-BehaviourRow {
 }
 
 # The pages of a real setup, as capture_setup_snapshots.ps1 photographed them.
-# The capture only ever draws the wizard's first page, and the manifest names
-# the layout that page comes from, so the caption can say which page of the
-# project is on show. The image travels inside the page, so the report is one
-# file a reader can open wherever it is put.
+# The manifest names every page the project declares and the layout each page is
+# drawn from, and every snapshot says which page it is, so a page is shown under
+# the name the project gives it. Each check the capture made is recorded by name
+# with its measurements rather than as a finished sentence, and the sentence is
+# made here in the report's language. The image travels inside the page, so the
+# report is one file a reader can open wherever it is put.
 function Get-SnapshotGallery {
-    param([string]$Directory, [hashtable]$Text = $null)
+    param([string]$Directory, [hashtable]$Text = $null, [string]$Language = "en-US")
 
     if ($null -eq $Text) {
         $Text = Get-ReportText -Language "en-US"
@@ -479,23 +535,91 @@ function Get-SnapshotGallery {
     if ($manifest.PSObject.Properties.Name -contains "project") {
         $project = [string]$manifest.project
     }
-    $layout = ""
-    if ($manifest.PSObject.Properties.Name -contains "page") {
-        $layout = [string]$manifest.page.layout
+    $pages = @{}
+    foreach ($page in $manifest.pages) {
+        $pages[[string]$page.id] = $page
     }
     foreach ($snapshot in $manifest.snapshots) {
         $file = Join-Path $Directory ([string]$snapshot.file)
         if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
             continue
         }
+        # The page a snapshot belongs to carries the name a reader knows it by;
+        # a page the manifest does not name keeps the wizard's first.
+        $id = [string]$snapshot.page
+        $role = "install"
+        $index = 1
+        $title = ""
+        $layout = ""
+        if ($pages.ContainsKey($id)) {
+            $role = [string]$pages[$id].role
+            $index = [int]$pages[$id].index
+            $title = [string]$pages[$id].title
+            $layout = [string]$pages[$id].layout
+        }
+        $checks = New-Object System.Collections.Generic.List[string]
+        foreach ($check in $snapshot.asserted) {
+            $key = "check.$([string]$check.k)"
+            if (-not $Text.ContainsKey($key)) {
+                continue
+            }
+            # A check that measured nothing -- the corners, say -- carries no
+            # value, and the sentence for it has no slot to fill.
+            $values = @()
+            if ($check.PSObject.Properties.Name -contains "v") {
+                $values = @($check.v)
+            }
+            $checks.Add((Get-ReportPhrase -Text $Text -Key $key -Values $values))
+        }
+        # What the page must show is the report's own words about that layout,
+        # rather than the prompt the capture wrote for a vision model.
+        $expectation = ""
+        if ($layout) {
+            $expectationKey = "expectation.$([System.IO.Path]::GetFileNameWithoutExtension($layout))"
+            if ($Text.ContainsKey($expectationKey)) {
+                $expectation = $Text[$expectationKey]
+            }
+        }
+        $roleName = Get-ReportPhrase -Text $Text -Key "snapshots.role.$role"
         $gallery.Add(@{
-            File      = [string]$snapshot.file
-            Alt       = Get-ReportPhrase -Text $Text -Key "snapshots.alt" -Values @($project, $layout, $snapshot.locale, $snapshot.scaling)
-            Source    = "data:image/png;base64,$([Convert]::ToBase64String([System.IO.File]::ReadAllBytes($file)))"
-            Caption   = Get-ReportPhrase -Text $Text -Key "snapshots.caption" -Values @($project, $snapshot.width, $snapshot.height, $layout, $snapshot.locale, $snapshot.scaling)
-            Asserts   = @($snapshot.asserted)
-            Expectation = [string]$snapshot.expectation
+            File        = [string]$snapshot.file
+            PageId      = $id
+            Heading     = Get-ReportPhrase -Text $Text -Key "snapshots.page.heading" -Values @($roleName, $index, $title)
+            Layout      = $layout
+            Alt         = Get-ReportPhrase -Text $Text -Key "snapshots.alt" -Values @(
+                $project,
+                (Get-ReportPhrase -Text $Text -Key "snapshots.page" -Values @($roleName, $index, $title)),
+                $layout, $snapshot.locale, $snapshot.scaling, $snapshot.width, $snapshot.height)
+            Source      = "data:image/png;base64,$([Convert]::ToBase64String([System.IO.File]::ReadAllBytes($file)))"
+            Caption     = Get-ReportPhrase -Text $Text -Key "snapshots.caption" -Values @($snapshot.locale, $layout, $snapshot.width, $snapshot.height, $snapshot.scaling)
+            Checks      = $checks.ToArray()
+            Expectation = $expectation
         })
     }
     return $gallery.ToArray()
+}
+
+# The cases of a run that the language's own table of case descriptions does not
+# name. A report whose column of case descriptions fell back to the sources'
+# English for some of its rows says so, since a reader of that language cannot
+# tell an English sentence from a translated one at a glance.
+function Get-UndescribedCaseNote {
+    param([hashtable]$Text, [string]$RepoRoot, [string]$Language, [object[]]$Cases)
+
+    $documentLanguage = Get-ReportDocLanguage -Language $Language
+    $path = "docs/$documentLanguage/TEST_CASES.md"
+    if (-not $Cases -or $Cases.Count -eq 0) {
+        return ""
+    }
+    if (-not (Test-Path -LiteralPath (Join-Path $RepoRoot $path) -PathType Leaf)) {
+        return ""
+    }
+    $undescribed = 0
+    foreach ($case in $Cases) {
+        if (-not $case.Described) { $undescribed++ }
+    }
+    if ($undescribed -eq 0) {
+        return ""
+    }
+    return (Get-ReportPhrase -Text $Text -Key "cases.notdescribed" -Values @($undescribed, $path))
 }

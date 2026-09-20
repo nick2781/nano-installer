@@ -70,6 +70,13 @@ jobs:
         shell: powershell
         run: .\scripts\audit_test_targets.ps1
 
+      # A report describes each case in the language it is read in, and the
+      # table that holds those words has to cover the cases the sources
+      # declare: a case without a row would read as English on the Chinese page.
+      - name: Audit case descriptions
+        shell: powershell
+        run: .\scripts\audit_case_descriptions.ps1
+
       - name: Check formatting
         run: cargo fmt --all -- --check
 

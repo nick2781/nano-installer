@@ -222,7 +222,7 @@ if ($caseRows.Count -gt 0) {
 $coverageDocument = Get-TestCoverage -RepoRoot $repoRoot -Language $Language
 $behaviourRows = Select-BehaviourRow -Rows (Get-BehaviourRows -Coverage $coverageDocument.Rows -Results $caseResults)
 
-$images = @(Get-SnapshotGallery -Directory (Join-Path $repoRoot "target/setup-snapshots") -Text $text)
+$images = @(Get-SnapshotGallery -Directory (Join-Path $repoRoot "target/setup-snapshots") -Text $text -Language $Language)
 $verdict = "passed"
 if ($code -ne 0 -or $null -eq $suite) { $verdict = "failed" }
 $notes = New-Object System.Collections.Generic.List[string]
@@ -233,6 +233,10 @@ if ($caseRows.Count -gt 0) {
 }
 $notes.Add((Get-ReportPhrase -Text $text -Key "notes.textfile" -Values @($reportName)))
 $notes.Add((Get-ReportPhrase -Text $text -Key "e2e.notes.snapshots"))
+$undescribed = Get-UndescribedCaseNote -Text $text -RepoRoot $repoRoot -Language $Language -Cases $caseRows.ToArray()
+if ($undescribed) {
+    $notes.Add($undescribed)
+}
 $notes.Add((Get-ReportPhrase -Text $text -Key "notes.layers" -Values @($documentPath)))
 $guide = Get-ReportGuide -Text $text -DocumentPath $documentPath
 
