@@ -11,25 +11,19 @@
     "installer_name": "TapTap_Setup.exe",
     "installer_icon": "assets/logo.ico",
     "uninstaller_name": "uninst.exe",
-    "uninstaller_icon": "assets/uninst.ico",
-    "installer_stub": "lzma-x64.exe",
-    "uninstaller_stub": "uninst-x64.exe"
+    "uninstaller_icon": "assets/uninst.ico"
   },
   "install": {
     "exe_name": "TapTap.exe",
     "default_path": "C:\\Program Files\\TapTapTest",
-    "append_to_path": "TapTapTest",
     "required_space_mb": 200,
     "require_admin": true,
-    "mutex_name": "TapTapTest_Installer",
     "detect_running_process": true,
     "kill_process_on_install": true,
     "kill_process_on_uninstall": true
   },
   "registry": {
-    "install_path_key": "HKCU\\\\Software\\\\TapTapTest",
-    "uninstall_key": "HKCU\\\\Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\TapTapTest",
-    "help_link": "https://www.taptap.cn/help"
+    "uninstall_key": "HKCU\\\\Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\TapTapTest"
   },
   "shortcuts": {
     "desktop_shortcut": true,
@@ -45,8 +39,11 @@
   },
   "localization": {
     "default_locale": "zh-CN",
-    "supported_locales": ["zh-CN", "en-US", "ru"],
-    "show_language_selector": true
+    "supported_locales": [
+      "zh-CN",
+      "en-US",
+      "ru"
+    ]
   },
   "links": {
     "terms_of_service": "https://www.taptap.cn/doc/terms/",
@@ -58,14 +55,9 @@
     "assets_dir": "assets",
     "locales_dir": "locales",
     "payload_file": "payload/app.7z",
-    "installer_icon": "assets/logo.ico",
     "uninstaller_icon": "assets/uninst.ico"
   },
   "ui": {
-    "window_width": 720,
-    "window_height": 450,
-    "expanded_height": 450,
-    "window_corner_radius": 12,
     "dialog_layout": "layouts/msgBox.xml",
     "dpi_aware": true,
     "dpi_threshold": 144
@@ -88,18 +80,6 @@
         "title": "安装完成"
       }
     ],
-    "update_pages": [
-      {
-        "id": "installing",
-        "layout": "layouts/installingpage.xml",
-        "title": "Updating"
-      },
-      {
-        "id": "finish",
-        "layout": "layouts/finishpage.xml",
-        "title": "Update Complete"
-      }
-    ],
     "uninstall_pages": [
       {
         "id": "uninstall_confirm",
@@ -119,17 +99,13 @@
     ]
   },
   "uninstall": {
-    "data_paths": ["%APPDATA%\\TapTapTest", "%LOCALAPPDATA%\\TapTapTest"]
-  },
-  "validation": {
-    "check_path_legal": true,
-    "check_disk_type": "Any",
-    "check_disk_space": true
+    "data_paths": [
+      "%APPDATA%\\TapTapTest",
+      "%LOCALAPPDATA%\\TapTapTest"
+    ]
   },
   "advanced": {
     "silent_mode_support": true,
-    "update_mode_support": true,
-    "uninstall_mode_support": true,
-    "launch_app_after_install": true
+    "uninstall_mode_support": true
   }
 }

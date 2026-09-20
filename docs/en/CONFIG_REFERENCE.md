@@ -1,8 +1,9 @@
 # Configuration reference
 
 Every project has one `installer_config.json`. This page lists the settings that change what your
-installer does today. The settings that are accepted but not yet acted on come at the end, so you
-never have to guess whether a field is live.
+installer does today. A key this build does not read fails the build instead of being ignored, so
+the configuration in front of you is the one your setup behaves by; the keys it refuses are listed
+at the end.
 
 ## Product identity
 
@@ -35,7 +36,7 @@ You write these paths relative to the project folder.
 | Setting | Type | Effect |
 | --- | --- | --- |
 | `install.default_path` | string | Initial install directory shown on the first page |
-| `install.required_space_mb` | integer | Required space in MiB, shown through an XML `value-source` binding |
+| `install.required_space_mb` | integer | Required space in MiB: the install stops before writing anything when the destination drive has less free space; an XML `value-source` binding can show the same number |
 | `install.exe_name` | string | The application executable the payload must contain; installation stops before deploying anything if it is missing |
 | `install.require_admin` | bool | Ask Windows for administrator rights before the setup starts, defaults to `false` |
 | `install.kill_process_on_install` | bool | Close running copies of the product before installing; failure aborts the install |
@@ -71,9 +72,14 @@ installing, so removal restores the machine to its previous state.
 | `resources.payload_file` | string | Required; path to the ZIP or 7z payload |
 | `localization.default_locale` | string | Language used at startup, defaults to `zh-CN` |
 | `localization.supported_locales` | array | Languages you intend to ship; the build reports any entry without a matching JSON file |
-| `wizard.pages[].layout` | string | Install pages: first is the welcome page, second shows progress, last is the finish page |
-| `wizard.update_pages[].layout` | string | Reserved update page list; the install flow uses `wizard.pages` |
-| `wizard.uninstall_pages[].layout` | string | Uninstall pages, switched in the same order |
+| `wizard.pages[].layout` | string | Install pages, walked with `action="next"` and `action="back"` |
+| `wizard.pages[].role` | string | Optional: `progress` marks the page a task reports on, `finish` the page it ends on |
+| `wizard.uninstall_pages[].layout` | string | Uninstall pages, walked the same way |
+| `wizard.uninstall_pages[].role` | string | The same two roles for the uninstaller |
+
+Without a `role`, the second page reports and the last one finishes, which is what the three
+pages an ordinary project declares mean. A page may also carry `id` and `title`: the first names
+it for your own reading, and the second is the heading a report shows it under.
 
 ## Interface
 
@@ -204,19 +210,34 @@ painting a window, and a failure sets a non-zero exit code with the reason on st
 }
 ```
 
-## Accepted but not yet in effect
+## Refused settings
 
-These settings are packaged into the setup but are not read at runtime. Do not treat their presence
-as a working feature:
+A setting that is accepted and then ignored is worse than one that is missing: the project reads
+as if it worked, and the setup ships without it. The build therefore refuses a configuration that
+holds a key it does not read, and names the setting that does the job instead.
 
-- `install.*` and `registry.*` fields other than the ones listed above
-- `validation.*`; `links.*` is read by link clicks and `open_url:` actions, and
-  `localization.supported_locales` is checked during the build
-- `localization.show_language_selector`; the language list and its visibility come from the XML
-  `Select` control
-- `advanced.update_mode_support`; upgrades are detected from an existing installation in the
-  destination, not from this switch. `advanced.silent_mode_support` and
-  `advanced.uninstall_mode_support` are read, and are described under
-  [unattended runs](#unattended-runs).
+| Refused key | What to do instead |
+| --- | --- |
+| `install.append_to_path` | nothing adds a directory to PATH yet |
+| `install.mutex_name` | a setup does not yet refuse to run while another copy installs the same product |
+| `registry.install_path_key` | the install path is not written into a registry value |
+| `registry.help_link` | put the URL under `links` and open it with `action="open_url:<key>"` |
+| `resources.installer_icon` | use `output.installer_icon` |
+| `output.installer_stub`, `output.uninstaller_stub` | the runtimes come from the build's `--stubs` directory |
+| `validation.*` | no build or runtime step reads it; `install.required_space_mb` is the one check that runs |
+| `wizard.update_pages` | an upgrade replays `wizard.pages` |
+| `advanced.update_mode_support` | an upgrade is decided by what is already installed at the destination |
+| `advanced.launch_app_after_install` | put `action="launch_app"` on the finish page |
+| `localization.show_language_selector` | the language list comes from the `Select` control in the layout |
+| `ui.window_width`, `ui.window_height`, `ui.expanded_height` | the window size comes from `<Page width height>` in the layout |
+| `ui.window_corner_radius` | the corner radius comes from `<Page border-radius>` in the layout |
+
+`advanced.silent_mode_support` and `advanced.uninstall_mode_support` are read, and are described
+under [unattended runs](#unattended-runs).
+
+Any other key inside the sections above is refused as well, so a misspelled setting fails the build
+instead of doing nothing. Two things are outside that rule: `links` is a table your project names
+itself, and a section this build does not know at all is left alone, because a script reads it back
+through `get_config_value`.
 
 See [production status](PRODUCTION_STATUS.md) for the full picture.

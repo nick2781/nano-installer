@@ -68,6 +68,9 @@ files and registry entries, so validate them in a disposable virtual machine onl
   Windows 11 and in CI.
 - A setup stays a setup after signing: a certificate table appended behind the bundle, which is what
   Authenticode writes into the file, no longer hides the footer the runtime reads its resources from.
+- The builder refuses a configuration key it does not read. A setting that once parsed and then
+  changed nothing cannot ship as if it were doing its job; the message names the key and the
+  setting that takes its place.
 - `scripts/capture_setup_snapshots.ps1` builds the example setup and photographs every page the
   project declares: the wizard's first page in Chinese, English, and Russian, plus one at each higher
   scaling (150% and 200% by default), and one picture of each of the other pages. Every snapshot is then checked against its own

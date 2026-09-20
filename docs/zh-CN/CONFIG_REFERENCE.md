@@ -1,7 +1,7 @@
 # 配置参考
 
-每个项目有一个 `installer_config.json`。这一页只列现在真的会改变安装包行为的设置；接受但还没
-生效的字段都集中放在最后。
+每个项目有一个 `installer_config.json`。这一页只列现在真的会改变安装包行为的设置。本项目不读的键
+会让构建失败，而不是被安静地忽略，所以摆在眼前的配置就是安装包实际的行为；它拒绝的键列在最后。
 
 ## 产品信息
 
@@ -33,7 +33,7 @@
 | 字段 | 类型 | 作用 |
 | --- | --- | --- |
 | `install.default_path` | string | 首屏显示的初始安装目录 |
-| `install.required_space_mb` | integer | 所需空间，单位 MiB，通过 XML 的 `value-source` 显示 |
+| `install.required_space_mb` | integer | 所需空间，单位 MiB：目标盘剩余空间不足时，安装会在写任何文件之前中止；同一个数字也可以用 XML 的 `value-source` 显示 |
 | `install.exe_name` | string | payload 中必须存在的应用 EXE；缺失时直接中止，不部署任何文件 |
 | `install.require_admin` | bool | 安装包启动前向 Windows 申请管理员权限，默认 `false` |
 | `install.kill_process_on_install` | bool | 安装前关闭正在运行的产品；无法关闭则安装失败 |
@@ -68,9 +68,13 @@
 | `resources.payload_file` | string | 必需；ZIP 或 7z payload 路径 |
 | `localization.default_locale` | string | 启动时使用的语言，默认 `zh-CN` |
 | `localization.supported_locales` | array | 计划提供的语言列表；构建时会对没有对应 JSON 文件的条目告警 |
-| `wizard.pages[].layout` | string | 安装页列表：首屏欢迎页、第二页进度、最后一页完成 |
-| `wizard.update_pages[].layout` | string | 预留的升级页列表；当前安装流程使用 `wizard.pages` |
-| `wizard.uninstall_pages[].layout` | string | 卸载页列表，按同样的顺序切换 |
+| `wizard.pages[].layout` | string | 安装页列表，用 `action="next"` 与 `action="back"` 逐页走 |
+| `wizard.pages[].role` | string | 可选：`progress` 标记任务汇报的那一页，`finish` 标记收尾的那一页 |
+| `wizard.uninstall_pages[].layout` | string | 卸载页列表，走法相同 |
+| `wizard.uninstall_pages[].role` | string | 卸载程序可用的同样两个职责 |
+
+不写 `role` 时，第二页汇报、最后一页收尾，也就是普通工程声明的那三页的意思。页面还可以写
+`id` 与 `title`：前者是给你自己看的名字，后者是报告里给它的小标题。
 
 ## 界面
 
@@ -191,16 +195,31 @@ uninst.exe --silent
 }
 ```
 
-## 已接受但尚未生效
+## 会被拒绝的设置
 
-下面这些设置会原样打包进安装包，但运行时不会读取。别因为字段存在就以为功能已经做好：
+写了却能不起作用的设置，比没有这个设置更糟：工程看起来是好的，发出去的安装包却没有这一条。
+所以构建器拒绝含自己不读的键的配置，并指出该改用哪个设置。
 
-- 上表未列出的 `install.*` 与 `registry.*` 字段
-- `validation.*`；链接点击和 `open_url:` 动作会读取 `links.*`，
-  `localization.supported_locales` 会在构建时校验
-- `localization.show_language_selector`；语言列表与可见性看 XML 中的 `Select` 控件
-- `advanced.update_mode_support`；升级是按目标目录中的既有安装自动识别的，不读这个开关。
-  运行时则读 `advanced.silent_mode_support` 与 `advanced.uninstall_mode_support`，
-  见[无人值守运行](#无人值守运行)。
+| 被拒绝的键 | 该改成什么 |
+| --- | --- |
+| `install.append_to_path` | 目前没有任何设置能往 PATH 里加目录 |
+| `install.mutex_name` | 安装包目前不会在同一个产品的另一份安装运行时拒绝启动 |
+| `registry.install_path_key` | 安装路径不会被写进注册表值 |
+| `registry.help_link` | 把网址放到 `links` 里，用 `action="open_url:键"` 打开 |
+| `resources.installer_icon` | 改用 `output.installer_icon` |
+| `output.installer_stub`、`output.uninstaller_stub` | 运行时来自构建命令的 `--stubs` 目录 |
+| `validation.*` | 构建与运行时都不读它；真正会跑的是 `install.required_space_mb` |
+| `wizard.update_pages` | 升级会重放 `wizard.pages` |
+| `advanced.update_mode_support` | 是否升级由目标目录里已有的安装决定 |
+| `advanced.launch_app_after_install` | 在完成页上放 `action="launch_app"` |
+| `localization.show_language_selector` | 语言列表来自版面里的 `Select` 控件 |
+| `ui.window_width`、`ui.window_height`、`ui.expanded_height` | 窗口尺寸来自版面里的 `<Page width height>` |
+| `ui.window_corner_radius` | 圆角半径来自版面里的 `<Page border-radius>` |
+
+运行时读的是 `advanced.silent_mode_support` 与 `advanced.uninstall_mode_support`，见
+[无人值守运行](#无人值守运行)。
+
+上面这些区块里任何拼错的键同样会被拒绝，不会安静地不起作用。两处例外：`links` 是工程自己命名的表；
+本项目完全不认识的区块一律不管，因为脚本会用 `get_config_value` 把它读回去。
 
 完整情况见[当前生产状态](PRODUCTION_STATUS.md)。

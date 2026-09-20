@@ -19,13 +19,14 @@ use std::time::{Duration, Instant};
 use nano_installer_core::{
     build_project, build_project_with_progress, BuildRequest, PayloadFormat,
 };
-use windows::Win32::Foundation::{BOOL, HANDLE, HWND, LPARAM, RECT};
+use windows::Win32::Foundation::{BOOL, HANDLE, HWND, LPARAM, RECT, WPARAM};
 use windows::Win32::System::Com::CoTaskMemFree;
 use windows::Win32::UI::Shell::{
     FOLDERID_Desktop, FOLDERID_Programs, SHGetKnownFolderPath, KF_FLAG_DEFAULT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetClassNameW, GetClientRect, GetWindowThreadProcessId, SetProcessDPIAware,
+    EnumWindows, GetClassNameW, GetClientRect, GetWindowThreadProcessId, PostMessageW,
+    SetProcessDPIAware, WM_LBUTTONUP,
 };
 
 /// The key Windows starts a program from at sign-in.
@@ -207,9 +208,7 @@ impl Fixture {
             },
             "output": {
                 "installer_name": "E2eProbe_Setup.exe",
-                "uninstaller_name": "uninst.exe",
-                "installer_stub": "zlib-x64.exe",
-                "uninstaller_stub": "uninst-x64.exe"
+                "uninstaller_name": "uninst.exe"
             },
             "install": {
                 "exe_name": "E2eProbe.exe",
@@ -228,8 +227,7 @@ impl Fixture {
             "autostart": {"enabled": false, "default": false},
             "localization": {
                 "default_locale": "en-US",
-                "supported_locales": ["en-US"],
-                "show_language_selector": false
+                "supported_locales": ["en-US"]
             },
             "resources": {
                 "layouts_dir": "layouts",
@@ -238,9 +236,6 @@ impl Fixture {
                 "payload_file": "payload/app.archive"
             },
             "ui": {
-                "window_width": 720,
-                "window_height": 450,
-                "expanded_height": 450,
                 "dialog_layout": "layouts/msgBox.xml"
             },
             "wizard": {
@@ -252,7 +247,6 @@ impl Fixture {
             "test": {"registry_key": self.test_key},
             "advanced": {
                 "silent_mode_support": silent,
-                "update_mode_support": true,
                 "uninstall_mode_support": silent
             }
         });
@@ -271,6 +265,32 @@ impl Fixture {
         std::fs::write(self.project.join("locales/en-US.json"), b"{}")?;
         self.archive_payload(payload, include_exe)?;
         Ok(())
+    }
+
+    /// Declares a wizard of two pages that walk into each other.
+    ///
+    /// The first page carries a `next` button and the second a `back` one, and
+    /// the two declare different client areas, so the window's own size says
+    /// which page is up after a click.
+    fn walk_project(&self) -> anyhow::Result<()> {
+        std::fs::write(
+            self.project.join("layouts/configpage.xml"),
+            r##"<Page width="720" height="450" background="#FF101010">
+  <Button id="next" action="next" text="Next" position="absolute" left="560" top="390" width="120" height="36" />
+</Page>"##,
+        )?;
+        std::fs::write(
+            self.project.join("layouts/secondpage.xml"),
+            r##"<Page width="500" height="300" background="#FF202020">
+  <Button id="back" action="back" text="Back" position="absolute" left="20" top="240" width="120" height="36" />
+</Page>"##,
+        )?;
+        self.edit_config(|config| {
+            config["wizard"]["pages"] = serde_json::json!([
+                {"id": "config", "title": "First", "layout": "layouts/configpage.xml"},
+                {"id": "second", "title": "Second", "layout": "layouts/secondpage.xml"}
+            ]);
+        })
     }
 
     /// Rewrites `install.default_path` and returns where that resolves to.
@@ -1433,6 +1453,102 @@ fn the_setup_opens_its_wizard_window() -> anyhow::Result<()> {
         "looking at the wizard installed something"
     );
     Ok(())
+}
+
+/// Walks the wizard with the two page actions a project can put on a button.
+///
+/// A page list belongs to the project, so the only way to know that `next` and
+/// `back` really move between the pages it declares -- and that a click lands
+/// on the page the layout put the button on -- is to click one in a real
+/// window. The two pages declare different client areas, so the size of the
+/// window says which page is up.
+#[test]
+fn a_next_button_walks_to_the_page_the_project_declares() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::SevenZip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.walk_project()?;
+    fixture.build()?;
+
+    let _ = unsafe { SetProcessDPIAware() };
+    let mut setup = Command::new(&fixture.setup)
+        .env("NANO_INSTALLER_TEST_DPI", "96")
+        .spawn()?;
+
+    let waited = wait_for_runtime_window(&mut setup, Instant::now() + Duration::from_secs(30));
+    let found = match &waited {
+        WindowWait::Found(window) => Some(*window),
+        WindowWait::Exited(_) | WindowWait::Timeout => None,
+    };
+    let Some(window) = found else {
+        let reason = match waited {
+            WindowWait::Exited(status) => format!("the setup {status} instead of opening a window"),
+            WindowWait::Timeout => "no window appeared within 30 seconds".to_string(),
+            WindowWait::Found(_) => "the window could not be measured".to_string(),
+        };
+        let _ = setup.kill();
+        let _ = setup.wait();
+        return skip_missing_desktop(&reason);
+    };
+
+    let first = client_size(window);
+    // The centre of the button the first page places at 560,390.
+    click_client_point(window, 620, 408);
+    let second = wait_for_client_size(window, (500, 300), Instant::now() + Duration::from_secs(10));
+    let walked_back = match second {
+        Some(_) => {
+            // The centre of the button the second page places at 20,240.
+            click_client_point(window, 80, 258);
+            wait_for_client_size(window, first, Instant::now() + Duration::from_secs(10))
+        }
+        None => None,
+    };
+    let _ = setup.kill();
+    let _ = setup.wait();
+
+    assert_eq!(
+        first,
+        (720, 450),
+        "the wizard opened on {first:?} rather than the 720x450 page the project declares"
+    );
+    assert_eq!(
+        second,
+        Some((500, 300)),
+        "the next button did not move the wizard to the second page"
+    );
+    assert_eq!(
+        walked_back,
+        Some(first),
+        "the back button did not move the wizard back to the first page"
+    );
+    Ok(())
+}
+
+/// Clicks a point inside the runtime window, the way a user's click arrives.
+///
+/// The runtime answers a button-up with whatever action the layout placed under
+/// that point, so this is the whole input path a page action is reached by.
+fn click_client_point(window: HWND, x: i32, y: i32) {
+    let lparam = LPARAM(((y << 16) | (x & 0xFFFF)) as isize);
+    unsafe { PostMessageW(window, WM_LBUTTONUP, WPARAM(0), lparam) }
+        .expect("the runtime window accepts a click");
+}
+
+/// Waits for the window's client area to become `expected`.
+fn wait_for_client_size(
+    window: HWND,
+    expected: (i32, i32),
+    deadline: Instant,
+) -> Option<(i32, i32)> {
+    while Instant::now() < deadline {
+        let size = client_size(window);
+        if size == expected {
+            return Some(size);
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    None
 }
 
 /// Reports that this machine cannot open a window.

@@ -225,9 +225,18 @@ The runtime draws no element when it, or any ancestor, has `visible="false"`.
 | `launch_app` | Launches the executable this installation deployed, from its own directory |
 | `finish` | Same as `close`, intended for the finish page |
 | `switch_language` | Expands the language list and switches the locale on selection |
+| `next` | Switches to the next page the project declares |
+| `back` | Switches to the previous page it declares |
 | `toggle_panel:<id>:show/hide` | Shows or hides a target panel and switches the paired show/hide control |
 | `dialog_ok` | Confirms the open dialog: a close question exits the setup, a notice just closes |
 | `dialog_cancel` | Dismisses the open dialog and returns to the page under it |
+
+A project that declares more than one page walks it with `next` and `back`: the first page has
+nothing behind it and the last page nothing in front, so each stops there instead of wrapping
+around. The task itself reports on the second page and ends on the last one, unless a page says
+otherwise with `role` -- `progress` marks the page a task reports on and `finish` the page it ends
+on, which is how a licence page or an options page gets in front of the task. The roles are
+described under [files, languages, and pages](CONFIG_REFERENCE.md#files-languages-and-pages).
 
 ## Dialogs
 

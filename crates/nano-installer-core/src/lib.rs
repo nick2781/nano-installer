@@ -1,6 +1,7 @@
 #[cfg(not(target_arch = "x86_64"))]
 compile_error!("nano-installer-native-x64 must be built for x86_64");
 
+mod config;
 mod icon;
 mod install;
 mod manifest;
@@ -8,7 +9,7 @@ mod script;
 mod shell;
 mod version;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, ensure, Context, Result};
 use std::collections::{HashMap, HashSet};
 use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -446,6 +447,10 @@ enum WindowAction {
     Minimize,
     ToggleLanguageMenu,
     SelectLanguage(String),
+    /// Moves to the next page the project declares.
+    NextPage,
+    /// Moves back to the previous page the project declares.
+    PreviousPage,
     Install,
     Uninstall,
     LaunchApp,
@@ -962,6 +967,7 @@ pub struct BuildResult {
 pub fn inspect_project(project: impl AsRef<Path>) -> Result<ProjectSummary> {
     let project = project.as_ref();
     let config = read_project_config(project)?;
+    config::audit(&config)?;
     let output_path = default_output_for_project(project, &config)?;
     let payload_path = project.join(
         config["resources"]["payload_file"]
@@ -2685,6 +2691,55 @@ fn runtime_page_count(config: &serde_json::Value, mode: RuntimeMode) -> usize {
     pages.as_array().map(Vec::len).unwrap_or(0)
 }
 
+/// The page a role names, or the position that role takes by default.
+///
+/// A task reports on the progress page and ends on the finish page. A
+/// project that orders its pages differently marks those two with
+/// `"role": "progress"` and `"role": "finish"`; without a role the
+/// second page reports and the last one finishes, which is what a project
+/// that declares the three usual pages gets.
+fn runtime_page_index_for_role(
+    config: &serde_json::Value,
+    mode: RuntimeMode,
+    role: &str,
+) -> Option<usize> {
+    let pages = match mode {
+        RuntimeMode::Installer => &config["wizard"]["pages"],
+        RuntimeMode::Uninstaller => &config["wizard"]["uninstall_pages"],
+    };
+    let entries = pages.as_array()?;
+    if let Some(index) = entries
+        .iter()
+        .position(|entry| entry["role"].as_str() == Some(role))
+    {
+        return Some(index);
+    }
+    // One page has nowhere to report to and nothing to finish.
+    if entries.len() < 2 {
+        return None;
+    }
+    match role {
+        "progress" => Some(1),
+        "finish" => Some(entries.len() - 1),
+        _ => None,
+    }
+}
+
+/// The page a role names in the running wizard.
+pub(crate) fn page_index_for_role(role: &str) -> Option<usize> {
+    let runtime = UI.get()?;
+    let state = runtime.lock().ok()?;
+    let config = serde_json::from_slice::<serde_json::Value>(
+        state
+            .files
+            .get("installer_config.json")
+            .map(Vec::as_slice)
+            .unwrap_or_default(),
+    )
+    .ok()?;
+    runtime_page_index_for_role(&config, state.mode, role)
+}
+
 /// The layout of the page at `index`, falling back to the first page so an
 /// out-of-range index can never blank the window.
 fn runtime_layout_path_at(
@@ -2952,6 +3007,10 @@ fn push_action(
                 resolve_link_target(target, context).map(WindowAction::OpenLink)
             }
             Some("switch_language") => Some(WindowAction::ToggleLanguageMenu),
+            // A project that declares more than one page walks them with
+            // these, so a licence page or an options page needs no script.
+            Some("next") => Some(WindowAction::NextPage),
+            Some("back") => Some(WindowAction::PreviousPage),
             // Dialog buttons belong to a dialog layout, so they only ever appear
             // while that dialog is open.
             Some("dialog_ok") => Some(WindowAction::DialogOk),
@@ -6388,6 +6447,16 @@ unsafe fn handle_window_action(window: HWND, action: WindowAction) {
                 show_runtime_error(&error);
             }
         }
+        WindowAction::NextPage => {
+            if let Err(error) = show_adjacent_page(1) {
+                show_runtime_error(&error);
+            }
+        }
+        WindowAction::PreviousPage => {
+            if let Err(error) = show_adjacent_page(-1) {
+                show_runtime_error(&error);
+            }
+        }
         WindowAction::Install => install::start_install(),
         WindowAction::Uninstall => install::start_uninstall(),
         WindowAction::LaunchApp => {
@@ -6767,6 +6836,26 @@ fn launch_installed_app() -> Result<()> {
         .spawn()
         .with_context(|| format!("failed to launch {}", app.display()))?;
     Ok(())
+}
+
+/// Moves the wizard one page along the list the project declares.
+///
+/// The page list belongs to the project, so walking it stops at either end
+/// rather than wrapping around to a page the author never put there.
+fn show_adjacent_page(step: isize) -> Result<()> {
+    let current = UI
+        .get()
+        .context("native UI state is missing")?
+        .lock()
+        .map_err(|_| anyhow::anyhow!("native UI state lock was poisoned"))?
+        .interaction
+        .page_index;
+    let target = current as isize + step;
+    ensure!(
+        target >= 0 && (target as usize) < page_count(),
+        "this wizard has no page {step} step(s) from the one on screen"
+    );
+    show_page(target as usize)
 }
 
 /// Switches the wizard to `index` and repaints.
@@ -7198,13 +7287,13 @@ mod tests {
         push_node_border, query_disk_free_bytes, render_flow, render_flow_item,
         render_progress_bar, resolve_asset_path, resolve_link_target, resolve_value_source,
         resolved_text_for_node, restore_snapshot, runtime_layout_path, runtime_layout_path_at,
-        runtime_page_count, scale_value, selection_layers, size_attribute,
-        uninstaller_version_info, validate_output_filename, word_end_after, word_range,
-        word_start_before, wrap_lines, wraps, BundleIndex, DialogKind, DialogState, DpiContext,
-        DpiSettings, FlowAxis, FlowItem, ImageLayer, Insets, InteractionState, LayerRect,
-        LayoutContext, LayoutOutput, PayloadFormat, RuntimeMode, RuntimeUi, TextAlignment, TextHit,
-        TextInputRegion, TextSnapshot, WindowAction, BUNDLE_MAGIC, BUNDLE_VERSION, COLORREF,
-        FOOTER_MAGIC,
+        runtime_page_count, runtime_page_index_for_role, scale_value, selection_layers,
+        size_attribute, uninstaller_version_info, validate_output_filename, word_end_after,
+        word_range, word_start_before, wrap_lines, wraps, BundleIndex, DialogKind, DialogState,
+        DpiContext, DpiSettings, FlowAxis, FlowItem, ImageLayer, Insets, InteractionState,
+        LayerRect, LayoutContext, LayoutOutput, PayloadFormat, RuntimeMode, RuntimeUi,
+        TextAlignment, TextHit, TextInputRegion, TextSnapshot, WindowAction, BUNDLE_MAGIC,
+        BUNDLE_VERSION, COLORREF, FOOTER_MAGIC,
     };
     use anyhow::Context;
     use std::collections::HashMap;
@@ -8783,6 +8872,62 @@ mod tests {
             "layouts/uninstallpage.xml"
         );
         Ok(())
+    }
+
+    #[test]
+    fn a_page_role_finds_the_page_that_holds_it() {
+        let config = serde_json::json!({
+            "wizard": {
+                "pages": [
+                    {"id": "licence", "layout": "layouts/licence.xml"},
+                    {"id": "options", "layout": "layouts/options.xml"},
+                    {"id": "task", "layout": "layouts/installingpage.xml", "role": "progress"},
+                    {"id": "done", "layout": "layouts/finishpage.xml", "role": "finish"}
+                ]
+            }
+        });
+        // The task reports on the page that says so, not on the second one.
+        assert_eq!(
+            runtime_page_index_for_role(&config, RuntimeMode::Installer, "progress"),
+            Some(2)
+        );
+        assert_eq!(
+            runtime_page_index_for_role(&config, RuntimeMode::Installer, "finish"),
+            Some(3)
+        );
+    }
+
+    #[test]
+    fn a_page_list_without_roles_keeps_its_positions() {
+        let config = serde_json::json!({
+            "wizard": {
+                "pages": [
+                    {"layout": "layouts/configpage.xml"},
+                    {"layout": "layouts/installingpage.xml"},
+                    {"layout": "layouts/finishpage.xml"}
+                ]
+            }
+        });
+        assert_eq!(
+            runtime_page_index_for_role(&config, RuntimeMode::Installer, "progress"),
+            Some(1)
+        );
+        assert_eq!(
+            runtime_page_index_for_role(&config, RuntimeMode::Installer, "finish"),
+            Some(2)
+        );
+        // One page has nowhere to report to and nothing to finish.
+        let single = serde_json::json!({
+            "wizard": { "pages": [{"layout": "layouts/configpage.xml"}] }
+        });
+        assert_eq!(
+            runtime_page_index_for_role(&single, RuntimeMode::Installer, "progress"),
+            None
+        );
+        assert_eq!(
+            runtime_page_index_for_role(&single, RuntimeMode::Installer, "finish"),
+            None
+        );
     }
 
     #[test]
@@ -11119,6 +11264,8 @@ mod tests {
                  <Button id="launch_app" action="launch_app" />
                  <Button id="finish" action="finish" />
                  <Button id="switch_language" action="switch_language" />
+                 <Button id="next" action="next" />
+                 <Button id="back" action="back" />
                  <Button id="show_panel" action="toggle_panel:panel:show" />
                  <Button id="hide_panel" action="toggle_panel:panel:hide" />
                  <Button id="dialog_ok" action="dialog_ok" />
@@ -11180,6 +11327,8 @@ mod tests {
             action("switch_language"),
             Some(WindowAction::ToggleLanguageMenu)
         ));
+        assert!(matches!(action("next"), Some(WindowAction::NextPage)));
+        assert!(matches!(action("back"), Some(WindowAction::PreviousPage)));
         assert!(matches!(
             action("show_panel"),
             Some(WindowAction::SetPanelVisibility { ref id, visible: true }) if id == "panel"

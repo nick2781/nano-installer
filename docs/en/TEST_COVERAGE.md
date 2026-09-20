@@ -3,7 +3,7 @@
 Every behaviour the documentation promises, and the automated case that holds it. A row names the
 cases that fail when that behaviour breaks; a behaviour with no row is one nobody is checking.
 
-`cargo test --locked --workspace` runs 194 cases: 141 in the core library, 18 that build a real setup
+`cargo test --locked --workspace` runs 208 cases: 154 in the core library, 19 that build a real setup
 and run it, 4 that read a project the way the builder does, 29 in the visual builder, and 2 in the
 extraction runtimes. The setup-level cases need real runtime executables built first, which is what
 `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `target/e2e-report.txt`.
@@ -12,8 +12,8 @@ extraction runtimes. The setup-level cases need real runtime executables built f
 
 | Layer | Cases | Proves | Cannot prove |
 | --- | --- | --- | --- |
-| Core library | 141 | what a page becomes — layers, coordinates, hit regions, text — what the bundle carries, what an install writes to disk and the registry, and what each script primitive does | that a packaged setup reaches any of it |
-| Setup end to end | 18 | a built setup installed on the machine: payload bytes, manifest, uninstall entry, shortcuts, autostart, project scripts, the wizard window | anything that needs a click |
+| Core library | 154 | what a page becomes — layers, coordinates, hit regions, text — what the bundle carries, what an install writes to disk and the registry, and what each script primitive does | that a packaged setup reaches any of it |
+| Setup end to end | 19 | a built setup installed on the machine: payload bytes, manifest, uninstall entry, shortcuts, autostart, project scripts, the wizard window | anything that needs a click |
 | Project inspection | 4 | the summary and the warning list the builder shows before a build | |
 | Visual builder | 29 | the window's own state, parameters, log and warnings | clicking the real controls |
 | Extraction runtimes | 2 | a broken archive, and an unsafe path inside one, are refused | extracting an archive that is sound -- the setup-level cases run a real runtime over a real payload |
@@ -32,7 +32,7 @@ extraction runtimes. The setup-level cases need real runtime executables built f
 | `output.uninstaller_icon` | `inspects_taptap_project_without_dpi_warnings` |
 | `install.default_path` | `configured_install_paths_are_expanded`, `an_explicit_install_path_wins_over_the_configured_one`, `a_run_without_any_install_path_is_refused`, `a_configured_percent_path_is_expanded_and_used`, `an_explicit_directory_wins_over_the_configured_one` |
 | `install.exe_name` | `a_payload_without_the_declared_executable_is_refused`, `an_install_script_that_never_deploys_the_executable_is_refused` |
-| `install.required_space_mb` | `value_sources_read_the_config_the_disk_and_the_running_step`, `formats_bound_disk_sizes` |
+| `install.required_space_mb` | `value_sources_read_the_config_the_disk_and_the_running_step`, `formats_bound_disk_sizes`, `refuses_an_install_when_the_drive_holds_less_space_than_the_project_asks_for` |
 | `install.require_admin` | `manifest::tests::manifest_asks_for_elevation_only_when_the_project_does`, `manifest::tests::the_manifest_reaches_a_real_executable`, `the_summary_reports_what_the_project_declares` |
 | `install.kill_process_on_install`, `install.detect_running_process` | `an_install_closes_a_running_copy_of_the_product` |
 | `registry.uninstall_key` | `registers_and_cleans_up_scoped_uninstall_key`, `registry_path_normalizes_legacy_escaped_separators`, `a_built_setup_carries_a_readable_bundle_and_real_resources` |
@@ -43,13 +43,14 @@ extraction runtimes. The setup-level cases need real runtime executables built f
 | `resources.*` | `project_bundle_roundtrips_layout_assets_and_locales`, `project_pack_progress_describes_assets_payload_and_uninstaller`, `the_payload_format_selects_the_runtime_that_gets_embedded` |
 | `localization.default_locale` | `version::tests::maps_default_locale_to_version_language`, `the_summary_reports_what_the_project_declares` |
 | `localization.supported_locales` | `a_supported_locale_without_a_file_is_reported`, `a_translation_missing_page_text_is_reported` |
-| `wizard.pages`, `wizard.update_pages`, `wizard.uninstall_pages` | `runtime_modes_select_distinct_layout_lists`, `out_of_range_pages_fall_back_to_the_first_layout` |
+| `wizard.pages`, `wizard.uninstall_pages` | `runtime_modes_select_distinct_layout_lists`, `out_of_range_pages_fall_back_to_the_first_layout` |
 | `ui.dpi_aware`, `ui.dpi_threshold` | `a_display_scales_the_layout_by_its_own_dpi`, `a_layout_picks_the_image_density_the_display_asks_for`, `dpi_asset_resolution_prefers_requested_density_and_falls_back`, `dpi_scaling_rounds_layout_coordinates` |
 | `ui.dialog_layout` | `a_project_without_a_dialog_layout_still_opens`, `a_dialog_is_drawn_over_the_page_and_centred` |
 | `uninstall.data_paths` | `only_expands_data_paths_inside_a_user_profile`, `ignores_data_paths_when_the_project_declares_none`, `uninstalling_below_appdata_removes_the_data_only_when_the_box_is_cleared` |
 | `advanced.silent_mode_support`, `advanced.uninstall_mode_support` | `a_project_without_silent_support_refuses_a_windowless_install`, `a_project_without_silent_support_refuses_a_windowless_uninstall`, `a_project_that_did_not_opt_in_refuses_a_windowless_run` |
 | payload format detection | `the_payload_format_selects_the_runtime_that_gets_embedded`, `zip_backend_rejects_invalid_archive`, `rejects_unsafe_7z_paths` |
 | build warnings | `an_asset_without_its_density_pair_is_reported`, `a_translation_missing_page_text_is_reported`, `a_supported_locale_without_a_file_is_reported`, `inspects_taptap_project_without_dpi_warnings` |
+| `installer_config.json` keys this build does not read | `accepts_a_configuration_of_read_settings`, `leaves_a_section_of_the_projects_own_alone`, `refuses_a_setting_that_does_nothing`, `refuses_a_misspelled_setting`, `refuses_a_section_that_does_nothing`, `refuses_an_unknown_page_key`, `refuses_a_page_role_the_runtime_does_not_run`, `refuses_two_pages_claiming_one_role`, `reports_every_problem_at_once`, `the_example_project_matches_the_schema` |
 
 ## Pages and controls
 
@@ -75,6 +76,7 @@ extraction runtimes. The setup-level cases need real runtime executables built f
 | every `value-source` form and `value-format` | `value_sources_read_the_config_the_disk_and_the_running_step`, `formats_bound_disk_sizes`, `resolves_and_queries_windows_disk_root`, `status_source_replaces_placeholder_text_with_the_published_step` |
 | text field editing: caret, selection, undo, word keys | `a_caret_sits_after_the_characters_before_it`, `a_double_click_selects_the_word_under_the_pointer`, `a_selection_band_covers_the_characters_it_selects`, `a_selection_is_ordered_from_whichever_end_the_caret_is_at`, `removing_a_selection_keeps_the_text_around_it`, `typing_coalesces_into_one_undo_step`, `undo_remembers_the_caret_that_belongs_to_the_value`, `word_keys_stop_at_the_boundaries_they_delete`, `byte_index_walks_characters_not_bytes`, `editable_text_fields_are_recorded_and_readonly_ones_are_not`, `a_typed_value_wins_over_the_bound_default`, `a_readonly_field_shows_its_value_without_taking_edits` |
 | `visible="false"` and panel show/hide | `a_hidden_element_takes_its_whole_subtree_with_it`, `a_panel_pair_shows_the_panel_and_only_the_control_that_fits` |
+| Page order and the job a page declares (`next`, `back`, `role`) | `a_page_role_finds_the_page_that_holds_it`, `a_page_list_without_roles_keeps_its_positions`, `a_next_button_walks_to_the_page_the_project_declares` |
 | every action in the table | `every_action_in_the_table_answers_with_its_own_window_action`, `action_attributes_map_to_window_actions` |
 | dialogs: placement, buttons, notices, growing cards | `a_dialog_is_drawn_over_the_page_and_centred`, `a_dialog_button_answers_with_its_own_action`, `a_dialog_button_is_drawn_from_the_question_rather_than_the_layout`, `a_notice_hides_the_secondary_button`, `a_page_without_a_dialog_draws_no_overlay`, `every_shipped_question_keeps_its_answers_inside_the_card`, `the_example_dialog_places_its_message_and_both_buttons` |
 | link resolution order | `agreement_links_resolve_through_the_project_links_table`, `a_link_the_project_does_not_configure_stays_plain_text`, `link_runs_carry_their_target_and_plain_runs_do_not`, `agreement_markdown_becomes_colored_visible_runs` |
@@ -149,5 +151,3 @@ setup-level case proves the `scripts` directory survives packaging.
   `ask_yes_no` block until someone clicks; `run_detached` deliberately outlives the run;
   `kill_process` ends a process the test did not start; `sleep_ms` has only elapsed time to assert
   on; `is_elevated` would only mirror the implementation.
-- **`advanced.update_mode_support`** is accepted and never read, which the configuration reference
-  already says.

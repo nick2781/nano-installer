@@ -228,21 +228,26 @@ fn run_worker(work: impl FnOnce() -> Result<()> + Send + 'static) {
     if BUSY.swap(true, Ordering::AcqRel) {
         return;
     }
-    let pages = super::page_count();
-    // Page 1 is the task page, the last page is the completion page. A layout
-    // list shorter than that leaves the wizard on its first page.
-    if pages > 1 {
-        let _ = super::show_page(1);
+    // The task reports on the progress page and ends on the completion page. A
+    // project that orders its pages differently names those two with `role`;
+    // otherwise the second page and the last one are them, and a list with a
+    // single page leaves the wizard where it is.
+    let progress = super::page_index_for_role("progress");
+    let completion = super::page_index_for_role("finish");
+    if let Some(index) = progress {
+        let _ = super::show_page(index);
     }
     std::thread::spawn(move || {
         let result = work();
         BUSY.store(false, Ordering::Release);
         match &result {
             // The completion page reports the outcome and owns the next action.
-            Ok(()) if pages > 1 => {
-                let _ = super::show_page(pages - 1);
-            }
-            Ok(()) => show_result(Ok(())),
+            Ok(()) => match completion {
+                Some(index) => {
+                    let _ = super::show_page(index);
+                }
+                None => show_result(Ok(())),
+            },
             Err(error) => {
                 let _ = super::show_page(0);
                 show_result(Err(anyhow::anyhow!("{error:#}")));
@@ -412,15 +417,7 @@ fn prepare_install(
         bail!("uninstall registry key already exists; refusing to overwrite another installation");
     }
     if let Some(required_mb) = config["install"]["required_space_mb"].as_u64() {
-        let drive = super::disk_root(destination).context("cannot determine installation drive")?;
-        let free = super::query_disk_free_bytes(&drive)?;
-        let required = required_mb.saturating_mul(1024 * 1024);
-        if free < required {
-            bail!(
-                "not enough disk space: {required_mb} MiB required on {}",
-                drive.display()
-            );
-        }
+        require_free_space(destination, required_mb)?;
     }
     Ok(InstallPrep {
         uninstaller_name,
@@ -430,6 +427,21 @@ fn prepare_install(
         previous,
         upgrade,
     })
+}
+
+/// Refuses the install before anything is written when the destination drive holds less free
+/// space than `install.required_space_mb` asks for.
+fn require_free_space(destination: &Path, required_mb: u64) -> Result<()> {
+    let drive = super::disk_root(destination).context("cannot determine installation drive")?;
+    let free = super::query_disk_free_bytes(&drive)?;
+    let required = required_mb.saturating_mul(1024 * 1024);
+    if free < required {
+        bail!(
+            "not enough disk space: {required_mb} MiB required on {}",
+            drive.display()
+        );
+    }
+    Ok(())
 }
 
 /// Streams the payload out of the setup image and expands it into `target`.
@@ -1722,8 +1734,9 @@ fn schedule_removal_at_reboot(path: &Path) {
 mod tests {
     use super::{
         parse_silent_arguments, preserved_data_paths, previous_install, register_uninstaller,
-        registry_key_exists, registry_path, require_silent_support, resolve_install_destination,
-        validate_destination, wide, Deployment, InstallArtifacts, PreviousInstall, MANIFEST_NAME,
+        registry_key_exists, registry_path, require_free_space, require_silent_support,
+        resolve_install_destination, validate_destination, wide, Deployment, InstallArtifacts,
+        PreviousInstall, MANIFEST_NAME,
     };
     use anyhow::Result;
     use std::path::{Path, PathBuf};
@@ -1805,6 +1818,21 @@ mod tests {
         let (_, path) = registry_path("HKCU\\\\Software\\\\Microsoft\\Uninstall\\App").unwrap();
         assert_eq!(path, "Software\\Microsoft\\Uninstall\\App");
         assert!(registry_path("HKCR\\Somewhere").is_err());
+    }
+
+    #[test]
+    fn refuses_an_install_when_the_drive_holds_less_space_than_the_project_asks_for() -> Result<()>
+    {
+        let temp = tempfile::tempdir()?;
+        // No drive on this machine holds an exabyte, so the ask can only be refused.
+        let error = require_free_space(temp.path(), 1_000_000_000_000)
+            .expect_err("a drive this small cannot satisfy the ask");
+        assert!(
+            format!("{error:#}").contains("not enough disk space"),
+            "{error:#}"
+        );
+        require_free_space(temp.path(), 0)?;
+        Ok(())
     }
 
     #[test]

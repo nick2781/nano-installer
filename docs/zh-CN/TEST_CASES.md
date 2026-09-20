@@ -32,8 +32,11 @@ Rust doc comment，再退回用例名。
 | `a_layout_picks_the_image_density_the_display_asks_for` | 版面只点一个文件名，由运行时选版本：低密度显示器用 1x，高密度用 `@2x`。版面直接写 `@2x` 的文件名也会被归一化，只发布其中一个版本时退回另一个。 |
 | `a_link_the_project_does_not_configure_stays_plain_text` | 指南的解析顺序最后一条是解析不到目标的链接保持普通文字：字照常显示，点了什么也不发生，标签不会因此画不出来。 |
 | `a_nested_container_reports_the_extent_its_children_need` | 没声明尺寸的面板有多大由内容决定：沿自己的轴把子项和间距相加，垂直于轴取最大的子项，自己的内边距只算一次。外层容器用同样的量法放置它，版面不必给包装层声明尺寸。 |
+| `a_next_button_walks_to_the_page_the_project_declares` | 在真实窗口里点一次 `next`，向导要切到工程声明的第二页，再点 `back` 要回到第一页：两页声明的客户区不同，所以窗口尺寸就是证据。 |
 | `a_notice_hides_the_secondary_button` | 通知只有一个答复，版面里的取消键不画也不能点；换成提问时取消键又画回来，一份对话框版面因此可以两用。 |
+| `a_page_list_without_roles_keeps_its_positions` | 没有写 `role` 的页面列表保持老规矩：第二页汇报进度、最后一页收尾；只有一页的列表既没有可汇报的页也没有可收尾的页。 |
 | `a_page_paints_its_fill_under_its_image_and_its_outline_over_them` | 页面的装饰按指南的顺序落层：底色、铺在它上面的背景图、从边缘向内画的描边，`border-radius` 转成窗口区域上报而不是画进图层，倍率放大时圆角跟着放大。完全没写尺寸的页面退回文档里的默认客户区大小。 |
+| `a_page_role_finds_the_page_that_holds_it` | 页面用 `role` 声明自己的职责时，任务报到写 `progress` 的那一页，而不是第二页；收尾同样按 `finish` 走，工程因此可以自由排页。 |
 | `a_page_without_a_dialog_draws_no_overlay` | 没有对话框时，版面不报对话框，也不产生任何覆盖层或覆盖文字。 |
 | `a_panel_pair_shows_the_panel_and_only_the_control_that_fits` | `toggle_panel:<id>:show` 和 `:hide` 是面板两侧的两个控件：面板收起时只画展开那个，展开后两个换过来，面板自己的底色也跟着出现或消失。 |
 | `a_payload_without_the_declared_executable_is_refused` | `install.exe_name` 指明 payload 里必须有的那个可执行文件。部署一份不含它的 payload，装出来的产品启动不了，所以这次运行在写任何东西之前就停下来。 |
@@ -65,6 +68,7 @@ Rust doc comment，再退回用例名。
 | `a_window_is_centred_and_clamped_to_its_work_area` | 窗口在工作区里居中，工作区不从原点开始时保留它自己的偏移；比桌面还大的版面被夹到桌面范围内而不是挂在边缘外，只有一个方向超出时另一个方向照常居中。 |
 | `a_wrapping_row_gives_each_line_the_height_of_its_tallest_item` | 窗口变窄时换行行重新排布，下一行从上一行最高那个项的下方开始，再加上间距，高度不同的卡片因此不会互相压住。 |
 | `a_wrapping_row_starts_a_new_line_when_the_next_item_does_not_fit` | 放不下下一个项时换行行另起一行；整行放得下就不换；比行还宽的项自己占一行而不是被丢掉；空容器没有行。 |
+| `accepts_a_configuration_of_read_settings` | 一份只写了本项目真会读的设置的配置能通过检查：每个区块的合法键都试一遍，`links` 这种由工程自己命名的表不在管辖之内。 |
 | `action_attributes_map_to_window_actions` | `action` 属性映射到窗口动作：`close_confirm`、`open_url:`、`pick_directory` 各自落到对应的动作上，链接表的键先解析成 URL，直接写 URL 的照原样用，没配置的键什么也不做。 |
 | `agreement_links_resolve_through_the_project_links_table` | 链接名通过工程的 `links` 表解析：示例语言里用的 `agreement`、`policy` 别名和完整的 `terms_of_service` 都要落到配置的 URL 上，绝对 URL 绕过这张表，表里没有的名字解析不出目标。 |
 | `agreement_markdown_becomes_colored_visible_runs` | 协议句里的 Markdown 链接变成按链接色着色的文字段：方括号和圆括号被去掉，链接名留在原处，普通文字仍旧用原来的颜色。 |
@@ -124,6 +128,7 @@ Rust doc comment，再退回用例名。
 | `installs_a_fresh_directory_and_records_the_manifest` | 全新安装把 payload 的文件放到目标目录，manifest 列出这些文件，卸载器也一起放进去。 |
 | `item_spacing_and_gap_leave_the_same_distance_between_items` | `gap` 和 `item-spacing` 在项之间留出同样的距离，两个同时写时用更具体的那个。 |
 | `justify_content_places_the_run_inside_the_room_it_has` | `justify-content` 决定整行在剩余空间里的位置：默认靠左，`center` 居中，`end` 靠右，示例用的 `horizontal-align="right"` 是同一个意思。 |
+| `leaves_a_section_of_the_projects_own_alone` | 工程自己增加的区块不会被拒绝：脚本用 `get_config_value` 把值读回去，所以检查只管本项目自己拥有的那几个区块。 |
 | `link_runs_carry_their_target_and_plain_runs_do_not` | 解析文字段时只有链接段带上目标名，前后两段普通文字不带。 |
 | `log_commands_are_english_when_interface_is_chinese` | 界面语言是中文时界面文字翻成中文，而日志里的构建文案仍旧是固定的英文。 |
 | `log_severity_colors_preserve_selectable_text` | 日志按严重级别着色时控件里的文本一字不改，只把不同级别的行分成不同颜色的段落，选中的文字仍然能复制。 |
@@ -153,8 +158,15 @@ Rust doc comment，再退回用例名。
 | `refresh_keeps_a_custom_output_path_for_the_same_project` | 刷新会保留为这个工程选好的输出路径：这个输入框可以指向任何地方，刷新时把它重置，下一次安装包就会在没人打招呼的情况下被放回工程目录树里。 |
 | `refresh_replaces_a_custom_output_path_when_the_project_changes` | 自定义输出路径属于当初为它选定的那个工程。换了工程，这条路径就没意义了，留着它会把新工程的安装包写进新工程从没配置过的文件夹。 |
 | `refuses_a_foreign_manifest_at_the_destination` | 目标目录里的 manifest 属于别的产品时，读取上一次安装会被拒绝。 |
+| `refuses_a_misspelled_setting` | `install.exe_nmae` 这种拼错的键会让构建失败并指出是哪一条，而不是安静地什么也不做。 |
+| `refuses_a_page_role_the_runtime_does_not_run` | 页面写了运行时不会跑的职责（比如 `license`）会让构建失败，指出该用 `progress` 或 `finish`。 |
+| `refuses_a_section_that_does_nothing` | `validation` 这类整个没有被读取的区块会被拒绝，消息里指出真正会跑的是 `install.required_space_mb`。 |
+| `refuses_a_setting_that_does_nothing` | 写了却没人读的设置会让构建失败：`install.append_to_path` 报错时会说清现在没有任何设置能往 PATH 里加目录。 |
+| `refuses_an_install_when_the_drive_holds_less_space_than_the_project_asks_for` | 目标盘剩余空间少于 `install.required_space_mb` 时，安装在任何文件写下去之前就停下，并报出要多少、报的是哪个盘；要 0 MiB 的工程不受影响。 |
+| `refuses_an_unknown_page_key` | 向导页条目里多写的键会被拒绝，并指出是第几页，防止一个多打的键悄悄沉在配置里。 |
 | `refuses_relative_or_root_installation` | 安装目标必须是绝对路径，相对路径和盘符根目录都被拒绝。 |
 | `refuses_to_install_over_a_directory_it_did_not_create` | 目标目录已经存在、里面还有用户的文件时，读取上次安装和部署都失败，用户的文件原样留着，也不写 manifest。 |
+| `refuses_two_pages_claiming_one_role` | 两个页面都声明同一个职责会被拒绝，并点出是第几页，免得任务报到哪一页变得看运气。 |
 | `registers_and_cleans_up_scoped_uninstall_key` | 注册卸载项会把键写进去，重复注册同一个键失败，带清理标志再注册一次后键被删掉。 |
 | `registry_path_normalizes_legacy_escaped_separators` | 旧的、带双反斜杠的注册表路径被归一化成单反斜杠，不支持的根键名报错。 |
 | `registry_primitives_round_trip_and_forget_a_key_they_created` | 注册表原语逐个核对：写字符串和 dword 后读得回来，读不存在的值得到空，删单个值不影响同键的其它值，删子键后它不在而父键还在；manifest 里也只留下脚本仍然拥有的那个键和它的两个值。 |
@@ -164,6 +176,7 @@ Rust doc comment，再退回用例名。
 | `removes_recorded_shortcuts_and_only_their_empty_folder` | 卸载删掉 manifest 记下的快捷方式，但那个开始菜单文件夹里还有用户放的文件时保留它，共享的根目录也不动。 |
 | `removing_a_selection_keeps_the_text_around_it` | 删除选区只删选中的部分，前后的文字留着，光标停在删除处，选区清空；没有选区时什么也不删。 |
 | `replaying_the_manifest_is_refused_while_installing` | 安装过程中调用 `run_tracked_uninstall` 会失败并返回 false，安装照常完成。 |
+| `reports_every_problem_at_once` | 一次报出配置里所有的问题，而不是只报第一条，省得改一处跑一趟。 |
 | `reset_output_restores_the_dist_path_named_by_the_project` | 重置输出把工程自己的输出路径放回输入框，恢复的就是摘要里那条 `dist/<output.installer_name>`。这条路径一旦漂掉，就会掩盖一次把下次构建指错文件的重置。 |
 | `resolves_and_queries_windows_disk_root` | 从安装路径取出盘符根目录，再问 Windows 该卷还剩多少空间，得到的字节数是正数。 |
 | `retry_repeats_a_failed_build_with_the_parameters_it_stored` | 重试用失败那次存下的参数重跑构建：重试的意义就在于变的只是磁盘上的一个文件，所以用例在失败后改掉屏幕上的字段，要求工作线程收到的是存下的那份请求，而不是表单上的。 |
@@ -176,6 +189,7 @@ Rust doc comment，再退回用例名。
 | `taptap_uninstaller_buttons_have_distinct_hit_regions` | 示例卸载页上卸载和取消两个按钮的点击区域不重叠，卸载键完全在取消键右侧。 |
 | `text_colors_read_as_rgb_with_or_without_an_alpha_channel` | 颜色写六位和八位都读成同一个 RGB，画文字时忽略 alpha，字节顺序是 RGB 而不是 BGR；读不懂的颜色画成白色。 |
 | `the_example_dialog_places_its_message_and_both_buttons` | 示例工程自己的对话框版面能把问题文字和两个按钮都摆好：问题是一行有真实高度、宽度和位置的折行文字，两个按钮并排不重叠，问题也不被按钮盖住。 |
+| `the_example_project_matches_the_schema` | 示例工程自己的配置也要过这张表：它是别人照抄的模板，不能带着没人读的键。 |
 | `the_log_keeps_the_lines_the_view_scrolled_past` | 日志留着视图滚过去的那些行：保存日志写下的和全部复制复制的是同一份文本，导出的应该是整份日志，而不是面板一次能显示的那几行。用例把它填到远超一屏，检查每一行都还在、措辞没变、时间戳还是自己那个。 |
 | `the_manifest_reaches_a_real_executable` | 把清单写进一个真实的 PE 映像再读回来，内容与写进去的一致：提权级别和 DPI 相关的两个元素都在，整份 XML 仍然能被解析，Windows 不会因为清单坏了而拒绝加载。 |
 | `the_panels_draw_in_every_state_they_can_be_in` | 面板在指南说到的每种状态下都画得出来：这里没有一条用例能开窗口，状态是画在无窗口上下文里的——什么都没打开、检查过工程、构建进行中、构建失败、构建完成，两种界面语言都算。一个根本画不出来的状态会让用户看到空白窗口，而画的过程改掉要展示的状态则更糟。 |
