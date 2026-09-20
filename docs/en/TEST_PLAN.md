@@ -45,6 +45,12 @@ The CI job keeps both as the `test-report` artifact, and `run_e2e_setup.ps1` wri
 installers, so they need the runtime executables the builder embeds and skip without them; a full
 check runs both scripts.
 
+Both reports are written in Chinese unless `-Language` says otherwise: `-Language en-US` writes
+them in English, and the page's own language tag follows. The words come from
+`scripts/report_text.json` and the behaviours beside a case from
+`docs/<language>/TEST_COVERAGE.md`; case names, the doc comments above them and the tools' own
+output are shown as they are written.
+
 Every behaviour these documents promise sits next to the case that holds it in
 [Test coverage](TEST_COVERAGE.md), layer by layer, including what no automated case reaches yet.
 

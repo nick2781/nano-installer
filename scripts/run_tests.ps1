@@ -12,6 +12,11 @@
     reads; the page is what a person reads, and it shows each case with what it
     holds. A CI job keeps both as an artifact.
 
+    The words both reports say come from report_text.json, chosen by -Language,
+    which defaults to zh-CN. The case names, the doc comments above them and the
+    suite's own output are what the sources and the tools wrote, and are shown
+    as they are.
+
     The page shows the pages a real setup draws too, when
     scripts/capture_setup_snapshots.ps1 has left snapshots in
     target/setup-snapshots: that script needs a desktop session, so a build
@@ -31,7 +36,8 @@
 #>
 param(
     [string]$Report = "target/test-report.txt",
-    [string]$Snapshots = "target/setup-snapshots"
+    [string]$Snapshots = "target/setup-snapshots",
+    [string]$Language = "zh-CN"
 )
 
 Set-StrictMode -Version Latest
@@ -44,8 +50,12 @@ if (-not [System.IO.Path]::IsPathRooted($reportPath)) {
 }
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $reportPath) | Out-Null
 $htmlPath = [System.IO.Path]::ChangeExtension($reportPath, ".html")
+$reportName = Split-Path -Leaf $reportPath
+. (Join-Path $PSScriptRoot "report_text.ps1")
 . (Join-Path $PSScriptRoot "report_html.ps1")
 . (Join-Path $PSScriptRoot "report_data.ps1")
+
+$text = Get-ReportText -Language $Language
 
 $suiteCommand = "cargo test --locked --workspace"
 
@@ -111,7 +121,7 @@ $commit = Get-CommitDescription
 $runAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 
 Write-Phase "script started"
-Write-Output "Running the workspace suite: $suiteCommand"
+Write-Output (Get-ReportPhrase -Text $text -Key "console.runningsuite" -Values @($suiteCommand))
 $suite = Invoke-NativeStep { cargo test --locked --workspace }
 
 Write-Phase "suite finished with exit code $($suite.ExitCode) and $(@($suite.Output).Count) output line(s)"
@@ -131,37 +141,37 @@ foreach ($line in $summary) {
 $code = $suite.ExitCode
 
 $lines = New-Object System.Collections.Generic.List[string]
-$lines.Add("nano-installer workspace test suite")
-$lines.Add("run at      $runAt")
-$lines.Add("commit      $commit")
-$lines.Add("toolchain   $toolchain")
-$lines.Add("rustc       $rustcVersion")
+$lines.Add((Get-ReportPhrase -Text $text -Key "text.title"))
+Add-ReportField -Lines $lines -Label (Get-ReportPhrase -Text $text -Key "text.runat") -Value $runAt
+Add-ReportField -Lines $lines -Label (Get-ReportPhrase -Text $text -Key "text.commit") -Value $commit
+Add-ReportField -Lines $lines -Label (Get-ReportPhrase -Text $text -Key "text.toolchain") -Value $toolchain
+Add-ReportField -Lines $lines -Label (Get-ReportPhrase -Text $text -Key "text.rustc") -Value $rustcVersion
 $lines.Add("")
 $lines.Add("$ $suiteCommand")
 $lines.AddRange([string[]]$printed)
 $lines.Add("")
-$lines.Add("results, target by target:")
+$lines.Add((Get-ReportPhrase -Text $text -Key "text.results"))
 if ($summary.Count -gt 0) {
     $lines.AddRange([string[]]$summary)
 }
 else {
-    $lines.Add("no test result line was printed")
+    $lines.Add((Get-ReportPhrase -Text $text -Key "text.nosummary"))
 }
 $lines.Add("")
-$lines.Add("total       $passed passed, $failed failed, $ignored ignored")
+$totals = Get-ReportCounts -Text $text -Passed $passed -Failed $failed -Ignored $ignored -All
+Add-ReportField -Lines $lines -Label (Get-ReportPhrase -Text $text -Key "text.total") -Value $totals
 if ($skipping.Count -gt 0) {
-    $lines.Add("skipped     $($skipping.Count) case(s) reported skipping")
+    $skippedCount = Get-ReportPhrase -Text $text -Key "text.skippedcases" -Values @($skipping.Count)
+    Add-ReportField -Lines $lines -Label (Get-ReportPhrase -Text $text -Key "text.skipped") -Value $skippedCount
     $lines.AddRange([string[]]$skipping)
 }
 $lines.Add("")
-$lines.Add("The setup-level cases build and run a real installer, so they need the runtime")
-$lines.Add("executables the builder embeds and skip without them. scripts/run_e2e_setup.ps1")
-$lines.Add("builds those and keeps its own report.")
-$lines.Add("exit code $code")
+$lines.AddRange([string[]]((Get-ReportPhrase -Text $text -Key "text.setupnote") -split "\r?\n"))
+Add-ReportField -Lines $lines -Label (Get-ReportPhrase -Text $text -Key "text.exitcode") -Value $code
 [System.IO.File]::WriteAllLines($reportPath, $lines, (New-Object System.Text.UTF8Encoding($false)))
 
 Write-Phase "result files written"
-$catalog = Get-TestCatalog -RepoRoot $repoRoot
+$catalog = Get-TestCatalog -RepoRoot $repoRoot -Language $Language
 Write-Phase "case catalog read: $($catalog.Count) entries"
 
 # One pass over the output builds both tables: a target's row comes from the
@@ -207,10 +217,11 @@ foreach ($line in $printed) {
         }
         $stateClass = "t-ok"
         if ($state -eq "FAILED") { $stateClass = "t-bad" }
+        $stateLabel = Get-ReportResultLabel -Text $text -Result $state
         $rowTargets.Add($target)
         $rows.Add(@(
             (New-ReportCell $name "" $binary "" $binary),
-            (New-ReportCell $state $stateClass),
+            (New-ReportCell $stateLabel $stateClass),
             (New-ReportCell $passedHere),
             (New-ReportCell $failedHere),
             (New-ReportCell $ignoredHere),
@@ -227,9 +238,7 @@ foreach ($group in $caseGroups) {
     $groupPassed = @($group.Rows | Where-Object { $_.Result -eq "ok" }).Count
     $groupFailed = @($group.Rows | Where-Object { $_.Result -eq "FAILED" }).Count
     $groupIgnored = @($group.Rows | Where-Object { $_.Result -eq "ignored" }).Count
-    $counts = "$groupPassed passed"
-    if ($groupFailed -gt 0) { $counts = "$counts, $groupFailed failed" }
-    if ($groupIgnored -gt 0) { $counts = "$counts, $groupIgnored ignored" }
+    $counts = Get-ReportCounts -Text $text -Passed $groupPassed -Failed $groupFailed -Ignored $groupIgnored
     $groups.Add(@{ Target = $group.Target; Counts = $counts; Rows = $group.Rows })
 }
 
@@ -253,11 +262,11 @@ $snapshotDirectory = $Snapshots
 if (-not [System.IO.Path]::IsPathRooted($snapshotDirectory)) {
     $snapshotDirectory = Join-Path $repoRoot $snapshotDirectory
 }
-$images = @(Get-SnapshotGallery -Directory $snapshotDirectory)
+$images = @(Get-SnapshotGallery -Directory $snapshotDirectory -Text $text)
 
 $notes = New-Object System.Collections.Generic.List[string]
 if ($skipping.Count -gt 0) {
-    $notes.Add("$($skipping.Count) case(s) reported skipping, and are listed above.")
+    $notes.Add((Get-ReportPhrase -Text $text -Key "notes.skipping" -Values @($skipping.Count)))
 }
 # What the cases say happened and what the result lines say happened are two
 # readings of one output, so they are compared here: a case line this script
@@ -272,51 +281,60 @@ foreach ($group in $groups) {
 }
 $caseTotal = $casesPassed + $casesFailed + $casesIgnored
 if ($casesPassed -eq $passed -and $casesFailed -eq $failed -and $casesIgnored -eq $ignored) {
-    $notes.Add("Every case the suite printed is listed under Cases: $caseTotal case(s), $casesPassed passed, $casesFailed failed, $casesIgnored ignored, which is what the run's own result lines report.")
+    $notes.Add((Get-ReportPhrase -Text $text -Key "notes.cases.match" -Values @($caseTotal, $casesPassed, $casesFailed, $casesIgnored)))
 }
 else {
-    $notes.Add("The cases listed under Cases count $casesPassed passed, $casesFailed failed, $casesIgnored ignored, while the run's own result lines count $passed passed, $failed failed, $ignored ignored: a case line could not be read.")
+    $notes.Add((Get-ReportPhrase -Text $text -Key "notes.cases.mismatch" -Values @($casesPassed, $casesFailed, $casesIgnored, $passed, $failed, $ignored)))
 }
 if ($images.Count -gt 0) {
-    $notes.Add("The page snapshots come from scripts/capture_setup_snapshots.ps1, which photographs a real setup; the checks beside each one are what that capture measured on it.")
+    $notes.Add((Get-ReportPhrase -Text $text -Key "notes.snapshots"))
 }
 else {
-    $notes.Add("No page snapshots were found in target/setup-snapshots, so this report has none. scripts/capture_setup_snapshots.ps1 photographs a real setup and checks it, and needs a desktop session.")
+    $notes.Add((Get-ReportPhrase -Text $text -Key "notes.nosnapshots"))
 }
-$notes.Add("The setup-level cases build and run a real installer, so they need the runtime executables the builder embeds and skip without them; scripts/run_e2e_setup.ps1 builds those and keeps its own report.")
-$notes.Add("target/test-report.txt next to this page holds the same run as plain text.")
+$notes.Add((Get-ReportPhrase -Text $text -Key "notes.setupcases"))
+$notes.Add((Get-ReportPhrase -Text $text -Key "notes.textfile" -Values @($reportName)))
 
 $stats = @(
-    @{ Value = $passed; Label = "passed"; Tone = "ok" },
-    @{ Value = $failed; Label = "failed"; Tone = $(if ($failed -gt 0) { "bad" } else { "" }) },
-    @{ Value = $ignored; Label = "ignored"; Tone = "muted" },
-    @{ Value = $code; Label = "exit code"; Tone = $(if ($code -ne 0) { "bad" } else { "" }) }
+    @{ Value = $passed; Label = (Get-ReportPhrase -Text $text -Key "stats.passed"); Tone = "ok" },
+    @{ Value = $failed; Label = (Get-ReportPhrase -Text $text -Key "stats.failed"); Tone = $(if ($failed -gt 0) { "bad" } else { "" }) },
+    @{ Value = $ignored; Label = (Get-ReportPhrase -Text $text -Key "stats.ignored"); Tone = "muted" },
+    @{ Value = $code; Label = (Get-ReportPhrase -Text $text -Key "stats.exitcode"); Tone = $(if ($code -ne 0) { "bad" } else { "" }) }
 )
 $fields = @(
-    @{ Label = "commit"; Value = $commit },
-    @{ Label = "toolchain"; Value = $toolchain },
-    @{ Label = "rustc"; Value = $rustcVersion },
-    @{ Label = "command"; Value = $suiteCommand }
+    @{ Label = (Get-ReportPhrase -Text $text -Key "text.commit"); Value = $commit },
+    @{ Label = (Get-ReportPhrase -Text $text -Key "text.toolchain"); Value = $toolchain },
+    @{ Label = (Get-ReportPhrase -Text $text -Key "text.rustc"); Value = $rustcVersion },
+    @{ Label = (Get-ReportPhrase -Text $text -Key "fields.command"); Value = $suiteCommand }
 )
 $verdict = "passed"
 if ($failed -gt 0 -or $code -ne 0) { $verdict = "failed" }
 
-Write-ReportHtml -Path $htmlPath -Title "Workspace test suite" -Subtitle "run at $runAt" `
+Write-ReportHtml -Path $htmlPath -Title (Get-ReportPhrase -Text $text -Key "title.tests") `
+    -Subtitle (Get-ReportPhrase -Text $text -Key "subtitle.runat" -Values @($runAt)) `
+    -Language $Language -Text $text `
     -Verdict $verdict -Fields $fields -Stats $stats `
     -Tables @(@{
-        Heading = "Targets"
-        Headers = @("Target", "Result", "Passed", "Failed", "Ignored", "Time")
+        Heading = (Get-ReportPhrase -Text $text -Key "targets.heading")
+        Headers = @(
+            (Get-ReportPhrase -Text $text -Key "targets.target"),
+            (Get-ReportPhrase -Text $text -Key "targets.result"),
+            (Get-ReportPhrase -Text $text -Key "targets.passed"),
+            (Get-ReportPhrase -Text $text -Key "targets.failed"),
+            (Get-ReportPhrase -Text $text -Key "targets.ignored"),
+            (Get-ReportPhrase -Text $text -Key "targets.time")
+        )
         Rows = $rows
         NumericFrom = 2
     }) `
     -Cases $groups.ToArray() `
     -Images $images `
-    -Sections @(@{ Heading = "Output"; Summary = "$ $suiteCommand"; Lines = $printed; Open = ($verdict -eq "failed") }) `
+    -Sections @(@{ Heading = (Get-ReportPhrase -Text $text -Key "output.heading"); Summary = "$ $suiteCommand"; Lines = $printed; Open = ($verdict -eq "failed") }) `
     -Notes $notes.ToArray()
 
 Write-Phase "page written"
 $printed | ForEach-Object { Write-Output $_ }
-Write-Output "exit code $code"
-Write-Output "report written to $reportPath"
-Write-Output "page written to $htmlPath"
+Write-Output (Get-ReportPhrase -Text $text -Key "console.exitcode" -Values @($code))
+Write-Output (Get-ReportPhrase -Text $text -Key "console.reportwritten" -Values @($reportPath))
+Write-Output (Get-ReportPhrase -Text $text -Key "console.pagewritten" -Values @($htmlPath))
 exit $code

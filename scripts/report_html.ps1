@@ -14,10 +14,15 @@
     font file, so the page works from a download folder, an artifact zip or a
     share.
 
+    The words the page says come from report_text.ps1 in the language the run
+    names, so the same page reads in either of the project's two languages.
+
     The style follows the project's web language: solid surfaces, hairline
     borders, one blue accent, system fonts, and dark mode from the reader's
     system preference.
 #>
+
+. (Join-Path $PSScriptRoot "report_text.ps1")
 
 function ConvertTo-ReportHtml {
     param([string]$Text)
@@ -81,17 +86,41 @@ function Write-ReportHtml {
         [array]$Cases = @(),
         [array]$Images = @(),
         [array]$Sections = @(),
-        [array]$Notes = @()
+        [array]$Notes = @(),
+        [string]$Language = "en-US",
+        [hashtable]$Text = $null
     )
 
+    if ($null -eq $Text) {
+        $Text = Get-ReportText -Language $Language
+    }
+
+    # Every word the page says is read here once, so a language is a data file
+    # rather than a search through this script.
+    $runHeading = Get-ReportPhrase -Text $Text -Key "run.heading"
+    $failuresHeading = Get-ReportPhrase -Text $Text -Key "failures.heading"
+    $casesHeading = Get-ReportPhrase -Text $Text -Key "cases.heading"
+    $snapshotsHeading = Get-ReportPhrase -Text $Text -Key "snapshots.heading"
+    $expectationHeading = Get-ReportPhrase -Text $Text -Key "snapshots.expectation"
+    $outputSummary = Get-ReportPhrase -Text $Text -Key "output.summary"
+    $caseColumn = Get-ReportPhrase -Text $Text -Key "cases.column.case"
+    $resultColumn = Get-ReportPhrase -Text $Text -Key "cases.column.result"
+    $whatColumn = Get-ReportPhrase -Text $Text -Key "cases.column.what"
+    $targetColumn = Get-ReportPhrase -Text $Text -Key "cases.column.target"
+
+    # The verdict is said in the report's language, while the pill keeps the
+    # machine's own word for the style that colours it.
     $failed = $Verdict -ne "passed"
+    $verdictKey = "verdict.passed"
+    if ($failed) { $verdictKey = "verdict.failed" }
+    $verdictLabel = Get-ReportPhrase -Text $Text -Key $verdictKey
     $html = New-Object System.Collections.Generic.List[string]
     $html.Add("<!doctype html>")
-    $html.Add('<html lang="en">')
+    $html.Add("<html lang=""$Language"">")
     $html.Add("<head>")
     $html.Add('<meta charset="utf-8">')
     $html.Add('<meta name="viewport" content="width=device-width, initial-scale=1">')
-    $html.Add("<title>$(ConvertTo-ReportHtml "$Eyebrow $Title - $Verdict")</title>")
+    $html.Add("<title>$(ConvertTo-ReportHtml "$Eyebrow $Title - $verdictLabel")</title>")
     $html.Add('<style>')
     $css = @'
 :root {
@@ -202,7 +231,7 @@ footer p { margin: 0 0 6px; }
     $html.Add("</div>")
     $pill = "passed"
     if ($failed) { $pill = "failed" }
-    $html.Add("<span class=""pill $pill"">$(ConvertTo-ReportHtml $Verdict)</span>")
+    $html.Add("<span class=""pill $pill"">$(ConvertTo-ReportHtml $verdictLabel)</span>")
     $html.Add("</header>")
 
     if ($Stats.Count -gt 0) {
@@ -217,7 +246,7 @@ footer p { margin: 0 0 6px; }
 
     if ($Fields.Count -gt 0) {
         $html.Add("<section class=""card"">")
-        $html.Add("<h2>Run</h2>")
+        $html.Add("<h2>$(ConvertTo-ReportHtml $runHeading)</h2>")
         $html.Add("<dl>")
         foreach ($field in $Fields) {
             $html.Add("<div><dt>$(ConvertTo-ReportHtml $field.Label)</dt><dd>$(ConvertTo-ReportHtml $field.Value)</dd></div>")
@@ -249,10 +278,11 @@ footer p { margin: 0 0 6px; }
     }
     if ($failures.Count -gt 0) {
         $html.Add("<section class=""card"">")
-        $html.Add("<h2>Failures <span class=""count"">$(ConvertTo-ReportHtml "$($failures.Count) case(s)")</span></h2>")
+        $failuresCount = Get-ReportPhrase -Text $Text -Key "failures.count" -Values @($failures.Count)
+        $html.Add("<h2>$(ConvertTo-ReportHtml $failuresHeading) <span class=""count"">$(ConvertTo-ReportHtml $failuresCount)</span></h2>")
         $html.Add("<div class=""scroll-x"">")
         $html.Add("<table>")
-        $html.Add("<thead><tr><th scope=""col"">Case</th><th scope=""col"">Ran in</th><th scope=""col"">What it checks</th></tr></thead>")
+        $html.Add("<thead><tr><th scope=""col"">$(ConvertTo-ReportHtml $caseColumn)</th><th scope=""col"">$(ConvertTo-ReportHtml $targetColumn)</th><th scope=""col"">$(ConvertTo-ReportHtml $whatColumn)</th></tr></thead>")
         $html.Add("<tbody>")
         foreach ($failure in $failures) {
             $html.Add("<tr>")
@@ -320,15 +350,15 @@ footer p { margin: 0 0 6px; }
     if ($Cases.Count -gt 0) {
         $caseTotal = 0
         foreach ($group in $Cases) { $caseTotal += $group.Rows.Count }
-        $caseSummary = "$caseTotal case(s) in $($Cases.Count) target(s)"
+        $caseSummary = Get-ReportPhrase -Text $Text -Key "cases.summary" -Values @($caseTotal, $Cases.Count)
         $html.Add("<section class=""card"">")
-        $html.Add("<h2>Cases <span class=""count"">$(ConvertTo-ReportHtml $caseSummary)</span></h2>")
+        $html.Add("<h2>$(ConvertTo-ReportHtml $casesHeading) <span class=""count"">$(ConvertTo-ReportHtml $caseSummary)</span></h2>")
         $html.Add("<div class=""scroll-y"">")
         $caseIndex = 0
         foreach ($group in $Cases) {
             $html.Add("<h3 id=""cases-$caseIndex"">$(ConvertTo-ReportHtml $group.Target) <span class=""count"">$(ConvertTo-ReportHtml $group.Counts)</span></h3>")
             $html.Add("<table>")
-            $html.Add("<thead><tr><th scope=""col"">Case</th><th scope=""col"">Result</th><th scope=""col"">What it checks</th></tr></thead>")
+            $html.Add("<thead><tr><th scope=""col"">$(ConvertTo-ReportHtml $caseColumn)</th><th scope=""col"">$(ConvertTo-ReportHtml $resultColumn)</th><th scope=""col"">$(ConvertTo-ReportHtml $whatColumn)</th></tr></thead>")
             $html.Add("<tbody>")
             $rowIndex = 0
             foreach ($case in $group.Rows) {
@@ -340,7 +370,7 @@ footer p { margin: 0 0 6px; }
                     $html.Add("<span class=""case-module"">$(ConvertTo-ReportHtml $case.Module)</span>")
                 }
                 $html.Add("</td>")
-                $html.Add("<td class=""$(Get-ReportToneClass $case.Result)"">$(ConvertTo-ReportHtml $case.Result)")
+                $html.Add("<td class=""$(Get-ReportToneClass $case.Result)"">$(ConvertTo-ReportHtml (Get-ReportResultLabel -Text $Text -Result $case.Result))")
                 if ($case.Note) {
                     $html.Add("<span class=""case-note"">$(ConvertTo-ReportHtml $case.Note)</span>")
                 }
@@ -368,7 +398,7 @@ footer p { margin: 0 0 6px; }
 
     if ($Images.Count -gt 0) {
         $html.Add("<section class=""card"">")
-        $html.Add("<h2>Page snapshots</h2>")
+        $html.Add("<h2>$(ConvertTo-ReportHtml $snapshotsHeading)</h2>")
         $html.Add("<div class=""snapshots"">")
         foreach ($image in $Images) {
             $html.Add("<figure>")
@@ -383,7 +413,7 @@ footer p { margin: 0 0 6px; }
                 $html.Add("</ul>")
             }
             if ($image.Expectation) {
-                $html.Add("<details><summary>What this page must show</summary><pre class=""expectation"">$(ConvertTo-ReportHtml $image.Expectation)</pre></details>")
+                $html.Add("<details><summary>$(ConvertTo-ReportHtml $expectationHeading)</summary><pre class=""expectation"">$(ConvertTo-ReportHtml $image.Expectation)</pre></details>")
             }
             $html.Add("</figcaption>")
             $html.Add("</figure>")
@@ -398,7 +428,7 @@ footer p { margin: 0 0 6px; }
         $open = ""
         if ($section.ContainsKey("Open") -and $section.Open) { $open = " open" }
         $summaryText = $section.Summary
-        if (-not $summaryText) { $summaryText = "output" }
+        if (-not $summaryText) { $summaryText = $outputSummary }
         $html.Add("<details$open><summary>$(ConvertTo-ReportHtml $summaryText)</summary>")
         $html.Add("<pre class=""log"">")
         foreach ($line in $section.Lines) {

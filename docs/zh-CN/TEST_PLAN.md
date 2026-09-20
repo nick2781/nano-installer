@@ -37,6 +37,10 @@ cargo test --locked --workspace
 `target/e2e-report.html` 和 `target/e2e-report.txt`。安装包级用例会真的构建并运行安装包，所以需要
 构建器内嵌的那三个运行时，缺了就跳过；要完整检查就把两个脚本都跑一遍。
 
+两份报告默认用中文写，`-Language` 可以改：`-Language en-US` 写成英文，页面的语言标记也跟着变。
+用词来自 `scripts/report_text.json`，用例旁边的行为来自 `docs/<语言>/TEST_COVERAGE.md`；
+用例名、它上方的文档注释，以及工具自己的输出，都按原文显示。
+
 这几份文档承诺的每一条行为，以及守住它的那条用例，都按层列在[测试覆盖](TEST_COVERAGE.md)里，
 也包括目前还没有自动化用例覆盖的部分。
 

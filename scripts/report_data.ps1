@@ -6,12 +6,16 @@
 
     - Get-TestCatalog reads every case out of the Rust sources it can find under
       crates/: the doc comment above a #[test] says what the case checks, and
-      docs/en/TEST_COVERAGE.md says which behaviours and settings break when the
-      case fails. A case with no doc comment is described by its own name.
+      the covered behaviours come from docs/<language>/TEST_COVERAGE.md, so the
+      chips beside a case read in the report's language. The doc comments are
+      the sources' own English and are shown as they are written. A case with no
+      doc comment is described by its own name.
     - Get-SnapshotGallery reads the manifest capture_setup_snapshots.ps1 writes
       beside its page photographs, so a report can show the pages of a real
       setup and what the capture measured on each of them.
 #>
+
+. (Join-Path $PSScriptRoot "report_text.ps1")
 
 # A tool that colours its own status lines writes escape sequences, and a line
 # captured from a console can keep the carriage return that ended it. Neither
@@ -58,13 +62,15 @@ function Get-CaseModule {
 }
 
 function Get-TestCatalog {
-    param([string]$RepoRoot)
+    param([string]$RepoRoot, [string]$Language = "en-US")
 
+    $documentLanguage = Get-ReportDocLanguage -Language $Language
     $catalog = @{}
 
-    # docs/en/TEST_COVERAGE.md is a table of behaviour against the cases that
-    # hold it, so each row is read backwards into "this case protects that".
-    $coveragePath = Join-Path $RepoRoot "docs/en/TEST_COVERAGE.md"
+    # The language's own TEST_COVERAGE.md is a table of behaviour against the
+    # cases that hold it, so each row is read backwards into "this case protects
+    # that". Its heading row names no case, so it adds no chip.
+    $coveragePath = Join-Path $RepoRoot "docs/$documentLanguage/TEST_COVERAGE.md"
     if (Test-Path -LiteralPath $coveragePath -PathType Leaf) {
         foreach ($line in [System.IO.File]::ReadAllLines($coveragePath)) {
             if (-not $line.StartsWith("|")) {
@@ -74,7 +80,9 @@ function Get-TestCatalog {
             if ($cells.Count -lt 3) {
                 continue
             }
-            $behaviour = $cells[0].Trim()
+            # The cell is markdown, so a configuration key arrives wrapped in
+            # backticks: the chip shows the key, not the markup around it.
+            $behaviour = $cells[0].Trim().Replace('`', '')
             $cases = $cells[1]
             if ($behaviour.Length -eq 0 -or $behaviour -match "^-+$" -or $behaviour -eq "Setting" -or $behaviour -eq "Behaviour") {
                 continue
@@ -163,8 +171,11 @@ function Get-CaseRow {
 # The image travels inside the page, so the report is one file a reader can open
 # wherever it is put.
 function Get-SnapshotGallery {
-    param([string]$Directory)
+    param([string]$Directory, [hashtable]$Text = $null)
 
+    if ($null -eq $Text) {
+        $Text = Get-ReportText -Language "en-US"
+    }
     $gallery = New-Object System.Collections.Generic.List[object]
     if (-not $Directory -or -not (Test-Path -LiteralPath $Directory -PathType Container)) {
         return @()
@@ -186,9 +197,9 @@ function Get-SnapshotGallery {
         }
         $gallery.Add(@{
             File      = [string]$snapshot.file
-            Alt       = "The $project setup's first page in $($snapshot.locale) at $($snapshot.scaling)% display scaling"
+            Alt       = Get-ReportPhrase -Text $Text -Key "snapshots.alt" -Values @($project, $snapshot.locale, $snapshot.scaling)
             Source    = "data:image/png;base64,$([Convert]::ToBase64String([System.IO.File]::ReadAllBytes($file)))"
-            Caption   = "$project page $($snapshot.width)x$($snapshot.height) in $($snapshot.locale) at $($snapshot.scaling)% display scaling"
+            Caption   = Get-ReportPhrase -Text $Text -Key "snapshots.caption" -Values @($project, $snapshot.width, $snapshot.height, $snapshot.locale, $snapshot.scaling)
             Asserts   = @($snapshot.asserted)
             Expectation = [string]$snapshot.expectation
         })
