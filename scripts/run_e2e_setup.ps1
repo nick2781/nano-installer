@@ -197,7 +197,7 @@ $caseRows = New-Object System.Collections.Generic.List[object]
 $caseResults = @{}
 foreach ($line in $suiteLines) {
     if ($line -match "^test ([A-Za-z0-9_:]+) \.\.\. (ok|FAILED|ignored)(?:,\s*(.*))?$") {
-        Add-CaseResult -Results $caseResults -Path $Matches[1] -Result $Matches[2]
+        Add-CaseResult -Results $caseResults -Path $Matches[1] -Result $Matches[2] -Layer "e2e"
         $note = ""
         if ($Matches.ContainsKey(3)) { $note = $Matches[3] }
         $caseRows.Add((Get-CaseRow -Catalog $catalog -Path $Matches[1] -Result $Matches[2] -Note $note))

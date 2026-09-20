@@ -199,7 +199,7 @@ foreach ($line in $printed) {
         continue
     }
     if ($line -match "^test ([A-Za-z0-9_:]+) \.\.\. (ok|FAILED|ignored)(?:,\s*(.*))?$") {
-        Add-CaseResult -Results $caseResults -Path $Matches[1] -Result $Matches[2]
+        Add-CaseResult -Results $caseResults -Path $Matches[1] -Result $Matches[2] -Layer (Get-TargetLayerKey -Target $target)
         if ($null -ne $cases) {
             $note = ""
             if ($Matches.ContainsKey(3)) { $note = $Matches[3] }

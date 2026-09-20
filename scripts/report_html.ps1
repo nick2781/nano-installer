@@ -208,6 +208,7 @@ tr.row-bad td:first-child { box-shadow: inset 2px 0 0 var(--bad); }
 .cov-cases { font-size: 12px; }
 .cov-case { display: inline-block; margin: 0 12px 4px 0; }
 .cov-case .mono { font-size: 12px; }
+.cov-layer { color: var(--faint); font-size: 11px; margin-left: 5px; }
 .cov-case .t-ok, .cov-case .t-bad, .cov-case .t-skip, .cov-case .t-missing { font-size: 11px; }
 details { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 summary { cursor: pointer; padding: 10px 12px; font-size: 12.5px; color: var(--muted); background: var(--code); }
@@ -430,7 +431,15 @@ footer p { margin: 0 0 6px; }
                 $html.Add("<td class=""$(Get-ReportToneClass $row.Verdict)"">$(ConvertTo-ReportHtml (Get-ReportResultLabel -Text $Text -Result $row.Verdict))</td>")
                 $html.Add("<td class=""cov-cases"">")
                 foreach ($case in $row.Cases) {
-                    $html.Add("<span class=""cov-case""><span class=""mono"">$(ConvertTo-ReportHtml $case.Name)</span> <span class=""$(Get-ReportToneClass $case.Result)"">$(ConvertTo-ReportHtml (Get-ReportResultLabel -Text $Text -Result $case.Result))</span></span>")
+                    # A case name does not say whether the library was driven in
+                    # process or a built setup was run, so the layer that ran it
+                    # is written beside its outcome.
+                    $layerTag = ""
+                    if ($case.Layer) {
+                        $layerName = Get-ReportPhrase -Text $Text -Key "layer.$($case.Layer)"
+                        $layerTag = "<span class=""cov-layer"">$(ConvertTo-ReportHtml $layerName)</span>"
+                    }
+                    $html.Add("<span class=""cov-case""><span class=""mono"">$(ConvertTo-ReportHtml $case.Name)</span> <span class=""$(Get-ReportToneClass $case.Result)"">$(ConvertTo-ReportHtml (Get-ReportResultLabel -Text $Text -Result $case.Result))</span>$layerTag</span>")
                 }
                 $html.Add("</td>")
                 $html.Add("</tr>")

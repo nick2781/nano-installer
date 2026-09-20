@@ -389,13 +389,15 @@ function Get-CaseRow {
 # Every case a run reported, by the names a coverage row can call it by: the
 # document names a case by its function or by the whole path it sits at, so both
 # are recorded, and a case that failed is never overwritten by one that passed.
+# Which layer ran the case is kept with it, because a case name says nothing
+# about whether the library was driven in process or a built setup was run.
 function Add-CaseResult {
-    param([hashtable]$Results, [string]$Path, [string]$Result)
+    param([hashtable]$Results, [string]$Path, [string]$Result, [string]$Layer = "")
 
     foreach ($key in @((Get-CaseName -Path $Path), $Path)) {
         if (-not $key) { continue }
-        if ($Results.ContainsKey($key) -and $Results[$key] -eq "FAILED") { continue }
-        $Results[$key] = $Result
+        if ($Results.ContainsKey($key) -and $Results[$key].Result -eq "FAILED") { continue }
+        $Results[$key] = @{ Result = $Result; Layer = $Layer }
     }
 }
 
@@ -415,11 +417,15 @@ function Get-BehaviourRows {
         $skip = 0
         foreach ($name in $row.Cases) {
             $result = ""
-            if ($Results.ContainsKey($name)) { $result = $Results[$name] }
+            $layer = ""
+            if ($Results.ContainsKey($name)) {
+                $result = $Results[$name].Result
+                $layer = $Results[$name].Layer
+            }
             if ($result -eq "ok") { $ok++ }
             elseif ($result -eq "FAILED") { $bad++ }
             elseif ($result -eq "ignored") { $skip++ }
-            $cases.Add(@{ Name = $name; Result = $result })
+            $cases.Add(@{ Name = $name; Result = $result; Layer = $layer })
         }
         $verdict = ""
         if ($bad -gt 0) { $verdict = "FAILED" }
