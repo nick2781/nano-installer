@@ -25,7 +25,9 @@
     open after every case has passed, so the step never ends, leaves no log, and
     cannot be cancelled; a pipe this script reads ends with the command.
 
-    The exit code is cargo's own, so a caller can gate on it.
+    The exit code is cargo's own, so a caller can gate on it. Every phase sends
+    the build agent a notice with the time it was reached, so a step that never
+    ends, and is therefore archived with no log, still says where it stopped.
 #>
 param(
     [string]$Report = "target/test-report.txt",
@@ -49,6 +51,17 @@ $suiteCommand = "cargo test --locked --workspace"
 
 # A native tool that reports progress on standard error would otherwise trip
 # $ErrorActionPreference = "Stop" on a message that is not a failure.
+
+# What the script is doing goes to the build agent as a notice as well as into
+# the reports: a step that never ends is archived with no log at all, and the
+# last notice it sent still says how far the script got.
+function Write-Phase {
+    param([string]$Message)
+
+    $stamp = (Get-Date).ToUniversalTime().ToString("HH:mm:ss")
+    Write-Output "::notice title=suite phase::$stamp $Message"
+}
+
 function Invoke-NativeStep {
     param([scriptblock]$Command)
 
@@ -97,9 +110,11 @@ $rustcVersion = (Invoke-NativeStep { rustc --version }).Output -join "; "
 $commit = Get-CommitDescription
 $runAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 
+Write-Phase "script started"
 Write-Output "Running the workspace suite: $suiteCommand"
 $suite = Invoke-NativeStep { cargo test --locked --workspace }
 
+Write-Phase "suite finished with exit code $($suite.ExitCode) and $(@($suite.Output).Count) output line(s)"
 $printed = @($suite.Output)
 $summary = @($printed | Where-Object { $_ -like "test result:*" })
 $skipping = @($printed | Where-Object { $_ -like "skipping:*" })
@@ -145,7 +160,9 @@ $lines.Add("builds those and keeps its own report.")
 $lines.Add("exit code $code")
 [System.IO.File]::WriteAllLines($reportPath, $lines, (New-Object System.Text.UTF8Encoding($false)))
 
+Write-Phase "result files written"
 $catalog = Get-TestCatalog -RepoRoot $repoRoot
+Write-Phase "case catalog read: $($catalog.Count) entries"
 
 # One pass over the output builds both tables: a target's row comes from the
 # "Running" line that introduces it and the "test result" line that closes it,
@@ -231,6 +248,7 @@ while ($linked -lt $rows.Count) {
     $linked++
 }
 
+Write-Phase "target and case tables built"
 $snapshotDirectory = $Snapshots
 if (-not [System.IO.Path]::IsPathRooted($snapshotDirectory)) {
     $snapshotDirectory = Join-Path $repoRoot $snapshotDirectory
@@ -296,6 +314,7 @@ Write-ReportHtml -Path $htmlPath -Title "Workspace test suite" -Subtitle "run at
     -Sections @(@{ Heading = "Output"; Summary = "$ $suiteCommand"; Lines = $printed; Open = ($verdict -eq "failed") }) `
     -Notes $notes.ToArray()
 
+Write-Phase "page written"
 $printed | ForEach-Object { Write-Output $_ }
 Write-Output "exit code $code"
 Write-Output "report written to $reportPath"
