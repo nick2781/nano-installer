@@ -62,15 +62,20 @@ files and registry entries, so validate them in a disposable virtual machine onl
   project it writes itself and runs it against a real installation: files land on disk byte for
   byte, the manifest and the uninstall entry are written, an upgrade drops stale files and keeps
   files it does not own, and an uninstall removes the product, the registration, and the directory.
-  One of its fourteen cases opens the wizard window and measures the client area it drew, which
-  needs an interactive desktop session, so that case skips where there is none and
-  `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` makes the skip a failure. The other thirteen pass on
+  Three of its twenty cases open the wizard window and drive it: one measures the client area it
+  drew, one walks the page actions a project declares, and one stops a running task from a cancel
+  button. They need an interactive desktop session, so they skip where there is none and
+  `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` makes the skip a failure. The other seventeen pass on
   Windows 11 and in CI.
 - A setup stays a setup after signing: a certificate table appended behind the bundle, which is what
   Authenticode writes into the file, no longer hides the footer the runtime reads its resources from.
 - The builder refuses a configuration key it does not read. A setting that once parsed and then
   changed nothing cannot ship as if it were doing its job; the message names the key and the
   setting that takes its place.
+- A task that is running can be stopped. A `cancel` button, or the close question answered with
+  Yes, makes the task give up at the checkpoint after the step it is on and undo what it wrote,
+  rather than leave a half-installed product behind, and a project script sees the same request
+  through `is_cancelled`. `is_cancelled` used to answer `false` for ever.
 - `scripts/capture_setup_snapshots.ps1` builds the example setup and photographs every page the
   project declares: the wizard's first page in Chinese, English, and Russian, plus one at each higher
   scaling (150% and 200% by default), and one picture of each of the other pages. Every snapshot is then checked against its own

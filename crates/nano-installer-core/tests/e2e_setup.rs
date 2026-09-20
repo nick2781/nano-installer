@@ -293,6 +293,56 @@ impl Fixture {
         })
     }
 
+    /// Declares a wizard whose task can be stopped from the page it runs on.
+    ///
+    /// The first page starts the install, the page the task reports on carries
+    /// a cancel button, and the two declare different client areas, so the
+    /// window's own size says which page is up. The install script waits for
+    /// the request, so the click lands while the task is running rather than
+    /// after it.
+    fn cancellable_project(&self) -> anyhow::Result<()> {
+        std::fs::write(
+            self.project.join("layouts/configpage.xml"),
+            r##"<Page width="720" height="450" background="#FF101010">
+  <Button id="install" action="install" text="Install" position="absolute" left="560" top="390" width="120" height="36" />
+</Page>"##,
+        )?;
+        std::fs::write(
+            self.project.join("layouts/taskspage.xml"),
+            r##"<Page width="500" height="300" background="#FF202020">
+  <Button id="cancel" action="cancel" text="Cancel" position="absolute" left="20" top="240" width="120" height="36" />
+</Page>"##,
+        )?;
+        std::fs::write(
+            self.project.join("layouts/donepage.xml"),
+            r##"<Page width="400" height="200" background="#FF303030" />"##,
+        )?;
+        self.write_script(
+            "install.rhai",
+            r#"
+            let install_path = get_install_path();
+            copy_uninstaller();
+            write_file(path_join(install_path, "E2eProbe.exe"), "app");
+            // A step that takes as long as the user takes to make up their
+            // mind, which is where a real install spends its time.
+            let waited = 0;
+            while !is_cancelled() && waited < 30000 {
+                sleep_ms(20);
+                waited += 20;
+            }
+            "#,
+        )?;
+        self.edit_config(|config| {
+            config["install"]["default_path"] =
+                serde_json::Value::from(self.destination.display().to_string());
+            config["wizard"]["pages"] = serde_json::json!([
+                {"id": "config", "title": "Options", "layout": "layouts/configpage.xml"},
+                {"id": "tasks", "layout": "layouts/taskspage.xml", "role": "progress"},
+                {"id": "done", "layout": "layouts/donepage.xml", "role": "finish"}
+            ]);
+        })
+    }
+
     /// Rewrites `install.default_path` and returns where that resolves to.
     ///
     /// Windows expands the variable itself, so the expected directory is asked
@@ -1521,6 +1571,76 @@ fn a_next_button_walks_to_the_page_the_project_declares() -> anyhow::Result<()> 
         walked_back,
         Some(first),
         "the back button did not move the wizard back to the first page"
+    );
+    Ok(())
+}
+
+/// A cancel button stops the task the wizard is running.
+///
+/// The click is the only way in: the flag the task reads is reachable from the
+/// window's own thread and nowhere else, and what a stopped task leaves behind
+/// is what this checks -- the wizard returns to the page the task started from
+/// rather than showing its completion page, and the directory the script had
+/// already created is gone.
+#[test]
+fn a_cancel_button_stops_the_project_script_and_leaves_nothing_installed() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.cancellable_project()?;
+    fixture.build()?;
+
+    let _ = unsafe { SetProcessDPIAware() };
+    let mut setup = Command::new(&fixture.setup)
+        .env("NANO_INSTALLER_TEST_DPI", "96")
+        .spawn()?;
+
+    let waited = wait_for_runtime_window(&mut setup, Instant::now() + Duration::from_secs(30));
+    let found = match &waited {
+        WindowWait::Found(window) => Some(*window),
+        WindowWait::Exited(_) | WindowWait::Timeout => None,
+    };
+    let Some(window) = found else {
+        let reason = match waited {
+            WindowWait::Exited(status) => format!("the setup {status} instead of opening a window"),
+            WindowWait::Timeout => "no window appeared within 30 seconds".to_string(),
+            WindowWait::Found(_) => "the window could not be measured".to_string(),
+        };
+        let _ = setup.kill();
+        let _ = setup.wait();
+        return skip_missing_desktop(&reason);
+    };
+
+    let opened = client_size(window);
+    // The centre of the install button the first page places at 560,390.
+    click_client_point(window, 620, 408);
+    let running =
+        wait_for_client_size(window, (500, 300), Instant::now() + Duration::from_secs(20));
+    // The centre of the cancel button the progress page places at 20,240.
+    click_client_point(window, 80, 258);
+    let stopped = wait_for_client_size(window, opened, Instant::now() + Duration::from_secs(20));
+    let _ = setup.kill();
+    let _ = setup.wait();
+
+    assert_eq!(
+        opened,
+        (720, 450),
+        "the wizard opened on {opened:?} rather than the 720x450 page the project declares"
+    );
+    assert_eq!(
+        running,
+        Some((500, 300)),
+        "the install button did not start the task on its progress page"
+    );
+    assert_eq!(
+        stopped,
+        Some(opened),
+        "the cancel button did not stop the task and return to the page it started from"
+    );
+    assert!(
+        !fixture.destination.exists(),
+        "the cancelled install left the directory its script created behind"
     );
     Ok(())
 }

@@ -444,6 +444,8 @@ struct HoverRegion {
 enum WindowAction {
     Close,
     CloseConfirm,
+    /// Stops the task that is running, or leaves the wizard when none is.
+    Cancel,
     Minimize,
     ToggleLanguageMenu,
     SelectLanguage(String),
@@ -2998,6 +3000,7 @@ fn push_action(
             Some("minimize") => Some(WindowAction::Minimize),
             Some("close") => Some(WindowAction::Close),
             Some("close_confirm") => Some(WindowAction::CloseConfirm),
+            Some("cancel") => Some(WindowAction::Cancel),
             Some("pick_directory") => pick_directory_target(node, interaction)
                 .map(|id| WindowAction::PickDirectory { id }),
             // `open_url:` takes either a `links` key or a URL written out in
@@ -6414,6 +6417,16 @@ unsafe fn handle_window_action(window: HWND, action: WindowAction) {
                 show_runtime_error(&error);
             }
         }
+        WindowAction::Cancel => {
+            // A cancel button means what it says while a task runs. With
+            // nothing running there is nothing to stop, so it leaves the
+            // wizard, which is what the same button means on any other page.
+            if install::busy() {
+                install::request_cancel();
+            } else {
+                let _ = DestroyWindow(window);
+            }
+        }
         WindowAction::DialogOk => {
             let kind = UI
                 .get()
@@ -6421,8 +6434,15 @@ unsafe fn handle_window_action(window: HWND, action: WindowAction) {
                 .and_then(|state| state.interaction.dialog.as_ref().map(|dialog| dialog.kind));
             if let Err(error) = set_dialog(window, None) {
                 show_runtime_error(&error);
-            } else if kind == Some(DialogKind::CloseConfirm) && !install::busy() {
-                let _ = DestroyWindow(window);
+            } else if kind == Some(DialogKind::CloseConfirm) {
+                if install::busy() {
+                    // Confirming the question while a task runs is how a project
+                    // lets its user stop it: the task gives up at its next
+                    // checkpoint and undoes what it wrote.
+                    install::request_cancel();
+                } else {
+                    let _ = DestroyWindow(window);
+                }
             }
         }
         WindowAction::DialogCancel => {
@@ -11256,6 +11276,7 @@ mod tests {
                  <Button id="minimize" action="minimize" />
                  <Button id="close" action="close" />
                  <Button id="close_confirm" action="close_confirm" />
+                 <Button id="cancel" action="cancel" />
                  <Button id="pick_directory" action="pick_directory" target="editDir" />
                  <Button id="open_key" action="open_url:help" />
                  <Button id="open_url" action="open_url:https://example.test/help" />
@@ -11303,6 +11324,7 @@ mod tests {
             action("close_confirm"),
             Some(WindowAction::CloseConfirm)
         ));
+        assert!(matches!(action("cancel"), Some(WindowAction::Cancel)));
         assert!(matches!(
             action("pick_directory"),
             Some(WindowAction::PickDirectory { ref id }) if id == "editDir"

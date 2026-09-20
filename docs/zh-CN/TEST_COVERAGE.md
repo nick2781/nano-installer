@@ -3,7 +3,7 @@
 文档承诺的每一条行为，以及守住它的那条自动化用例。表格里的每一行都列出了该行为失效时会失败的
 用例；没有出现在任何一行里的行为，就是没人看住的行为。
 
-`cargo test --locked --workspace` 会跑 208 条用例：核心库 154 条，真构建并运行安装包的 19 条，
+`cargo test --locked --workspace` 会跑 213 条用例：核心库 158 条，真构建并运行安装包的 20 条，
 按构建器的方式读工程的 4 条，可视化构建器 29 条，解压运行时 2 条。安装包级用例需要真实的运行时
 可执行文件，`.\scripts\run_e2e_setup.ps1` 会先把它们构建出来再跑，并把整次运行写进
 `target/e2e-report.txt`。
@@ -12,8 +12,8 @@
 
 | 层 | 用例数 | 能证明 | 不能证明 |
 | --- | --- | --- | --- |
-| 核心库 | 154 | 一页会变成什么——图层、坐标、命中区域、文字；捆绑数据里装了什么；安装往磁盘和注册表写了什么；每个脚本原语做什么 | 打包出来的安装包能走到这些代码 |
-| 安装包级 | 19 | 构建好的安装包在这台机器上装了一遍：payload 字节、manifest、卸载项、快捷方式、自启动、项目脚本、向导窗口 | 任何需要点击才能发生的事 |
+| 核心库 | 158 | 一页会变成什么——图层、坐标、命中区域、文字；捆绑数据里装了什么；安装往磁盘和注册表写了什么；每个脚本原语做什么 | 打包出来的安装包能走到这些代码 |
+| 安装包级 | 20 | 构建好的安装包在这台机器上装了一遍：payload 字节、manifest、卸载项、快捷方式、自启动、项目脚本、向导窗口 | 任何需要点击才能发生的事 |
 | 工程检查 | 4 | 构建之前窗口会显示的那份摘要与告警列表 | |
 | 可视化构建器 | 29 | 窗口自己的状态、参数、日志与告警 | 真的去点界面上的控件 |
 | 解压运行时 | 2 | 坏归档、以及归档里不安全的路径会被拒绝 | 解压一个完好的归档——安装包级用例会用真实运行时解真实 payload |
@@ -83,6 +83,7 @@
 | 只有声明了动作的元素才响应指针 | `an_element_answers_the_pointer_only_when_it_declares_an_action` |
 | 目录选择器写到哪个输入框 | `pick_directory_writes_to_the_field_the_page_offers_it`、`pick_directory_falls_back_to_the_layout_text_input` |
 | 窗口摆放与缩放 | `a_window_is_centred_and_clamped_to_its_work_area`、`a_placed_window_is_pulled_back_inside_its_work_area`、`a_display_scales_the_layout_by_its_own_dpi` |
+| 从窗口停掉正在跑的任务（`cancel` 按钮、确认后的 `close_confirm`） | `a_cancel_button_stops_the_project_script_and_leaves_nothing_installed` |
 | 示例工程自己的页面 | `taptap_first_page_places_controls_at_192_dpi`、`taptap_uninstaller_buttons_have_distinct_hit_regions`、`progress_pages_render_every_control_they_declare` |
 
 ## 项目脚本
@@ -98,7 +99,7 @@
 | 文件与路径原语 | `file_primitives_create_copy_list_and_remove_files`、`path_primitives_join_split_and_name_paths` |
 | 注册表原语，包括共享键那条规则 | `registry_primitives_round_trip_and_forget_a_key_they_created`、`uninstalling_a_shared_key_removes_only_the_value_the_script_wrote` |
 | 快捷方式原语 | `an_install_script_creates_shortcuts_the_uninstall_takes_back`、`a_script_deletes_the_desktop_shortcut_and_the_start_menu_folder_it_created` |
-| 进度、状态、模式、复选框与取消 | `out_of_range_progress_and_both_status_forms_do_not_disturb_the_install`、`an_uninstall_script_sees_the_uninstall_mode_and_the_keep_data_checkbox`、`a_script_step_text_wins_over_the_locale_key`、`a_built_in_step_clears_a_script_step_text` |
+| 进度、状态、模式、复选框与取消 | `out_of_range_progress_and_both_status_forms_do_not_disturb_the_install`、`an_uninstall_script_sees_the_uninstall_mode_and_the_keep_data_checkbox`、`a_script_step_text_wins_over_the_locale_key`、`a_built_in_step_clears_a_script_step_text`、`a_running_script_sees_the_cancel_request`、`a_cancelled_install_gives_up_after_the_script_and_undoes_what_it_wrote` |
 | 环境变量、配置、磁盘与当前映像 | `the_script_reads_the_environment_and_the_project_configuration`、`the_script_reports_the_image_it_runs_from`、`the_script_queries_fixed_disks_and_notifies_the_shell` |
 | 进程 | `a_script_runs_a_command_and_sees_its_exit_code`、`a_script_recognises_a_running_process_by_its_image_name` |
 | 保留还是删除用户数据 | `uninstalling_below_appdata_removes_the_data_only_when_the_box_is_cleared` |
@@ -113,6 +114,7 @@
 | 拒绝装进不是自己创建的目录 | `refuses_to_install_over_a_directory_it_did_not_create`、`refuses_a_foreign_manifest_at_the_destination`、`refuses_relative_or_root_installation` |
 | 升级：替换版本、删掉陈旧文件、保留别人的文件 | `an_upgrade_replaces_the_previous_version_and_drops_stale_files`、`installing_over_an_existing_installation_drops_stale_files`、`an_upgrade_keeps_a_file_the_payload_does_not_own` |
 | 失败回滚 | `a_failed_upgrade_restores_the_previous_version`、`removes_a_fresh_install_whose_registration_fails` |
+| 取消：任务在检查点停下并撤回已经写下的内容 | `a_cancel_request_stops_the_checkpoints_that_follow_it`、`a_cancelled_deployment_writes_nothing` |
 | 卸载清掉产品、注册项与目录 | `uninstalling_removes_the_product_the_registration_and_the_directory` |
 | 目录里还有用户文件时保留目录 | `uninstall_keeps_a_directory_that_still_holds_user_files` |
 | 快捷方式与自启动的记账 | `a_silent_install_writes_the_shortcuts_and_the_autostart_entry`、`removes_recorded_shortcuts_and_only_their_empty_folder`、`drops_the_shortcut_folder_once_it_is_empty` |

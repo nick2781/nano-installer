@@ -45,6 +45,8 @@ pub(super) struct InstallRequest {
     /// Scratch directory owned by the caller for the duration of the script.
     pub(super) stage: PathBuf,
     pub(super) prep: InstallPrep,
+    /// The task this script is part of, so it can be asked to stop.
+    pub(super) cancel: install::Cancellation,
 }
 
 /// Runs `scripts/install.rhai` in place of the built-in deployment steps.
@@ -57,6 +59,7 @@ pub(super) fn run_install(request: InstallRequest) -> Result<()> {
         selection,
         stage,
         mut prep,
+        cancel,
     } = request;
     let source = read_script(&bundle, INSTALL_SCRIPT)?;
     let exe_name = config["install"]["exe_name"]
@@ -75,9 +78,17 @@ pub(super) fn run_install(request: InstallRequest) -> Result<()> {
         stage,
         journal: None,
         mode: Mode::Install,
+        cancel: cancel.clone(),
     })?;
 
     if let Err(error) = run(&context, &source) {
+        undo(&context);
+        return Err(error);
+    }
+    // A cancel asked while the script ran is honoured before the library
+    // registers anything: the script has had its chance to notice it through
+    // is_cancelled, and what it wrote is undone below.
+    if let Err(error) = install::check_cancelled(&cancel) {
         undo(&context);
         return Err(error);
     }
@@ -104,6 +115,8 @@ pub(super) struct UninstallRequest {
     pub(super) stage: PathBuf,
     pub(super) root: windows::Win32::System::Registry::HKEY,
     pub(super) registry_path: String,
+    /// The task this script is part of, so it can be asked to stop.
+    pub(super) cancel: install::Cancellation,
 }
 
 /// Runs `scripts/uninstall.rhai` in place of the built-in removal steps.
@@ -118,6 +131,7 @@ pub(super) fn run_uninstall(request: UninstallRequest) -> Result<()> {
         stage,
         root,
         registry_path,
+        cancel,
     } = request;
     let source = read_script(&bundle, UNINSTALL_SCRIPT)?;
     let context = begin(ScriptEnvironment {
@@ -132,6 +146,7 @@ pub(super) fn run_uninstall(request: UninstallRequest) -> Result<()> {
         stage,
         journal: None,
         mode: Mode::Uninstall,
+        cancel,
     })?;
 
     run(&context, &source)?;
@@ -427,6 +442,12 @@ mod tests {
         }
 
         fn install(&self) -> Result<()> {
+            self.install_with(install::Cancellation::default())
+        }
+
+        /// Runs the install with the handle the caller keeps, so a test can ask
+        /// it to stop the way the wizard's cancel button does.
+        fn install_with(&self, task: install::Cancellation) -> Result<()> {
             let bundle = self.bundle()?;
             let (root, registry_path) = install::uninstall_registry_key(&self.config)?;
             run_install(InstallRequest {
@@ -444,6 +465,7 @@ mod tests {
                     previous: None,
                     upgrade: false,
                 },
+                cancel: task,
             })
         }
 
@@ -463,6 +485,7 @@ mod tests {
                 stage: self.stage()?,
                 root,
                 registry_path,
+                cancel: install::Cancellation::default(),
             });
             remove_cleanup_helpers();
             result
@@ -1131,6 +1154,77 @@ mod tests {
         assert_eq!(
             report.text()?,
             "mode=install\ncancelled=false\ncheckbox=false\n"
+        );
+        Ok(())
+    }
+
+    /// Starts the install of a fixture whose script waits for the wizard's
+    /// cancel request, and returns what the install answered together with
+    /// whether it left a directory behind.
+    fn install_stopped_by_the_user(script: &str) -> Result<(Result<()>, bool)> {
+        let fixture = fixture(&deploying_script(script), "")?;
+        // In the wizard this click arrives on the window's own thread while the
+        // worker runs the script.
+        let task = install::Cancellation::default();
+        let request = task.clone();
+        let watcher = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            request.request();
+        });
+        let result = fixture.install_with(task);
+        watcher.join().expect("the watcher thread");
+        Ok((result, fixture.destination.exists()))
+    }
+
+    #[test]
+    fn a_running_script_sees_the_cancel_request() -> Result<()> {
+        // A step of the script's own can end early instead of running to its
+        // end, which is the whole reason `is_cancelled` exists: the runtime only
+        // stops at the checkpoints between steps.
+        let (error, _) = install_stopped_by_the_user(
+            r#"
+            let waited = 0;
+            while !is_cancelled() && waited < 8000 {
+                sleep_ms(20);
+                waited += 20;
+            }
+            throw "stopped after " + waited + "ms";
+            "#,
+        )?;
+        let error = error.expect_err("the script gave up");
+        let message = format!("{error:#}");
+        let waited: u64 = message
+            .rsplit("stopped after ")
+            .next()
+            .and_then(|tail| tail.split("ms").next())
+            .and_then(|value| value.trim().parse().ok())
+            .unwrap_or_else(|| panic!("the script did not say how long it waited: {message}"));
+        assert!(
+            waited < 4000,
+            "the script waited {waited}ms for a request made 50ms in, so is_cancelled told it nothing"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn a_cancelled_install_gives_up_after_the_script_and_undoes_what_it_wrote() -> Result<()> {
+        // A script that ends its own long step leaves the install to the
+        // runtime, which stops at the checkpoint after it rather than deploy a
+        // product the user asked not to have.
+        let (error, destination_exists) = install_stopped_by_the_user(
+            r#"
+            let waited = 0;
+            while !is_cancelled() && waited < 8000 {
+                sleep_ms(20);
+                waited += 20;
+            }
+            "#,
+        )?;
+        let error = error.expect_err("a task the user stopped does not install");
+        assert_eq!(error.to_string(), "cancelled by the user");
+        assert!(
+            !destination_exists,
+            "the cancelled install left the directory it created behind"
         );
         Ok(())
     }

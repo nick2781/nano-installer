@@ -1,8 +1,10 @@
 use anyhow::{bail, ensure, Context, Result};
 use serde_json::{json, Value};
 use std::fs;
+use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND};
 use windows::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_DELAY_UNTIL_REBOOT};
@@ -35,7 +37,69 @@ impl InstallSelection {
 
 pub(super) const MANIFEST_NAME: &str = "nano-installer-manifest.json";
 static BUSY: AtomicBool = AtomicBool::new(false);
+/// The task the window is watching, so a click can reach it.
+static TASK: Mutex<Option<Cancellation>> = Mutex::new(None);
 static STAGING_ID: AtomicU64 = AtomicU64::new(0);
+
+/// A request to stop the task that is running.
+///
+/// The window asks and the worker reads, so the two share this one flag. The
+/// wizard keeps the handle of the task it started, and the same handle travels
+/// down the flow to the script that asks about it through `is_cancelled`.
+#[derive(Clone, Default)]
+pub(super) struct Cancellation(Arc<AtomicBool>);
+
+impl Cancellation {
+    /// True once the user has asked for this task to stop.
+    pub(super) fn requested(&self) -> bool {
+        self.0.load(Ordering::Acquire)
+    }
+
+    /// Asks this task to stop at its next checkpoint.
+    pub(super) fn request(&self) {
+        self.0.store(true, Ordering::Release);
+    }
+}
+
+/// Asks the task that is running to stop.
+///
+/// The task is never killed where it stands. It reads the request at the
+/// checkpoints between its steps -- and a project's own script reads it through
+/// `is_cancelled` -- so whatever it has written can be undone before it gives
+/// up.
+pub(super) fn request_cancel() {
+    if let Ok(slot) = TASK.lock() {
+        if let Some(task) = slot.as_ref() {
+            task.request();
+        }
+    }
+}
+
+/// The error a task reports when the user stopped it.
+///
+/// It carries its own type so the wizard can say the run was cancelled instead
+/// of showing a failure the product never had.
+#[derive(Debug)]
+pub(super) struct Cancelled;
+
+impl std::fmt::Display for Cancelled {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "cancelled by the user")
+    }
+}
+
+impl std::error::Error for Cancelled {}
+
+/// Gives up when the user asked for it.
+///
+/// Every caller is a point between two steps of a task, which is what keeps a
+/// cancellation from landing in the middle of one.
+pub(super) fn check_cancelled(task: &Cancellation) -> Result<()> {
+    if task.requested() {
+        return Err(Cancelled.into());
+    }
+    Ok(())
+}
 
 pub(super) fn busy() -> bool {
     BUSY.load(Ordering::Acquire)
@@ -79,13 +143,13 @@ pub(super) fn start_install() {
         show_result(Err(anyhow::anyhow!("the installer window is not ready")));
         return;
     };
-    run_worker(move || {
+    run_worker(move |task| {
         let setup = std::env::current_exe()?;
         let bundle = BundleIndex::read(&setup)?.context("installer resource bundle missing")?;
         let config = bundle.read_config()?;
         let destination =
             resolve_install_destination(&config, selection.destination.as_deref().map(Path::new))?;
-        install_setup(&setup, &destination, &selection)
+        install_setup(&setup, &destination, &selection, task)
     });
 }
 
@@ -181,7 +245,7 @@ pub(super) fn run_silent_install(arguments: &[std::ffi::OsString]) -> Result<()>
         destination: None,
         checkboxes: std::collections::HashMap::new(),
     };
-    install_setup(&setup, &destination, &selection)
+    install_setup(&setup, &destination, &selection, &Cancellation::default())
 }
 
 /// Runs an uninstall with no window, for a project that declares silent support.
@@ -197,7 +261,7 @@ pub(super) fn run_silent_uninstall(arguments: &[std::ffi::OsString]) -> Result<(
     let bundle = BundleIndex::read(&uninstaller)?.context("uninstaller bundle missing")?;
     let config = bundle.read_config()?;
     require_silent_support(&config, "uninstall_mode_support")?;
-    uninstall(&uninstaller, true)
+    uninstall(&uninstaller, true, &Cancellation::default())
 }
 
 pub(super) fn start_uninstall() {
@@ -218,15 +282,21 @@ pub(super) fn start_uninstall() {
                 .flatten()
         })
         .unwrap_or(true);
-    run_worker(move || {
+    run_worker(move |task| {
         let uninstaller = std::env::current_exe()?;
-        uninstall(&uninstaller, keep_data)
+        uninstall(&uninstaller, keep_data, task)
     });
 }
 
-fn run_worker(work: impl FnOnce() -> Result<()> + Send + 'static) {
+fn run_worker(work: impl FnOnce(&Cancellation) -> Result<()> + Send + 'static) {
     if BUSY.swap(true, Ordering::AcqRel) {
         return;
+    }
+    // The wizard keeps this handle while the task runs, which is how a click
+    // reaches it; the next task gets one of its own.
+    let task = Cancellation::default();
+    if let Ok(mut slot) = TASK.lock() {
+        *slot = Some(task.clone());
     }
     // The task reports on the progress page and ends on the completion page. A
     // project that orders its pages differently names those two with `role`;
@@ -238,8 +308,15 @@ fn run_worker(work: impl FnOnce() -> Result<()> + Send + 'static) {
         let _ = super::show_page(index);
     }
     std::thread::spawn(move || {
-        let result = work();
+        let result = work(&task);
+        if let Ok(mut slot) = TASK.lock() {
+            *slot = None;
+        }
         BUSY.store(false, Ordering::Release);
+        let stopped = result
+            .as_ref()
+            .err()
+            .is_some_and(|error| error.downcast_ref::<Cancelled>().is_some());
         match &result {
             // The completion page reports the outcome and owns the next action.
             Ok(()) => match completion {
@@ -248,6 +325,12 @@ fn run_worker(work: impl FnOnce() -> Result<()> + Send + 'static) {
                 }
                 None => show_result(Ok(())),
             },
+            // Stopping is the user's own doing, so the wizard returns to the
+            // page the task was started from instead of reporting a failure.
+            Err(_) if stopped => {
+                let _ = super::show_page(0);
+                super::show_notice("Operation cancelled");
+            }
             Err(error) => {
                 let _ = super::show_page(0);
                 show_result(Err(anyhow::anyhow!("{error:#}")));
@@ -269,7 +352,12 @@ fn show_result(result: Result<()>) {
     super::show_notice(&text);
 }
 
-fn install_setup(setup: &Path, destination: &Path, selection: &InstallSelection) -> Result<()> {
+fn install_setup(
+    setup: &Path,
+    destination: &Path,
+    selection: &InstallSelection,
+    task: &Cancellation,
+) -> Result<()> {
     validate_destination(destination)?;
     super::report_progress(5, "status.preparing")?;
     let bundle = BundleIndex::read(setup)?.context("installer resource bundle missing")?;
@@ -288,10 +376,15 @@ fn install_setup(setup: &Path, destination: &Path, selection: &InstallSelection)
             selection: selection.clone(),
             stage: stage.0.clone(),
             prep,
+            cancel: task.clone(),
         });
     }
     super::report_progress(15, "status.extracting")?;
-    let files = extract_payload(setup, &bundle, &config, &stage.0, &extracted)?;
+    let files = extract_payload(setup, &bundle, &config, &stage.0, &extracted, task)?;
+    // A cancel is most likely to arrive while the payload unpacks, and this is
+    // the last moment it costs nothing: nothing outside the staging directory
+    // has been written yet.
+    check_cancelled(task)?;
     super::report_progress(50, "status.deploying")?;
 
     let exe_name = config["install"]["exe_name"]
@@ -326,6 +419,7 @@ fn install_setup(setup: &Path, destination: &Path, selection: &InstallSelection)
         artifacts: &artifacts,
         registry_values: &[],
         registry_keys: &[],
+        task,
     }
     .run(|| {
         register_uninstaller(
@@ -455,6 +549,7 @@ pub(super) fn extract_payload(
     config: &Value,
     scratch: &Path,
     target: &Path,
+    task: &Cancellation,
 ) -> Result<Vec<PathBuf>> {
     let payload_name = config["resources"]["payload_file"]
         .as_str()
@@ -467,18 +562,7 @@ pub(super) fn extract_payload(
         .unwrap_or("uninst.exe");
     let archive = scratch.join("payload.archive");
     bundle.copy_file_to(payload_name, &archive)?;
-    let output = std::process::Command::new(setup)
-        .arg("--extract")
-        .arg(&archive)
-        .arg(target)
-        .output()
-        .context("failed to start installer extraction backend")?;
-    if !output.status.success() {
-        bail!(
-            "payload extraction failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
+    extract_archive(setup, &archive, target, task)?;
     let files = collect_staged_files(target)?;
     if files.is_empty() {
         bail!("payload archive contains no files")
@@ -497,6 +581,41 @@ pub(super) fn extract_payload(
         bail!("payload does not contain the configured application executable: {exe_name}")
     }
     Ok(files)
+}
+
+/// Unpacks the payload with the runtime embedded in the setup image.
+///
+/// The wait is a poll rather than a blocking call, because unpacking is the
+/// longest step an install takes: a user who asks to stop has to be able to
+/// stop it here, and what has been unpacked so far is in the staging directory,
+/// which nobody keeps.
+fn extract_archive(setup: &Path, archive: &Path, target: &Path, task: &Cancellation) -> Result<()> {
+    let mut child = std::process::Command::new(setup)
+        .arg("--extract")
+        .arg(archive)
+        .arg(target)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .context("failed to start installer extraction backend")?;
+    loop {
+        if task.requested() {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(Cancelled.into());
+        }
+        match child.try_wait()? {
+            Some(status) if status.success() => return Ok(()),
+            Some(_) => {
+                let mut message = String::new();
+                if let Some(mut errors) = child.stderr.take() {
+                    let _ = errors.read_to_string(&mut message);
+                }
+                bail!("payload extraction failed: {}", message.trim());
+            }
+            None => std::thread::sleep(std::time::Duration::from_millis(50)),
+        }
+    }
 }
 
 /// Inspects `destination` and reports an existing installation of this project.
@@ -589,6 +708,8 @@ struct Deployment<'a> {
     /// Registry entries a project script wrote, replayed by the uninstaller.
     registry_values: &'a [(String, String)],
     registry_keys: &'a [String],
+    /// The task asking for this deployment, so it can stop between two files.
+    task: &'a Cancellation,
 }
 
 impl Deployment<'_> {
@@ -616,7 +737,12 @@ impl Deployment<'_> {
             self.files,
             self.previous,
             journal,
+            self.task,
         )?;
+        // The payload is on disk; a cancel that arrived while it was being
+        // copied stops before the uninstaller and the manifest are written, so
+        // nothing records a product the user never got.
+        check_cancelled(self.task)?;
         let uninstaller = self.destination.join(self.uninstaller_name);
         journal.track(&uninstaller)?;
         fs::write(&uninstaller, self.uninstaller)?;
@@ -700,8 +826,12 @@ pub(super) fn deploy_files(
     files: &[PathBuf],
     previous: Option<&PreviousInstall>,
     journal: &mut RollbackJournal,
+    task: &Cancellation,
 ) -> Result<()> {
     for relative in files {
+        // Between two files rather than halfway through one: the journal has
+        // everything copied so far and puts it back when the deploy fails.
+        check_cancelled(task)?;
         let source = extracted.join(relative);
         let target = destination.join(relative);
         fs::create_dir_all(target.parent().context("payload target has no parent")?)?;
@@ -1515,7 +1645,7 @@ fn write_uninstall_registration(
     result
 }
 
-fn uninstall(uninstaller: &Path, keep_data: bool) -> Result<()> {
+fn uninstall(uninstaller: &Path, keep_data: bool, task: &Cancellation) -> Result<()> {
     let destination = uninstaller
         .parent()
         .context("uninstaller has no parent directory")?;
@@ -1554,6 +1684,10 @@ fn uninstall(uninstaller: &Path, keep_data: bool) -> Result<()> {
     let exe_name = config["install"]["exe_name"]
         .as_str()
         .context("install.exe_name is required")?;
+    // Nothing has been removed yet, so this is the last moment an uninstall
+    // can be called off: once the removals start they run to their end, because
+    // a product left half-removed is worse than one removed a second time.
+    check_cancelled(task)?;
     if bundle.contains(script::UNINSTALL_SCRIPT) {
         let stage = StagingDirectory::create()?;
         return script::run_uninstall(script::UninstallRequest {
@@ -1566,6 +1700,7 @@ fn uninstall(uninstaller: &Path, keep_data: bool) -> Result<()> {
             stage: stage.0.clone(),
             root,
             registry_path: expected_path,
+            cancel: task.clone(),
         });
     }
     if config["install"]["kill_process_on_uninstall"].as_bool() == Some(true)
@@ -1733,9 +1868,10 @@ fn schedule_removal_at_reboot(path: &Path) {
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_silent_arguments, preserved_data_paths, previous_install, register_uninstaller,
-        registry_key_exists, registry_path, require_free_space, require_silent_support,
-        resolve_install_destination, validate_destination, wide, Deployment, InstallArtifacts,
+        begin_deployment, check_cancelled, deploy_files, parse_silent_arguments,
+        preserved_data_paths, previous_install, register_uninstaller, registry_key_exists,
+        registry_path, require_free_space, require_silent_support, resolve_install_destination,
+        validate_destination, wide, Cancellation, Cancelled, Deployment, InstallArtifacts,
         PreviousInstall, MANIFEST_NAME,
     };
     use anyhow::Result;
@@ -1781,6 +1917,7 @@ mod tests {
     ) -> Result<()> {
         // An empty plan keeps the tests from touching the real desktop.
         let artifacts = InstallArtifacts::default();
+        let task = Cancellation::default();
         Deployment {
             extracted,
             destination,
@@ -1794,6 +1931,7 @@ mod tests {
             artifacts: &artifacts,
             registry_values: &[],
             registry_keys: &[],
+            task: &task,
         }
         .run(register)
     }
@@ -1818,6 +1956,45 @@ mod tests {
         let (_, path) = registry_path("HKCU\\\\Software\\\\Microsoft\\Uninstall\\App").unwrap();
         assert_eq!(path, "Software\\Microsoft\\Uninstall\\App");
         assert!(registry_path("HKCR\\Somewhere").is_err());
+    }
+
+    #[test]
+    fn a_cancel_request_stops_the_checkpoints_that_follow_it() {
+        let task = Cancellation::default();
+        assert!(!task.requested());
+        assert!(check_cancelled(&task).is_ok());
+
+        task.request();
+        assert!(task.requested());
+        let error = check_cancelled(&task).expect_err("the checkpoint gives up");
+        assert!(error.is::<Cancelled>(), "{error:#}");
+        assert_eq!(format!("{error}"), "cancelled by the user");
+
+        // Stopping one task does not touch the next one: every task gets a
+        // handle of its own.
+        assert!(check_cancelled(&Cancellation::default()).is_ok());
+    }
+
+    #[test]
+    fn a_cancelled_deployment_writes_nothing() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let extracted = temp.path().join("extracted");
+        let files = write_payload(&extracted, &[("TapTap.exe", b"app")])?;
+        let destination = temp.path().join("installed");
+        let mut journal = begin_deployment(&destination, &temp.path().join("rollback"), None)?;
+        let task = Cancellation::default();
+        task.request();
+
+        assert!(
+            deploy_files(&extracted, &destination, &files, None, &mut journal, &task).is_err(),
+            "a cancelled deployment copied files anyway"
+        );
+        journal.rollback();
+        assert!(
+            !destination.exists(),
+            "the directory a cancelled install created is still there"
+        );
+        Ok(())
     }
 
     #[test]

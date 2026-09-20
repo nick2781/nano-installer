@@ -30,11 +30,16 @@ operation ceiling, so a runaway loop cannot hang an installation.
 | `set_progress(percent)` | Sets progress, 0-100; out-of-range values are clamped |
 | `set_status(text)` | Shows literal text, not translated |
 | `set_status_key(key)` | Shows the localized text for a locale key, follows language switches |
-| `is_cancelled()` | Always `false`; the wizard refuses to close while a task runs |
+| `is_cancelled()` | `true` once the user asked the running task to stop |
 | `get_install_path()` | Current install directory |
 | `get_checkbox_value(id)` | Reads a checkbox; use the layout id for install (`chkShotcut`) and `keep_data` for uninstall |
 | `get_mode()` | `"install"` or `"uninstall"` |
 | `log_info(text)`, `log_warn(text)`, `log_error(text)` | Write to the script log |
+
+A `cancel` button, or the close question answered with Yes, asks the running task to stop. The
+runtime then gives up at the checkpoint after the step that is running and undoes what it wrote, so
+a script that would rather end a long step of its own early asks `is_cancelled()` in its loop and
+returns by itself. See [actions](XML_LAYOUT_GUIDE.md#actions).
 
 Scripts have no console. On failure the runtime appends the last 32 log lines to the error the
 wizard shows.

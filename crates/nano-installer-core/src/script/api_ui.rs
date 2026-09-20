@@ -14,9 +14,12 @@ pub(super) fn register(engine: &mut Engine, context: ScriptContext) {
     let c = context.clone();
     engine.register_fn("set_status_key", move |key: &str| c.status_key(key));
 
-    // The wizard refuses to close while a task runs, so the user has no way to
-    // cancel mid-step. The primitive stays for scripts written against it.
-    engine.register_fn("is_cancelled", || -> bool { false });
+    // True once the user asked the running task to stop. The runtime gives up
+    // at the checkpoint after the step that is running, so a script that would
+    // rather stop in its own time -- between two files it deploys, say -- asks
+    // this and returns by itself.
+    let c = context.clone();
+    engine.register_fn("is_cancelled", move || c.cancellation().requested());
 
     let c = context.clone();
     engine.register_fn("get_install_path", move || -> String {

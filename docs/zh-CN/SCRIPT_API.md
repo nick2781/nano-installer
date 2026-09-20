@@ -25,11 +25,15 @@
 | `set_progress(percent)` | 设置进度，0-100，超出会截断 |
 | `set_status(text)` | 显示字面文本，不做翻译 |
 | `set_status_key(key)` | 显示 locale 键对应的文案，随语言切换 |
-| `is_cancelled()` | 恒为 `false`；任务运行期间向导拒绝关闭 |
+| `is_cancelled()` | 用户要求停掉当前任务后为 `true` |
 | `get_install_path()` | 当前安装目录 |
 | `get_checkbox_value(id)` | 读取复选框；安装用布局里的控件 id（如 `chkShotcut`），卸载用 `keep_data` |
 | `get_mode()` | `"install"` 或 `"uninstall"` |
 | `log_info(text)`、`log_warn(text)`、`log_error(text)` | 写入脚本日志 |
+
+`cancel` 按钮，或对关闭提问回答"是"，都会要求正在跑的任务停下。运行时随后在当前这一步走完的检查点
+放弃并撤回已经写下的内容，所以脚本想让自己的一步提前收尾时，就在循环里问 `is_cancelled()`，然后自己
+返回。见[动作](XML_LAYOUT_GUIDE.md#动作)。
 
 脚本没有控制台输出。失败时最后 32 行日志会附在向导显示的错误后面。
 

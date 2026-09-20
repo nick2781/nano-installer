@@ -3,7 +3,7 @@
 Every behaviour the documentation promises, and the automated case that holds it. A row names the
 cases that fail when that behaviour breaks; a behaviour with no row is one nobody is checking.
 
-`cargo test --locked --workspace` runs 208 cases: 154 in the core library, 19 that build a real setup
+`cargo test --locked --workspace` runs 213 cases: 158 in the core library, 20 that build a real setup
 and run it, 4 that read a project the way the builder does, 29 in the visual builder, and 2 in the
 extraction runtimes. The setup-level cases need real runtime executables built first, which is what
 `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `target/e2e-report.txt`.
@@ -12,8 +12,8 @@ extraction runtimes. The setup-level cases need real runtime executables built f
 
 | Layer | Cases | Proves | Cannot prove |
 | --- | --- | --- | --- |
-| Core library | 154 | what a page becomes — layers, coordinates, hit regions, text — what the bundle carries, what an install writes to disk and the registry, and what each script primitive does | that a packaged setup reaches any of it |
-| Setup end to end | 19 | a built setup installed on the machine: payload bytes, manifest, uninstall entry, shortcuts, autostart, project scripts, the wizard window | anything that needs a click |
+| Core library | 158 | what a page becomes — layers, coordinates, hit regions, text — what the bundle carries, what an install writes to disk and the registry, and what each script primitive does | that a packaged setup reaches any of it |
+| Setup end to end | 20 | a built setup installed on the machine: payload bytes, manifest, uninstall entry, shortcuts, autostart, project scripts, the wizard window | anything that needs a click |
 | Project inspection | 4 | the summary and the warning list the builder shows before a build | |
 | Visual builder | 29 | the window's own state, parameters, log and warnings | clicking the real controls |
 | Extraction runtimes | 2 | a broken archive, and an unsafe path inside one, are refused | extracting an archive that is sound -- the setup-level cases run a real runtime over a real payload |
@@ -83,6 +83,7 @@ extraction runtimes. The setup-level cases need real runtime executables built f
 | the pointer answers only where an action is declared | `an_element_answers_the_pointer_only_when_it_declares_an_action` |
 | the folder picker's target | `pick_directory_writes_to_the_field_the_page_offers_it`, `pick_directory_falls_back_to_the_layout_text_input` |
 | window placement and scaling | `a_window_is_centred_and_clamped_to_its_work_area`, `a_placed_window_is_pulled_back_inside_its_work_area`, `a_display_scales_the_layout_by_its_own_dpi` |
+| stopping the running task from the window (a `cancel` button, a confirmed `close_confirm`) | `a_cancel_button_stops_the_project_script_and_leaves_nothing_installed` |
 | the example project's own pages | `taptap_first_page_places_controls_at_192_dpi`, `taptap_uninstaller_buttons_have_distinct_hit_regions`, `progress_pages_render_every_control_they_declare` |
 
 ## Project scripts
@@ -98,7 +99,7 @@ setup-level case proves the `scripts` directory survives packaging.
 | file and path primitives | `file_primitives_create_copy_list_and_remove_files`, `path_primitives_join_split_and_name_paths` |
 | registry primitives, including the shared-key rule | `registry_primitives_round_trip_and_forget_a_key_they_created`, `uninstalling_a_shared_key_removes_only_the_value_the_script_wrote` |
 | shortcut primitives | `an_install_script_creates_shortcuts_the_uninstall_takes_back`, `a_script_deletes_the_desktop_shortcut_and_the_start_menu_folder_it_created` |
-| progress, status, mode, checkboxes and cancellation | `out_of_range_progress_and_both_status_forms_do_not_disturb_the_install`, `an_uninstall_script_sees_the_uninstall_mode_and_the_keep_data_checkbox`, `a_script_step_text_wins_over_the_locale_key`, `a_built_in_step_clears_a_script_step_text` |
+| progress, status, mode, checkboxes and cancellation | `out_of_range_progress_and_both_status_forms_do_not_disturb_the_install`, `an_uninstall_script_sees_the_uninstall_mode_and_the_keep_data_checkbox`, `a_script_step_text_wins_over_the_locale_key`, `a_built_in_step_clears_a_script_step_text`, `a_running_script_sees_the_cancel_request`, `a_cancelled_install_gives_up_after_the_script_and_undoes_what_it_wrote` |
 | environment, configuration, drives and the running image | `the_script_reads_the_environment_and_the_project_configuration`, `the_script_reports_the_image_it_runs_from`, `the_script_queries_fixed_disks_and_notifies_the_shell` |
 | processes | `a_script_runs_a_command_and_sees_its_exit_code`, `a_script_recognises_a_running_process_by_its_image_name` |
 | keeping or deleting user data | `uninstalling_below_appdata_removes_the_data_only_when_the_box_is_cleared` |
@@ -113,6 +114,7 @@ setup-level case proves the `scripts` directory survives packaging.
 | refusing to install over a directory it did not create | `refuses_to_install_over_a_directory_it_did_not_create`, `refuses_a_foreign_manifest_at_the_destination`, `refuses_relative_or_root_installation` |
 | upgrade: replacing the version, dropping stale files, keeping foreign ones | `an_upgrade_replaces_the_previous_version_and_drops_stale_files`, `installing_over_an_existing_installation_drops_stale_files`, `an_upgrade_keeps_a_file_the_payload_does_not_own` |
 | rollback on failure | `a_failed_upgrade_restores_the_previous_version`, `removes_a_fresh_install_whose_registration_fails` |
+| cancellation: the task gives up at a checkpoint and undoes what it wrote | `a_cancel_request_stops_the_checkpoints_that_follow_it`, `a_cancelled_deployment_writes_nothing` |
 | uninstall removes the product, the registration and the directory | `uninstalling_removes_the_product_the_registration_and_the_directory` |
 | uninstall keeps a directory holding user files | `uninstall_keeps_a_directory_that_still_holds_user_files` |
 | shortcut and autostart bookkeeping | `a_silent_install_writes_the_shortcuts_and_the_autostart_entry`, `removes_recorded_shortcuts_and_only_their_empty_folder`, `drops_the_shortcut_folder_once_it_is_empty` |

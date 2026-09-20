@@ -14,7 +14,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use super::Mode;
 use crate::install::{
-    delete_registry_key, delete_registry_value, registry_path, PreviousInstall, RollbackJournal,
+    delete_registry_key, delete_registry_value, registry_path, Cancellation, PreviousInstall,
+    RollbackJournal,
 };
 use crate::BundleIndex;
 
@@ -99,6 +100,8 @@ struct Inner {
     /// The installation this run replaces, when it is an upgrade.
     previous: Option<PreviousInstall>,
     bundle: BundleIndex,
+    /// Set once the user has asked this task to stop.
+    cancel: Cancellation,
 }
 
 /// Handle the Rhai primitives share with the driver.
@@ -121,6 +124,8 @@ pub(super) struct ScriptEnvironment {
     pub(super) bundle: BundleIndex,
     /// Scratch directory the caller owns for the duration of the script.
     pub(super) stage: PathBuf,
+    /// The task this script is part of, so it can be asked to stop.
+    pub(super) cancel: Cancellation,
     /// Filled in by `super::begin`, which creates the destination.
     pub(super) journal: Option<RollbackJournal>,
 }
@@ -142,6 +147,7 @@ impl ScriptContext {
                 manifest: environment.manifest,
                 previous: environment.previous,
                 bundle: environment.bundle,
+                cancel: environment.cancel,
             }),
             state: Arc::new(Mutex::new(ScriptState {
                 journal,
@@ -178,6 +184,11 @@ impl ScriptContext {
 
     pub(super) fn bundle(&self) -> &BundleIndex {
         &self.inner.bundle
+    }
+
+    /// The task this script is part of, so `is_cancelled` can ask it.
+    pub(super) fn cancellation(&self) -> &Cancellation {
+        &self.inner.cancel
     }
 
     pub(super) fn install_path(&self) -> PathBuf {

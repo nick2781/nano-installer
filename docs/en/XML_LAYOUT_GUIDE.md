@@ -215,20 +215,21 @@ The runtime draws no element when it, or any ancestor, has `visible="false"`.
 | Action | Behaviour |
 | --- | --- |
 | `minimize` | Minimizes the window |
-| `close` | Closes immediately |
-| `close_confirm` | Opens the skinned confirmation drawn from `ui.dialog_layout`, then closes on Yes |
+| `close` | Closes immediately; while a task runs the click is ignored, because the task owns the window until it ends |
+| `close_confirm` | Opens the skinned confirmation drawn from `ui.dialog_layout`, then closes on Yes, or stops the running task on Yes |
 | `pick_directory` | Opens the Windows folder picker and writes the result into a TextInput, see [Folder picker](#folder-picker) |
 | `open_url:<key>` | Opens the URL configured under that `links` key |
 | `open_url:<https://...>` | Opens the URL as written |
-| `install` | Starts the install task, switches to the second page, and reports progress |
-| `uninstall` | Starts the uninstall task, switches to the second page, and reports progress |
+| `install` | Starts the install task, switches to the page that reports it, and reports progress there |
+| `uninstall` | Starts the uninstall task, switches to the page that reports it, and reports progress there |
 | `launch_app` | Launches the executable this installation deployed, from its own directory |
 | `finish` | Same as `close`, intended for the finish page |
+| `cancel` | Stops the task that is running; with nothing running it closes the wizard |
 | `switch_language` | Expands the language list and switches the locale on selection |
 | `next` | Switches to the next page the project declares |
 | `back` | Switches to the previous page it declares |
 | `toggle_panel:<id>:show/hide` | Shows or hides a target panel and switches the paired show/hide control |
-| `dialog_ok` | Confirms the open dialog: a close question exits the setup, a notice just closes |
+| `dialog_ok` | Confirms the open dialog: a close question stops the running task or exits the setup, a notice just closes |
 | `dialog_cancel` | Dismisses the open dialog and returns to the page under it |
 
 A project that declares more than one page walks it with `next` and `back`: the first page has
@@ -237,6 +238,12 @@ around. The task itself reports on the second page and ends on the last one, unl
 otherwise with `role` -- `progress` marks the page a task reports on and `finish` the page it ends
 on, which is how a licence page or an options page gets in front of the task. The roles are
 described under [files, languages, and pages](CONFIG_REFERENCE.md#files-languages-and-pages).
+
+A task can also be stopped while it runs. `cancel` does it on the spot, and answering the
+`close_confirm` question with Yes does the same, because a click may not leave a half-installed
+product behind: the task gives up at the checkpoint after the step it is on, undoes what it has
+written, and the wizard returns to the page the task started from. A script sees the same request
+through `is_cancelled()` and can end a long step of its own, see the [script API](SCRIPT_API.md).
 
 ## Dialogs
 
