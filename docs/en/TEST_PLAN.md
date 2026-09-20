@@ -35,10 +35,16 @@ the output with its result lines coloured. A case row says what that case holds,
 comment above it in the sources or its own name when it carries none, and which behaviours and
 settings [Test coverage](TEST_COVERAGE.md) says break when it fails. The page keeps its two readings
 of one run tied together: a target's row links to the cases that ran in it, and the closing note
-states the totals the case rows and the result lines agree on. Once
+states the totals the case rows and the result lines agree on. A behaviour card lists every
+behaviour that document names, with the cases this run ran for it and how those cases ended, so a
+behaviour whose cases it names but which ran none reads not run; the part of the document that
+admits no case covers a thing sits in the same card, which states what was not tested rather than
+leaving it to be assumed. Once
 `scripts/capture_setup_snapshots.ps1` has photographed a real setup, the page shows those pages too,
-each with what the capture measured on it; that capture needs a desktop session, so a build agent's
-page has none.
+each captioned with its size, language, display scaling and the layout file it was drawn from, and
+with what the capture measured on it; the capture photographs the wizard's first page only, so the
+later pages have no photograph. That capture needs a desktop session, so a build agent's page has
+none.
 
 The CI job keeps both as the `test-report` artifact, and `run_e2e_setup.ps1` writes the same pair as
 `target/e2e-report.html` and `target/e2e-report.txt`. The setup-level cases build and run real

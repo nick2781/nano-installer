@@ -4,8 +4,9 @@
     The scripts that run a suite keep two files per run: the plain text report,
     which is what a log, a diff or a grep reads, and this page, which is what a
     person reads. The page carries a verdict, the run's fields, a figure per
-    outcome, every case that failed first, one row per target, one row per case
-    with what that case holds and how it ended, the pages a capture
+    outcome, every case that failed first, one row per target, one row per
+    behaviour the coverage document promises with what this run ran for it, one
+    row per case with what that case holds and how it ended, the pages a capture
     photographed, and the suite's own output with its result lines coloured --
     so a failure is visible without reading any of it. The tables tell one
     story: a target's row points at the cases that ran in it, and a failing case
@@ -64,12 +65,15 @@ function Get-ReportLineClass {
     return ""
 }
 
-# The class a case's outcome wears, in the cases table and in the output.
+# The class an outcome wears, in the cases table, the behaviour card and the
+# output. An outcome that is not an outcome -- a behaviour no case ran for --
+# is dimmed rather than coloured like a pass.
 function Get-ReportToneClass {
     param([string]$Result)
 
     if ($Result -eq "FAILED") { return "t-bad" }
     if ($Result -eq "ignored") { return "t-skip" }
+    if (-not $Result) { return "t-missing" }
     return "t-ok"
 }
 
@@ -84,6 +88,9 @@ function Write-ReportHtml {
         [array]$Stats = @(),
         [array]$Tables = @(),
         [array]$Cases = @(),
+        [array]$Coverage = @(),
+        [array]$Uncovered = @(),
+        [string]$CoverageIntro = "",
         [array]$Images = @(),
         [array]$Sections = @(),
         [array]$Notes = @(),
@@ -109,6 +116,9 @@ function Write-ReportHtml {
     $resultColumn = Get-ReportPhrase -Text $Text -Key "cases.column.result"
     $whatColumn = Get-ReportPhrase -Text $Text -Key "cases.column.what"
     $targetColumn = Get-ReportPhrase -Text $Text -Key "cases.column.target"
+    $coverageHeading = Get-ReportPhrase -Text $Text -Key "coverage.heading"
+    $coverageBehaviourColumn = Get-ReportPhrase -Text $Text -Key "coverage.column.behaviour"
+    $coverageCasesColumn = Get-ReportPhrase -Text $Text -Key "coverage.column.cases"
 
     # The verdict is said in the report's language, while the pill keeps the
     # machine's own word for the style that colours it.
@@ -192,6 +202,13 @@ tr.row-bad td:first-child { box-shadow: inset 2px 0 0 var(--bad); }
 .case-note { display: block; color: var(--faint); font-size: 11.5px; font-weight: 400; }
 .protects { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { border: 1px solid var(--border); border-radius: 9999px; padding: 1px 8px; font-size: 11px; color: var(--faint); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.intro { margin: 0 0 16px; color: var(--muted); font-size: 13px; }
+.t-missing { color: var(--faint); font-weight: 600; }
+.cov-name { font-size: 12.5px; overflow-wrap: anywhere; }
+.cov-cases { font-size: 12px; }
+.cov-case { display: inline-block; margin: 0 12px 4px 0; }
+.cov-case .mono { font-size: 12px; }
+.cov-case .t-ok, .cov-case .t-bad, .cov-case .t-skip, .cov-case .t-missing { font-size: 11px; }
 details { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 summary { cursor: pointer; padding: 10px 12px; font-size: 12.5px; color: var(--muted); background: var(--code); }
 details[open] summary { border-bottom: 1px solid var(--border); }
@@ -364,6 +381,72 @@ footer p { margin: 0 0 6px; }
         $html.Add("</tbody>")
         $html.Add("</table>")
         $html.Add("</div>")
+        $html.Add("</section>")
+    }
+
+    # What the run did with each behaviour the coverage document promises: the
+    # document names the cases that hold a behaviour, this run says how those
+    # cases ended, and a behaviour none of whose cases ran is named as such. The
+    # part of the document that admits no case covers a thing closes the card,
+    # where whoever looks for it finds it rather than reading it as a promise.
+    if ($Coverage.Count -gt 0 -or $Uncovered.Count -gt 0) {
+        $coverageTotal = 0
+        $coverageMissing = 0
+        foreach ($row in $Coverage) {
+            $coverageTotal++
+            if (-not $row.Verdict) { $coverageMissing++ }
+        }
+        $coverageGroups = New-Object System.Collections.Generic.List[object]
+        $currentGroup = $null
+        foreach ($row in $Coverage) {
+            if ($null -eq $currentGroup -or $currentGroup.Section -ne $row.Section) {
+                $currentGroup = @{ Section = $row.Section; Rows = (New-Object System.Collections.Generic.List[object]) }
+                $coverageGroups.Add($currentGroup)
+            }
+            $currentGroup.Rows.Add($row)
+        }
+
+        $html.Add("<section class=""card"">")
+        $coverageCount = Get-ReportPhrase -Text $Text -Key "coverage.summary" -Values @($coverageTotal)
+        if ($coverageMissing -gt 0) {
+            $separator = Get-ReportPhrase -Text $Text -Key "counts.separator"
+            $missingText = Get-ReportPhrase -Text $Text -Key "coverage.missing" -Values @($coverageMissing)
+            $coverageCount = "$coverageCount$separator$missingText"
+        }
+        $html.Add("<h2>$(ConvertTo-ReportHtml $coverageHeading) <span class=""count"">$(ConvertTo-ReportHtml $coverageCount)</span></h2>")
+        if ($CoverageIntro) {
+            $html.Add("<p class=""intro"">$(ConvertTo-ReportHtml $CoverageIntro)</p>")
+        }
+        foreach ($group in $coverageGroups) {
+            $groupCount = Get-ReportPhrase -Text $Text -Key "coverage.summary" -Values @($group.Rows.Count)
+            $html.Add("<h3>$(ConvertTo-ReportHtml $group.Section) <span class=""count"">$(ConvertTo-ReportHtml $groupCount)</span></h3>")
+            $html.Add("<div class=""scroll-x"">")
+            $html.Add("<table>")
+            $html.Add("<thead><tr><th scope=""col"">$(ConvertTo-ReportHtml $coverageBehaviourColumn)</th><th scope=""col"">$(ConvertTo-ReportHtml $resultColumn)</th><th scope=""col"">$(ConvertTo-ReportHtml $coverageCasesColumn)</th></tr></thead>")
+            $html.Add("<tbody>")
+            foreach ($row in $group.Rows) {
+                $html.Add("<tr>")
+                $html.Add("<td class=""cov-name mono"">$(ConvertTo-ReportHtml $row.Behaviour)</td>")
+                $html.Add("<td class=""$(Get-ReportToneClass $row.Verdict)"">$(ConvertTo-ReportHtml (Get-ReportResultLabel -Text $Text -Result $row.Verdict))</td>")
+                $html.Add("<td class=""cov-cases"">")
+                foreach ($case in $row.Cases) {
+                    $html.Add("<span class=""cov-case""><span class=""mono"">$(ConvertTo-ReportHtml $case.Name)</span> <span class=""$(Get-ReportToneClass $case.Result)"">$(ConvertTo-ReportHtml (Get-ReportResultLabel -Text $Text -Result $case.Result))</span></span>")
+                }
+                $html.Add("</td>")
+                $html.Add("</tr>")
+            }
+            $html.Add("</tbody>")
+            $html.Add("</table>")
+            $html.Add("</div>")
+        }
+        foreach ($group in $Uncovered) {
+            $html.Add("<h3>$(ConvertTo-ReportHtml $group.Section)</h3>")
+            $html.Add("<ul class=""notes"">")
+            foreach ($line in $group.Lines) {
+                $html.Add("<li>$(ConvertTo-ReportHtml $line)</li>")
+            }
+            $html.Add("</ul>")
+        }
         $html.Add("</section>")
     }
 

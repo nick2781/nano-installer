@@ -6,11 +6,13 @@
     inspection, the visual builder, and the runtimes. Both reports keep the
     commit, the toolchain, the command, the whole output, one row per target, one
     row per case -- and the page also points a target at the cases that ran in
-    it -- and the totals in target/test-report.txt and
+    it, and lists every behaviour the coverage document promises with what this
+    run ran for it -- and the totals in target/test-report.txt and
     target/test-report.html, so a result can still be read after the terminal
     that produced it is gone. The text file is what a log, a diff or a grep
-    reads; the page is what a person reads, and it shows each case with what it
-    holds. A CI job keeps both as an artifact.
+    reads; the page is what a person reads: it shows each case with what it
+    holds, and names the behaviours nothing ran for. A CI job keeps both as an
+    artifact.
 
     The words both reports say come from report_text.json, chosen by -Language,
     which defaults to zh-CN. The case names, the doc comments above them and the
@@ -178,6 +180,9 @@ $rows = New-Object System.Collections.Generic.List[object]
 $rowTargets = New-Object System.Collections.Generic.List[string]
 $rowLayers = New-Object System.Collections.Generic.List[string]
 $caseGroups = New-Object System.Collections.Generic.List[object]
+# Every case this run reported, by name, for the behaviour card: the coverage
+# document names a case by its function or by the whole path it sits at.
+$caseResults = @{}
 $cases = $null
 $target = "the suite"
 foreach ($line in $printed) {
@@ -194,6 +199,7 @@ foreach ($line in $printed) {
         continue
     }
     if ($line -match "^test ([A-Za-z0-9_:]+) \.\.\. (ok|FAILED|ignored)(?:,\s*(.*))?$") {
+        Add-CaseResult -Results $caseResults -Path $Matches[1] -Result $Matches[2]
         if ($null -ne $cases) {
             $note = ""
             if ($Matches.ContainsKey(3)) { $note = $Matches[3] }
@@ -251,6 +257,14 @@ for ($index = 0; $index -lt $rows.Count; $index++) {
     $rows[$index][0] = (New-ReportCell $layerName "" "" $layerAnchor[$layerName])
 }
 Write-Phase "layer table read: $($layers.Count) layer(s)"
+
+# The page says what was tested, not only what passed: every behaviour the
+# coverage document promises, the cases it names for that behaviour, and how
+# those cases ran this time -- including the behaviours none of whose cases ran
+# at all, and the part of the document where it admits nobody checks a thing.
+$coverageDocument = Get-TestCoverage -RepoRoot $repoRoot -Language $Language
+$behaviourRows = Get-BehaviourRows -Coverage $coverageDocument.Rows -Results $caseResults
+Write-Phase "coverage read: $($behaviourRows.Count) behaviour(s), $($coverageDocument.Uncovered.Count) uncovered section(s)"
 
 $groups = New-Object System.Collections.Generic.List[object]
 foreach ($group in $caseGroups) {
@@ -369,6 +383,9 @@ Write-ReportHtml -Path $htmlPath -Title (Get-ReportPhrase -Text $text -Key "titl
         }
     ) `
     -Cases $groups.ToArray() `
+    -Coverage $behaviourRows `
+    -Uncovered $coverageDocument.Uncovered `
+    -CoverageIntro (Get-ReportPhrase -Text $text -Key "coverage.intro" -Values @($documentPath)) `
     -Images $images `
     -Sections @(@{ Heading = (Get-ReportPhrase -Text $text -Key "output.heading"); Summary = "$ $suiteCommand"; Lines = $printed; Open = ($verdict -eq "failed") }) `
     -Notes $notes.ToArray()

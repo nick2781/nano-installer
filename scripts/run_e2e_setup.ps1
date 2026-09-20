@@ -7,9 +7,10 @@
     builder embeds. This builds them first, then runs the suite, and leaves
     target/e2e-report.txt holding the commit it ran against, the commands, the
     whole output and the summary line, and target/e2e-report.html with the same
-    run as a page -- each case with what it holds and how it ended, and the pages
-    a capture photographed -- so a result can still be read after the terminal
-    that produced it is gone. A CI job keeps both files as artifacts.
+    run as a page -- each case with what it holds and how it ended, every
+    behaviour the coverage document promises that this suite ran a case for, and
+    the pages a capture photographed -- so a result can still be read after the
+    terminal that produced it is gone. A CI job keeps both files as artifacts.
 
     The words both reports say come from report_text.json, chosen by -Language,
     which defaults to zh-CN. The case names, the doc comments above them and the
@@ -191,8 +192,12 @@ foreach ($layer in $layers) {
     ))
 }
 $caseRows = New-Object System.Collections.Generic.List[object]
+# Every case this run reported, by name, for the behaviour card: the coverage
+# document names a case by its function or by the whole path it sits at.
+$caseResults = @{}
 foreach ($line in $suiteLines) {
     if ($line -match "^test ([A-Za-z0-9_:]+) \.\.\. (ok|FAILED|ignored)(?:,\s*(.*))?$") {
+        Add-CaseResult -Results $caseResults -Path $Matches[1] -Result $Matches[2]
         $note = ""
         if ($Matches.ContainsKey(3)) { $note = $Matches[3] }
         $caseRows.Add((Get-CaseRow -Catalog $catalog -Path $Matches[1] -Result $Matches[2] -Note $note))
@@ -210,6 +215,12 @@ if ($caseRows.Count -gt 0) {
     $caseHeading = Get-ReportPhrase -Text $text -Key "cases.group" -Values @((Get-ReportPhrase -Text $text -Key "layer.e2e"), "tests\e2e_setup.rs")
     $caseGroups = @(@{ Target = $caseHeading; Counts = $caseCounts; Rows = $caseRows.ToArray() })
 }
+
+# This suite holds one layer of what the coverage document promises, so the
+# behaviour card says which of those behaviours it ran a case for and how that
+# case ran; the rest of the document belongs to the suites that hold it.
+$coverageDocument = Get-TestCoverage -RepoRoot $repoRoot -Language $Language
+$behaviourRows = Select-BehaviourRow -Rows (Get-BehaviourRows -Coverage $coverageDocument.Rows -Results $caseResults)
 
 $images = @(Get-SnapshotGallery -Directory (Join-Path $repoRoot "target/setup-snapshots") -Text $text)
 $verdict = "passed"
@@ -229,6 +240,9 @@ Write-ReportHtml -Path $htmlPath -Title (Get-ReportPhrase -Text $text -Key "titl
     -Subtitle (Get-ReportPhrase -Text $text -Key "subtitle.runat" -Values @($runAt)) `
     -Language $Language -Text $text -Guide $guide `
     -Verdict $verdict -Fields $fields -Stats $stats -Cases $caseGroups -Images $images `
+    -Coverage $behaviourRows `
+    -Uncovered $coverageDocument.Uncovered `
+    -CoverageIntro (Get-ReportPhrase -Text $text -Key "coverage.intro.partial" -Values @($documentPath)) `
     -Tables @(@{
         Heading = (Get-ReportPhrase -Text $text -Key "layers.heading")
         Headers = @(
