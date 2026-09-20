@@ -53,7 +53,7 @@ function Invoke-NativeStep {
     finally {
         $ErrorActionPreference = $previous
     }
-    return @{ Output = @($output | ForEach-Object { "$_" }); ExitCode = $code }
+    return @{ Output = @($output | ForEach-Object { ConvertTo-ReportLine "$_" }); ExitCode = $code }
 }
 
 # The report says what it was run against, so a green result cannot be read as a

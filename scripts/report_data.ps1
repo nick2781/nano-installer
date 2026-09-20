@@ -13,6 +13,19 @@
       setup and what the capture measured on each of them.
 #>
 
+# A tool that colours its own status lines writes escape sequences, and a line
+# captured from a console can keep the carriage return that ended it. Neither
+# belongs in a report, and both get in the way of reading a line: the escape
+# sequences in front of cargo's "Running" line stopped this project's own
+# reports from grouping the cases under the target that ran them on a build
+# agent, where cargo is told to colour its output.
+function ConvertTo-ReportLine {
+    param([string]$Line)
+
+    $plain = [regex]::Replace($Line, "$([char]27)\[[0-9;?]*[A-Za-z]", "")
+    return $plain.TrimEnd([char]13)
+}
+
 # A case that has no doc comment is still readable: its name is a sentence
 # spelled with underscores.
 function ConvertTo-CaseSentence {
