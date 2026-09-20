@@ -17,8 +17,9 @@ which the CI job keeps as an artifact:
 .\scripts\run_e2e_setup.ps1 -RequireDesktop    # on a machine with a desktop session
 ```
 
-The report names the commit it ran against, the commands, the requirements and the summary line, so
-a result can still be read after the terminal that produced it is gone. The script sets
+The report names the commit it ran against, the commands, the requirements and the summary line, and
+lists every case the suite printed with what that case holds, so a result can still be read after
+the terminal that produced it is gone. The script sets
 `NANO_INSTALLER_E2E_REQUIRE_STUBS=1` itself; `-RequireDesktop` adds the desktop requirement.
 
 The whole workspace suite runs through a script too, and writes the same kind of report:
@@ -29,8 +30,17 @@ The whole workspace suite runs through a script too, and writes the same kind of
 
 `target/test-report.txt` holds the commit, the toolchain, the command, the whole output, the result
 line of every target and the totals, and `target/test-report.html` is the same run as a page: a
-verdict, a figure per outcome, a row per target and the output with its result lines coloured. The CI
-job keeps both as the `test-report` artifact, and `run_e2e_setup.ps1` writes the same pair as
+verdict, a figure per outcome, every case that failed first, a row per target, one row per case and
+the output with its result lines coloured. A case row says what that case holds, which is the doc
+comment above it in the sources or its own name when it carries none, and which behaviours and
+settings [Test coverage](TEST_COVERAGE.md) says break when it fails. The page keeps its two readings
+of one run tied together: a target's row links to the cases that ran in it, and the closing note
+states the totals the case rows and the result lines agree on. Once
+`scripts/capture_setup_snapshots.ps1` has photographed a real setup, the page shows those pages too,
+each with what the capture measured on it; that capture needs a desktop session, so a build agent's
+page has none.
+
+The CI job keeps both as the `test-report` artifact, and `run_e2e_setup.ps1` writes the same pair as
 `target/e2e-report.html` and `target/e2e-report.txt`. The setup-level cases build and run real
 installers, so they need the runtime executables the builder embeds and skip without them; a full
 check runs both scripts.

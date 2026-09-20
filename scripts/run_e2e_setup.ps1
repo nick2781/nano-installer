@@ -7,8 +7,9 @@
     builder embeds. This builds them first, then runs the suite, and leaves
     target/e2e-report.txt holding the commit it ran against, the commands, the
     whole output and the summary line, and target/e2e-report.html with the same
-    run as a page, so a result can still be read after the terminal that
-    produced it is gone. A CI job keeps both files as artifacts.
+    run as a page -- each case with what it holds and how it ended, and the pages
+    a capture photographed -- so a result can still be read after the terminal
+    that produced it is gone. A CI job keeps both files as artifacts.
 
     NANO_INSTALLER_E2E_REQUIRE_STUBS is set here, because a run in which every
     case skipped must not read as a pass. -RequireDesktop adds
@@ -33,6 +34,7 @@ if (-not [System.IO.Path]::IsPathRooted($reportPath)) {
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $reportPath) | Out-Null
 $htmlPath = [System.IO.Path]::ChangeExtension($reportPath, ".html")
 . (Join-Path $PSScriptRoot "report_html.ps1")
+. (Join-Path $PSScriptRoot "report_data.ps1")
 
 $stubCommand = "cargo build --locked -p nano-installer-stub-lzma -p nano-installer-stub-zlib -p nano-installer-uninstaller"
 $suiteCommand = "cargo test --locked -p nano-installer-core --test e2e_setup"
@@ -155,16 +157,48 @@ $sections.Add(@{ Heading = "Runtime build"; Summary = "$ $stubCommand"; Lines = 
 if ($null -ne $suite) {
     $sections.Add(@{ Heading = "Suite"; Summary = "$ $suiteCommand"; Lines = $suite.Output; Open = ($code -ne 0) })
 }
+$suiteLines = @()
+if ($null -ne $suite) {
+    $suiteLines = @($suite.Output)
+}
+$catalog = Get-TestCatalog -RepoRoot $repoRoot
+$caseRows = New-Object System.Collections.Generic.List[object]
+foreach ($line in $suiteLines) {
+    if ($line -match "^test ([A-Za-z0-9_:]+) \.\.\. (ok|FAILED|ignored)(?:,\s*(.*))?$") {
+        $note = ""
+        if ($Matches.ContainsKey(3)) { $note = $Matches[3] }
+        $caseRows.Add((Get-CaseRow -Catalog $catalog -Path $Matches[1] -Result $Matches[2] -Note $note))
+    }
+}
+$caseGroups = @()
+$casePassed = 0
+$caseFailed = 0
+$caseIgnored = 0
+if ($caseRows.Count -gt 0) {
+    $casePassed = @($caseRows | Where-Object { $_.Result -eq "ok" }).Count
+    $caseFailed = @($caseRows | Where-Object { $_.Result -eq "FAILED" }).Count
+    $caseIgnored = @($caseRows | Where-Object { $_.Result -eq "ignored" }).Count
+    $caseCounts = "$casePassed passed"
+    if ($caseFailed -gt 0) { $caseCounts = "$caseCounts, $caseFailed failed" }
+    if ($caseIgnored -gt 0) { $caseCounts = "$caseCounts, $caseIgnored ignored" }
+    $caseGroups = @(@{ Target = "tests\e2e_setup.rs"; Counts = $caseCounts; Rows = $caseRows.ToArray() })
+}
+
+$images = @(Get-SnapshotGallery -Directory (Join-Path $repoRoot "target/setup-snapshots"))
 $verdict = "passed"
 if ($code -ne 0 -or $null -eq $suite) { $verdict = "failed" }
-$notes = @(
-    "The suite writes its own project, builds a setup, runs it, and then runs the uninstaller it deployed.",
-    "NANO_INSTALLER_E2E_REQUIRE_STUBS makes a run in which every case skipped read as a failure.",
-    "target/e2e-report.txt next to this page holds the same run as plain text."
-)
+$notes = New-Object System.Collections.Generic.List[string]
+$notes.Add("The suite writes its own project, builds a setup, runs it, and then runs the uninstaller it deployed.")
+$notes.Add("NANO_INSTALLER_E2E_REQUIRE_STUBS makes a run in which every case skipped read as a failure.")
+if ($caseRows.Count -gt 0) {
+    $notes.Add("Every case the suite printed is listed under Cases: $($caseRows.Count) case(s), $casePassed passed, $caseFailed failed, $caseIgnored ignored.")
+}
+$notes.Add("target/e2e-report.txt next to this page holds the same run as plain text.")
+$notes.Add("The page snapshots come from scripts/capture_setup_snapshots.ps1, which photographs a real setup and needs a desktop session; a machine without one shows none here.")
 
 Write-ReportHtml -Path $htmlPath -Title "Setup end-to-end suite" -Subtitle "run at $runAt" `
-    -Verdict $verdict -Fields $fields -Stats $stats -Sections $sections.ToArray() -Notes $notes
+    -Verdict $verdict -Fields $fields -Stats $stats -Cases $caseGroups -Images $images `
+    -Sections $sections.ToArray() -Notes $notes.ToArray()
 
 if ($null -ne $suite) {
     $suite.Output | ForEach-Object { Write-Output $_ }

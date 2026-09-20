@@ -4,11 +4,18 @@
     The suite is every case the workspace holds: the core library's unit cases,
     the setup-level cases that build and run a real installer, the project
     inspection, the visual builder, and the runtimes. Both reports keep the
-    commit, the toolchain, the command, the whole output, the result line of
-    every target and the totals in target/test-report.txt and
+    commit, the toolchain, the command, the whole output, one row per target, one
+    row per case -- and the page also points a target at the cases that ran in
+    it -- and the totals in target/test-report.txt and
     target/test-report.html, so a result can still be read after the terminal
     that produced it is gone. The text file is what a log, a diff or a grep
-    reads; the page is what a person reads. A CI job keeps both as an artifact.
+    reads; the page is what a person reads, and it shows each case with what it
+    holds. A CI job keeps both as an artifact.
+
+    The page shows the pages a real setup draws too, when
+    scripts/capture_setup_snapshots.ps1 has left snapshots in
+    target/setup-snapshots: that script needs a desktop session, so a build
+    agent has none and its report simply leaves that section out.
 
     The suite's output is captured rather than left on the console this script
     runs on, the same way scripts/run_e2e_setup.ps1 runs its commands. A build
@@ -21,7 +28,8 @@
     The exit code is cargo's own, so a caller can gate on it.
 #>
 param(
-    [string]$Report = "target/test-report.txt"
+    [string]$Report = "target/test-report.txt",
+    [string]$Snapshots = "target/setup-snapshots"
 )
 
 Set-StrictMode -Version Latest
@@ -35,6 +43,7 @@ if (-not [System.IO.Path]::IsPathRooted($reportPath)) {
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $reportPath) | Out-Null
 $htmlPath = [System.IO.Path]::ChangeExtension($reportPath, ".html")
 . (Join-Path $PSScriptRoot "report_html.ps1")
+. (Join-Path $PSScriptRoot "report_data.ps1")
 
 $suiteCommand = "cargo test --locked --workspace"
 
@@ -70,6 +79,17 @@ function Get-CommitDescription {
         return "$head with uncommitted changes"
     }
     return $head
+}
+
+function New-ReportCell {
+    param([string]$Text, [string]$Class = "", [string]$Title = "", [string]$Link = "", [string]$Sub = "")
+
+    $cell = @{ Text = $Text }
+    if ($Class) { $cell["Class"] = $Class }
+    if ($Title) { $cell["Title"] = $Title }
+    if ($Link) { $cell["Link"] = $Link }
+    if ($Sub) { $cell["Sub"] = $Sub }
+    return $cell
 }
 
 $toolchain = (Invoke-NativeStep { cargo --version }).Output -join "; "
@@ -125,26 +145,35 @@ $lines.Add("builds those and keeps its own report.")
 $lines.Add("exit code $code")
 [System.IO.File]::WriteAllLines($reportPath, $lines, (New-Object System.Text.UTF8Encoding($false)))
 
-# The page reads the same run: one row per target, from the "Running" line that
-# introduces a target to the "test result" line that closes it.
-function New-ReportCell {
-    param([string]$Text, [string]$Class = "", [string]$Title = "")
+$catalog = Get-TestCatalog -RepoRoot $repoRoot
 
-    $cell = @{ Text = $Text }
-    if ($Class) { $cell["Class"] = $Class }
-    if ($Title) { $cell["Title"] = $Title }
-    return $cell
-}
-
+# One pass over the output builds both tables: a target's row comes from the
+# "Running" line that introduces it and the "test result" line that closes it,
+# and every case line between them belongs to it.
 $rows = New-Object System.Collections.Generic.List[object]
+$rowTargets = New-Object System.Collections.Generic.List[string]
+$caseGroups = New-Object System.Collections.Generic.List[object]
+$cases = $null
 $target = "the suite"
 foreach ($line in $printed) {
     if ($line -match "^\s+Running (.+)$") {
         $target = $Matches[1]
+        $cases = New-Object System.Collections.Generic.List[object]
+        $caseGroups.Add(@{ Target = $target; Rows = $cases })
         continue
     }
     if ($line -match "^\s+Doc-tests (.+)$") {
         $target = "doc-tests $($Matches[1])"
+        $cases = New-Object System.Collections.Generic.List[object]
+        $caseGroups.Add(@{ Target = $target; Rows = $cases })
+        continue
+    }
+    if ($line -match "^test ([A-Za-z0-9_:]+) \.\.\. (ok|FAILED|ignored)(?:,\s*(.*))?$") {
+        if ($null -ne $cases) {
+            $note = ""
+            if ($Matches.ContainsKey(3)) { $note = $Matches[3] }
+            $cases.Add((Get-CaseRow -Catalog $catalog -Path $Matches[1] -Result $Matches[2] -Note $note))
+        }
         continue
     }
     if ($line -match "^test result: (ok|FAILED)\. (\d+) passed; (\d+) failed; (\d+) ignored;.*finished in (.+?)\s*$") {
@@ -161,8 +190,9 @@ foreach ($line in $printed) {
         }
         $stateClass = "t-ok"
         if ($state -eq "FAILED") { $stateClass = "t-bad" }
+        $rowTargets.Add($target)
         $rows.Add(@(
-            (New-ReportCell $name "" $binary),
+            (New-ReportCell $name "" $binary "" $binary),
             (New-ReportCell $state $stateClass),
             (New-ReportCell $passedHere),
             (New-ReportCell $failedHere),
@@ -172,9 +202,68 @@ foreach ($line in $printed) {
     }
 }
 
+$groups = New-Object System.Collections.Generic.List[object]
+foreach ($group in $caseGroups) {
+    if ($group.Rows.Count -eq 0) {
+        continue
+    }
+    $groupPassed = @($group.Rows | Where-Object { $_.Result -eq "ok" }).Count
+    $groupFailed = @($group.Rows | Where-Object { $_.Result -eq "FAILED" }).Count
+    $groupIgnored = @($group.Rows | Where-Object { $_.Result -eq "ignored" }).Count
+    $counts = "$groupPassed passed"
+    if ($groupFailed -gt 0) { $counts = "$counts, $groupFailed failed" }
+    if ($groupIgnored -gt 0) { $counts = "$counts, $groupIgnored ignored" }
+    $groups.Add(@{ Target = $group.Target; Counts = $counts; Rows = $group.Rows })
+}
+
+# A target row in the target table points at the cases that ran in it, so the
+# count a result line reports and the rows below it read as one story: the same
+# run, said twice, from two different readings of it.
+$anchorByTarget = @{}
+for ($index = 0; $index -lt $groups.Count; $index++) {
+    $anchorByTarget[$groups[$index].Target] = "#cases-$index"
+}
+$linked = 0
+while ($linked -lt $rows.Count) {
+    if ($anchorByTarget.ContainsKey($rowTargets[$linked])) {
+        $rows[$linked][0]["Link"] = $anchorByTarget[$rowTargets[$linked]]
+    }
+    $linked++
+}
+
+$snapshotDirectory = $Snapshots
+if (-not [System.IO.Path]::IsPathRooted($snapshotDirectory)) {
+    $snapshotDirectory = Join-Path $repoRoot $snapshotDirectory
+}
+$images = @(Get-SnapshotGallery -Directory $snapshotDirectory)
+
 $notes = New-Object System.Collections.Generic.List[string]
 if ($skipping.Count -gt 0) {
     $notes.Add("$($skipping.Count) case(s) reported skipping, and are listed above.")
+}
+# What the cases say happened and what the result lines say happened are two
+# readings of one output, so they are compared here: a case line this script
+# failed to read would otherwise leave both tables quietly short.
+$casesPassed = 0
+$casesFailed = 0
+$casesIgnored = 0
+foreach ($group in $groups) {
+    $casesPassed += @($group.Rows | Where-Object { $_.Result -eq "ok" }).Count
+    $casesFailed += @($group.Rows | Where-Object { $_.Result -eq "FAILED" }).Count
+    $casesIgnored += @($group.Rows | Where-Object { $_.Result -eq "ignored" }).Count
+}
+$caseTotal = $casesPassed + $casesFailed + $casesIgnored
+if ($casesPassed -eq $passed -and $casesFailed -eq $failed -and $casesIgnored -eq $ignored) {
+    $notes.Add("Every case the suite printed is listed under Cases: $caseTotal case(s), $casesPassed passed, $casesFailed failed, $casesIgnored ignored, which is what the run's own result lines report.")
+}
+else {
+    $notes.Add("The cases listed under Cases count $casesPassed passed, $casesFailed failed, $casesIgnored ignored, while the run's own result lines count $passed passed, $failed failed, $ignored ignored: a case line could not be read.")
+}
+if ($images.Count -gt 0) {
+    $notes.Add("The page snapshots come from scripts/capture_setup_snapshots.ps1, which photographs a real setup; the checks beside each one are what that capture measured on it.")
+}
+else {
+    $notes.Add("No page snapshots were found in target/setup-snapshots, so this report has none. scripts/capture_setup_snapshots.ps1 photographs a real setup and checks it, and needs a desktop session.")
 }
 $notes.Add("The setup-level cases build and run a real installer, so they need the runtime executables the builder embeds and skip without them; scripts/run_e2e_setup.ps1 builds those and keeps its own report.")
 $notes.Add("target/test-report.txt next to this page holds the same run as plain text.")
@@ -202,6 +291,8 @@ Write-ReportHtml -Path $htmlPath -Title "Workspace test suite" -Subtitle "run at
         Rows = $rows
         NumericFrom = 2
     }) `
+    -Cases $groups.ToArray() `
+    -Images $images `
     -Sections @(@{ Heading = "Output"; Summary = "$ $suiteCommand"; Lines = $printed; Open = ($verdict -eq "failed") }) `
     -Notes $notes.ToArray()
 

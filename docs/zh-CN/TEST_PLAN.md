@@ -16,7 +16,8 @@ cargo test --locked --workspace
 .\scripts\run_e2e_setup.ps1 -RequireDesktop    # 在有桌面会话的机器上
 ```
 
-报告里写明跑的是哪个提交、跑了哪些命令、开了哪些要求，以及最后那行统计，终端关掉之后还能回看。
+报告里写明跑的是哪个提交、跑了哪些命令、开了哪些要求，以及最后那行统计，并逐条列出套件打出来的
+用例和它守什么，终端关掉之后还能回看。
 `NANO_INSTALLER_E2E_REQUIRE_STUBS=1` 由脚本自己设；`-RequireDesktop` 再加上桌面会话那条要求。
 
 整个工作区套件也由一个脚本运行，并写出同类的报告：
@@ -26,8 +27,13 @@ cargo test --locked --workspace
 ```
 
 `target/test-report.txt` 里写明提交、工具链、命令、完整输出、每个目标的结果行和总计；
-`target/test-report.html` 是同一次运行的页面版：结论、各项计数、每个目标一行，以及带结果着色的完整
-输出。CI 作业把这两个文件都作为 `test-report` 产物留着，`run_e2e_setup.ps1` 也写出对应的一对：
+`target/test-report.html` 是同一次运行的页面版：结论、各项计数、失败的用例排在最前、每个目标一行、
+每条用例一行，以及带结果着色的完整输出。用例那一行写的是它守什么，取自源码里它上方的文档注释，
+没有注释就用用例名，另外还有[测试覆盖](TEST_COVERAGE.md)里说它失败就会坏掉的行为和配置项。
+页面把同一次运行的两个读法绑在一起：目标那一行链到在它里面跑过的用例，末尾的说明给出用例行与
+结果行一致的计数。跑过 `scripts/capture_setup_snapshots.ps1` 之后，页面还会贴出安装包真实页面的
+截图，并列出抓图时测到的每一项；抓图要有桌面会话，构建机上没有就不贴。CI 作业把这两个文件都作为
+`test-report` 产物留着，`run_e2e_setup.ps1` 也写出对应的一对：
 `target/e2e-report.html` 和 `target/e2e-report.txt`。安装包级用例会真的构建并运行安装包，所以需要
 构建器内嵌的那三个运行时，缺了就跳过；要完整检查就把两个脚本都跑一遍。
 

@@ -80,7 +80,8 @@ jobs:
       # target/test-report.txt and target/test-report.html and leaves both as
       # this job's artifact: the commit, the toolchain, the whole output, the
       # result line of every target and the totals. The page is the same run
-      # laid out for a reader.
+      # laid out for a reader: one row per case with what it holds, every
+      # failure first, and a target linked to the cases that ran in it.
       #
       # The script also keeps the suite off the step's console. A step is
       # finished when its output has closed, and the linker leaves a telemetry

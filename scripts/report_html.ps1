@@ -4,10 +4,15 @@
     The scripts that run a suite keep two files per run: the plain text report,
     which is what a log, a diff or a grep reads, and this page, which is what a
     person reads. The page carries a verdict, the run's fields, a figure per
-    outcome, one table per set of measurements, and the suite's own output with
-    its result lines coloured, so a failure is visible without reading any of
-    it. Everything is inline -- no network request, no script, no font file --
-    so the page works from a download folder, an artifact zip or a share.
+    outcome, every case that failed first, one row per target, one row per case
+    with what that case holds and how it ended, the pages a capture
+    photographed, and the suite's own output with its result lines coloured --
+    so a failure is visible without reading any of it. The tables tell one
+    story: a target's row points at the cases that ran in it, and a failing case
+    is listed both at the top and in place.
+    Everything is inline, images included: no network request, no script, no
+    font file, so the page works from a download folder, an artifact zip or a
+    share.
 
     The style follows the project's web language: solid surfaces, hairline
     borders, one blue accent, system fonts, and dark mode from the reader's
@@ -54,6 +59,15 @@ function Get-ReportLineClass {
     return ""
 }
 
+# The class a case's outcome wears, in the cases table and in the output.
+function Get-ReportToneClass {
+    param([string]$Result)
+
+    if ($Result -eq "FAILED") { return "t-bad" }
+    if ($Result -eq "ignored") { return "t-skip" }
+    return "t-ok"
+}
+
 function Write-ReportHtml {
     param(
         [string]$Path,
@@ -64,6 +78,8 @@ function Write-ReportHtml {
         [array]$Fields = @(),
         [array]$Stats = @(),
         [array]$Tables = @(),
+        [array]$Cases = @(),
+        [array]$Images = @(),
         [array]$Sections = @(),
         [array]$Notes = @()
     )
@@ -99,10 +115,13 @@ body {
   font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
   -webkit-font-smoothing: antialiased;
 }
-code, pre, kbd, summary { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+code, pre, kbd, summary, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 main { max-width: 60rem; margin: 0 auto; padding: 32px 16px 64px; }
 h1 { font-size: 30px; font-weight: 600; letter-spacing: -0.025em; margin: 0 0 6px; }
 h2 { font-size: 16px; font-weight: 600; letter-spacing: -0.025em; margin: 0 0 14px; }
+h3 { font-size: 13px; font-weight: 600; margin: 22px 0 8px; color: var(--fg); }
+h3:first-child { margin-top: 0; }
+.count { font-weight: 400; color: var(--faint); }
 a { color: var(--brand); }
 .eyebrow { margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--brand); }
 .head { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; justify-content: space-between; border-bottom: 1px solid var(--border); padding-bottom: 20px; margin-bottom: 24px; }
@@ -124,24 +143,43 @@ dl div { display: grid; grid-template-columns: 7.5rem 1fr; gap: 12px; align-item
 dt { color: var(--faint); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; }
 dd { margin: 0; overflow-wrap: anywhere; }
 table { width: 100%; border-collapse: collapse; }
-.scroll-x { overflow-x: auto; scrollbar-width: thin; }
 th { text-align: left; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); padding: 8px 10px; border-bottom: 1px solid var(--border); }
 th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
-td { padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 13px; }
+td { padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: top; }
 tbody tr:last-child td { border-bottom: 0; }
 .t-ok { color: var(--ok); font-weight: 600; }
 .t-bad { color: var(--bad); font-weight: 600; }
+.t-skip { color: var(--warn); font-weight: 600; }
+tr.row-bad td { background: color-mix(in srgb, var(--bad) 6%, transparent); }
+tr.row-bad td:first-child { box-shadow: inset 2px 0 0 var(--bad); }
+.scroll-x { overflow-x: auto; scrollbar-width: thin; }
+.scroll-y { max-height: 40rem; overflow-y: auto; scrollbar-width: thin; }
+.case-name { font-size: 12.5px; }
+.case-module, .sub { display: block; color: var(--faint); font-size: 11px; }
+.case-what { color: var(--muted); }
+.case-what p { margin: 0; }
+.case-note { display: block; color: var(--faint); font-size: 11.5px; font-weight: 400; }
+.protects { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px solid var(--border); border-radius: 9999px; padding: 1px 8px; font-size: 11px; color: var(--faint); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 details { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 summary { cursor: pointer; padding: 10px 12px; font-size: 12.5px; color: var(--muted); background: var(--code); }
 details[open] summary { border-bottom: 1px solid var(--border); }
 pre.log { margin: 0; padding: 14px 16px; max-height: 32rem; overflow: auto; font-size: 12.5px; line-height: 1.7; background: var(--surface); scrollbar-width: thin; }
 pre.log span { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
+pre.expectation { margin: 0; padding: 12px 14px; white-space: pre-wrap; font-size: 12px; line-height: 1.65; color: var(--muted); }
 .l-ok { color: var(--ok); }
 .l-good { color: var(--ok); font-weight: 600; }
 .l-fail { color: var(--bad); font-weight: 600; }
 .l-skip { color: var(--warn); }
 .l-warn { color: var(--warn); }
 .l-meta { color: var(--faint); }
+.snapshots { display: grid; gap: 24px; }
+figure { margin: 0; }
+figure img { display: block; width: 100%; height: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--code); }
+figcaption { margin-top: 10px; font-size: 12.5px; color: var(--muted); }
+figcaption .file { color: var(--faint); }
+ul.checks { margin: 8px 0 10px; padding-left: 18px; }
+ul.checks li { margin-bottom: 2px; }
 ul.notes { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13px; }
 ul.notes li { margin-bottom: 4px; }
 footer { border-top: 1px solid var(--border); margin-top: 24px; padding-top: 16px; color: var(--faint); font-size: 12px; }
@@ -188,6 +226,51 @@ footer p { margin: 0 0 6px; }
         $html.Add("</section>")
     }
 
+    # A failed case is what a reader looks for first, so every case that failed is
+    # listed before the tables, each one linked to its own row in the cases table
+    # below where its pattern sits among the cases that passed.
+    $failures = New-Object System.Collections.Generic.List[object]
+    $caseIndex = 0
+    foreach ($group in $Cases) {
+        $rowIndex = 0
+        foreach ($case in $group.Rows) {
+            if ($case.Result -eq "FAILED") {
+                $failures.Add(@{
+                    Anchor = "case-$caseIndex-$rowIndex"
+                    Name   = $case.Name
+                    Module = $case.Module
+                    Target = $group.Target
+                    What   = $case.What
+                })
+            }
+            $rowIndex++
+        }
+        $caseIndex++
+    }
+    if ($failures.Count -gt 0) {
+        $html.Add("<section class=""card"">")
+        $html.Add("<h2>Failures <span class=""count"">$(ConvertTo-ReportHtml "$($failures.Count) case(s)")</span></h2>")
+        $html.Add("<div class=""scroll-x"">")
+        $html.Add("<table>")
+        $html.Add("<thead><tr><th scope=""col"">Case</th><th scope=""col"">Ran in</th><th scope=""col"">What it checks</th></tr></thead>")
+        $html.Add("<tbody>")
+        foreach ($failure in $failures) {
+            $html.Add("<tr>")
+            $html.Add("<td class=""case-name mono""><a href=""#$($failure.Anchor)"">$(ConvertTo-ReportHtml $failure.Name)</a>")
+            if ($failure.Module) {
+                $html.Add("<span class=""case-module"">$(ConvertTo-ReportHtml $failure.Module)</span>")
+            }
+            $html.Add("</td>")
+            $html.Add("<td class=""case-what"">$(ConvertTo-ReportHtml $failure.Target)</td>")
+            $html.Add("<td class=""case-what"">$(ConvertTo-ReportHtml $failure.What)</td>")
+            $html.Add("</tr>")
+        }
+        $html.Add("</tbody>")
+        $html.Add("</table>")
+        $html.Add("</div>")
+        $html.Add("</section>")
+    }
+
     foreach ($table in $Tables) {
         $html.Add("<section class=""card"">")
         $html.Add("<h2>$(ConvertTo-ReportHtml $table.Heading)</h2>")
@@ -217,13 +300,94 @@ footer p { margin: 0 0 6px; }
                 $attribute = ""
                 if ($class) { $attribute = " class=""$class""" }
                 if ($cell.ContainsKey("Title")) { $attribute = "$attribute title=""$(ConvertTo-ReportHtml $cell.Title)""" }
-                $html.Add("<td$attribute>$(ConvertTo-ReportHtml $cell.Text)</td>")
+                $cellText = ConvertTo-ReportHtml $cell.Text
+                if ($cell.ContainsKey("Link")) { $cellText = "<a href=""$($cell.Link)"">$cellText</a>" }
+                if ($cell.ContainsKey("Sub")) { $cellText = "$cellText<span class=""sub"">$(ConvertTo-ReportHtml $cell.Sub)</span>" }
+                $html.Add("<td$attribute>$cellText</td>")
                 $index++
             }
             $html.Add("</tr>")
         }
         $html.Add("</tbody>")
         $html.Add("</table>")
+        $html.Add("</div>")
+        $html.Add("</section>")
+    }
+
+    # Every case the run reported, with what it holds: the doc comment beside it
+    # in the sources, the behaviours and settings that break with it, and its
+    # outcome in this run.
+    if ($Cases.Count -gt 0) {
+        $caseTotal = 0
+        foreach ($group in $Cases) { $caseTotal += $group.Rows.Count }
+        $caseSummary = "$caseTotal case(s) in $($Cases.Count) target(s)"
+        $html.Add("<section class=""card"">")
+        $html.Add("<h2>Cases <span class=""count"">$(ConvertTo-ReportHtml $caseSummary)</span></h2>")
+        $html.Add("<div class=""scroll-y"">")
+        $caseIndex = 0
+        foreach ($group in $Cases) {
+            $html.Add("<h3 id=""cases-$caseIndex"">$(ConvertTo-ReportHtml $group.Target) <span class=""count"">$(ConvertTo-ReportHtml $group.Counts)</span></h3>")
+            $html.Add("<table>")
+            $html.Add("<thead><tr><th scope=""col"">Case</th><th scope=""col"">Result</th><th scope=""col"">What it checks</th></tr></thead>")
+            $html.Add("<tbody>")
+            $rowIndex = 0
+            foreach ($case in $group.Rows) {
+                $rowAttribute = " id=""case-$caseIndex-$rowIndex"""
+                if ($case.Result -eq "FAILED") { $rowAttribute = "$rowAttribute class=""row-bad""" }
+                $html.Add("<tr$rowAttribute>")
+                $html.Add("<td class=""case-name mono"">$(ConvertTo-ReportHtml $case.Name)")
+                if ($case.Module) {
+                    $html.Add("<span class=""case-module"">$(ConvertTo-ReportHtml $case.Module)</span>")
+                }
+                $html.Add("</td>")
+                $html.Add("<td class=""$(Get-ReportToneClass $case.Result)"">$(ConvertTo-ReportHtml $case.Result)")
+                if ($case.Note) {
+                    $html.Add("<span class=""case-note"">$(ConvertTo-ReportHtml $case.Note)</span>")
+                }
+                $html.Add("</td>")
+                $html.Add("<td class=""case-what"">")
+                $html.Add("<p>$(ConvertTo-ReportHtml $case.What)</p>")
+                if ($case.Protects.Count -gt 0) {
+                    $html.Add("<p class=""protects"">")
+                    foreach ($protect in $case.Protects) {
+                        $html.Add("<span class=""chip"">$(ConvertTo-ReportHtml $protect)</span>")
+                    }
+                    $html.Add("</p>")
+                }
+                $html.Add("</td>")
+                $html.Add("</tr>")
+                $rowIndex++
+            }
+            $html.Add("</tbody>")
+            $html.Add("</table>")
+            $caseIndex++
+        }
+        $html.Add("</div>")
+        $html.Add("</section>")
+    }
+
+    if ($Images.Count -gt 0) {
+        $html.Add("<section class=""card"">")
+        $html.Add("<h2>Page snapshots</h2>")
+        $html.Add("<div class=""snapshots"">")
+        foreach ($image in $Images) {
+            $html.Add("<figure>")
+            $html.Add("<img src=""$($image.Source)"" alt=""$(ConvertTo-ReportHtml $image.Alt)"">")
+            $html.Add("<figcaption>")
+            $html.Add("<span class=""file mono"">$(ConvertTo-ReportHtml $image.File)</span> - $(ConvertTo-ReportHtml $image.Caption)")
+            if ($image.Asserts.Count -gt 0) {
+                $html.Add("<ul class=""checks"">")
+                foreach ($assert in $image.Asserts) {
+                    $html.Add("<li>$(ConvertTo-ReportHtml $assert)</li>")
+                }
+                $html.Add("</ul>")
+            }
+            if ($image.Expectation) {
+                $html.Add("<details><summary>What this page must show</summary><pre class=""expectation"">$(ConvertTo-ReportHtml $image.Expectation)</pre></details>")
+            }
+            $html.Add("</figcaption>")
+            $html.Add("</figure>")
+        }
         $html.Add("</div>")
         $html.Add("</section>")
     }
