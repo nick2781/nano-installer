@@ -28,9 +28,12 @@ The whole workspace suite runs through a script too, and writes the same kind of
 ```
 
 `target/test-report.txt` holds the commit, the toolchain, the command, the whole output, the result
-line of every target and the totals, and the CI job keeps it as the `test-report` artifact. The
-setup-level cases build and run real installers, so they need the runtime executables the builder
-embeds and skip without them; a full check runs both scripts.
+line of every target and the totals, and `target/test-report.html` is the same run as a page: a
+verdict, a figure per outcome, a row per target and the output with its result lines coloured. The CI
+job keeps both as the `test-report` artifact, and `run_e2e_setup.ps1` writes the same pair as
+`target/e2e-report.html` and `target/e2e-report.txt`. The setup-level cases build and run real
+installers, so they need the runtime executables the builder embeds and skip without them; a full
+check runs both scripts.
 
 Every behaviour these documents promise sits next to the case that holds it in
 [Test coverage](TEST_COVERAGE.md), layer by layer, including what no automated case reaches yet.

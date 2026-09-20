@@ -77,9 +77,10 @@ jobs:
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
 
       # The suite runs through the script a developer runs, which writes
-      # target/test-report.txt and leaves it as this job's artifact: the
-      # commit, the toolchain, the whole output, the result line of every
-      # target and the totals.
+      # target/test-report.txt and target/test-report.html and leaves both as
+      # this job's artifact: the commit, the toolchain, the whole output, the
+      # result line of every target and the totals. The page is the same run
+      # laid out for a reader.
       #
       # The script also keeps the suite off the step's console. A step is
       # finished when its output has closed, and the linker leaves a telemetry
@@ -95,7 +96,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: test-report
-          path: target/test-report.txt
+          path: |
+            target/test-report.txt
+            target/test-report.html
 
       # Builds the builder, the three stubs, and the GUI. It deliberately
       # does not build a setup from examples/TapTap: that example payload is
@@ -135,8 +138,8 @@ jobs:
       # and touches nothing outside the machine it runs on.
       #
       # One script builds the runtimes the suite embeds, runs it with the skip
-      # turned into a failure, and writes the report the artifact below holds, so
-      # what a reader looks at afterwards is what this job ran.
+      # turned into a failure, and writes the two reports the artifact below
+      # holds, so what a reader looks at afterwards is what this job ran.
       - name: Build a setup, install it, and uninstall it
         shell: powershell
         run: .\scripts\run_e2e_setup.ps1
@@ -146,4 +149,6 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: e2e-report
-          path: target/e2e-report.txt
+          path: |
+            target/e2e-report.txt
+            target/e2e-report.html

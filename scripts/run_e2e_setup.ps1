@@ -6,9 +6,9 @@
     uninstaller it deployed, so it needs the three runtime executables the
     builder embeds. This builds them first, then runs the suite, and leaves
     target/e2e-report.txt holding the commit it ran against, the commands, the
-    whole output and the summary line, so a result can still be read after the
-    terminal that produced it is gone. A CI job keeps the same file as an
-    artifact.
+    whole output and the summary line, and target/e2e-report.html with the same
+    run as a page, so a result can still be read after the terminal that
+    produced it is gone. A CI job keeps both files as artifacts.
 
     NANO_INSTALLER_E2E_REQUIRE_STUBS is set here, because a run in which every
     case skipped must not read as a pass. -RequireDesktop adds
@@ -31,6 +31,8 @@ if (-not [System.IO.Path]::IsPathRooted($reportPath)) {
     $reportPath = Join-Path $repoRoot $reportPath
 }
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $reportPath) | Out-Null
+$htmlPath = [System.IO.Path]::ChangeExtension($reportPath, ".html")
+. (Join-Path $PSScriptRoot "report_html.ps1")
 
 $stubCommand = "cargo build --locked -p nano-installer-stub-lzma -p nano-installer-stub-zlib -p nano-installer-uninstaller"
 $suiteCommand = "cargo test --locked -p nano-installer-core --test e2e_setup"
@@ -93,10 +95,13 @@ if ($null -ne $suite) {
     $summary = @($suite.Output | Where-Object { $_ -like "test result:*" })
 }
 
+$runAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+$commit = Get-CommitDescription
+
 $lines = New-Object System.Collections.Generic.List[string]
 $lines.Add("nano-installer setup end-to-end suite")
-$lines.Add("run at      $((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'))")
-$lines.Add("commit      $(Get-CommitDescription)")
+$lines.Add("run at      $runAt")
+$lines.Add("commit      $commit")
 $lines.Add("required    $requirements")
 $lines.Add("")
 $lines.Add("$ $stubCommand")
@@ -124,9 +129,47 @@ if ($null -ne $suite) {
 $lines.Add("exit code $code")
 [System.IO.File]::WriteAllLines($reportPath, $lines, (New-Object System.Text.UTF8Encoding($false)))
 
+$passed = 0
+$failed = 0
+$ignored = 0
+foreach ($line in $summary) {
+    if ($line -match "(\d+) passed") { $passed += [int]$Matches[1] }
+    if ($line -match "(\d+) failed") { $failed += [int]$Matches[1] }
+    if ($line -match "(\d+) ignored") { $ignored += [int]$Matches[1] }
+}
+
+$stats = @(
+    @{ Value = $passed; Label = "passed"; Tone = "ok" },
+    @{ Value = $failed; Label = "failed"; Tone = $(if ($failed -gt 0) { "bad" } else { "" }) },
+    @{ Value = $ignored; Label = "ignored"; Tone = "muted" },
+    @{ Value = $code; Label = "exit code"; Tone = $(if ($code -ne 0) { "bad" } else { "" }) }
+)
+$fields = @(
+    @{ Label = "commit"; Value = $commit },
+    @{ Label = "required"; Value = $requirements },
+    @{ Label = "runtime build"; Value = $stubCommand },
+    @{ Label = "suite"; Value = $suiteCommand }
+)
+$sections = New-Object System.Collections.Generic.List[object]
+$sections.Add(@{ Heading = "Runtime build"; Summary = "$ $stubCommand"; Lines = $stubs.Output; Open = ($stubs.ExitCode -ne 0) })
+if ($null -ne $suite) {
+    $sections.Add(@{ Heading = "Suite"; Summary = "$ $suiteCommand"; Lines = $suite.Output; Open = ($code -ne 0) })
+}
+$verdict = "passed"
+if ($code -ne 0 -or $null -eq $suite) { $verdict = "failed" }
+$notes = @(
+    "The suite writes its own project, builds a setup, runs it, and then runs the uninstaller it deployed.",
+    "NANO_INSTALLER_E2E_REQUIRE_STUBS makes a run in which every case skipped read as a failure.",
+    "target/e2e-report.txt next to this page holds the same run as plain text."
+)
+
+Write-ReportHtml -Path $htmlPath -Title "Setup end-to-end suite" -Subtitle "run at $runAt" `
+    -Verdict $verdict -Fields $fields -Stats $stats -Sections $sections.ToArray() -Notes $notes
+
 if ($null -ne $suite) {
     $suite.Output | ForEach-Object { Write-Output $_ }
 }
 Write-Output "exit code $code"
 Write-Output "report written to $reportPath"
+Write-Output "page written to $htmlPath"
 exit $code

@@ -25,9 +25,11 @@ cargo test --locked --workspace
 .\scripts\run_tests.ps1
 ```
 
-`target/test-report.txt` 里写明提交、工具链、命令、完整输出、每个目标的结果行和总计，CI 作业把它
-作为 `test-report` 产物留着。安装包级用例会真的构建并运行安装包，所以需要构建器内嵌的那三个运行时，
-缺了就跳过；要完整检查就把两个脚本都跑一遍。
+`target/test-report.txt` 里写明提交、工具链、命令、完整输出、每个目标的结果行和总计；
+`target/test-report.html` 是同一次运行的页面版：结论、各项计数、每个目标一行，以及带结果着色的完整
+输出。CI 作业把这两个文件都作为 `test-report` 产物留着，`run_e2e_setup.ps1` 也写出对应的一对：
+`target/e2e-report.html` 和 `target/e2e-report.txt`。安装包级用例会真的构建并运行安装包，所以需要
+构建器内嵌的那三个运行时，缺了就跳过；要完整检查就把两个脚本都跑一遍。
 
 这几份文档承诺的每一条行为，以及守住它的那条用例，都按层列在[测试覆盖](TEST_COVERAGE.md)里，
 也包括目前还没有自动化用例覆盖的部分。
