@@ -83,5 +83,6 @@
   "warning.trailing_slash": "路徑末尾的反斜線將被自動移除",
   "warning.relative_path": "路徑包含相對路徑符號，可能導致安全問題",
   "warning.path_with_spaces": "路徑包含空格，某些程式可能無法正常運作",
-  "warning.non_ascii_path": "路徑包含非ASCII字元，建議使用英文路徑"
+  "warning.non_ascii_path": "路徑包含非ASCII字元，建議使用英文路徑",
+  "dir_required": "請填寫安裝目錄"
 }

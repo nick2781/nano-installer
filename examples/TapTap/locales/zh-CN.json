@@ -83,5 +83,6 @@
   "warning.trailing_slash": "路径末尾的反斜杠将被自动移除",
   "warning.relative_path": "路径包含相对路径符号，可能导致安全问题",
   "warning.path_with_spaces": "路径包含空格，某些程序可能无法正常工作",
-  "warning.non_ascii_path": "路径包含非ASCII字符，建议使用英文路径"
+  "warning.non_ascii_path": "路径包含非ASCII字符，建议使用英文路径",
+  "dir_required": "请填写安装目录"
 }

@@ -83,5 +83,6 @@
   "warning.trailing_slash": "パス末尾のバックスラッシュは自動的に削除されます",
   "warning.relative_path": "パスに相対パスシンボルが含まれており、セキュリティ上の問題が発生する可能性があります",
   "warning.path_with_spaces": "パスにスペースが含まれています。一部のプログラムが正常に動作しない場合があります",
-  "warning.non_ascii_path": "パスに非ASCII文字が含まれています。英語のパスの使用を推奨します"
+  "warning.non_ascii_path": "パスに非ASCII文字が含まれています。英語のパスの使用を推奨します",
+  "dir_required": "インストール先を入力してください"
 }

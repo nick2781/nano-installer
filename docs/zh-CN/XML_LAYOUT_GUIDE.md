@@ -71,7 +71,8 @@ assets/logo@2x.png
 <Button action="install" enabled-when="terms:checked" ... />
 ```
 
-支持的 state 为 `checked`、`unchecked`、`visible`、`hidden`。条件不满足时按钮使用
+支持的 state 为 `checked`、`unchecked`、`visible`、`hidden`，文本输入框另有 `valid` 与
+`invalid`。一条条件可以用逗号列出多个 `id:state`，全部成立按钮才可用。条件不满足时按钮使用
 `disabled-image`，且不响应点击与悬停；条件满足后恢复正常状态。未声明 `enabled-when` 的按钮默认
 可用，运行时不含针对特定控件名的规则。
 
@@ -178,6 +179,29 @@ MiB 值转成可读大小，`size` 按 1024 进位格式化为 B/KB/MB/GB/TB。
 
 `status` 会用运行时发布的 locale 键替换布局里的文字，进度页正是靠它显示当前步骤；任务未运行时
 保留 `text` 中的占位文案。
+
+字段还可以写明什么样的值才算数，页面上的其他控件据此行动：
+
+```xml
+<TextInput id="editDir" required="true" required-message="@dir_required"
+           pattern="?:*" pattern-message="@dir_absolute" />
+<Button action="install" enabled-when="chkAgree:checked, editDir:valid" />
+<Label value-source="field-error:editDir" color="#FFFF7A7A" />
+```
+
+| 属性 | 作用 |
+| --- | --- |
+| `required="true"` | 这个字段不能为空 |
+| `min-length`、`max-length` | 值至少、至多多少字，按字符算，不按字节 |
+| `pattern` | 整个值要符合的掩码：`*` 是任意一串字符（可以为空），`?` 是正好一个字符，其余字符就是它本身 |
+| `required-message`、`min-length-message`、`max-length-message`、`pattern-message` | 值违反这条规则时显示的 locale 键（`@键`） |
+
+值没有违反任何一条自己声明的规则时，这个字段就是有效的；可选字段留空算有效，没写规则的字段也
+有效。`enabled-when` 除了复选框和面板那四种状态，还可以对字段 id 写 `valid` 与 `invalid`。带
+`value-source="field-error:<字段 id>"` 的标签显示这个字段的值最先违反的那条规则写下的文案，值合格
+时什么也不画；文案和别的 `@键` 一样取自 locale 文件，漏翻会在构建时被报出来。
+
+空的输入框照样是输入框：点进去就能落光标，否则页面要用户填的那个值根本没法填。
 
 颜色接受 `#RRGGBB` 或 `#AARRGGBB`；当前文字绘制忽略 alpha，只使用 RGB。
 

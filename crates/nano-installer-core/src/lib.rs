@@ -556,6 +556,8 @@ struct LayoutContext<'a> {
     locale: &'a str,
     translations: &'a HashMap<String, String>,
     interaction: &'a InteractionState,
+    /// What each text field on the page accepts, read once for this render.
+    fields: HashMap<String, FieldState>,
     language_menu_open: bool,
 }
 
@@ -2294,6 +2296,7 @@ fn load_layout(
         locale,
         translations: &translations,
         interaction,
+        fields: collect_field_states(page, interaction, &config),
         language_menu_open,
     };
     // The language menu is drawn only on the page that declares the Select, so
@@ -2499,6 +2502,7 @@ fn render_layout_content(
         // beside that image, so it is not part of the plain text pass.
         if has_layer && !node.has_tag_name("Checkbox") {
             push_node_text(node, rect, context, output);
+            push_text_input(node, rect, context, output);
         }
         if node.has_tag_name("Select") && has_layer {
             render_language_select(node, rect, context, output)?;
@@ -2516,7 +2520,8 @@ fn render_layout_content(
                 }
             }
             "Button" if has_layer => {
-                if let Some(style) = button_image(node, context.interaction).map(parse_image_style)
+                if let Some(style) =
+                    button_image(node, context.interaction, &context.fields).map(parse_image_style)
                 {
                     push_styled_layer(files, &mut output.layers, style, rect, dpi)?;
                 }
@@ -2587,6 +2592,7 @@ fn render_dialog_overlay(
         locale: "",
         translations,
         interaction,
+        fields: HashMap::new(),
         language_menu_open: false,
     };
     // The declared height is a minimum: the question comes from the product's
@@ -2982,7 +2988,7 @@ fn push_action(
     context: &LayoutContext<'_>,
 ) {
     let interaction = context.interaction;
-    if node.has_tag_name("Button") && !button_enabled(node, interaction) {
+    if node.has_tag_name("Button") && !button_enabled(node, interaction, &context.fields) {
         return;
     }
     let action = if node.has_tag_name("Checkbox") {
@@ -3038,20 +3044,151 @@ fn push_action(
     }
 }
 
-fn button_enabled(node: roxmltree::Node<'_, '_>, interaction: &InteractionState) -> bool {
+/// Whether a text field holds a value the project accepts, and what to say
+/// when it does not.
+#[derive(Clone)]
+struct FieldState {
+    /// True while the value breaks none of the rules the field declares.
+    valid: bool,
+    /// The locale key of the rule the value breaks first, as the layout wrote
+    /// it (`@key`), so the label showing the hint can look it up.
+    message: Option<String>,
+}
+
+/// Reads the rules every text field on the page declares, against the value it
+/// holds right now.
+///
+/// The rules live in the layout and the value in the interaction, so this runs
+/// once per render: a keystroke rebuilds the page, and a button that waits for
+/// the field sees the value it was waiting for.
+fn collect_field_states(
+    page: roxmltree::Node<'_, '_>,
+    interaction: &InteractionState,
+    config: &serde_json::Value,
+) -> HashMap<String, FieldState> {
+    page.descendants()
+        .filter(|node| node.has_tag_name("TextInput"))
+        .filter_map(|node| {
+            let id = node.attribute("id")?;
+            let value = text_input_value(node, interaction, config).unwrap_or_default();
+            Some((id.to_string(), field_state(node, &value)))
+        })
+        .collect()
+}
+
+/// Checks one field's value against the rules its attributes declare.
+///
+/// A field that declares nothing is always valid. So is an optional field that
+/// is empty: `min-length` and `pattern` speak about a value the user chose to
+/// give, and `required` is how a project asks for one at all.
+fn field_state(node: roxmltree::Node<'_, '_>, value: &str) -> FieldState {
+    let required = node
+        .attribute("required")
+        .is_some_and(|flag| flag != "false");
+    let characters = value.chars().count();
+    let broken = if value.is_empty() {
+        required.then_some("required-message")
+    } else if node
+        .attribute("min-length")
+        .and_then(|minimum| minimum.parse().ok())
+        .is_some_and(|minimum| characters < minimum)
+    {
+        Some("min-length-message")
+    } else if node
+        .attribute("max-length")
+        .and_then(|maximum| maximum.parse().ok())
+        .is_some_and(|maximum| characters > maximum)
+    {
+        Some("max-length-message")
+    } else if node
+        .attribute("pattern")
+        .is_some_and(|mask| !mask_matches(mask, value))
+    {
+        Some("pattern-message")
+    } else {
+        None
+    };
+    FieldState {
+        valid: broken.is_none(),
+        message: broken
+            .and_then(|attribute| node.attribute(attribute))
+            .map(str::to_string),
+    }
+}
+
+/// Whether a value fits a mask, character by character.
+///
+/// The mask is not a regular expression: `*` stands for any run of characters,
+/// including none, `?` for exactly one, and every other character for itself.
+/// The whole value has to match, so `?.exe` accepts a two-character name with
+/// that extension and nothing else.
+fn mask_matches(mask: &str, value: &str) -> bool {
+    let mask: Vec<char> = mask.chars().collect();
+    let value: Vec<char> = value.chars().collect();
+    let (mut m, mut v) = (0usize, 0usize);
+    // Where the last `*` stood and how much of the value it had swallowed, so
+    // a mismatch hands it one more character instead of starting over.
+    let mut star: Option<(usize, usize)> = None;
+    while v < value.len() {
+        if m < mask.len() && (mask[m] == '?' || mask[m] == value[v]) {
+            m += 1;
+            v += 1;
+        } else if m < mask.len() && mask[m] == '*' {
+            star = Some((m, v));
+            m += 1;
+        } else if let Some((star_mask, star_value)) = star {
+            m = star_mask + 1;
+            v = star_value + 1;
+            star = Some((star_mask, star_value + 1));
+        } else {
+            return false;
+        }
+    }
+    mask[m..].iter().all(|character| *character == '*')
+}
+
+fn button_enabled(
+    node: roxmltree::Node<'_, '_>,
+    interaction: &InteractionState,
+    fields: &HashMap<String, FieldState>,
+) -> bool {
     if node.attribute("enabled") == Some("false") {
         return false;
     }
     if let Some(condition) = node.attribute("enabled-when") {
-        return evaluate_ui_condition(condition, interaction);
+        return evaluate_ui_condition(condition, interaction, fields);
     }
     true
 }
 
-fn evaluate_ui_condition(condition: &str, interaction: &InteractionState) -> bool {
+fn evaluate_ui_condition(
+    condition: &str,
+    interaction: &InteractionState,
+    fields: &HashMap<String, FieldState>,
+) -> bool {
+    // A control may wait for more than one thing: the conditions are listed one
+    // after another, separated by commas, and every one of them has to hold. A
+    // stray comma leaves an empty condition behind, which holds the control
+    // back rather than passing for a rule that was met.
+    condition
+        .split(',')
+        .all(|part| condition_holds(part.trim(), interaction, fields))
+}
+
+/// Whether one `id:state` condition holds.
+fn condition_holds(
+    condition: &str,
+    interaction: &InteractionState,
+    fields: &HashMap<String, FieldState>,
+) -> bool {
     let Some((id, expected)) = condition.rsplit_once(':') else {
         return false;
     };
+    // A field the page does not declare is one nothing keeps valid, so it is
+    // invalid rather than valid: a condition naming the wrong control holds the
+    // button back instead of letting a click through, as it does for the other
+    // states above.
+    let field_valid = fields.get(id).is_some_and(|field| field.valid);
     match expected {
         "checked" => interaction
             .checkbox_states
@@ -3073,6 +3210,8 @@ fn evaluate_ui_condition(condition: &str, interaction: &InteractionState) -> boo
             .get(id)
             .copied()
             .unwrap_or(false),
+        "valid" => field_valid,
+        "invalid" => !field_valid,
         _ => false,
     }
 }
@@ -3080,8 +3219,9 @@ fn evaluate_ui_condition(condition: &str, interaction: &InteractionState) -> boo
 fn button_image<'a>(
     node: roxmltree::Node<'a, 'a>,
     interaction: &InteractionState,
+    fields: &HashMap<String, FieldState>,
 ) -> Option<&'a str> {
-    let enabled = button_enabled(node, interaction);
+    let enabled = button_enabled(node, interaction, fields);
     let id = node.attribute("id");
     let attribute = if !enabled {
         "disabled-image"
@@ -3102,7 +3242,7 @@ fn push_hover_region(
     context: &LayoutContext<'_>,
     regions: &mut Vec<HoverRegion>,
 ) {
-    if !node.has_tag_name("Button") || !button_enabled(node, context.interaction) {
+    if !node.has_tag_name("Button") || !button_enabled(node, context.interaction, &context.fields) {
         return;
     }
     let Some(id) = node.attribute("id") else {
@@ -3297,23 +3437,38 @@ fn push_node_text(
     }
     let layer = output.texts.last().expect("text layer was just pushed");
     output.text_hits.extend(unsafe { text_layer_hits(layer) });
-    if node.has_tag_name("TextInput") && !is_readonly_text_input(node) {
-        output.text_inputs.push(TextInputRegion {
-            id: node.attribute("id").unwrap_or_default().to_string(),
-            text,
-            color: layer
-                .runs
-                .first()
-                .map(|run| run.color)
-                .unwrap_or(COLORREF(0)),
-            font_size: layer.font_size,
-            bold: layer.bold,
-            left: rect.left,
-            top: rect.top,
-            width: rect.width,
-            height: rect.height,
-        });
+}
+
+/// Records a writable text field, so a click can put the caret in it.
+///
+/// A field is recorded even while it holds nothing. An empty field is exactly
+/// the one a user has to click into to fill in, and the rules a page declares
+/// about the value are what a button waits for; a field that could not be
+/// reached until it already had text would never get any.
+fn push_text_input(
+    node: roxmltree::Node<'_, '_>,
+    rect: LayerRect,
+    context: &LayoutContext<'_>,
+    output: &mut LayoutOutput,
+) {
+    if !node.has_tag_name("TextInput") || is_readonly_text_input(node) {
+        return;
     }
+    output.text_inputs.push(TextInputRegion {
+        id: node.attribute("id").unwrap_or_default().to_string(),
+        text: text_input_value(node, context.interaction, context.config).unwrap_or_default(),
+        color: parse_color(node.attribute("color").unwrap_or("#FFFFFFFF")),
+        font_size: scale_value(
+            int_attribute(node, "font-size").unwrap_or(12),
+            context.dpi.scale,
+        )
+        .max(1),
+        bold: node.attribute("font-weight") == Some("bold"),
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+    });
 }
 
 /// A `readonly` field shows a value the user cannot type into.
@@ -3327,7 +3482,25 @@ fn resolved_text_for_node(
     context: &LayoutContext<'_>,
 ) -> Option<(String, TextAlignment)> {
     if node.has_tag_name("TextInput") {
-        return text_input_value(node, context).map(|value| (value, TextAlignment::Left));
+        return text_input_value(node, context.interaction, context.config)
+            .map(|value| (value, TextAlignment::Left));
+    }
+    // A hint names the field it explains and draws the words of the rule the
+    // value breaks first -- nothing at all while the value is acceptable.
+    if let Some(id) = node
+        .attribute("value-source")
+        .and_then(|source| source.strip_prefix("field-error:"))
+    {
+        let key = context
+            .fields
+            .get(id)
+            .and_then(|field| field.message.clone())?;
+        let message = key
+            .strip_prefix('@')
+            .and_then(|key| context.translations.get(key))
+            .cloned()
+            .unwrap_or(key);
+        return Some((message, declared_text_alignment(node)));
     }
     let (mut text, alignment) = text_for_node(node, context.locale, context.translations)?;
     if let Some(source) = node.attribute("value-source") {
@@ -3376,15 +3549,19 @@ fn resolved_text_for_node(
     Some((text, alignment))
 }
 
-fn text_input_value(node: roxmltree::Node<'_, '_>, context: &LayoutContext<'_>) -> Option<String> {
+fn text_input_value(
+    node: roxmltree::Node<'_, '_>,
+    interaction: &InteractionState,
+    config: &serde_json::Value,
+) -> Option<String> {
     node.attribute("id")
-        .and_then(|id| context.interaction.text_input_values.get(id))
+        .and_then(|id| interaction.text_input_values.get(id))
         .cloned()
         .or_else(|| node.attribute("value").map(str::to_string))
         .or_else(|| {
             node.attribute("value-source")
                 .and_then(|source| source.strip_prefix("config:"))
-                .and_then(|path| config_value_as_string(context.config, path))
+                .and_then(|path| config_value_as_string(config, path))
         })
 }
 
@@ -4218,7 +4395,7 @@ fn render_flow_item(
         "Button" => {
             push_action(node, rect, &mut output.actions, context);
             push_hover_region(node, rect, context, &mut output.hover_regions);
-            if let Some(value) = button_image(node, context.interaction) {
+            if let Some(value) = button_image(node, context.interaction, &context.fields) {
                 push_styled_layer(
                     context.files,
                     &mut output.layers,
@@ -4239,7 +4416,10 @@ fn render_flow_item(
             push_hover_region(node, rect, context, &mut output.hover_regions);
             push_node_text(node, rect, context, output);
         }
-        "TextInput" => push_node_text(node, rect, context, output),
+        "TextInput" => {
+            push_node_text(node, rect, context, output);
+            push_text_input(node, rect, context, output);
+        }
         "ProgressBar" => render_progress_bar(node, rect, context, output)?,
         "Image" | "Icon" => {
             push_action(node, rect, &mut output.actions, context);
@@ -4438,16 +4618,21 @@ fn text_for_node(
         .and_then(|key| translations.get(key))
         .cloned()
         .unwrap_or_else(|| raw.to_string());
-    let explicit_alignment = node
+    Some((text, declared_text_alignment(node)))
+}
+
+/// The alignment a text element asks for: `textalign` (or `text-align`), with a
+/// button centring its own text unless it says otherwise.
+fn declared_text_alignment(node: roxmltree::Node<'_, '_>) -> TextAlignment {
+    match node
         .attribute("textalign")
-        .or_else(|| node.attribute("text-align"));
-    let alignment = match explicit_alignment {
+        .or_else(|| node.attribute("text-align"))
+    {
         Some("center") => TextAlignment::Center,
         Some("right") => TextAlignment::Right,
         _ if node.has_tag_name("Button") => TextAlignment::Center,
         _ => TextAlignment::Left,
-    };
-    Some((text, alignment))
+    }
 }
 
 fn parse_text_runs(text: &str, color: COLORREF, link_color: Option<COLORREF>) -> Vec<TextRun> {
@@ -7299,21 +7484,21 @@ mod tests {
     use super::{
         anchored_left, anchored_top, button_enabled, button_image, byte_index, caret_layer,
         centered_bounds, clamped_bounds, container_intrinsic_size, cross_alignment,
-        cross_alignment_for_item, disk_free_bytes, disk_root, flow_axis, flow_item_for_node,
-        flow_widths, format_size_bytes, initial_interaction, insets_for_node, inspect_project,
-        installer_version_info, load_layout, main_alignment, measure_layout_text_width,
-        pack_project, pack_project_with_progress, parse_bundle, parse_color, parse_image_style,
-        parse_text_runs, pick_directory_target, push_action, push_border_layer, push_hover_region,
-        push_node_border, query_disk_free_bytes, render_flow, render_flow_item,
-        render_progress_bar, resolve_asset_path, resolve_link_target, resolve_value_source,
-        resolved_text_for_node, restore_snapshot, runtime_layout_path, runtime_layout_path_at,
-        runtime_page_count, runtime_page_index_for_role, scale_value, selection_layers,
-        size_attribute, uninstaller_version_info, validate_output_filename, word_end_after,
-        word_range, word_start_before, wrap_lines, wraps, BundleIndex, DialogKind, DialogState,
-        DpiContext, DpiSettings, FlowAxis, FlowItem, ImageLayer, Insets, InteractionState,
-        LayerRect, LayoutContext, LayoutOutput, PayloadFormat, RuntimeMode, RuntimeUi,
-        TextAlignment, TextHit, TextInputRegion, TextSnapshot, WindowAction, BUNDLE_MAGIC,
-        BUNDLE_VERSION, COLORREF, FOOTER_MAGIC,
+        cross_alignment_for_item, disk_free_bytes, disk_root, field_state, flow_axis,
+        flow_item_for_node, flow_widths, format_size_bytes, initial_interaction, insets_for_node,
+        inspect_project, installer_version_info, load_layout, main_alignment, mask_matches,
+        measure_layout_text_width, pack_project, pack_project_with_progress, parse_bundle,
+        parse_color, parse_image_style, parse_text_runs, pick_directory_target, push_action,
+        push_border_layer, push_hover_region, push_node_border, query_disk_free_bytes, render_flow,
+        render_flow_item, render_progress_bar, resolve_asset_path, resolve_link_target,
+        resolve_value_source, resolved_text_for_node, restore_snapshot, runtime_layout_path,
+        runtime_layout_path_at, runtime_page_count, runtime_page_index_for_role, scale_value,
+        selection_layers, size_attribute, uninstaller_version_info, validate_output_filename,
+        word_end_after, word_range, word_start_before, wrap_lines, wraps, BundleIndex, DialogKind,
+        DialogState, DpiContext, DpiSettings, FlowAxis, FlowItem, ImageLayer, Insets,
+        InteractionState, LayerRect, LayoutContext, LayoutOutput, PayloadFormat, RuntimeMode,
+        RuntimeUi, TextAlignment, TextHit, TextInputRegion, TextSnapshot, WindowAction,
+        BUNDLE_MAGIC, BUNDLE_VERSION, COLORREF, FOOTER_MAGIC,
     };
     use anyhow::Context;
     use std::collections::HashMap;
@@ -7663,6 +7848,7 @@ mod tests {
             locale: "zh-CN",
             translations: &translations,
             interaction: &interaction,
+            fields: HashMap::new(),
             language_menu_open: false,
         };
         let mut layers = Vec::new();
@@ -8241,6 +8427,7 @@ mod tests {
             locale: "zh-CN",
             translations: &translations,
             interaction: &interaction,
+            fields: HashMap::new(),
             language_menu_open: false,
         };
         let action_for = |id: &str| {
@@ -8301,6 +8488,7 @@ mod tests {
             locale: "zh-CN",
             translations: &translations,
             interaction: &interaction,
+            fields: HashMap::new(),
             language_menu_open: false,
         };
         // The example locales name their links `agreement` and `policy`, so both
@@ -8397,6 +8585,7 @@ mod tests {
             locale: "zh-CN",
             translations: &translations,
             interaction: &interaction,
+            fields: HashMap::new(),
             language_menu_open: false,
         };
         let document = roxmltree::Document::parse(
@@ -8802,16 +8991,28 @@ mod tests {
         interaction
             .checkbox_states
             .insert("terms".to_string(), false);
-        assert_eq!(button_image(button, &interaction), Some("disabled.png"));
+        assert_eq!(
+            button_image(button, &interaction, &HashMap::new()),
+            Some("disabled.png")
+        );
 
         interaction
             .checkbox_states
             .insert("terms".to_string(), true);
-        assert_eq!(button_image(button, &interaction), Some("normal.png"));
+        assert_eq!(
+            button_image(button, &interaction, &HashMap::new()),
+            Some("normal.png")
+        );
         interaction.hovered_control = Some("btnInstall".to_string());
-        assert_eq!(button_image(button, &interaction), Some("hover.png"));
+        assert_eq!(
+            button_image(button, &interaction, &HashMap::new()),
+            Some("hover.png")
+        );
         interaction.pressed_control = Some("btnInstall".to_string());
-        assert_eq!(button_image(button, &interaction), Some("pressed.png"));
+        assert_eq!(
+            button_image(button, &interaction, &HashMap::new()),
+            Some("pressed.png")
+        );
 
         let independent_document = roxmltree::Document::parse(
             r#"<Button id="standalone" action="install" normal-image="normal.png"
@@ -8820,7 +9021,8 @@ mod tests {
         assert_eq!(
             button_image(
                 independent_document.root_element(),
-                &InteractionState::default()
+                &InteractionState::default(),
+                &HashMap::new()
             ),
             Some("normal.png")
         );
@@ -9029,6 +9231,7 @@ mod tests {
             locale: "zh-CN",
             translations: &HashMap::new(),
             interaction: &InteractionState::default(),
+            fields: HashMap::new(),
             language_menu_open: false,
         };
         let mut output = LayoutOutput::default();
@@ -9354,6 +9557,7 @@ mod tests {
             locale: "zh-CN",
             translations: &HashMap::new(),
             interaction: &InteractionState::default(),
+            fields: HashMap::new(),
             language_menu_open: false,
         };
         let mut output = LayoutOutput::default();
@@ -9444,6 +9648,7 @@ mod tests {
             locale: "zh-CN",
             translations: &HashMap::new(),
             interaction: &InteractionState::default(),
+            fields: HashMap::new(),
             language_menu_open: false,
         };
         let mut output = LayoutOutput::default();
@@ -9509,6 +9714,7 @@ mod tests {
             locale: "zh-CN",
             translations: &HashMap::new(),
             interaction: &InteractionState::default(),
+            fields: HashMap::new(),
             language_menu_open: false,
         };
         let mut output = LayoutOutput::default();
@@ -9553,6 +9759,7 @@ mod tests {
             locale: "zh-CN",
             translations: &HashMap::new(),
             interaction: &InteractionState::default(),
+            fields: HashMap::new(),
             language_menu_open: false,
         };
         let node = page
@@ -9614,6 +9821,7 @@ mod tests {
             locale: "zh-CN",
             translations: &HashMap::new(),
             interaction: &interaction,
+            fields: HashMap::new(),
             language_menu_open: false,
         };
         let mut output = LayoutOutput::default();
@@ -9750,6 +9958,7 @@ mod tests {
             locale: "zh-CN",
             translations: &translations,
             interaction: &interaction,
+            fields: HashMap::new(),
             language_menu_open: false,
         };
         let (text, _) = resolved_text_for_node(node, &context).context("label text missing")?;
@@ -9805,6 +10014,7 @@ mod tests {
             locale: "zh-CN",
             translations: &translations,
             interaction: &interaction,
+            fields: HashMap::new(),
             language_menu_open: false,
         };
         let (text, _) = resolved_text_for_node(node, &context).context("label text missing")?;
@@ -9974,6 +10184,7 @@ mod tests {
             locale: "zh-CN",
             translations,
             interaction,
+            fields: HashMap::new(),
             language_menu_open: false,
         }
     }
@@ -10176,14 +10387,23 @@ mod tests {
         .expect("layout parses");
         let button = document.root_element();
         let mut interaction = InteractionState::default();
-        assert_eq!(button_image(button, &interaction), Some("normal.png"));
+        assert_eq!(
+            button_image(button, &interaction, &HashMap::new()),
+            Some("normal.png")
+        );
 
         // Hovering has artwork of its own; pressing does not, so the press is
         // drawn with the normal image rather than with the hover one.
         interaction.hovered_control = Some("next".to_string());
-        assert_eq!(button_image(button, &interaction), Some("hover.png"));
+        assert_eq!(
+            button_image(button, &interaction, &HashMap::new()),
+            Some("hover.png")
+        );
         interaction.pressed_control = Some("next".to_string());
-        assert_eq!(button_image(button, &interaction), Some("normal.png"));
+        assert_eq!(
+            button_image(button, &interaction, &HashMap::new()),
+            Some("normal.png")
+        );
 
         // A button held back by its condition is drawn from `disabled-image` when
         // it declares one, whatever the pointer is doing.
@@ -10195,7 +10415,7 @@ mod tests {
         .expect("layout parses");
         let gated = document.root_element();
         assert_eq!(
-            button_image(gated, &InteractionState::default()),
+            button_image(gated, &InteractionState::default(), &HashMap::new()),
             Some("disabled.png")
         );
         let gated_interaction = InteractionState {
@@ -10203,7 +10423,7 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            button_image(gated, &gated_interaction),
+            button_image(gated, &gated_interaction, &HashMap::new()),
             Some("disabled.png")
         );
 
@@ -10219,7 +10439,7 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            button_image(document.root_element(), &unbound),
+            button_image(document.root_element(), &unbound, &HashMap::new()),
             Some("normal.png")
         );
     }
@@ -10239,30 +10459,38 @@ mod tests {
                  <Button id="elsewhere" enabled-when="anything:checked" />
                  <Button id="unknown_state" enabled-when="terms:whenever" />
                  <Button id="no_state" enabled-when="terms" />
+                 <Button id="both" enabled-when="terms:checked, panel:visible" />
+                 <Button id="spaced" enabled-when="terms:checked , panel:visible" />
+                 <Button id="trailing" enabled-when="terms:checked," />
                  <Button id="unconditional" />
                </Page>"#,
         )
         .expect("layout parses");
 
+        let fields = HashMap::new();
         let mut interaction = InteractionState::default();
         interaction
             .checkbox_states
             .insert("terms".to_string(), false);
         assert!(button_enabled(
             node_with_id(&document, "unchecked"),
-            &interaction
+            &interaction,
+            &fields
         ));
         assert!(!button_enabled(
             node_with_id(&document, "checked"),
-            &interaction
+            &interaction,
+            &fields
         ));
         assert!(button_enabled(
             node_with_id(&document, "hidden"),
-            &interaction
+            &interaction,
+            &fields
         ));
         assert!(!button_enabled(
             node_with_id(&document, "visible"),
-            &interaction
+            &interaction,
+            &fields
         ));
 
         interaction
@@ -10270,22 +10498,26 @@ mod tests {
             .insert("terms".to_string(), true);
         assert!(button_enabled(
             node_with_id(&document, "checked"),
-            &interaction
+            &interaction,
+            &fields
         ));
         assert!(!button_enabled(
             node_with_id(&document, "unchecked"),
-            &interaction
+            &interaction,
+            &fields
         ));
         interaction
             .panel_visibility
             .insert("panel".to_string(), true);
         assert!(button_enabled(
             node_with_id(&document, "visible"),
-            &interaction
+            &interaction,
+            &fields
         ));
         assert!(!button_enabled(
             node_with_id(&document, "hidden"),
-            &interaction
+            &interaction,
+            &fields
         ));
 
         // The runtime carries no rules about which control a condition names, so
@@ -10295,22 +10527,220 @@ mod tests {
             .insert("anything".to_string(), true);
         assert!(button_enabled(
             node_with_id(&document, "elsewhere"),
-            &interaction
+            &interaction,
+            &fields
         ));
         assert!(!button_enabled(
             node_with_id(&document, "unknown_state"),
-            &interaction
+            &interaction,
+            &fields
         ));
         assert!(!button_enabled(
             node_with_id(&document, "no_state"),
-            &interaction
+            &interaction,
+            &fields
         ));
+        // One control may wait for several others: a condition that lists
+        // more than one `id:state` holds only when every one of them does.
+        interaction
+            .panel_visibility
+            .insert("panel".to_string(), true);
+        assert!(button_enabled(
+            node_with_id(&document, "both"),
+            &interaction,
+            &fields
+        ));
+        assert!(button_enabled(
+            node_with_id(&document, "spaced"),
+            &interaction,
+            &fields
+        ));
+        interaction
+            .panel_visibility
+            .insert("panel".to_string(), false);
+        assert!(!button_enabled(
+            node_with_id(&document, "both"),
+            &interaction,
+            &fields
+        ));
+        // A comma with nothing after it is not a condition that holds.
+        assert!(!button_enabled(
+            node_with_id(&document, "trailing"),
+            &interaction,
+            &fields
+        ));
+
         // A button without a condition is enabled, which is what makes the
         // attribute opt-in.
         assert!(button_enabled(
             node_with_id(&document, "unconditional"),
-            &interaction
+            &interaction,
+            &fields
         ));
+    }
+
+    #[test]
+    fn a_field_checks_the_value_the_project_asks_it_to() {
+        // The rules a TextInput declares about the value the user gives it: it
+        // may be required, it may have to be this long, and it may have to fit a
+        // mask. A field with no rules, and an optional field left empty, are
+        // valid; a broken rule names the message the layout wrote for it.
+        let document = parsed_layout(
+            r#"<Page>
+                 <TextInput id="plain" />
+                 <TextInput id="needed" required="true" required-message="@need_it" />
+                 <TextInput id="shortest" min-length="3" min-length-message="@longer" />
+                 <TextInput id="longest" max-length="3" max-length-message="@shorter" />
+                 <TextInput id="named" pattern="*.exe" pattern-message="@exe_only" />
+                 <TextInput id="letter" pattern="?.exe" />
+                 <TextInput id="optional" required="false" pattern="*.exe" />
+               </Page>"#,
+        );
+        let state = |id: &str, value: &str| field_state(node_with_id(&document, id), value);
+
+        assert!(state("plain", "").valid);
+        assert!(state("plain", "anything").valid);
+        assert!(!state("needed", "").valid);
+        assert_eq!(state("needed", "").message.as_deref(), Some("@need_it"));
+        assert!(state("needed", "x").valid);
+        assert!(state("needed", "x").message.is_none());
+
+        // Lengths count characters, so a Chinese name is not measured in bytes.
+        assert!(!state("shortest", "安装").valid);
+        assert!(state("shortest", "安装包").valid);
+        assert_eq!(
+            state("shortest", "安装").message.as_deref(),
+            Some("@longer")
+        );
+        assert!(!state("longest", "abcd").valid);
+        assert!(state("longest", "abc").valid);
+        assert_eq!(
+            state("longest", "abcd").message.as_deref(),
+            Some("@shorter")
+        );
+
+        // The mask is not a regular expression: `*` is any run of characters,
+        // `?` exactly one, and the whole value has to match.
+        assert!(state("named", "setup.exe").valid);
+        assert!(!state("named", "setup").valid);
+        assert_eq!(
+            state("named", "setup").message.as_deref(),
+            Some("@exe_only")
+        );
+        assert!(state("letter", "a.exe").valid);
+        assert!(!state("letter", "ab.exe").valid);
+        // A rule without a message leaves the field invalid without words: the
+        // control that waits for it is the whole answer.
+        assert!(state("letter", "ab.exe").message.is_none());
+        assert!(mask_matches("*.exe", ".exe"));
+        // `?:*` is what a project writes for "a drive letter and whatever
+        // follows it", which is how an install directory is asked for.
+        assert!(mask_matches("?:*", "C:\\Program Files\\Demo"));
+        assert!(!mask_matches("?:*", "Program Files"));
+        assert!(!mask_matches("?:*", ""));
+
+        // An optional field the user left empty passes the rules that speak
+        // about the value it would hold.
+        assert!(state("optional", "").valid);
+    }
+
+    #[test]
+    fn a_button_waits_for_the_field_its_condition_names() -> anyhow::Result<()> {
+        // A condition names a text field the way it names a checkbox, so a
+        // button that starts an install waits for a value the project accepts.
+        let files = one_page_project(
+            r#"<Page width="200" height="100">
+                 <TextInput id="dir" required="true" pattern="?:*" required-message="@dir_needed"
+                            position="absolute" left="0" top="0" width="120" height="20" />
+                 <Button id="go" action="install" enabled-when="dir:valid" text="Go"
+                         position="absolute" left="0" top="40" width="60" height="20" />
+                 <Button id="explain" action="install" enabled-when="dir:invalid" text="?"
+                         position="absolute" left="80" top="40" width="60" height="20" />
+               </Page>"#,
+            r#"{"dir_needed": "请填写安装目录"}"#,
+        );
+        let clickable = |ui: &RuntimeUi, left: i32, top: i32| {
+            ui.actions
+                .iter()
+                .any(|region| region.left == left && region.top == top)
+        };
+        let holding = |value: &str| {
+            let mut interaction = InteractionState::default();
+            interaction
+                .text_input_values
+                .insert("dir".to_string(), value.to_string());
+            interaction
+        };
+
+        // An empty field is what `required` speaks about, so the button that
+        // starts the install is inert and carries no hover either.
+        let empty = drawn_at_96(&files, &InteractionState::default())?;
+        assert!(
+            !clickable(&empty, 0, 40),
+            "a click reached a waiting button"
+        );
+        assert!(clickable(&empty, 80, 40));
+        assert!(!empty
+            .hover_regions
+            .iter()
+            .any(|region| region.left == 0 && region.top == 40));
+
+        // A path the project accepts hands the button back.
+        let filled = drawn_at_96(&files, &holding("C:\\Program Files\\Demo"))?;
+        assert!(clickable(&filled, 0, 40));
+        assert!(!clickable(&filled, 80, 40));
+
+        // Clearing the field takes the click away again, which is what the
+        // keystroke path does when it rebuilds the page.
+        let cleared = drawn_at_96(&files, &holding(""))?;
+        assert!(!clickable(&cleared, 0, 40));
+        Ok(())
+    }
+
+    #[test]
+    fn a_hint_shows_the_rule_the_value_breaks() -> anyhow::Result<()> {
+        // The label that names a field draws the words of the rule its value
+        // breaks first, in the language the project ships, and nothing at all
+        // while the value is one the project accepts.
+        let files = one_page_project(
+            r##"<Page width="200" height="100">
+                 <TextInput id="dir" required="true" pattern="?:*"
+                            required-message="@dir_needed" pattern-message="@dir_absolute"
+                            position="absolute" left="0" top="0" width="120" height="20" />
+                 <Label id="hint" value-source="field-error:dir"
+                        position="absolute" left="0" top="30" width="200" height="16"
+                        color="#FFFFFFFF" />
+                 <Label id="unknown" value-source="field-error:nowhere"
+                        position="absolute" left="0" top="50" width="200" height="16"
+                        color="#FFFFFFFF" />
+               </Page>"##,
+            r#"{"dir_needed": "请填写安装目录", "dir_absolute": "安装目录要写完整"}"#,
+        );
+        let hint = |ui: &RuntimeUi| {
+            ui.texts
+                .iter()
+                .find(|layer| layer.top == 30)
+                .map(visible_text)
+        };
+        let holding = |value: &str| {
+            let mut interaction = InteractionState::default();
+            interaction
+                .text_input_values
+                .insert("dir".to_string(), value.to_string());
+            interaction
+        };
+
+        let empty = drawn_at_96(&files, &InteractionState::default())?;
+        assert_eq!(hint(&empty).as_deref(), Some("请填写安装目录"));
+        // A label naming a field the page does not declare has nothing to say.
+        assert!(!empty.texts.iter().any(|layer| layer.top == 50));
+
+        let partial = drawn_at_96(&files, &holding("Program Files"))?;
+        assert_eq!(hint(&partial).as_deref(), Some("安装目录要写完整"));
+
+        let complete = drawn_at_96(&files, &holding("C:\\Program Files\\Demo"))?;
+        assert_eq!(hint(&complete), None);
+        Ok(())
     }
 
     #[test]
@@ -11880,6 +12310,47 @@ mod tests {
             .insert("editDir".to_string(), "D:\\Games\\Demo".to_string());
         let typed = drawn_at_96(&files, &interaction)?;
         assert_eq!(visible_text(&typed.texts[0]), "D:\\Games\\Demo");
+        Ok(())
+    }
+
+    #[test]
+    fn an_empty_field_is_one_a_user_can_click_into() -> anyhow::Result<()> {
+        // A field with nothing in it draws no text, but it is still a field: it
+        // takes the caret, which is how the value a page asks the user for gets
+        // typed in at all. A readonly field stays out of it, as it does with
+        // text.
+        let files = one_page_project(
+            r##"<Page width="400" height="200">
+                  <TextInput id="editDir" required="true"
+                             position="absolute" left="10" top="10" width="200" height="20"
+                             font-size="14" color="#FF00FF00" />
+                  <TextInput id="shown" readonly="true"
+                             position="absolute" left="10" top="40" width="200" height="20" />
+                </Page>"##,
+            "{}",
+        );
+        let ui = drawn_at_96(&files, &InteractionState::default())?;
+        assert!(ui.texts.is_empty(), "an empty field drew text");
+        assert_eq!(ui.text_inputs.len(), 1);
+        assert_eq!(ui.text_inputs[0].id, "editDir");
+        assert_eq!(ui.text_inputs[0].text, "");
+        // The caret follows the font and colour the field declares.
+        assert_eq!(ui.text_inputs[0].font_size, 14);
+        assert_eq!(ui.text_inputs[0].color, parse_color("#FF00FF00"));
+
+        // A field inside a flow container is reached the same way.
+        let flow = one_page_project(
+            r#"<Page width="400" height="200">
+                 <VBox position="absolute" left="0" top="0" width="100%" height="100%" padding="8">
+                   <TextInput id="editDir" height="20" />
+                 </VBox>
+               </Page>"#,
+            "{}",
+        );
+        let ui = drawn_at_96(&flow, &InteractionState::default())?;
+        assert_eq!(ui.text_inputs.len(), 1);
+        assert_eq!(ui.text_inputs[0].id, "editDir");
+        assert_eq!(ui.text_inputs[0].top, 8);
         Ok(())
     }
 

@@ -83,5 +83,6 @@
   "warning.trailing_slash": "Dấu gạch chéo ngược ở cuối đường dẫn sẽ được tự động xóa",
   "warning.relative_path": "Đường dẫn chứa ký hiệu đường dẫn tương đối, có thể gây ra vấn đề bảo mật",
   "warning.path_with_spaces": "Đường dẫn chứa khoảng trắng, một số chương trình có thể không hoạt động bình thường",
-  "warning.non_ascii_path": "Đường dẫn chứa ký tự không phải ASCII, khuyến nghị sử dụng đường dẫn tiếng Anh"
+  "warning.non_ascii_path": "Đường dẫn chứa ký tự không phải ASCII, khuyến nghị sử dụng đường dẫn tiếng Anh",
+  "dir_required": "Chọn thư mục cài đặt"
 }

@@ -41,6 +41,15 @@ files and registry entries, so validate them in a disposable virtual machine onl
   text with a highlight, Ctrl+A selects all, Ctrl+C/X/V copy, cut, and paste, Ctrl+Z/Y undo and redo
   with a run of typing collapsed into one step, and Ctrl+Backspace/Delete plus Ctrl+Left/Right work a
   word at a time. `readonly` fields stay display-only.
+- A `TextInput` can carry the rules a project puts on the value it is given: `required`,
+  `min-length` and `max-length` counted in characters, and `pattern`, a mask where `*` is any run of
+  characters, `?` exactly one, matched against the whole value. A field with no rules passes, and so
+  does an optional field the user left empty. `enabled-when` names such a field with `valid` or
+  `invalid`, and a list of conditions separated by commas all have to hold. A `Label` whose
+  `value-source` is `field-error:<field>` draws the message the page wrote for the first rule the
+  value breaks, looked up in the project's own language, and draws nothing while the value is
+  acceptable. An empty field still takes the caret, which is what lets a page ask for a directory
+  and wait for it before the install starts.
 - Flow layout resolves `flex-basis` by sharing free space from that basis, honours `align-self` per
   item, lets a nested container size itself from its own children, and positions an absolutely
   placed element from `right`/`bottom` or the `inset` shorthand.
@@ -62,9 +71,9 @@ files and registry entries, so validate them in a disposable virtual machine onl
   project it writes itself and runs it against a real installation: files land on disk byte for
   byte, the manifest and the uninstall entry are written, an upgrade drops stale files and keeps
   files it does not own, and an uninstall removes the product, the registration, and the directory.
-  Three of its twenty cases open the wizard window and drive it: one measures the client area it
-  drew, one walks the page actions a project declares, and one stops a running task from a cancel
-  button. They need an interactive desktop session, so they skip where there is none and
+  Four of its twenty-one cases open the wizard window and drive it: one measures the client area it
+  drew, one walks the page actions a project declares, one stops a running task from a cancel
+  button, and one types a directory into the field a page asks for and starts the install with it. They need an interactive desktop session, so they skip where there is none and
   `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` makes the skip a failure. The other seventeen pass on
   Windows 11 and in CI.
 - A setup stays a setup after signing: a certificate table appended behind the bundle, which is what

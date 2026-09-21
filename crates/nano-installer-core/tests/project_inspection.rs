@@ -200,3 +200,33 @@ fn the_summary_reports_what_the_project_declares() -> anyhow::Result<()> {
     );
     Ok(())
 }
+
+/// The message a field shows while its value is not acceptable is a locale key
+/// like any other page text, so a language that leaves it out is reported here
+/// rather than discovered by the user whose hint came out in the wrong words.
+#[test]
+fn a_validation_message_the_page_asks_for_is_reported() -> anyhow::Result<()> {
+    let project = Project::new()?;
+    std::fs::write(
+        project.root.join("layouts/configpage.xml"),
+        r##"<Page width="720" height="450">
+             <TextInput id="editDir" required="true" required-message="@dir_needed" />
+             <Label text="@install_button" />
+           </Page>"##,
+    )?;
+    project.write_locale(
+        "en-US",
+        r#"{"install_button": "Install", "dir_needed": "Choose a folder"}"#,
+    )?;
+    project.write_locale("ru", r#"{"install_button": "Установить"}"#)?;
+    project.edit_config(|config| {
+        config["localization"]["supported_locales"] = serde_json::json!(["en-US", "ru"]);
+    })?;
+
+    assert_eq!(
+        project.warnings()?,
+        vec!["locales/ru.json is missing 1 page text(s): `dir_needed`".to_string()],
+        "the hint a field shows counts as page text"
+    );
+    Ok(())
+}

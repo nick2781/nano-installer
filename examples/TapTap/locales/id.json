@@ -83,5 +83,6 @@
   "warning.trailing_slash": "Garis miring terbalik di akhir jalur akan dihapus secara otomatis",
   "warning.relative_path": "Jalur mengandung simbol jalur relatif, mungkin menyebabkan masalah keamanan",
   "warning.path_with_spaces": "Jalur mengandung spasi, beberapa program mungkin tidak berfungsi normal",
-  "warning.non_ascii_path": "Jalur mengandung karakter non-ASCII, disarankan menggunakan jalur bahasa Inggris"
+  "warning.non_ascii_path": "Jalur mengandung karakter non-ASCII, disarankan menggunakan jalur bahasa Inggris",
+  "dir_required": "Pilih folder instalasi"
 }

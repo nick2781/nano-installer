@@ -50,7 +50,7 @@
          width="174" height="26" />
 
   <Button id="btnInstall" action="install"
-          enabled-when="chkAgree:checked"
+          enabled-when="chkAgree:checked, editDir:valid"
           position="absolute"
           left="240" top="268"
           width="240" height="40"
@@ -89,6 +89,8 @@
            background="#33000000"
            border-radius="8">
         <TextInput id="editDir"
+                   required="true"
+                   required-message="@dir_required"
                    position="absolute"
                    left="16"
                    top="11"
@@ -112,7 +114,7 @@
       </Box>
 
       <Button id="install" action="install"
-              enabled-when="chkAgree:checked"
+              enabled-when="chkAgree:checked, editDir:valid"
               width="160" height="40"
               normal-image="assets/btn_primary.png"
               hover-image="assets/btn_hover.png"
@@ -147,6 +149,12 @@
                 unchecked-image="file='assets/checkbox-0.png' dest='0,1,16,17'"
                 checked-image="file='assets/checkbox-2.png' dest='0,1,16,17'" />
     </HBox>
+
+    <Label id="dirHint"
+           value-source="field-error:editDir"
+           position="absolute"
+           left="40" top="168" width="640" height="16"
+           font-size="12" color="#FFFF7A7A" />
 
     <Divider position="absolute" left="40" top="196" width="640" height="1" background="#33FFFFFF" />
   </Box>

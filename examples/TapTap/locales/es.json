@@ -83,5 +83,6 @@
   "warning.trailing_slash": "La barra invertida al final de la ruta se eliminará automáticamente",
   "warning.relative_path": "La ruta contiene símbolos de ruta relativa, lo que puede causar problemas de seguridad",
   "warning.path_with_spaces": "La ruta contiene espacios, algunos programas pueden no funcionar correctamente",
-  "warning.non_ascii_path": "La ruta contiene caracteres no ASCII, se recomienda usar una ruta en inglés"
+  "warning.non_ascii_path": "La ruta contiene caracteres no ASCII, se recomienda usar una ruta en inglés",
+  "dir_required": "Elige una carpeta de instalación"
 }

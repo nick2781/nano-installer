@@ -83,5 +83,6 @@
   "warning.trailing_slash": "A barra invertida no final do caminho será removida automaticamente",
   "warning.relative_path": "O caminho contém símbolos de caminho relativo, o que pode causar problemas de segurança",
   "warning.path_with_spaces": "O caminho contém espaços, alguns programas podem não funcionar corretamente",
-  "warning.non_ascii_path": "O caminho contém caracteres não ASCII, recomenda-se usar um caminho em inglês"
+  "warning.non_ascii_path": "O caminho contém caracteres não ASCII, recomenda-se usar um caminho em inglês",
+  "dir_required": "Escolha uma pasta de instalação"
 }

@@ -3,8 +3,8 @@
 文档承诺的每一条行为，以及守住它的那条自动化用例。表格里的每一行都列出了该行为失效时会失败的
 用例；没有出现在任何一行里的行为，就是没人看住的行为。
 
-`cargo test --locked --workspace` 会跑 213 条用例：核心库 158 条，真构建并运行安装包的 20 条，
-按构建器的方式读工程的 4 条，可视化构建器 29 条，解压运行时 2 条。安装包级用例需要真实的运行时
+`cargo test --locked --workspace` 会跑 219 条用例：核心库 162 条，真构建并运行安装包的 21 条，
+按构建器的方式读工程的 5 条，可视化构建器 29 条，解压运行时 2 条。安装包级用例需要真实的运行时
 可执行文件，`.\scripts\run_e2e_setup.ps1` 会先把它们构建出来再跑，并把整次运行写进
 `target/e2e-report.txt`。
 
@@ -12,9 +12,9 @@
 
 | 层 | 用例数 | 能证明 | 不能证明 |
 | --- | --- | --- | --- |
-| 核心库 | 158 | 一页会变成什么——图层、坐标、命中区域、文字；捆绑数据里装了什么；安装往磁盘和注册表写了什么；每个脚本原语做什么 | 打包出来的安装包能走到这些代码 |
-| 安装包级 | 20 | 构建好的安装包在这台机器上装了一遍：payload 字节、manifest、卸载项、快捷方式、自启动、项目脚本、向导窗口 | 任何需要点击才能发生的事 |
-| 工程检查 | 4 | 构建之前窗口会显示的那份摘要与告警列表 | |
+| 核心库 | 162 | 一页会变成什么——图层、坐标、命中区域、文字；捆绑数据里装了什么；安装往磁盘和注册表写了什么；每个脚本原语做什么 | 打包出来的安装包能走到这些代码 |
+| 安装包级 | 21 | 构建好的安装包在这台机器上装了一遍：payload 字节、manifest、卸载项、快捷方式、自启动、项目脚本、向导窗口 | 任何需要点击才能发生的事 |
+| 工程检查 | 5 | 构建之前窗口会显示的那份摘要与告警列表 | |
 | 可视化构建器 | 29 | 窗口自己的状态、参数、日志与告警 | 真的去点界面上的控件 |
 | 解压运行时 | 2 | 坏归档、以及归档里不安全的路径会被拒绝 | 解压一个完好的归档——安装包级用例会用真实运行时解真实 payload |
 | 截图快照 | 6 页 | 示例工程每一页实际长什么样（量出来的，不是看出来的） | 字形本身读不读得通；流程走到那一页时会发生什么 |
@@ -50,7 +50,7 @@
 | `advanced.silent_mode_support`、`advanced.uninstall_mode_support` | `a_project_without_silent_support_refuses_a_windowless_install`、`a_project_without_silent_support_refuses_a_windowless_uninstall`、`a_project_that_did_not_opt_in_refuses_a_windowless_run` |
 | payload 格式判定 | `the_payload_format_selects_the_runtime_that_gets_embedded`、`zip_backend_rejects_invalid_archive`、`rejects_unsafe_7z_paths` |
 | `installer_config.json` 里自己不读的键 | `accepts_a_configuration_of_read_settings`、`leaves_a_section_of_the_projects_own_alone`、`refuses_a_setting_that_does_nothing`、`refuses_a_misspelled_setting`、`refuses_a_section_that_does_nothing`、`refuses_an_unknown_page_key`、`refuses_a_page_role_the_runtime_does_not_run`、`refuses_two_pages_claiming_one_role`、`reports_every_problem_at_once`、`the_example_project_matches_the_schema` |
-| 构建告警 | `an_asset_without_its_density_pair_is_reported`、`a_translation_missing_page_text_is_reported`、`a_supported_locale_without_a_file_is_reported`、`inspects_taptap_project_without_dpi_warnings` |
+| 构建告警 | `an_asset_without_its_density_pair_is_reported`、`a_translation_missing_page_text_is_reported`、`a_supported_locale_without_a_file_is_reported`、`inspects_taptap_project_without_dpi_warnings`、`a_validation_message_the_page_asks_for_is_reported` |
 
 ## 页面与控件
 
@@ -61,7 +61,10 @@
 | `file`/`dest`/`fade` 图片写法 | `a_styled_image_draws_into_a_sub_rectangle_at_the_opacity_it_declares`、`image_style_supports_plain_path_destination_and_fade` |
 | 按显示 DPI 选密度，以及两个方向上的回退 | `a_layout_picks_the_image_density_the_display_asks_for`、`dpi_asset_resolution_prefers_requested_density_and_falls_back` |
 | `Button` 各状态图及其回退 | `a_button_state_image_falls_back_to_the_normal_one`、`install_button_uses_xml_images_for_interaction_state` |
-| `enabled-when` 支持的每种状态 | `a_button_waits_for_each_state_its_condition_can_name` |
+| `enabled-when` 支持的每种状态、它点名的输入框，以及一串条件 | `a_button_waits_for_each_state_its_condition_can_name`、`a_button_waits_for_the_field_its_condition_names` |
+| 输入框自己的规矩决定哪些值算合格（`required`、`min-length`、`max-length`、`pattern`） | `a_field_checks_the_value_the_project_asks_it_to` |
+| 值最先破坏的那条规矩，由页面上的提示说出来 | `a_hint_shows_the_rule_the_value_breaks` |
+| 安装按钮等的是用户真的把那个字段填上 | `a_field_the_user_fills_in_is_what_lets_the_install_start` |
 | 被禁用的按钮不收点击也不收悬停 | `a_disabled_button_registers_no_click_and_no_hover` |
 | `HBox`、`VBox`、`Content` 布局：尺寸、间距、对齐、`flex-*`、最小值 | `bottom_hbox_distributes_fixed_and_flexible_items`、`a_container_measures_the_edge_its_children_are_asked_for`、`a_nested_container_reports_the_extent_its_children_need`、`a_shrinking_row_stops_at_the_minimum_its_items_declare`、`flow_attributes_become_the_item_a_container_shares_space_with`、`align_self_overrides_the_alignment_of_its_container`、`justify_content_places_the_run_inside_the_room_it_has`、`item_spacing_and_gap_leave_the_same_distance_between_items`、`each_container_tag_accepts_the_alignment_spelling_it_documents`、`vbox_stacks_children_vertically_with_padding_and_margins` |
 | padding、margin 及单边写法 | `padding_and_margin_take_one_to_four_values_and_their_single_side_forms`、`control_padding_insets_what_the_control_draws` |
@@ -74,7 +77,7 @@
 | `Select` 与 `switch_language` | `a_language_menu_lists_its_options_and_marks_the_one_in_use`、`a_closed_language_select_draws_its_arrow_over_its_fill_and_outline` |
 | `ProgressBar` 的轨道、裁剪与实时值 | `a_progress_bar_paints_a_rounded_track_and_follows_the_live_value`、`progress_bar_clips_its_sprite_to_the_completed_share` |
 | 每一种 `value-source` 与 `value-format` | `value_sources_read_the_config_the_disk_and_the_running_step`、`formats_bound_disk_sizes`、`resolves_and_queries_windows_disk_root`、`status_source_replaces_placeholder_text_with_the_published_step` |
-| 文本框编辑：光标、选区、撤销、按词按键 | `a_caret_sits_after_the_characters_before_it`、`a_double_click_selects_the_word_under_the_pointer`、`a_selection_band_covers_the_characters_it_selects`、`a_selection_is_ordered_from_whichever_end_the_caret_is_at`、`removing_a_selection_keeps_the_text_around_it`、`typing_coalesces_into_one_undo_step`、`undo_remembers_the_caret_that_belongs_to_the_value`、`word_keys_stop_at_the_boundaries_they_delete`、`byte_index_walks_characters_not_bytes`、`editable_text_fields_are_recorded_and_readonly_ones_are_not`、`a_typed_value_wins_over_the_bound_default`、`a_readonly_field_shows_its_value_without_taking_edits` |
+| 文本框编辑：光标、选区、撤销、按词按键 | `a_caret_sits_after_the_characters_before_it`、`a_double_click_selects_the_word_under_the_pointer`、`a_selection_band_covers_the_characters_it_selects`、`a_selection_is_ordered_from_whichever_end_the_caret_is_at`、`removing_a_selection_keeps_the_text_around_it`、`typing_coalesces_into_one_undo_step`、`undo_remembers_the_caret_that_belongs_to_the_value`、`word_keys_stop_at_the_boundaries_they_delete`、`byte_index_walks_characters_not_bytes`、`editable_text_fields_are_recorded_and_readonly_ones_are_not`、`a_typed_value_wins_over_the_bound_default`、`a_readonly_field_shows_its_value_without_taking_edits`、`an_empty_field_is_one_a_user_can_click_into` |
 | `visible="false"` 与面板显隐 | `a_hidden_element_takes_its_whole_subtree_with_it`、`a_panel_pair_shows_the_panel_and_only_the_control_that_fits` |
 | 页面顺序与页面声明的职责（`next`、`back`、`role`） | `a_page_role_finds_the_page_that_holds_it`、`a_page_list_without_roles_keeps_its_positions`、`a_next_button_walks_to_the_page_the_project_declares` |
 | 动作表里的每一个动作 | `every_action_in_the_table_answers_with_its_own_window_action`、`action_attributes_map_to_window_actions` |

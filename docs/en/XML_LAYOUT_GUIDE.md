@@ -77,10 +77,12 @@ A button can depend on another control:
 <Button action="install" enabled-when="terms:checked" ... />
 ```
 
-Supported states are `checked`, `unchecked`, `visible`, and `hidden`. While the condition is unmet
-the button uses `disabled-image` and registers no click or hover handling; it returns to its normal
-states once the condition holds. A button without `enabled-when` is enabled by default, and the
-runtime contains no rules tied to specific control names.
+Supported states are `checked`, `unchecked`, `visible`, and `hidden`, plus `valid` and `invalid`
+for a text field. One condition may list several `id:state` pairs separated by commas, and the button
+waits until every one of them holds. While a condition is unmet the button uses `disabled-image` and
+registers no click or hover handling; it returns to its normal states once the condition holds. A
+button without `enabled-when` is enabled by default, and the runtime contains no rules tied to
+specific control names.
 
 ## Flow containers
 
@@ -203,6 +205,32 @@ control recompute immediately.
 `status` replaces the authored text with the locale key the runtime publishes for the current step,
 which is how progress pages show live status. While no task is running, the runtime keeps the `text`
 placeholder.
+
+A field can also say what makes a value acceptable, and the rest of the page acts on it:
+
+```xml
+<TextInput id="editDir" required="true" required-message="@dir_required"
+           pattern="?:*" pattern-message="@dir_absolute" />
+<Button action="install" enabled-when="chkAgree:checked, editDir:valid" />
+<Label value-source="field-error:editDir" color="#FFFF7A7A" />
+```
+
+| Attribute | Effect |
+| --- | --- |
+| `required="true"` | The field may not be empty |
+| `min-length`, `max-length` | How many characters the value may hold, counted as characters rather than bytes |
+| `pattern` | A mask the whole value has to fit: `*` for any run of characters including none, `?` for exactly one, and every other character for itself |
+| `required-message`, `min-length-message`, `max-length-message`, `pattern-message` | The locale key (`@key`) to show while that rule is the one the value breaks |
+
+A field is valid while it breaks none of the rules it declares; an optional field that is empty is
+valid, and so is a field that declares no rule at all. `enabled-when` takes `valid` and `invalid`
+for a field id beside the four states a checkbox or a panel answers. A label with
+`value-source="field-error:<field id>"` draws the words of the rule that field's value breaks first,
+and nothing at all while the value is one the project accepts; the words come from the locale file
+like any other `@key`, so a language that leaves the message out is reported by the build.
+
+A field with nothing in it is still a field: it takes the caret when you click it, which is how the
+value a page asks for gets typed in at all.
 
 Colors accept `#RRGGBB` or `#AARRGGBB`; text drawing currently ignores alpha and uses RGB only.
 

@@ -26,7 +26,7 @@ use windows::Win32::UI::Shell::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetClassNameW, GetClientRect, GetWindowThreadProcessId, PostMessageW,
-    SetProcessDPIAware, WM_LBUTTONUP,
+    SetProcessDPIAware, WM_CHAR, WM_LBUTTONDOWN, WM_LBUTTONUP,
 };
 
 /// The key Windows starts a program from at sign-in.
@@ -289,6 +289,43 @@ impl Fixture {
             config["wizard"]["pages"] = serde_json::json!([
                 {"id": "config", "title": "First", "layout": "layouts/configpage.xml"},
                 {"id": "second", "title": "Second", "layout": "layouts/secondpage.xml"}
+            ]);
+        })
+    }
+
+    /// Declares a wizard whose install button waits for the page's own field.
+    ///
+    /// The agreement box and the install directory both have to be in order
+    /// before the button answers a click, and the directory is typed into the
+    /// field rather than configured: an empty field is what `required` speaks
+    /// about, and the value the field ends up holding is the one the install is
+    /// given.
+    fn validated_project(&self) -> anyhow::Result<()> {
+        std::fs::write(
+            self.project.join("layouts/configpage.xml"),
+            r##"<Page width="720" height="450" background="#FF101010">
+  <TextInput id="editDir" required="true" required-message="@dir_needed"
+             position="absolute" left="20" top="40" width="400" height="26" />
+  <Checkbox id="chkAgree" text="@agree" position="absolute" left="20" top="90" width="200" height="20" />
+  <Button id="install" action="install" text="@install_button"
+          enabled-when="chkAgree:checked, editDir:valid"
+          position="absolute" left="20" top="130" width="140" height="36" />
+  <Label id="hint" value-source="field-error:editDir"
+         position="absolute" left="20" top="180" width="600" height="20" color="#FFFFFFFF" />
+</Page>"##,
+        )?;
+        std::fs::write(
+            self.project.join("layouts/taskspage.xml"),
+            r##"<Page width="500" height="300" background="#FF202020" />"##,
+        )?;
+        std::fs::write(
+            self.project.join("locales/en-US.json"),
+            br#"{"dir_needed": "Choose a folder", "agree": "I agree", "install_button": "Install"}"#,
+        )?;
+        self.edit_config(|config| {
+            config["wizard"]["pages"] = serde_json::json!([
+                {"id": "config", "title": "Options", "layout": "layouts/configpage.xml"},
+                {"id": "tasks", "title": "Installing", "layout": "layouts/taskspage.xml", "role": "progress"}
             ]);
         })
     }
@@ -1645,6 +1682,95 @@ fn a_cancel_button_stops_the_project_script_and_leaves_nothing_installed() -> an
     Ok(())
 }
 
+/// The click is the only way in here too: the install button's own condition
+/// names the field, so what this checks is the whole path a project asks a user
+/// to walk -- an empty field leaves the button inert, the agreement box alone
+/// does not hand it over, and typing an acceptable value does, after which the
+/// install runs into the directory that was typed.
+#[test]
+fn a_field_the_user_fills_in_is_what_lets_the_install_start() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.validated_project()?;
+    fixture.build()?;
+
+    let typed = fixture.destination.with_file_name("typed");
+    let _ = unsafe { SetProcessDPIAware() };
+    let mut setup = Command::new(&fixture.setup)
+        .env("NANO_INSTALLER_TEST_DPI", "96")
+        .spawn()?;
+
+    let waited = wait_for_runtime_window(&mut setup, Instant::now() + Duration::from_secs(30));
+    let found = match &waited {
+        WindowWait::Found(window) => Some(*window),
+        WindowWait::Exited(_) | WindowWait::Timeout => None,
+    };
+    let Some(window) = found else {
+        let reason = match waited {
+            WindowWait::Exited(status) => format!("the setup {status} instead of opening a window"),
+            WindowWait::Timeout => "no window appeared within 30 seconds".to_string(),
+            WindowWait::Found(_) => "the window could not be measured".to_string(),
+        };
+        let _ = setup.kill();
+        let _ = setup.wait();
+        return skip_missing_desktop(&reason);
+    };
+
+    let opened = client_size(window);
+    // The centre of the install button the page places at 20,130, while the
+    // field is empty: the click has nothing to land on.
+    click_client_point(window, 90, 148);
+    let early = wait_for_client_size(
+        window,
+        (500, 300),
+        Instant::now() + Duration::from_millis(1500),
+    );
+    // The agreement box alone is not enough either.
+    click_client_point(window, 60, 100);
+    click_client_point(window, 90, 148);
+    let agreed = wait_for_client_size(
+        window,
+        (500, 300),
+        Instant::now() + Duration::from_millis(1500),
+    );
+    // Typing the directory into the field is what hands the button its click.
+    let destination = typed.to_string_lossy().to_string();
+    press_client_point(window, 100, 53);
+    type_client_text(window, &destination);
+    click_client_point(window, 90, 148);
+    let started =
+        wait_for_client_size(window, (500, 300), Instant::now() + Duration::from_secs(20));
+    let installed = wait_for_directory(&typed, Instant::now() + Duration::from_secs(20));
+    let _ = setup.kill();
+    let _ = setup.wait();
+
+    assert_eq!(
+        opened,
+        (720, 450),
+        "the wizard opened on {opened:?} rather than the 720x450 page the project declares"
+    );
+    assert_eq!(
+        early, None,
+        "the install started while the field the project asks for was still empty"
+    );
+    assert_eq!(
+        agreed, None,
+        "the agreement box alone let the install start with the field empty"
+    );
+    assert_eq!(
+        started,
+        Some((500, 300)),
+        "the field the user filled in did not let the install start"
+    );
+    assert!(
+        installed && typed.join("E2eProbe.exe").is_file(),
+        "the install did not write the product into the directory the field held"
+    );
+    Ok(())
+}
+
 /// Clicks a point inside the runtime window, the way a user's click arrives.
 ///
 /// The runtime answers a button-up with whatever action the layout placed under
@@ -1653,6 +1779,41 @@ fn click_client_point(window: HWND, x: i32, y: i32) {
     let lparam = LPARAM(((y << 16) | (x & 0xFFFF)) as isize);
     unsafe { PostMessageW(window, WM_LBUTTONUP, WPARAM(0), lparam) }
         .expect("the runtime window accepts a click");
+}
+
+/// Presses and releases a point inside the runtime window.
+///
+/// A click on a text field takes the caret on the way down, which is what makes
+/// the characters posted after it land in that field.
+fn press_client_point(window: HWND, x: i32, y: i32) {
+    let lparam = LPARAM(((y << 16) | (x & 0xFFFF)) as isize);
+    unsafe {
+        PostMessageW(window, WM_LBUTTONDOWN, WPARAM(0), lparam)
+            .expect("the runtime window accepts a press");
+        PostMessageW(window, WM_LBUTTONUP, WPARAM(0), lparam)
+            .expect("the runtime window accepts a release");
+    }
+}
+
+/// Types text into the focused field, one character at a time.
+fn type_client_text(window: HWND, text: &str) {
+    for character in text.encode_utf16() {
+        unsafe {
+            PostMessageW(window, WM_CHAR, WPARAM(character as usize), LPARAM(0))
+                .expect("the runtime window accepts a character");
+        }
+    }
+}
+
+/// Waits for a directory to exist.
+fn wait_for_directory(path: &Path, deadline: Instant) -> bool {
+    while Instant::now() < deadline {
+        if path.is_dir() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    false
 }
 
 /// Waits for the window's client area to become `expected`.

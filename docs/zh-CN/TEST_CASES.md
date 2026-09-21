@@ -13,7 +13,8 @@ Rust doc comment，再退回用例名。
 | `a_built_setup_carries_a_readable_bundle_and_real_resources` | 构建产物是 stub、捆绑数据和 Windows 资源三部分，捆绑数据要在文件最末尾描述自己，运行时才找得到。 |
 | `a_built_setup_installs_its_payload_and_registers_an_uninstall_entry` | 安装包存在的意义：payload 落到磁盘上，manifest 记下写了哪些东西，卸载项在注册表里登记，payload 自己的字节也没在途中被改动。 |
 | `a_button_state_image_falls_back_to_the_normal_one` | 只画了部分状态的版面照样画得出按钮：缺 `hover-image`、`pressed-image` 或 `disabled-image` 时退回 `normal-image`。被条件挡住的按钮优先用 `disabled-image`，没有 id 的控件则完全收不到悬停和按下。 |
-| `a_button_waits_for_each_state_its_condition_can_name` | `enabled-when` 让一个控件取决于另一个控件，指南列的 `checked`、`unchecked`、`visible`、`hidden` 四种状态按它们点名的复选框或面板判断；运行时看不懂的状态会把按钮挡住而不是放过点击，没写条件的按钮可用，说明这个属性是可选的。 |
+| `a_button_waits_for_each_state_its_condition_can_name` | `enabled-when` 让一个控件取决于另一个控件，指南列的 `checked`、`unchecked`、`visible`、`hidden` 四种状态按它们点名的复选框或面板判断；条件写成一串用逗号隔开的条件时全部成立才算成立，多打的逗号留下的空条件算不成立；运行时看不懂的状态、页面上找不到的控件都会把按钮挡住而不是放过点击，没写条件的按钮可用，说明这个属性是可选的。 |
+| `a_button_waits_for_the_field_its_condition_names` | `enabled-when` 点名一个输入框时，按钮等的是那个值合不合格：字段还空着（`required` 说的就是这种）时安装键既不登记点击区域也不登记悬停，填进一个工程接受的路径就把点击还回来，清空后又收回去；同一个页面上写 `dir:invalid` 的那个按钮正好相反。 |
 | `a_caret_sits_after_the_characters_before_it` | 文本光标画在前面的字符之后，位置随下标右移；下标超出文本长度时仍然留在输入框内。 |
 | `a_cancel_button_stops_the_project_script_and_leaves_nothing_installed` | 页面上放一个 `action="cancel"` 的按钮，在真窗口里点它：正在跑的任务在脚本那一步停下，向导回到任务起始的那一页，脚本已经建出来的目录被撤掉，一个字节都没留下。 |
 | `a_cancel_request_stops_the_checkpoints_that_follow_it` | 收到取消请求的检查点报出 `cancelled by the user`，而且带的是它自己的错误类型，向导据此说"已取消"而不是"失败"；取消只作用于这一个任务，下一个任务拿到的是全新的句柄。 |
@@ -30,7 +31,10 @@ Rust doc comment，再退回用例名。
 | `a_double_click_selects_the_word_under_the_pointer` | 双击选中指针下的那个词：字母和数字连成一段，路径分隔符单独一个，空白按一段算，下划线算词的一部分，点在文本之外没有东西可选。 |
 | `a_failed_upgrade_restores_the_previous_version` | 升级中途失败（这里让注册表登记报错）会回滚到上个版本：旧文件和旧 manifest 都还原，新 payload 的文件不在，manifest 里也只有旧文件。 |
 | `a_failing_install_script_removes_what_it_wrote` | 安装脚本抛错时，它写过的东西被清掉，错误里带着脚本抛出的那句消息，安装目录也不留残余。 |
+| `a_field_checks_the_value_the_project_asks_it_to` | 输入框自己的规矩就写在版面上：`required` 管值有没有，`min-length` 与 `max-length` 按字符数算（中文按字算，不按字节），`pattern` 是掩码而不是正则——`*` 是任意长的一段（可以为空），`?` 恰好一个字符，整段值都要对得上，所以安装目录写 `?:*` 就是要一个盘符开头的路径。没写规矩的字段一律合格，可留空的字段空着也合格；值最先破坏的那条规矩留下自己那句文案，没写文案的规矩只让字段不合格、什么也不说。 |
+| `a_field_the_user_fills_in_is_what_lets_the_install_start` | 在真窗口里从头走一遍要填字段的流程：字段空着时点安装键没有反应，只勾同意也不行，往字段里逐字符敲进一个路径之后安装才开始，产品落在敲进去的那个目录里。字段、按钮条件和安装动作三件事里任何一环没接上，它都会停在原地。 |
 | `a_hidden_element_takes_its_whole_subtree_with_it` | 祖先上的 `visible="false"` 把底下整个子树都藏起来：子控件的动作、文字和面板自己的底色都不画，页面上别的地方不受影响。把属性改回 `true` 后这个分支又完整画出来。 |
+| `a_hint_shows_the_rule_the_value_breaks` | 绑 `value-source="field-error:<字段 id>"` 的标签画出那条被破坏的规矩写下的文案：字段空着时报 `required` 那句，值不合格时报 `pattern` 那句，文案按工程自己的语言查表；值合格时这个标签什么都不画，点名页面上没有的字段也一样。 |
 | `a_label_takes_its_text_font_and_alignment_from_the_layout` | `Label` 的内容全是文字，字号、加粗、颜色和对齐都按版面写的那样生效，`value` 和 `text` 一样被接受；没写对齐的标签从自己的左边缘开始，字号也跟着显示缩放走。 |
 | `a_language_menu_lists_its_options_and_marks_the_one_in_use` | 展开的语言菜单按选项一行一个地画在页面之上，当前语言那一行填上选中底色，`visible="false"` 的选项不出现在列表里；点某一行会给出切换到那个语言的区域。 |
 | `a_layout_picks_the_image_density_the_display_asks_for` | 版面只点一个文件名，由运行时选版本：低密度显示器用 1x，高密度用 `@2x`。版面直接写 `@2x` 的文件名也会被归一化，只发布其中一个版本时退回另一个。 |
@@ -70,6 +74,7 @@ Rust doc comment，再退回用例名。
 | `a_supported_locale_without_a_file_is_reported` | 工程声明支持、却没有对应语言文件的语言会被报告出来，因为别的环节不会报：运行时会退回默认语言，产品只是显示成另一种语言而已。 |
 | `a_translation_missing_page_text_is_reported` | 默认语言能回答的页面文案键，凡是某个语言漏掉的都要报出来，没漏的不报。 |
 | `a_typed_value_wins_over_the_bound_default` | 绑定到工程文件的输入框先显示配置里的路径，但用户输入或选择过的值要一直留在屏幕上，`disk-free:` 绑定读的也是同一个输入框。 |
+| `a_validation_message_the_page_asks_for_is_reported` | 字段不合格时显示的文案也是页面文案，构建期和别的键一样逐语言比对：默认语言里有、某个语言文件里漏掉的那条会被报出来，而不是等用户看到一句没翻译好的提示。 |
 | `a_window_is_centred_and_clamped_to_its_work_area` | 窗口在工作区里居中，工作区不从原点开始时保留它自己的偏移；比桌面还大的版面被夹到桌面范围内而不是挂在边缘外，只有一个方向超出时另一个方向照常居中。 |
 | `a_wrapping_row_gives_each_line_the_height_of_its_tallest_item` | 窗口变窄时换行行重新排布，下一行从上一行最高那个项的下方开始，再加上间距，高度不同的卡片因此不会互相压住。 |
 | `a_wrapping_row_starts_a_new_line_when_the_next_item_does_not_fit` | 放不下下一个项时换行行另起一行；整行放得下就不换；比行还宽的项自己占一行而不是被丢掉；空容器没有行。 |
@@ -83,6 +88,7 @@ Rust doc comment，再退回用例名。
 | `an_asset_without_its_density_pair_is_reported` | 图片是画页面时按密度选的，缺了另一半的文件只会在另一种缩放比例的显示器上才露馅。构建两个方向都报：只有 1x 没有 2x 的，和只有 2x 没有 1x 的。 |
 | `an_element_answers_the_pointer_only_when_it_declares_an_action` | 元素只有声明了 `action` 才响应指针：没有动作的标签、图片和按钮即使盖住同一块地方也不登记，装饰因此吞不掉点击。声明了动作的图片给出 `pick_directory`，`Select` 给出切换语言菜单的动作。 |
 | `an_element_is_pinned_by_the_edge_attribute_it_carries` | `right` 和 `bottom` 从远端边量起，`inset` 是一次写四边的简写；声明了近端边时以它为准，单边写法能覆盖简写，页面本身就是绝对定位控件的参照父级。 |
+| `an_empty_field_is_one_a_user_can_click_into` | 空着的输入框仍然是输入框：它一个字的文字都不画，却照样被记成可编辑字段，光标也按它声明的字号和颜色落进去——用户就是靠这一步才能把页面要的路径敲进来。`readonly="true"` 的字段和别人一样不在这份名单里；待在流式容器里的字段同样被记下，位置跟着容器给它的槽位。 |
 | `an_empty_runtime_directory_leaves_the_stub_search_automatic` | 运行时目录为空时 stub 的查找保持自动：勾上自动搜索 stub 会清空这个输入框，而把空路径当目录传下去会先在那里搜并且搜不到。所以请求里根本不能带这个覆盖项，预览里也不能显示它。 |
 | `an_explicit_directory_wins_over_the_configured_one` | 命令行给出的目录优先于配置里的目录，静默运行才能自己决定产品装到哪里。 |
 | `an_explicit_install_path_wins_over_the_configured_one` | 显式给出的目录优先于配置里的目录，这样不改工程也能让静默运行决定产品装到哪里。 |

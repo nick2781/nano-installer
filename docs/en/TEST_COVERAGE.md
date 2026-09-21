@@ -3,8 +3,8 @@
 Every behaviour the documentation promises, and the automated case that holds it. A row names the
 cases that fail when that behaviour breaks; a behaviour with no row is one nobody is checking.
 
-`cargo test --locked --workspace` runs 213 cases: 158 in the core library, 20 that build a real setup
-and run it, 4 that read a project the way the builder does, 29 in the visual builder, and 2 in the
+`cargo test --locked --workspace` runs 219 cases: 162 in the core library, 21 that build a real setup
+and run it, 5 that read a project the way the builder does, 29 in the visual builder, and 2 in the
 extraction runtimes. The setup-level cases need real runtime executables built first, which is what
 `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `target/e2e-report.txt`.
 
@@ -12,9 +12,9 @@ extraction runtimes. The setup-level cases need real runtime executables built f
 
 | Layer | Cases | Proves | Cannot prove |
 | --- | --- | --- | --- |
-| Core library | 158 | what a page becomes — layers, coordinates, hit regions, text — what the bundle carries, what an install writes to disk and the registry, and what each script primitive does | that a packaged setup reaches any of it |
-| Setup end to end | 20 | a built setup installed on the machine: payload bytes, manifest, uninstall entry, shortcuts, autostart, project scripts, the wizard window | anything that needs a click |
-| Project inspection | 4 | the summary and the warning list the builder shows before a build | |
+| Core library | 162 | what a page becomes — layers, coordinates, hit regions, text — what the bundle carries, what an install writes to disk and the registry, and what each script primitive does | that a packaged setup reaches any of it |
+| Setup end to end | 21 | a built setup installed on the machine: payload bytes, manifest, uninstall entry, shortcuts, autostart, project scripts, the wizard window | anything that needs a click |
+| Project inspection | 5 | the summary and the warning list the builder shows before a build | |
 | Visual builder | 29 | the window's own state, parameters, log and warnings | clicking the real controls |
 | Extraction runtimes | 2 | a broken archive, and an unsafe path inside one, are refused | extracting an archive that is sound -- the setup-level cases run a real runtime over a real payload |
 | Snapshots | 6 pages | what every page of the example actually looks like, measured rather than judged | whether a glyph reads correctly, and what happens once the flow reaches a page |
@@ -49,7 +49,7 @@ extraction runtimes. The setup-level cases need real runtime executables built f
 | `uninstall.data_paths` | `only_expands_data_paths_inside_a_user_profile`, `ignores_data_paths_when_the_project_declares_none`, `uninstalling_below_appdata_removes_the_data_only_when_the_box_is_cleared` |
 | `advanced.silent_mode_support`, `advanced.uninstall_mode_support` | `a_project_without_silent_support_refuses_a_windowless_install`, `a_project_without_silent_support_refuses_a_windowless_uninstall`, `a_project_that_did_not_opt_in_refuses_a_windowless_run` |
 | payload format detection | `the_payload_format_selects_the_runtime_that_gets_embedded`, `zip_backend_rejects_invalid_archive`, `rejects_unsafe_7z_paths` |
-| build warnings | `an_asset_without_its_density_pair_is_reported`, `a_translation_missing_page_text_is_reported`, `a_supported_locale_without_a_file_is_reported`, `inspects_taptap_project_without_dpi_warnings` |
+| build warnings | `an_asset_without_its_density_pair_is_reported`, `a_translation_missing_page_text_is_reported`, `a_supported_locale_without_a_file_is_reported`, `inspects_taptap_project_without_dpi_warnings`, `a_validation_message_the_page_asks_for_is_reported` |
 | `installer_config.json` keys this build does not read | `accepts_a_configuration_of_read_settings`, `leaves_a_section_of_the_projects_own_alone`, `refuses_a_setting_that_does_nothing`, `refuses_a_misspelled_setting`, `refuses_a_section_that_does_nothing`, `refuses_an_unknown_page_key`, `refuses_a_page_role_the_runtime_does_not_run`, `refuses_two_pages_claiming_one_role`, `reports_every_problem_at_once`, `the_example_project_matches_the_schema` |
 
 ## Pages and controls
@@ -61,7 +61,10 @@ extraction runtimes. The setup-level cases need real runtime executables built f
 | the `file`/`dest`/`fade` image form | `a_styled_image_draws_into_a_sub_rectangle_at_the_opacity_it_declares`, `image_style_supports_plain_path_destination_and_fade` |
 | density choice at the display's DPI, both fallbacks | `a_layout_picks_the_image_density_the_display_asks_for`, `dpi_asset_resolution_prefers_requested_density_and_falls_back` |
 | `Button` state images and their fallback | `a_button_state_image_falls_back_to_the_normal_one`, `install_button_uses_xml_images_for_interaction_state` |
-| `enabled-when` for every state it can name | `a_button_waits_for_each_state_its_condition_can_name` |
+| `enabled-when` for every state it can name, a field among them, and a list of conditions | `a_button_waits_for_each_state_its_condition_can_name`, `a_button_waits_for_the_field_its_condition_names` |
+| a field's own rules decide which values it accepts (`required`, `min-length`, `max-length`, `pattern`) | `a_field_checks_the_value_the_project_asks_it_to` |
+| the hint a field shows for the first rule its value breaks | `a_hint_shows_the_rule_the_value_breaks` |
+| the install button waits for the field a person fills in | `a_field_the_user_fills_in_is_what_lets_the_install_start` |
 | a disabled button takes no click and no hover | `a_disabled_button_registers_no_click_and_no_hover` |
 | `HBox`, `VBox`, `Content` layout: sizes, spacing, alignment, `flex-*`, mins | `bottom_hbox_distributes_fixed_and_flexible_items`, `a_container_measures_the_edge_its_children_are_asked_for`, `a_nested_container_reports_the_extent_its_children_need`, `a_shrinking_row_stops_at_the_minimum_its_items_declare`, `flow_attributes_become_the_item_a_container_shares_space_with`, `align_self_overrides_the_alignment_of_its_container`, `justify_content_places_the_run_inside_the_room_it_has`, `item_spacing_and_gap_leave_the_same_distance_between_items`, `each_container_tag_accepts_the_alignment_spelling_it_documents`, `vbox_stacks_children_vertically_with_padding_and_margins` |
 | padding, margin, and the single-side forms | `padding_and_margin_take_one_to_four_values_and_their_single_side_forms`, `control_padding_insets_what_the_control_draws` |
@@ -74,7 +77,7 @@ extraction runtimes. The setup-level cases need real runtime executables built f
 | `Select` with `switch_language` | `a_language_menu_lists_its_options_and_marks_the_one_in_use`, `a_closed_language_select_draws_its_arrow_over_its_fill_and_outline` |
 | `ProgressBar` track, clipping and live value | `a_progress_bar_paints_a_rounded_track_and_follows_the_live_value`, `progress_bar_clips_its_sprite_to_the_completed_share` |
 | every `value-source` form and `value-format` | `value_sources_read_the_config_the_disk_and_the_running_step`, `formats_bound_disk_sizes`, `resolves_and_queries_windows_disk_root`, `status_source_replaces_placeholder_text_with_the_published_step` |
-| text field editing: caret, selection, undo, word keys | `a_caret_sits_after_the_characters_before_it`, `a_double_click_selects_the_word_under_the_pointer`, `a_selection_band_covers_the_characters_it_selects`, `a_selection_is_ordered_from_whichever_end_the_caret_is_at`, `removing_a_selection_keeps_the_text_around_it`, `typing_coalesces_into_one_undo_step`, `undo_remembers_the_caret_that_belongs_to_the_value`, `word_keys_stop_at_the_boundaries_they_delete`, `byte_index_walks_characters_not_bytes`, `editable_text_fields_are_recorded_and_readonly_ones_are_not`, `a_typed_value_wins_over_the_bound_default`, `a_readonly_field_shows_its_value_without_taking_edits` |
+| text field editing: caret, selection, undo, word keys | `a_caret_sits_after_the_characters_before_it`, `a_double_click_selects_the_word_under_the_pointer`, `a_selection_band_covers_the_characters_it_selects`, `a_selection_is_ordered_from_whichever_end_the_caret_is_at`, `removing_a_selection_keeps_the_text_around_it`, `typing_coalesces_into_one_undo_step`, `undo_remembers_the_caret_that_belongs_to_the_value`, `word_keys_stop_at_the_boundaries_they_delete`, `byte_index_walks_characters_not_bytes`, `editable_text_fields_are_recorded_and_readonly_ones_are_not`, `a_typed_value_wins_over_the_bound_default`, `a_readonly_field_shows_its_value_without_taking_edits`, `an_empty_field_is_one_a_user_can_click_into` |
 | `visible="false"` and panel show/hide | `a_hidden_element_takes_its_whole_subtree_with_it`, `a_panel_pair_shows_the_panel_and_only_the_control_that_fits` |
 | Page order and the job a page declares (`next`, `back`, `role`) | `a_page_role_finds_the_page_that_holds_it`, `a_page_list_without_roles_keeps_its_positions`, `a_next_button_walks_to_the_page_the_project_declares` |
 | every action in the table | `every_action_in_the_table_answers_with_its_own_window_action`, `action_attributes_map_to_window_actions` |

@@ -46,5 +46,6 @@
   "uninstall.status.cleaning_game_data": "Cleaning game data...",
   "uninstall.status.removing_files": "Removing files...",
   "uninstall.status.finishing": "Finishing cleanup...",
-  "uninstall.status.complete": "Uninstall complete"
+  "uninstall.status.complete": "Uninstall complete",
+  "dir_required": "Choose an install folder"
 }
