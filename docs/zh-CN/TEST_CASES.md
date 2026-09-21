@@ -34,6 +34,7 @@ Rust doc comment，再退回用例名。
 | `a_failing_install_script_removes_what_it_wrote` | 安装脚本抛错时，它写过的东西被清掉，错误里带着脚本抛出的那句消息，安装目录也不留残余。 |
 | `a_field_checks_the_value_the_project_asks_it_to` | 输入框自己的规矩就写在版面上：`required` 管值有没有，`min-length` 与 `max-length` 按字符数算（中文按字算，不按字节），`pattern` 是掩码而不是正则——`*` 是任意长的一段（可以为空），`?` 恰好一个字符，整段值都要对得上，所以安装目录写 `?:*` 就是要一个盘符开头的路径。没写规矩的字段一律合格，可留空的字段空着也合格；值最先破坏的那条规矩留下自己那句文案，没写文案的规矩只让字段不合格、什么也不说。 |
 | `a_field_the_user_fills_in_is_what_lets_the_install_start` | 在真窗口里从头走一遍要填字段的流程：字段空着时点安装键没有反应，只勾同意也不行，往字段里逐字符敲进一个路径之后安装才开始，产品落在敲进去的那个目录里。字段、按钮条件和安装动作三件事里任何一环没接上，它都会停在原地。 |
+| `a_file_type_that_would_write_outside_the_classes_tree_is_refused` | 文件类型的两个名字先查再用：扩展名或程序 id 里带路径分隔符、或其中任何一个为空，调用直接返回 `false`；命令行空着的调用同样被拒绝，因为那样的文件类型打不开任何东西。五种被拒的调用一个字节都没写进注册表，manifest 里也没有记录。 |
 | `a_hidden_element_takes_its_whole_subtree_with_it` | 祖先上的 `visible="false"` 把底下整个子树都藏起来：子控件的动作、文字和面板自己的底色都不画，页面上别的地方不受影响。把属性改回 `true` 后这个分支又完整画出来。 |
 | `a_hint_shows_the_rule_the_value_breaks` | 绑 `value-source="field-error:<字段 id>"` 的标签画出那条被破坏的规矩写下的文案：字段空着时报 `required` 那句，值不合格时报 `pattern` 那句，文案按工程自己的语言查表；值合格时这个标签什么都不画，点名页面上没有的字段也一样。 |
 | `a_label_takes_its_text_font_and_alignment_from_the_layout` | `Label` 的内容全是文字，字号、加粗、颜色和对齐都按版面写的那样生效，`value` 和 `text` 一样被接受；没写对齐的标签从自己的左边缘开始，字号也跟着显示缩放走。 |
@@ -63,6 +64,7 @@ Rust doc comment，再退回用例名。
 | `a_script_deletes_the_desktop_shortcut_and_the_start_menu_folder_it_created` | 卸载脚本用 `delete_desktop_shortcut` 和 `delete_start_menu_folder` 删掉安装时建的桌面快捷方式和开始菜单文件夹，两个原语各自报告自己删掉了东西，事后链接和文件夹都不在了。 |
 | `a_script_failure_reports_the_messages_it_logged` | 脚本失败时，它之前用 `log_warn` 之类写下的日志跟着错误一起报出来，作者能看到最后那几行。 |
 | `a_script_recognises_a_running_process_by_its_image_name` | `is_process_running` 按映像名判断进程：正在跑的那个测试可执行文件返回 true，编出来的不存在名字返回 false。这条检查就是安装时不肯覆盖正在运行的产品的原因。 |
+| `a_script_registers_a_file_type_where_windows_reads_it` | 脚本登记的文件类型落在 Windows 真正读取的四个位置：扩展名指向程序 id，程序 id 上挂着资源管理器显示的类型名、图标，以及带 `"%1"` 的文件命令行。安装把它们全部记入 manifest，卸载时这个文件类型连同程序 id 一起从注册表里消失。 |
 | `a_script_runs_a_command_and_sees_its_exit_code` | `run_command` 返回命令的退出码，用 `ComSpec` 跑 `exit 3` 和 `exit 0` 分别拿到 3 和 0；起不来的命令返回 -1，脚本因此分得清跑了但失败和根本没跑。 |
 | `a_script_step_text_wins_over_the_locale_key` | 脚本发布的字面状态文字会留在屏幕上，即使更早步骤记下的 locale 键还在。 |
 | `a_scrollable_container_shows_the_part_it_is_scrolled_to` | 装不下容器的那部分内容只从窗口里露出一块：偏移量把各行整体推上去，推出容器边缘的那一行既不画出来也不再登记点击，偏移量超出列表末尾时停在末尾，不会露出底下的空白。列表有多长由各行自己声明的高度决定，跟容器拿到多少地方无关，这正是「能滚」与「被压扁」的分界。 |
@@ -101,6 +103,8 @@ Rust doc comment，再退回用例名。
 | `an_install_closes_a_running_copy_of_the_product` | 工程可以要求先关掉正在运行的自身副本，应用开着也能就地升级。 |
 | `an_install_script_creates_shortcuts_the_uninstall_takes_back` | 安装脚本用快捷方式原语建的桌面、开始菜单和卸载链接都落在 Windows 会去找的位置，并被 manifest 逐条记下。卸载时三个链接和安装器自己建的开始菜单文件夹一起删掉，菜单里不留空的产品目录。 |
 | `an_install_script_deploys_files_and_writes_the_manifest` | 安装脚本部署文件后，manifest 列出它管理的文件和注册表值，说明注册表根是 `HKCU`；卸载器和 manifest 自己管自己，不在卸载时删除的文件清单里，产品名也从注册表读得到。 |
+| `an_install_script_removes_a_variable_it_no_longer_wants` | `remove_env` 删掉机器上本来就有的那个变量，返回 `true`；它同时把这条记录从待撤销清单里去掉，所以卸载不会再去删一个已经不在的值，也不会把 `Environment` 这个键当成自己的删掉。 |
+| `an_install_script_sets_a_variable_the_uninstall_takes_back` | `set_env` 把变量写进 Windows 读环境变量的那个键，装完之后新进程就能读到；脚本自己的进程仍保留启动时的环境，这与 Windows 对写入者的行为一致。manifest 只记这个值（不记键），卸载把值撤回去，`Environment` 键连同里面的 PATH 都留着。 |
 | `an_install_script_that_never_deploys_the_executable_is_refused` | 脚本没部署 `install.exe_name` 指定的可执行文件时安装被拒绝，错误里点名缺的是哪个文件；失败的一次不会留下写了一半的目录。 |
 | `an_uninstall_script_replays_the_manifest_it_asks_for` | 卸载脚本调用 `run_tracked_uninstall` 后，manifest 记下的文件和注册表值都被清掉，manifest 自己也不在了。 |
 | `an_uninstall_script_sees_the_uninstall_mode_and_the_keep_data_checkbox` | 卸载脚本在两种勾选状态下都看得到 `get_mode()` 返回 uninstall，`get_checkbox_value("keep_data")` 如实反映复选框，没登记过的复选框返回 false，`is_cancelled()` 返回 false。 |

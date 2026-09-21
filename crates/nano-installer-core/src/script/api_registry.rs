@@ -10,7 +10,7 @@ use crate::install::{
 };
 
 /// Splits `HKCU\Software\...` into a hive handle and a subkey path.
-fn split(key: &str) -> Option<(windows::Win32::System::Registry::HKEY, String)> {
+pub(super) fn split(key: &str) -> Option<(windows::Win32::System::Registry::HKEY, String)> {
     match registry_path(key) {
         Ok(parts) => Some(parts),
         Err(error) => {
@@ -108,11 +108,7 @@ pub(super) fn register(engine: &mut Engine, context: ScriptContext) {
             return false;
         }
         // The uninstaller must not try to delete it again.
-        let mut state = c.state();
-        state.registry_keys.retain(|recorded| recorded != key);
-        state
-            .registry_values
-            .retain(|(recorded, _)| recorded.as_str() != key);
+        c.forget_registry_key(key);
         true
     });
 }

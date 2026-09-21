@@ -95,6 +95,22 @@ value rather than the whole key.
 | `delete_desktop_shortcut(name)` | Removes a desktop shortcut |
 | `delete_start_menu_folder(folder)` | Removes a Start menu folder |
 
+## File associations
+
+| Primitive | Description |
+| --- | --- |
+| `register_file_association(extension, prog_id, description, command, icon)` | Claims a file type for the current user |
+| `unregister_file_association(extension, prog_id)` | Gives it back |
+
+An association is written under `HKCU\Software\Classes`: the extension names the program id, and the
+program id carries the words Explorer shows, the icon, and the command that opens the file. The
+extension is accepted with or without its leading dot, and every text argument after `prog_id` may
+be empty, in which case that part is not written. `command` is the one argument a file type cannot
+do without: it is the command line Windows runs, so quote the file placeholder, as in
+`"C:\Program Files\MyApp\App.exe" "%1"`. Every key and value written is recorded in the manifest,
+so an uninstall removes the file type again. A name carrying a path separator is refused before
+anything is written, because it would write outside the classes tree a user's file types belong in.
+
 ## Processes
 
 | Primitive | Description |
@@ -109,6 +125,8 @@ value rather than the whole key.
 | Primitive | Description |
 | --- | --- |
 | `get_env(name)` | Environment variable, empty string when absent |
+| `set_env(name, value)` | Writes one of the user's variables, for the processes that start later |
+| `remove_env(name)` | Removes that variable |
 | `get_drives()` | Fixed disk roots, for example `["C:\\", "D:\\"]` |
 | `get_drive_space(drive)` | `[free, total]`, empty array on failure |
 | `shell_notify()` | Notifies the shell to refresh its icon cache |
@@ -119,6 +137,12 @@ value rather than the whole key.
 | `show_error(title, message)` | Error dialog |
 | `ask_yes_no(title, message)` | Question dialog, returns a bool |
 | `run_tracked_uninstall(start, end)` | Removes the product from the manifest; uninstall only |
+
+`set_env` writes `HKCU\Environment`, which is where Windows reads a new process's variables
+from: a variable the setup exports into its own environment would die with the setup, and one
+written here is still there for the program it installs. The key belongs to Windows and to every
+other product on the machine, so the manifest records the value and the uninstall takes that
+value back rather than the key, exactly as it does for `...\CurrentVersion\Run`.
 
 ## Example
 

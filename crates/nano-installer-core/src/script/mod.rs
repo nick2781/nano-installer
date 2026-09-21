@@ -9,6 +9,7 @@
 //! fixed, and the engine carries an operation ceiling so a project cannot hang
 //! an installation in a loop.
 
+mod api_association;
 mod api_file;
 mod api_process;
 mod api_registry;
@@ -297,6 +298,7 @@ fn run(context: &ScriptContext, source: &str) -> Result<()> {
     let mut engine = Engine::new();
     engine.set_max_operations(MAX_OPERATIONS);
     api_ui::register(&mut engine, context.clone());
+    api_association::register(&mut engine, context.clone());
     api_file::register(&mut engine, context.clone());
     api_registry::register(&mut engine, context.clone());
     api_process::register(&mut engine);
@@ -1118,6 +1120,217 @@ mod tests {
             HKEY_CURRENT_USER,
             &subkey(SHARED_RUN_KEY)
         )?);
+        Ok(())
+    }
+
+    /// The key Windows keeps a user's environment variables in.
+    ///
+    /// Every product on the machine writes into it, so nothing here may remove
+    /// it: a setup that did would take `PATH` with it.
+    const USER_ENVIRONMENT_KEY: &str = r"HKCU\Environment";
+
+    #[test]
+    fn an_install_script_sets_a_variable_the_uninstall_takes_back() -> Result<()> {
+        let name = unique_name("NANO_INSTALLER_SCRIPT_TEST");
+        // The uninstall takes the value back; the guard covers a run that fails
+        // before it gets that far.
+        let _guard = TestRegistryValue {
+            key: USER_ENVIRONMENT_KEY.to_string(),
+            name: name.clone(),
+        };
+        let fixture = fixture(
+            &deploying_script(&format!(
+                r#"
+                let report = "";
+                report += "first=" + set_env({name}, "configured").to_string() + "\n";
+                report += "second=" + set_env({name}, "again").to_string() + "\n";
+                report += "read=" + get_env({name}) + "\n";
+                write_file(path_join(install_path, "env.txt"), report);
+                "#,
+                name = literal(&name)
+            )),
+            r#"run_tracked_uninstall(0.0, 100.0);"#,
+        )?;
+        fixture.install()?;
+
+        // The script's own process keeps the environment it started with, which
+        // is what Windows does for the program that writes the value: what the
+        // write is for is the processes that start afterwards.
+        assert_eq!(
+            std::fs::read_to_string(fixture.destination.join("env.txt"))?,
+            "first=true\nsecond=true\nread=\n"
+        );
+        let key = subkey(USER_ENVIRONMENT_KEY);
+        assert_eq!(
+            install::read_registry_string(HKEY_CURRENT_USER, &key, &name)?,
+            Some("again".to_string()),
+            "the variable did not land where Windows reads one from"
+        );
+        // The key belongs to Windows, so the manifest claims the value alone.
+        let recorded = manifest(&fixture)?;
+        assert_eq!(
+            recorded["registry_values"],
+            serde_json::json!([{"path": USER_ENVIRONMENT_KEY, "name": name}])
+        );
+        assert_eq!(recorded["registry_keys"], serde_json::json!([]));
+
+        fixture.uninstall(true)?;
+
+        assert_eq!(
+            install::read_registry_string(HKEY_CURRENT_USER, &key, &name)?,
+            None
+        );
+        assert!(
+            install::registry_key_exists(HKEY_CURRENT_USER, &key)?,
+            "the uninstall removed the key every product on the machine writes into"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn an_install_script_removes_a_variable_it_no_longer_wants() -> Result<()> {
+        let name = unique_name("NANO_INSTALLER_SCRIPT_TEST");
+        let _guard = TestRegistryValue {
+            key: USER_ENVIRONMENT_KEY.to_string(),
+            name: name.clone(),
+        };
+        let key = subkey(USER_ENVIRONMENT_KEY);
+        // A value the machine already had, which is what makes this a removal
+        // rather than "there was nothing there".
+        install::write_registry_string(HKEY_CURRENT_USER, &key, &name, "before")?;
+        let fixture = fixture(
+            &deploying_script(&format!(
+                r#"
+                write_file(path_join(install_path, "removed.txt"),
+                           remove_env({name}).to_string());
+                "#,
+                name = literal(&name)
+            )),
+            "",
+        )?;
+        fixture.install()?;
+
+        assert_eq!(
+            std::fs::read_to_string(fixture.destination.join("removed.txt"))?,
+            "true"
+        );
+        assert_eq!(
+            install::read_registry_string(HKEY_CURRENT_USER, &key, &name)?,
+            None
+        );
+        // Nothing is left to replay: a value that is gone, and a key that was
+        // never this product's to begin with.
+        let recorded = manifest(&fixture)?;
+        assert_eq!(recorded["registry_values"], serde_json::json!([]));
+        assert_eq!(recorded["registry_keys"], serde_json::json!([]));
+        Ok(())
+    }
+
+    /// One file type of the test's own, so no real product's association is
+    /// read, written or removed.
+    fn unique_file_type() -> (String, String) {
+        let tag = unique_name("nanoinstallerscripttest").replace('-', "");
+        (tag.clone(), format!("NanoInstallerScriptTest.{tag}"))
+    }
+
+    #[test]
+    fn a_script_registers_a_file_type_where_windows_reads_it() -> Result<()> {
+        let (extension, prog_id) = unique_file_type();
+        let extension_key = format!(r"HKCU\Software\Classes\.{extension}");
+        let prog_id_key = format!(r"HKCU\Software\Classes\{prog_id}");
+        let _extension_guard = TestRegistryKey(extension_key.clone());
+        let _prog_id_guard = TestRegistryKey(prog_id_key.clone());
+        let fixture = fixture(
+            &deploying_script(&format!(
+                r#"
+                let target = path_join(install_path, "App.exe");
+                let registered = register_file_association({extension}, {prog_id},
+                    "A script test file", target + " \"%1\"", target);
+                write_file(path_join(install_path, "registered.txt"), registered.to_string());
+                "#,
+                extension = literal(&extension),
+                prog_id = literal(&prog_id),
+            )),
+            r#"run_tracked_uninstall(0.0, 100.0);"#,
+        )?;
+        fixture.install()?;
+
+        assert_eq!(
+            std::fs::read_to_string(fixture.destination.join("registered.txt"))?,
+            "true"
+        );
+        let target = fixture.destination.join("App.exe").display().to_string();
+        let read = |key: &str| -> Result<Option<String>> {
+            install::read_registry_string(HKEY_CURRENT_USER, &subkey(key), "")
+        };
+        // The four places Windows reads a file type from: the extension that
+        // names the program id, and the words, the icon and the command that the
+        // program id carries.
+        assert_eq!(read(&extension_key)?, Some(prog_id.clone()));
+        assert_eq!(read(&prog_id_key)?, Some("A script test file".to_string()));
+        assert_eq!(
+            read(&format!("{prog_id_key}\\DefaultIcon"))?,
+            Some(target.clone())
+        );
+        assert_eq!(
+            read(&format!("{prog_id_key}\\shell\\open\\command"))?,
+            Some(format!("{target} \"%1\""))
+        );
+
+        fixture.uninstall(true)?;
+
+        assert!(
+            !install::registry_key_exists(HKEY_CURRENT_USER, &subkey(&extension_key))?,
+            "the uninstall left the extension it claimed behind"
+        );
+        assert!(
+            !install::registry_key_exists(HKEY_CURRENT_USER, &subkey(&prog_id_key))?,
+            "the uninstall left the program id it registered behind"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn a_file_type_that_would_write_outside_the_classes_tree_is_refused() -> Result<()> {
+        // A name carrying a separator would write into a key of its own making
+        // somewhere else in the registry, and a file type with no command opens
+        // nothing: all three are refused before anything is written.
+        let (extension, prog_id) = unique_file_type();
+        let nested = format!("{extension}\\nested");
+        let fixture = fixture(
+            &deploying_script(&format!(
+                r#"
+                let target = path_join(install_path, "App.exe");
+                let report = "";
+                report += "separator=" + register_file_association({nested}, {prog_id}, "", target, "").to_string() + "\n";
+                report += "empty_extension=" + register_file_association("", {prog_id}, "", target, "").to_string() + "\n";
+                report += "empty_prog_id=" + register_file_association({extension}, "", "", target, "").to_string() + "\n";
+                report += "no_command=" + register_file_association({extension}, {prog_id}, "", "", "").to_string() + "\n";
+                report += "unregister_separator=" + unregister_file_association({nested}, {prog_id}).to_string() + "\n";
+                write_file(path_join(install_path, "refused.txt"), report);
+                "#,
+                nested = literal(&nested),
+                extension = literal(&extension),
+                prog_id = literal(&prog_id),
+            )),
+            "",
+        )?;
+        fixture.install()?;
+
+        assert_eq!(
+            std::fs::read_to_string(fixture.destination.join("refused.txt"))?,
+            "separator=false\nempty_extension=false\nempty_prog_id=false\nno_command=false\nunregister_separator=false\n"
+        );
+        assert!(
+            !install::registry_key_exists(
+                HKEY_CURRENT_USER,
+                &subkey(&format!(r"HKCU\Software\Classes\.{extension}"))
+            )?,
+            "a refused call wrote into the classes tree anyway"
+        );
+        let recorded = manifest(&fixture)?;
+        assert_eq!(recorded["registry_values"], serde_json::json!([]));
+        assert_eq!(recorded["registry_keys"], serde_json::json!([]));
         Ok(())
     }
 

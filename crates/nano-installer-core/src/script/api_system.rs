@@ -12,6 +12,16 @@ pub(super) fn register(engine: &mut Engine, context: ScriptContext) {
         std::env::var(name).unwrap_or_default()
     });
 
+    let c = context.clone();
+    engine.register_fn("set_env", move |name: &str, value: &str| -> bool {
+        set_user_environment(&c, name, value)
+    });
+
+    let c = context.clone();
+    engine.register_fn("remove_env", move |name: &str| -> bool {
+        clear_user_environment(&c, name)
+    });
+
     engine.register_fn("get_drives", || -> rhai::Array {
         let mut drives = rhai::Array::new();
         let mask = unsafe { windows::Win32::Storage::FileSystem::GetLogicalDrives() };
@@ -128,6 +138,56 @@ pub(super) fn register(engine: &mut Engine, context: ScriptContext) {
         "run_tracked_uninstall",
         move |start: f64, end: f64| -> bool { tracked_uninstall(&c, start, end) },
     );
+}
+
+/// The key Windows keeps a user's environment variables in.
+const USER_ENVIRONMENT_KEY: &str = r"HKCU\Environment";
+
+/// Writes one of the user's own environment variables.
+///
+/// Later processes read it from there, which is why the write goes to the
+/// registry rather than to this process: a variable a setup exports into its own
+/// environment dies with the setup. The key belongs to Windows and every other
+/// product on the machine, so the manifest records the value alone.
+fn set_user_environment(context: &ScriptContext, name: &str, value: &str) -> bool {
+    let name = name.trim();
+    if name.is_empty() {
+        log("error", "set_env needs the name of a variable");
+        return false;
+    }
+    let Some((root, path)) = super::api_registry::split(USER_ENVIRONMENT_KEY) else {
+        return false;
+    };
+    if let Err(error) = install::write_registry_string(root, &path, name, value) {
+        log("error", &format!("set_env {name} failed: {error:#}"));
+        return false;
+    }
+    context.record_registry_write(USER_ENVIRONMENT_KEY, name);
+    // A process started from Explorer inherits the environment block Explorer
+    // cached when it started, so Explorer is told the block changed.
+    crate::shell::notify_shell();
+    true
+}
+
+/// Removes one of the user's own environment variables.
+///
+/// The value is forgotten as well, so an uninstall does not replay a removal of
+/// something the script already took away.
+fn clear_user_environment(context: &ScriptContext, name: &str) -> bool {
+    let name = name.trim();
+    let Some((root, path)) = super::api_registry::split(USER_ENVIRONMENT_KEY) else {
+        return false;
+    };
+    if let Err(error) = install::delete_registry_value(root, &path, name) {
+        log("error", &format!("remove_env {name} failed: {error:#}"));
+        return false;
+    }
+    let mut state = context.state();
+    state.registry_values.retain(|(recorded, recorded_name)| {
+        !(recorded == USER_ENVIRONMENT_KEY && recorded_name == name)
+    });
+    crate::shell::notify_shell();
+    true
 }
 
 /// Replays the manifest the way an uninstall does, between two progress marks.

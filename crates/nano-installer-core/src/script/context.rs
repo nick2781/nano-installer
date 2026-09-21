@@ -293,6 +293,18 @@ impl ScriptContext {
             push_unique(&mut state.registry_keys, key);
         }
     }
+
+    /// Forgets a key a script removed, so the uninstaller does not replay it.
+    ///
+    /// A key that now belongs to another product is forgotten without being
+    /// removed: the uninstall must leave what it no longer owns alone.
+    pub(super) fn forget_registry_key(&self, key: &str) {
+        let mut state = self.state();
+        state.registry_keys.retain(|recorded| recorded != key);
+        state
+            .registry_values
+            .retain(|(recorded, _)| recorded.as_str() != key);
+    }
 }
 
 fn push_unique(keys: &mut Vec<String>, key: &str) {
@@ -305,9 +317,10 @@ fn push_unique(keys: &mut Vec<String>, key: &str) {
 ///
 /// A script that writes one value under such a leaf owns that value, not the
 /// key, so the uninstaller must not remove the key itself.
-const SHARED_REGISTRY_LEAVES: [&str; 8] = [
+const SHARED_REGISTRY_LEAVES: [&str; 9] = [
     "classes",
     "currentversion",
+    "environment",
     "explorer",
     "microsoft",
     "policies",

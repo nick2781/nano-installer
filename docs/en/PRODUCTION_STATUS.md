@@ -59,6 +59,11 @@ files and registry entries, so validate them in a disposable virtual machine onl
 - Flow layout resolves `flex-basis` by sharing free space from that basis, honours `align-self` per
   item, lets a nested container size itself from its own children, and positions an absolutely
   placed element from `right`/`bottom` or the `inset` shorthand.
+- A project script can write one of the user's environment variables (`set_env`, `remove_env`) and
+  claim a file type (`register_file_association`, `unregister_file_association`). Both go through
+  the manifest: the install records the value it wrote or the keys it created, and the uninstall
+  takes those keys and values back. `Environment` is recorded as a value, so PATH survives an
+  uninstall.
 - A container that declares `flex-wrap` moves items onto the next line when a row is full; without
   it, an overflowing row still compresses its shrinkable items.
 - A flow container that declares `scrollable="true"` and an `id` keeps the size it was given and

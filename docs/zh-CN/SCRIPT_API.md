@@ -86,6 +86,19 @@
 | `delete_desktop_shortcut(name)` | 删除桌面快捷方式 |
 | `delete_start_menu_folder(folder)` | 删除开始菜单目录 |
 
+## 文件关联
+
+| 原语 | 说明 |
+| --- | --- |
+| `register_file_association(extension, prog_id, description, command, icon)` | 为当前用户登记一种文件类型 |
+| `unregister_file_association(extension, prog_id)` | 交还这种文件类型 |
+
+关联写在 `HKCU\Software\Classes` 下：扩展名指向程序 id，程序 id 带着资源管理器显示的类型名、图标，
+以及打开文件的命令行。扩展名写不写前面那个点都行；`prog_id` 之后的三个文本参数都可以为空，为空就不写
+这一处。`command` 是文件类型唯一不能缺的一项，它就是 Windows 执行的那条命令行，文件占位符要加引号，
+例如 `"C:\Program Files\MyApp\App.exe" "%1"`。写下的每个键和值都会记入 manifest，卸载时据此
+撤销。名字里带路径分隔符的调用会在写入之前就被拒绝，否则它会写到用户文件类型所在的 classes 树之外。
+
 ## 进程
 
 | 原语 | 说明 |
@@ -100,6 +113,8 @@
 | 原语 | 说明 |
 | --- | --- |
 | `get_env(name)` | 环境变量，缺失返回空串 |
+| `set_env(name, value)` | 写入当前用户的环境变量，供之后启动的进程读取 |
+| `remove_env(name)` | 删除这个环境变量 |
 | `get_drives()` | 固定磁盘根目录数组，如 `["C:\\", "D:\\"]` |
 | `get_drive_space(drive)` | `[可用, 总量]`，失败返回空数组 |
 | `shell_notify()` | 通知 shell 刷新图标缓存 |
@@ -110,6 +125,11 @@
 | `show_error(title, message)` | 错误框 |
 | `ask_yes_no(title, message)` | 询问框，返回 `bool` |
 | `run_tracked_uninstall(start, end)` | 按 manifest 删除产品，仅卸载可用 |
+
+`set_env` 写的是 `HKCU\Environment`，也就是 Windows 读新进程环境变量的地方：安装包把变量导出到
+自己的环境里，进程一退出就没了，写在这里的变量则对之后启动的程序依然有效。这个键归 Windows 和机器上
+的其他产品共用，所以 manifest 记的是值而不是键，卸载只把那个值撤回去，与 `...\CurrentVersion\Run`
+的处理一致。
 
 ## 示例
 

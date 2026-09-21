@@ -48,6 +48,10 @@
 - 流式布局拿 `flex-basis` 当起点来分配剩余空间；每个元素都可以设 `align-self`；
   嵌套容器按里面的内容参与外层测量；
   绝对定位的元素可以用 `right`/`bottom` 或 `inset` 简写从另一侧定位。
+- 项目脚本可以写入当前用户的环境变量（`set_env`、`remove_env`），也可以登记文件类型
+  （`register_file_association`、`unregister_file_association`）。两者都经过 manifest：
+  安装记下写过的值和建过的键，卸载只按记录收回这些——`Environment` 记的是值而不是键，
+  所以 PATH 不会跟着被删掉。
 - 容器声明 `flex-wrap` 后，一行放不下就会折行；默认仍然是先压缩可收缩项。
 - 声明 `scrollable="true"` 并给出 `id` 的流式容器保住自己拿到的尺寸，子元素按各自声明的尺寸排开，
   放不下的部分整体裁掉：被滚过去的那一行既不画出来也不再登记点击，列表下方的按钮因此能接到它本来会
