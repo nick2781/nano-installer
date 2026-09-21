@@ -1313,6 +1313,61 @@ fn a_setup_runs_the_projects_own_install_and_uninstall_scripts() -> anyhow::Resu
     Ok(())
 }
 
+/// A project that bundles helper programs has them carried into the setup and
+/// unpacked where its script can run them.
+///
+/// The in-process cases prove the build bundles the directory and that the
+/// primitive unpacks it. What sits between them is a real setup: the tools have
+/// to survive packaging and reach the script through the bundle, because the
+/// project folder is not beside the installation when it runs.
+#[test]
+fn a_setup_unpacks_the_tools_its_project_bundles() -> anyhow::Result<()> {
+    // A batch file is a program Windows runs through the command shell every
+    // machine has, so the case needs no second executable of its own.
+    const TOOL: &[u8] = b"@echo off\r\necho tool ran\r\nexit /b 7\r\n";
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    std::fs::create_dir_all(fixture.project.join("tools/bin"))?;
+    std::fs::write(fixture.project.join("tools/bin/hello.cmd"), TOOL)?;
+    fixture.edit_config(|config| {
+        config["resources"]["tools_dir"] = serde_json::json!("tools");
+    })?;
+    fixture.write_script(
+        "install.rhai",
+        r#"
+            let install_path = get_install_path();
+            if !extract_payload_with_progress(0.0, 60.0) {
+                return;
+            }
+            copy_uninstaller();
+            let tool = path_join(path_join(get_tools_dir(), "bin"), "hello.cmd");
+            copy_file(tool, path_join(install_path, "bundled-tool.cmd"));
+            let code = run_command(get_env("ComSpec"), ["/C", tool]);
+            write_file(path_join(install_path, "tool-exit.txt"), code.to_string());
+        "#,
+    )?;
+    fixture.build()?;
+    fixture.install()?;
+
+    // Byte for byte the file the project shipped: a tool the setup never
+    // carried, or carried under another name, cannot match this.
+    assert_eq!(
+        std::fs::read(fixture.destination.join("bundled-tool.cmd"))?,
+        TOOL,
+        "the tool get_tools_dir returned is not the one the project bundled"
+    );
+    // And it runs: the exit code is what a script checks before it leans on a
+    // helper it shipped.
+    assert_eq!(
+        std::fs::read_to_string(fixture.destination.join("tool-exit.txt"))?,
+        "7",
+        "the tool the setup unpacked did not run"
+    );
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Shortcuts and autostart
 // ---------------------------------------------------------------------------

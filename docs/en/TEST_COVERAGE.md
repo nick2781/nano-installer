@@ -3,7 +3,7 @@
 Every behaviour the documentation promises, and the automated case that holds it. A row names the
 cases that fail when that behaviour breaks; a behaviour with no row is one nobody is checking.
 
-`cargo test --locked --workspace` runs 232 cases: 173 in the core library, 23 that build a real
+`cargo test --locked --workspace` runs 233 cases: 173 in the core library, 24 that build a real
 setup and run it, 5 that read a project the way the builder does, 29 in the visual builder, and 2
 in the extraction runtimes. The setup-level cases need real runtime executables built first, which
 is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `target/e2e-report.txt`.
@@ -13,7 +13,7 @@ is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `targe
 | Layer | Cases | Proves | Cannot prove |
 | --- | --- | --- | --- |
 | Core library | 173 | what a page becomes — layers, coordinates, hit regions, text — what the bundle carries, what an install writes to disk and the registry, and what each script primitive does | that a packaged setup reaches any of it |
-| Setup end to end | 23 | a built setup installed on the machine: payload bytes, manifest, uninstall entry, shortcuts, autostart, project scripts, the wizard window, the clicks its own pages wait for, and a wheel over a list | what needs a person at the machine: the hover and pressed bitmaps, the caret, IME composition, the folder picker, and the modal dialogs |
+| Setup end to end | 24 | a built setup installed on the machine: payload bytes, manifest, uninstall entry, shortcuts, autostart, project scripts, the helpers a script runs, the wizard window, the clicks its own pages wait for, and a wheel over a list | what needs a person at the machine: the hover and pressed bitmaps, the caret, IME composition, the folder picker, and the modal dialogs |
 | Project inspection | 5 | the summary and the warning list the builder shows before a build | |
 | Visual builder | 29 | the window's own state, parameters, log and warnings | clicking the real controls |
 | Extraction runtimes | 2 | a broken archive, and an unsafe path inside one, are refused | extracting an archive that is sound -- the setup-level cases run a real runtime over a real payload |
@@ -40,7 +40,7 @@ is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `targe
 | `shortcuts.desktop_shortcut`, `shortcuts.desktop_default` | `a_silent_install_writes_the_shortcuts_and_the_autostart_entry`, `removes_recorded_shortcuts_and_only_their_empty_folder` |
 | `shortcuts.start_menu`, `shortcuts.start_menu_folder` | the same two, plus `drops_the_shortcut_folder_once_it_is_empty` |
 | `autostart.enabled`, `autostart.default`, `autostart.registry_key`, `autostart.registry_value_name` | `a_silent_install_writes_the_shortcuts_and_the_autostart_entry` |
-| `resources.*` | `project_bundle_roundtrips_layout_assets_and_locales`, `project_pack_progress_describes_assets_payload_and_uninstaller`, `the_payload_format_selects_the_runtime_that_gets_embedded`, `a_project_bundles_the_tools_directory_it_names`, `a_project_that_names_no_tools_bundles_none` |
+| `resources.*` | `project_bundle_roundtrips_layout_assets_and_locales`, `project_pack_progress_describes_assets_payload_and_uninstaller`, `the_payload_format_selects_the_runtime_that_gets_embedded`, `a_project_bundles_the_tools_directory_it_names`, `a_project_that_names_no_tools_bundles_none`, `a_setup_unpacks_the_tools_its_project_bundles` |
 | `localization.default_locale` | `version::tests::maps_default_locale_to_version_language`, `the_summary_reports_what_the_project_declares` |
 | `localization.supported_locales` | `a_supported_locale_without_a_file_is_reported`, `a_translation_missing_page_text_is_reported` |
 | `wizard.pages`, `wizard.uninstall_pages` | `runtime_modes_select_distinct_layout_lists`, `out_of_range_pages_fall_back_to_the_first_layout` |
@@ -95,7 +95,7 @@ is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `targe
 ## Project scripts
 
 `docs/en/SCRIPT_API.md` lists the primitives. The in-process cases drive the driver directly; the
-setup-level case proves the `scripts` directory survives packaging.
+setup-level cases prove the `scripts` directory and the tools directory survive packaging.
 
 | Behaviour | Cases |
 | --- | --- |
@@ -107,7 +107,7 @@ setup-level case proves the `scripts` directory survives packaging.
 | shortcut primitives | `an_install_script_creates_shortcuts_the_uninstall_takes_back`, `a_script_deletes_the_desktop_shortcut_and_the_start_menu_folder_it_created` |
 | progress, status, mode, checkboxes and cancellation | `out_of_range_progress_and_both_status_forms_do_not_disturb_the_install`, `an_uninstall_script_sees_the_uninstall_mode_and_the_keep_data_checkbox`, `a_script_step_text_wins_over_the_locale_key`, `a_built_in_step_clears_a_script_step_text`, `a_running_script_sees_the_cancel_request`, `a_cancelled_install_gives_up_after_the_script_and_undoes_what_it_wrote` |
 | environment, configuration, drives and the running image | `the_script_reads_the_environment_and_the_project_configuration`, `the_script_reports_the_image_it_runs_from`, `the_script_queries_fixed_disks_and_notifies_the_shell` |
-| the tools a project bundles | `a_script_reads_the_tools_the_project_bundled`, `a_script_that_asks_for_tools_a_project_did_not_bundle_gets_nothing` |
+| the tools a project bundles | `a_script_reads_the_tools_the_project_bundled`, `a_script_that_asks_for_tools_a_project_did_not_bundle_gets_nothing`, `a_setup_unpacks_the_tools_its_project_bundles` |
 | processes | `a_script_runs_a_command_and_sees_its_exit_code`, `a_script_recognises_a_running_process_by_its_image_name` |
 | keeping or deleting user data | `uninstalling_below_appdata_removes_the_data_only_when_the_box_is_cleared` |
 | the `scripts` directory reaching a built setup | `a_setup_runs_the_projects_own_install_and_uninstall_scripts` |
