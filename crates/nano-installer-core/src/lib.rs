@@ -6793,6 +6793,25 @@ fn caret_rect(field: &TextInputRegion, caret_index: usize) -> LayerRect {
     }
 }
 
+/// Where an input method puts the two windows it draws for a caret.
+///
+/// The composition text starts at the caret, which is where the user is typing,
+/// and the candidate list sits one caret's height below it, which is where a
+/// user looks for it. Both are read off the caret the page drew, so a field
+/// that moved, or a line that scrolled sideways, takes them along.
+fn composition_points(caret: LayerRect) -> (POINT, POINT) {
+    (
+        POINT {
+            x: caret.left,
+            y: caret.top,
+        },
+        POINT {
+            x: caret.left,
+            y: caret.top + caret.height,
+        },
+    )
+}
+
 /// Tells the active input method where the caret is.
 ///
 /// An IME is not part of the window it types into: it keeps its own composition
@@ -6815,25 +6834,17 @@ unsafe fn place_ime_windows(window: HWND) {
     if context.is_invalid() {
         return;
     }
-    // The composition text starts at the caret, and the candidate list sits
-    // just below it, which is where a user looks for it.
-    let point = POINT {
-        x: caret.left,
-        y: caret.top,
-    };
+    let (composition_at, candidate_at) = composition_points(caret);
     let composition = COMPOSITIONFORM {
         dwStyle: CFS_POINT,
-        ptCurrentPos: point,
+        ptCurrentPos: composition_at,
         rcArea: RECT::default(),
     };
     let _ = ImmSetCompositionWindow(context, &composition);
     let candidate = CANDIDATEFORM {
         dwIndex: 0,
         dwStyle: CFS_CANDIDATEPOS,
-        ptCurrentPos: POINT {
-            x: point.x,
-            y: point.y + caret.height,
-        },
+        ptCurrentPos: candidate_at,
         rcArea: RECT::default(),
     };
     let _ = ImmSetCandidateWindow(context, &candidate);
@@ -8523,22 +8534,23 @@ unsafe fn draw_layer(destination: HDC, layer: &ImageLayer) {
 mod tests {
     use super::{
         anchored_left, anchored_top, button_enabled, button_image, byte_index, caret_layer,
-        centered_bounds, clamped_bounds, container_intrinsic_size, cross_alignment,
-        cross_alignment_for_item, disk_free_bytes, disk_root, field_state, flow_axis,
-        flow_item_for_node, flow_widths, format_size_bytes, initial_interaction, insets_for_node,
-        inspect_project, installer_version_info, load_layout, main_alignment, mask_matches,
-        measure_layout_text_width, pack_project, pack_project_with_progress, parse_bundle,
-        parse_color, parse_image_style, parse_text_runs, pick_directory_target, push_action,
-        push_border_layer, push_hover_region, push_node_border, query_disk_free_bytes, render_flow,
-        render_flow_item, render_progress_bar, resolve_asset_path, resolve_link_target,
-        resolve_value_source, resolved_text_for_node, restore_snapshot, runtime_layout_path,
-        runtime_layout_path_at, runtime_page_count, runtime_page_index_for_role, scale_value,
-        selection_layers, size_attribute, uninstaller_version_info, validate_output_filename,
-        word_end_after, word_range, word_start_before, wrap_lines, wraps, BundleIndex, DialogKind,
-        DialogState, DpiContext, DpiSettings, FlowAxis, FlowItem, ImageLayer, Insets,
-        InteractionState, LayerRect, LayoutContext, LayoutOutput, PayloadFormat, RuntimeMode,
-        RuntimeUi, TextAlignment, TextHit, TextInputRegion, TextSnapshot, WindowAction,
-        BUNDLE_MAGIC, BUNDLE_VERSION, COLORREF, FOOTER_MAGIC,
+        centered_bounds, clamped_bounds, composition_points, container_intrinsic_size,
+        cross_alignment, cross_alignment_for_item, disk_free_bytes, disk_root, field_state,
+        flow_axis, flow_item_for_node, flow_widths, format_size_bytes, initial_interaction,
+        insets_for_node, inspect_project, installer_version_info, load_layout, main_alignment,
+        mask_matches, measure_layout_text_width, pack_project, pack_project_with_progress,
+        parse_bundle, parse_color, parse_image_style, parse_text_runs, pick_directory_target,
+        push_action, push_border_layer, push_hover_region, push_node_border, query_disk_free_bytes,
+        render_flow, render_flow_item, render_progress_bar, resolve_asset_path,
+        resolve_link_target, resolve_value_source, resolved_text_for_node, restore_snapshot,
+        runtime_layout_path, runtime_layout_path_at, runtime_page_count,
+        runtime_page_index_for_role, scale_value, selection_layers, size_attribute,
+        uninstaller_version_info, validate_output_filename, word_end_after, word_range,
+        word_start_before, wrap_lines, wraps, BundleIndex, DialogKind, DialogState, DpiContext,
+        DpiSettings, FlowAxis, FlowItem, ImageLayer, Insets, InteractionState, LayerRect,
+        LayoutContext, LayoutOutput, PayloadFormat, RuntimeMode, RuntimeUi, TextAlignment, TextHit,
+        TextInputRegion, TextSnapshot, WindowAction, BUNDLE_MAGIC, BUNDLE_VERSION, COLORREF,
+        FOOTER_MAGIC, POINT,
     };
     use anyhow::Context;
     use std::collections::HashMap;
@@ -10639,6 +10651,52 @@ mod tests {
         // end of the text.
         assert!(caret_layer(&field, 99).left <= 300);
         assert_eq!(at_start.height, 14);
+    }
+
+    #[test]
+    fn an_input_method_anchors_at_the_caret_the_page_drew() -> anyhow::Result<()> {
+        // An East Asian input method keeps windows of its own and only asks the
+        // runtime where the caret is. The composition starts at that caret and
+        // the candidate list sits one caret's height below it, which is where a
+        // user looks for the candidates while typing.
+        let files = one_page_project(
+            r##"<Page width="400" height="200">
+                  <TextInput id="path" position="absolute" left="40" top="60" width="300" height="26" />
+                </Page>"##,
+            "{}",
+        );
+        let empty = drawn_at_96(&files, &focused_field("path", "", 0))?;
+        let at_start = empty.caret_rect.context("a focused field has a caret")?;
+        assert_eq!(at_start.left, 40);
+        assert_eq!(at_start.height, 18);
+        assert_eq!(at_start.top, 64);
+        assert_eq!(
+            composition_points(at_start),
+            (POINT { x: 40, y: 64 }, POINT { x: 40, y: 82 })
+        );
+
+        // A caret further along the line takes both windows with it, so the
+        // candidate list stays under the character being composed rather than
+        // under the first one.
+        let typed = drawn_at_96(&files, &focused_field("path", "C:\\Apps", 7))?;
+        let at_end = typed.caret_rect.context("a focused field has a caret")?;
+        assert!(at_end.left > at_start.left);
+        let (composition, candidate) = composition_points(at_end);
+        assert_eq!(
+            composition,
+            POINT {
+                x: at_end.left,
+                y: at_end.top
+            }
+        );
+        assert_eq!(
+            candidate,
+            POINT {
+                x: at_end.left,
+                y: at_end.top + at_end.height
+            }
+        );
+        Ok(())
     }
 
     #[test]

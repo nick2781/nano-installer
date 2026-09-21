@@ -16,22 +16,49 @@ use std::process::{Child, Command, ExitStatus, Output, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
+use anyhow::Context;
 use nano_installer_core::{
     build_project, build_project_with_progress, BuildRequest, PayloadFormat,
 };
 use windows::Win32::Foundation::{BOOL, HANDLE, HWND, LPARAM, POINT, RECT, WPARAM};
-use windows::Win32::Graphics::Gdi::ClientToScreen;
+use windows::Win32::Graphics::Gdi::{
+    ClientToScreen, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC,
+    GetDIBits, ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HDC,
+    HGDIOBJ,
+};
+use windows::Win32::Storage::Xps::{PrintWindow, PRINT_WINDOW_FLAGS};
 use windows::Win32::System::Com::CoTaskMemFree;
+use windows::Win32::UI::Input::KeyboardAndMouse::{VIRTUAL_KEY, VK_DOWN, VK_ESCAPE, VK_RETURN};
 use windows::Win32::UI::Shell::{
     FOLDERID_Desktop, FOLDERID_Programs, SHGetKnownFolderPath, KF_FLAG_DEFAULT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetClassNameW, GetClientRect, GetWindowThreadProcessId, IsWindow, PostMessageW,
-    SetProcessDPIAware, WM_CHAR, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEWHEEL,
+    EnumWindows, GetClassNameW, GetClientRect, GetCursorInfo, GetCursorPos, GetForegroundWindow,
+    GetSystemMetrics, GetWindowRect, GetWindowThreadProcessId, IsWindow, IsWindowVisible,
+    LoadCursorW, PostMessageW, SetCursorPos, SetForegroundWindow, SetProcessDPIAware, SetWindowPos,
+    CURSORINFO, HCURSOR, HTCLIENT, HWND_NOTOPMOST, HWND_TOPMOST, IDC_ARROW, IDC_HAND, IDC_IBEAM,
+    SM_CYSCREEN, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, WM_CHAR, WM_CLOSE, WM_KEYDOWN,
+    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_SETCURSOR,
 };
 
 /// The key Windows starts a program from at sign-in.
 const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+
+/// The colours the pointer-state case paints its button with.
+///
+/// One flat colour per state is what lets the case ask the window which picture
+/// it drew: the three differ from each other and from the page behind them, so a
+/// state that never reached the screen reads as the state before it.
+const RESTING_BUTTON: (u8, u8, u8) = (0x10, 0x20, 0x30);
+const HOVERED_BUTTON: (u8, u8, u8) = (0x20, 0x50, 0x70);
+const PRESSED_BUTTON: (u8, u8, u8) = (0x30, 0x80, 0xB0);
+
+/// The three colours the language case's menu draws with, as its layout
+/// declares them: the popup behind the rows, the row the language in use stands
+/// on, and the row the keyboard is on.
+const POPUP_BACKGROUND: (u8, u8, u8) = (0x42, 0x51, 0x5E);
+const CHOSEN_ROW: (u8, u8, u8) = (0x49, 0x5A, 0x68);
+const HIGHLIGHTED_ROW: (u8, u8, u8) = (0x70, 0x50, 0xB0);
 
 /// Resolves a shell folder the way the runtime resolves it.
 ///
@@ -449,6 +476,115 @@ impl Fixture {
             config["wizard"]["pages"] = serde_json::json!([
                 {"id": "config", "title": "First", "layout": "layouts/configpage.xml"},
                 {"id": "second", "title": "Second", "layout": "layouts/secondpage.xml"}
+            ]);
+        })
+    }
+
+    /// Declares a page whose button draws a different picture in each of the
+    /// three states a pointer can put it in.
+    ///
+    /// The pictures are one flat colour each, written by the case so that the
+    /// window can be asked what it drew: a state that never reached the screen
+    /// leaves the colour of the state before it in place, and a picture that
+    /// never loaded leaves the page's own background.
+    fn hover_project(&self) -> anyhow::Result<()> {
+        std::fs::write(
+            self.project.join("layouts/configpage.xml"),
+            r##"<Page width="400" height="200" background="#FF000000">
+  <Button id="probe" position="absolute" left="40" top="60" width="200" height="60"
+          normal-image="assets/normal.png" hover-image="assets/hover.png"
+          pressed-image="assets/pressed.png" />
+</Page>"##,
+        )?;
+        for (name, colour) in [
+            ("normal.png", RESTING_BUTTON),
+            ("hover.png", HOVERED_BUTTON),
+            ("pressed.png", PRESSED_BUTTON),
+        ] {
+            std::fs::write(
+                self.project.join("assets").join(name),
+                solid_png(4, 4, colour),
+            )?;
+        }
+        self.edit_config(|config| {
+            config["wizard"]["pages"] = serde_json::json!([
+                {"id": "config", "title": "Options", "layout": "layouts/configpage.xml"}
+            ]);
+        })
+    }
+
+    /// Declares a page with a button, a field, and a patch of page that is
+    /// neither.
+    ///
+    /// The three are what the runtime promises a cursor for: a hand over
+    /// something that answers a click, a beam over something the user can type
+    /// into, and the ordinary pointer everywhere else.
+    fn cursor_project(&self) -> anyhow::Result<()> {
+        std::fs::write(
+            self.project.join("layouts/configpage.xml"),
+            r##"<Page width="400" height="200" background="#FF101010">
+  <Button id="next" action="next" text="Next"
+          position="absolute" left="20" top="20" width="120" height="30" />
+  <TextInput id="edit" position="absolute" left="20" top="80" width="200" height="24" />
+</Page>"##,
+        )?;
+        self.edit_config(|config| {
+            config["wizard"]["pages"] = serde_json::json!([
+                {"id": "config", "title": "Options", "layout": "layouts/configpage.xml"}
+            ]);
+        })
+    }
+
+    /// Declares a page whose language control offers two languages and whose
+    /// words change with them.
+    ///
+    /// The label is the point of the case: a language chosen with the keyboard
+    /// has to reach the page, and a sentence that is longer in one language
+    /// than in the other is what says that it did.
+    fn language_project(&self) -> anyhow::Result<()> {
+        std::fs::write(
+            self.project.join("layouts/configpage.xml"),
+            r##"<Page width="400" height="200" background="#FF000000">
+  <Select id="lang" action="switch_language" position="absolute" left="100" top="20"
+          width="180" height="26" background="#FF303030" color="#FFFFFFFF"
+          popup-row-height="26" popup-padding="2" popup-background="#FF42515E"
+          popup-selected-background="#FF495A68" popup-highlight-background="#FF7050B0">
+    <Option value="en-US" text="English" />
+    <Option value="de-DE" text="Deutsch" />
+  </Select>
+  <Label text="@greeting" color="#FFFFFFFF"
+         position="absolute" left="20" top="140" width="360" height="24" />
+</Page>"##,
+        )?;
+        std::fs::write(
+            self.project.join("locales/en-US.json"),
+            br#"{"greeting": "Welcome to the setup"}"#,
+        )?;
+        std::fs::write(
+            self.project.join("locales/de-DE.json"),
+            br#"{"greeting": "Willkommen bei der Installation"}"#,
+        )?;
+        self.edit_config(|config| {
+            config["localization"]["supported_locales"] = serde_json::json!(["en-US", "de-DE"]);
+            config["wizard"]["pages"] = serde_json::json!([
+                {"id": "config", "title": "Options", "layout": "layouts/configpage.xml"}
+            ]);
+        })
+    }
+
+    /// Declares a page with a field and the button that fills it in.
+    fn browse_project(&self) -> anyhow::Result<()> {
+        std::fs::write(
+            self.project.join("layouts/configpage.xml"),
+            r##"<Page width="400" height="200" background="#FF000000">
+  <TextInput id="editDir" position="absolute" left="20" top="20" width="260" height="24" />
+  <Button id="browse" action="pick_directory" text="Browse"
+          position="absolute" left="300" top="20" width="80" height="24" />
+</Page>"##,
+        )?;
+        self.edit_config(|config| {
+            config["wizard"]["pages"] = serde_json::json!([
+                {"id": "config", "title": "Options", "layout": "layouts/configpage.xml"}
             ]);
         })
     }
@@ -2237,6 +2373,1026 @@ fn a_script_dialog_is_drawn_in_the_wizard() -> anyhow::Result<()> {
         "the install did not reach the page the wizard finishes on"
     );
     Ok(())
+}
+
+/// A button draws the picture each of its states names, and the window shows it
+/// as the pointer moves over the control.
+///
+/// The runtime picks the picture from its own state: the pointer arriving on a
+/// control is a hover, a press on one is a press, and leaving the window takes
+/// both away. The pictures here are one flat colour each and the page behind
+/// them is another, so asking the window what it drew at the button's centre
+/// says which one is up, and asking where else the frame changed says the state
+/// belongs to the button rather than to the page.
+#[test]
+fn a_hover_and_a_press_show_the_pictures_the_button_declares() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.hover_project()?;
+    fixture.build()?;
+
+    let _ = unsafe { SetProcessDPIAware() };
+    let mut setup = SetupGuard::spawn(&fixture.setup)?;
+    let waited = wait_for_runtime_window(&mut setup, Instant::now() + Duration::from_secs(30));
+    let found = match &waited {
+        WindowWait::Found(window) => Some(*window),
+        WindowWait::Exited(_) | WindowWait::Timeout => None,
+    };
+    let Some(window) = found else {
+        let reason = match waited {
+            WindowWait::Exited(status) => format!("the setup {status} instead of opening a window"),
+            WindowWait::Timeout => "no window appeared within 30 seconds".to_string(),
+            WindowWait::Found(_) => "the window could not be measured".to_string(),
+        };
+        let _ = setup.kill();
+        let _ = setup.wait();
+        return skip_missing_desktop(&reason);
+    };
+
+    // The pointer and the window are both borrowed for the length of the case:
+    // the pointer goes back where it was found, and the window back among the
+    // others. Lifting it matters, because the suite runs its window cases at the
+    // same time and which window the pointer is over decides which of them sees
+    // it at all.
+    let _pointer = PointerRestore::capture();
+    let _in_front = WindowInFront::lift(window);
+    let _ = unsafe { SetForegroundWindow(window) };
+
+    // The button is 200 by 60 at (40, 60): this point is its centre and that one
+    // is the page beside it.
+    let centre = (140, 90);
+    let beside = (360, 180);
+    let button = (40, 60, 240, 120);
+    let deadline = Instant::now() + Duration::from_secs(20);
+
+    let resting = wait_for_frame(window, deadline, |frame| {
+        frame.colour_at(centre.0, centre.1) == RESTING_BUTTON
+    });
+    assert!(
+        resting.is_some(),
+        "the button did not show the picture it rests on: {}",
+        colour_at_window(window, centre)
+    );
+    let resting = resting.expect("checked just above");
+    assert_eq!(
+        resting.colour_at(beside.0, beside.1),
+        (0x00, 0x00, 0x00),
+        "the page around the button is not the colour its layout declares"
+    );
+
+    // The pointer moves onto the button, which is what a hover is.
+    move_pointer_onto(window, centre)?;
+    let hovered = wait_for_frame(window, deadline, |frame| {
+        frame.colour_at(centre.0, centre.1) == HOVERED_BUTTON
+    });
+    assert!(
+        hovered.is_some(),
+        "the pointer over the button did not show its hover picture: {}",
+        colour_at_window(window, centre)
+    );
+    assert_eq!(
+        hovered
+            .expect("checked just above")
+            .differences_outside(&resting, button),
+        0,
+        "hovering the button repainted the page around it"
+    );
+
+    // A press is a button-down. The button-up is not sent: that would be the
+    // click, and this case is about how the button looks while it is held.
+    let lparam = LPARAM(((centre.1 << 16) | (centre.0 & 0xFFFF)) as isize);
+    unsafe { PostMessageW(window, WM_LBUTTONDOWN, WPARAM(0), lparam) }
+        .expect("the runtime window accepts a press");
+    let pressed = wait_for_frame(window, deadline, |frame| {
+        frame.colour_at(centre.0, centre.1) == PRESSED_BUTTON
+    });
+    assert!(
+        pressed.is_some(),
+        "the press did not show the picture the button declares for one: {}",
+        colour_at_window(window, centre)
+    );
+    assert_eq!(
+        pressed
+            .expect("checked just above")
+            .differences_outside(&resting, button),
+        0,
+        "the press repainted the page around the button"
+    );
+
+    // The pointer leaves the window, which is where both of the other states
+    // end: the button goes back to the picture it rests on, exactly as it was.
+    move_pointer_off(window)?;
+    let left = wait_for_frame(window, deadline, |frame| {
+        frame.colour_at(centre.0, centre.1) == RESTING_BUTTON
+    });
+    assert!(
+        left.is_some(),
+        "the pointer leaving did not put the resting picture back: {}",
+        colour_at_window(window, centre)
+    );
+    assert_eq!(
+        left.expect("checked just above").differing_pixels(&resting),
+        0,
+        "the window after the pointer left is not the window it was before it arrived"
+    );
+
+    Ok(())
+}
+
+/// The pointer over the wizard is the shape the layout promises for whatever
+/// sits under it.
+///
+/// A cursor is not drawn into the window: Windows asks the window which shape
+/// it wants, and the window answers with one of the standard pointers. The
+/// question is put to it here by moving the pointer for real and posting the
+/// same message Windows posts, so what is read back is the shape the desktop
+/// would be showing a user.
+#[test]
+fn the_pointer_decides_which_cursor_the_wizard_shows() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.cursor_project()?;
+    fixture.build()?;
+
+    let _ = unsafe { SetProcessDPIAware() };
+    let mut setup = SetupGuard::spawn(&fixture.setup)?;
+    let waited = wait_for_runtime_window(&mut setup, Instant::now() + Duration::from_secs(30));
+    let found = match &waited {
+        WindowWait::Found(window) => Some(*window),
+        WindowWait::Exited(_) | WindowWait::Timeout => None,
+    };
+    let Some(window) = found else {
+        let reason = match waited {
+            WindowWait::Exited(status) => format!("the setup {status} instead of opening a window"),
+            WindowWait::Timeout => "no window appeared within 30 seconds".to_string(),
+            WindowWait::Found(_) => "the window could not be measured".to_string(),
+        };
+        let _ = setup.kill();
+        let _ = setup.wait();
+        return skip_missing_desktop(&reason);
+    };
+
+    // The pointer belongs to the machine rather than to the case, so it is put
+    // back where it was found, including when an assertion fails first.
+    let _pointer = PointerRestore::capture();
+    // A window that is not in front can set the cursor without the desktop
+    // taking any notice of it, so this window is lifted above the rest of the
+    // desk for the length of the case.
+    let _in_front = WindowInFront::lift(window);
+    let _ = unsafe { SetForegroundWindow(window) };
+
+    let hand = unsafe { LoadCursorW(None, IDC_HAND) }?;
+    let beam = unsafe { LoadCursorW(None, IDC_IBEAM) }?;
+    let arrow = unsafe { LoadCursorW(None, IDC_ARROW) }?;
+    // Three shapes that are told apart is what makes the rest of this case say
+    // anything: one handle for all of them would pass whatever the window did.
+    assert_ne!(hand, beam, "the hand and the beam cursor are one pointer");
+    assert_ne!(hand, arrow, "the hand and the arrow cursor are one pointer");
+    assert_ne!(beam, arrow, "the beam and the arrow cursor are one pointer");
+    let deadline = Instant::now() + Duration::from_secs(20);
+
+    // The button is 120 by 30 at (20, 20), the field 200 by 24 at (20, 80), and
+    // (300, 150) is page with nothing on it.
+    let over_button = wait_for_cursor(window, (80, 35), hand, deadline);
+    let over_field = wait_for_cursor(window, (100, 92), beam, deadline);
+    let over_page = wait_for_cursor(window, (300, 150), arrow, deadline);
+    // Back to the button: the shape follows what the pointer is over rather
+    // than staying on whichever control it was left on.
+    let back_on_button = wait_for_cursor(window, (80, 35), hand, deadline);
+
+    let report = || cursor_report(window, hand, beam, arrow);
+    assert_eq!(
+        over_button,
+        Some(hand),
+        "the pointer over a button that answers a click did not show the hand: {}",
+        report()
+    );
+    assert_eq!(
+        over_field,
+        Some(beam),
+        "the pointer over a field the user can type into did not show the beam: {}",
+        report()
+    );
+    assert_eq!(
+        over_page,
+        Some(arrow),
+        "the pointer over the page itself did not show the ordinary arrow: {}",
+        report()
+    );
+    assert_eq!(
+        back_on_button,
+        Some(hand),
+        "the cursor did not follow the pointer back onto the button: {}",
+        report()
+    );
+    Ok(())
+}
+
+/// The language menu answers to the keyboard: the arrows move its highlight,
+/// Enter takes the row it rests on, and Escape closes it without choosing.
+///
+/// Both the highlight and the row the language in use stands on are colours the
+/// layout declares, so the window can be read back, and the sentence a language
+/// writes is what says the choice reached the page. The two languages here
+/// write sentences of different lengths, so a frame that changed says which one
+/// is up.
+#[test]
+fn the_language_menu_answers_to_the_keyboard() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.language_project()?;
+    fixture.build()?;
+
+    let _ = unsafe { SetProcessDPIAware() };
+    let mut setup = SetupGuard::spawn(&fixture.setup)?;
+    let waited = wait_for_runtime_window(&mut setup, Instant::now() + Duration::from_secs(30));
+    let found = match &waited {
+        WindowWait::Found(window) => Some(*window),
+        WindowWait::Exited(_) | WindowWait::Timeout => None,
+    };
+    let Some(window) = found else {
+        let reason = match waited {
+            WindowWait::Exited(status) => format!("the setup {status} instead of opening a window"),
+            WindowWait::Timeout => "no window appeared within 30 seconds".to_string(),
+            WindowWait::Found(_) => "the window could not be measured".to_string(),
+        };
+        let _ = setup.kill();
+        let _ = setup.wait();
+        return skip_missing_desktop(&reason);
+    };
+
+    let deadline = Instant::now() + Duration::from_secs(20);
+    // The control is 180 by 26 at (100, 20) and its popup hangs four pixels
+    // under it with rows 26 pixels tall, so these two points are just inside
+    // the first and the second row, clear of the words those rows draw.
+    let control = (100, 20, 280, 46);
+    let first_row = (104, 60);
+    let second_row = (104, 90);
+    // The label that carries the sentence the language writes.
+    let sentence = (20, 140, 380, 164);
+
+    let closed = wait_for_frame(window, deadline, |frame| {
+        frame.colour_at(first_row.0, first_row.1) == (0x00, 0x00, 0x00)
+    });
+    assert!(
+        closed.is_some(),
+        "the page did not come up with the menu closed: {}",
+        colour_at_window(window, first_row)
+    );
+    let closed = closed.expect("checked just above");
+
+    // A click on the control opens its menu, which is how a user reaches it.
+    click_client_point(window, 190, 33);
+    let opened = wait_for_frame(window, deadline, |frame| {
+        frame.colour_at(first_row.0, first_row.1) == CHOSEN_ROW
+            && frame.colour_at(second_row.0, second_row.1) == POPUP_BACKGROUND
+    });
+    assert!(
+        opened.is_some(),
+        "a click on the language control did not open its menu: {}",
+        colour_at_window(window, first_row)
+    );
+
+    // One arrow key walks the highlight off the language in use, because a menu
+    // opens on the row the current choice stands on and moves away from it.
+    press_key(window, VK_DOWN);
+    let walked = wait_for_frame(window, deadline, |frame| {
+        frame.colour_at(second_row.0, second_row.1) == HIGHLIGHTED_ROW
+    });
+    assert!(
+        walked.is_some(),
+        "the down arrow did not move the highlight onto the row below: {}",
+        colour_at_window(window, second_row)
+    );
+    assert_eq!(
+        walked
+            .expect("checked just above")
+            .colour_at(first_row.0, first_row.1),
+        CHOSEN_ROW,
+        "moving the highlight took the mark off the row the language in use stands on"
+    );
+
+    // Escape closes the menu and leaves the language alone, so the window is
+    // the window it was before the menu opened.
+    press_key(window, VK_ESCAPE);
+    let escaped = wait_for_frame(window, deadline, |frame| {
+        frame.colour_at(first_row.0, first_row.1) == (0x00, 0x00, 0x00)
+    });
+    assert!(
+        escaped.is_some(),
+        "Escape did not close the menu: {}",
+        colour_at_window(window, first_row)
+    );
+    assert_eq!(
+        escaped
+            .expect("checked just above")
+            .differing_pixels(&closed),
+        0,
+        "Escape changed the page instead of only closing the menu"
+    );
+
+    // The menu is opened again, the highlight walks to the other language, and
+    // Enter takes it: the sentence the page shows is the one that language
+    // writes.
+    click_client_point(window, 190, 33);
+    let reopened = wait_for_frame(window, deadline, |frame| {
+        frame.colour_at(first_row.0, first_row.1) == CHOSEN_ROW
+    });
+    assert!(
+        reopened.is_some(),
+        "the menu did not open a second time: {}",
+        colour_at_window(window, first_row)
+    );
+    press_key(window, VK_DOWN);
+    let moved = wait_for_frame(window, deadline, |frame| {
+        frame.colour_at(second_row.0, second_row.1) == HIGHLIGHTED_ROW
+    });
+    assert!(
+        moved.is_some(),
+        "the down arrow did not move the highlight the second time: {}",
+        colour_at_window(window, second_row)
+    );
+    press_key(window, VK_RETURN);
+    let chosen = wait_for_frame(window, deadline, |frame| {
+        frame.colour_at(first_row.0, first_row.1) == (0x00, 0x00, 0x00)
+    });
+    assert!(
+        chosen.is_some(),
+        "Enter did not close the menu: {}",
+        colour_at_window(window, first_row)
+    );
+    let chosen = chosen.expect("checked just above");
+    assert!(
+        chosen.differences_inside(&closed, sentence) > 0,
+        "choosing the other language left the sentence the page shows unchanged"
+    );
+    assert_eq!(
+        chosen.differences_outside_all(&closed, &[sentence, control]),
+        0,
+        "choosing the other language repainted more than the sentence and the control"
+    );
+
+    Ok(())
+}
+
+/// The button that fills a field in opens Windows' own folder picker, and
+/// leaving the picker undecided leaves the wizard as it was.
+///
+/// The picker is the shell's rather than the product's, so what a case can hold
+/// it to is that clicking the button opens a window of the process's own for
+/// choosing a folder, that the wizard is still underneath it, and that closing
+/// the picker keeps the wizard, its size and its process where they were.
+#[test]
+fn a_browse_button_opens_the_folder_picker_and_leaving_it_changes_nothing() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.browse_project()?;
+    fixture.build()?;
+
+    let _ = unsafe { SetProcessDPIAware() };
+    let mut setup = SetupGuard::spawn(&fixture.setup)?;
+    let waited = wait_for_runtime_window(&mut setup, Instant::now() + Duration::from_secs(30));
+    let found = match &waited {
+        WindowWait::Found(window) => Some(*window),
+        WindowWait::Exited(_) | WindowWait::Timeout => None,
+    };
+    let Some(window) = found else {
+        let reason = match waited {
+            WindowWait::Exited(status) => format!("the setup {status} instead of opening a window"),
+            WindowWait::Timeout => "no window appeared within 30 seconds".to_string(),
+            WindowWait::Found(_) => "the window could not be measured".to_string(),
+        };
+        let _ = setup.kill();
+        let _ = setup.wait();
+        return skip_missing_desktop(&reason);
+    };
+    let opened_on = client_size(window);
+
+    // The browse button is 80 by 24 at (300, 20).
+    click_client_point(window, 340, 32);
+    let picker =
+        wait_for_other_window(setup.id(), window, Instant::now() + Duration::from_secs(30));
+    // The picker is modal: the wizard waits inside it, so a case that cannot
+    // close it would leave the setup running for good.
+    let closed = match &picker {
+        Some((dialog, _)) => dismiss_window(*dialog, Instant::now() + Duration::from_secs(20)),
+        None => false,
+    };
+    let alive = unsafe { IsWindow(window) }.as_bool();
+    let after = if alive { client_size(window) } else { (0, 0) };
+    let running = setup.try_wait()?.is_none();
+
+    let Some((_, class)) = picker else {
+        anyhow::bail!("the browse button opened no window for choosing a folder");
+    };
+    assert_eq!(
+        class, "#32770",
+        "the window the browse button opened is not the shell's own folder dialog"
+    );
+    assert!(
+        closed,
+        "the folder picker did not close when it was asked to"
+    );
+    assert!(alive, "the wizard was gone once the folder picker closed");
+    assert_eq!(
+        after, opened_on,
+        "the wizard came back from the folder picker with a different client area"
+    );
+    assert!(running, "the setup process ended with the folder picker");
+    assert!(
+        !fixture.destination.exists(),
+        "opening the folder picker installed something"
+    );
+    Ok(())
+}
+
+/// A frame of a window: what the window draws, read out of the window itself.
+struct Frame {
+    width: i32,
+    pixels: Vec<u8>,
+}
+
+impl Frame {
+    /// The red, green and blue at one point.
+    ///
+    /// A device-independent bitmap is blue first and keeps no alpha channel of
+    /// its own, so the fourth byte of a pixel is not read.
+    fn colour_at(&self, x: i32, y: i32) -> (u8, u8, u8) {
+        let offset = ((y as usize * self.width as usize) + x as usize) * 4;
+        (
+            self.pixels[offset + 2],
+            self.pixels[offset + 1],
+            self.pixels[offset],
+        )
+    }
+
+    /// How many pixels two frames disagree on.
+    fn differing_pixels(&self, other: &Frame) -> usize {
+        self.differing_points(other).count()
+    }
+
+    /// How many pixels differ outside `area`, as `(left, top, right, bottom)`.
+    fn differences_outside(&self, other: &Frame, area: (i32, i32, i32, i32)) -> usize {
+        self.differences_outside_all(other, &[area])
+    }
+
+    /// How many pixels differ outside every one of `areas`.
+    fn differences_outside_all(&self, other: &Frame, areas: &[(i32, i32, i32, i32)]) -> usize {
+        self.differing_points(other)
+            .filter(|(x, y)| {
+                !areas.iter().any(|(left, top, right, bottom)| {
+                    x >= left && x < right && y >= top && y < bottom
+                })
+            })
+            .count()
+    }
+
+    /// How many pixels differ inside `area`.
+    fn differences_inside(&self, other: &Frame, area: (i32, i32, i32, i32)) -> usize {
+        let (left, top, right, bottom) = area;
+        self.differing_points(other)
+            .filter(|(x, y)| *x >= left && *x < right && *y >= top && *y < bottom)
+            .count()
+    }
+
+    /// Where two frames of the same size disagree.
+    fn differing_points<'a>(&'a self, other: &'a Frame) -> impl Iterator<Item = (i32, i32)> + 'a {
+        let width = self.width;
+        self.pixels
+            .chunks_exact(4)
+            .zip(other.pixels.chunks_exact(4))
+            .enumerate()
+            .filter(|(_, (left, right))| left != right)
+            .map(move |(index, _)| {
+                let index = index as i32;
+                (index % width, index / width)
+            })
+    }
+}
+
+/// Reads what a window is showing.
+///
+/// `PrintWindow` asks Windows to draw the window into a bitmap rather than
+/// copying the pixels that happen to be on the screen under it, so a case reads
+/// the frame the window would show even when the desktop has something else on
+/// top of it. The window paints into that bitmap with the same code it paints
+/// the screen with.
+fn capture_frame(window: HWND) -> anyhow::Result<Frame> {
+    let (width, height) = client_size(window);
+    anyhow::ensure!(width > 0 && height > 0, "the window has no client area");
+    unsafe {
+        let screen = GetDC(HWND::default());
+        anyhow::ensure!(!screen.is_invalid(), "the desktop has no device context");
+        let memory = CreateCompatibleDC(HDC::default());
+        if memory.is_invalid() {
+            let _ = ReleaseDC(HWND::default(), screen);
+            anyhow::bail!("a memory device context could not be created");
+        }
+        let bitmap = CreateCompatibleBitmap(screen, width, height);
+        let frame: anyhow::Result<Frame> = (|| {
+            if bitmap.is_invalid() {
+                anyhow::bail!("a {width} by {height} bitmap could not be created");
+            }
+            let previous: HGDIOBJ = SelectObject(memory, bitmap);
+            let drawn = PrintWindow(window, memory, PRINT_WINDOW_FLAGS(0));
+            // The bitmap has to be out of the device context before its pixels
+            // are read back.
+            let _ = SelectObject(memory, previous);
+            anyhow::ensure!(drawn.as_bool(), "the window drew no frame");
+            let mut header = BITMAPINFO::default();
+            header.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+            header.bmiHeader.biWidth = width;
+            // A negative height asks for the top row of the bitmap first, so the
+            // pixels come back the way up the window is.
+            header.bmiHeader.biHeight = -height;
+            header.bmiHeader.biPlanes = 1;
+            header.bmiHeader.biBitCount = 32;
+            header.bmiHeader.biCompression = BI_RGB.0;
+            let mut pixels = vec![0u8; width as usize * height as usize * 4];
+            let rows = GetDIBits(
+                memory,
+                bitmap,
+                0,
+                height as u32,
+                Some(pixels.as_mut_ptr().cast()),
+                &mut header,
+                DIB_RGB_COLORS,
+            );
+            anyhow::ensure!(
+                rows == height,
+                "the window drew {rows} of its {height} rows"
+            );
+            Ok(Frame { width, pixels })
+        })();
+        if !bitmap.is_invalid() {
+            let _ = DeleteObject(bitmap);
+        }
+        let _ = DeleteDC(memory);
+        let _ = ReleaseDC(HWND::default(), screen);
+        frame
+    }
+}
+
+/// Waits for the window to show a frame `ready` accepts, and hands that frame
+/// back.
+///
+/// A window that has just opened has not painted yet and a state a posted
+/// message asked for arrives a moment later, so this waits rather than looking
+/// once. The frame a caller gets is the one it asked for: a deadline that runs
+/// out hands back nothing.
+fn wait_for_frame(
+    window: HWND,
+    deadline: Instant,
+    ready: impl Fn(&Frame) -> bool,
+) -> Option<Frame> {
+    while Instant::now() < deadline {
+        if let Ok(frame) = capture_frame(window) {
+            if ready(&frame) {
+                return Some(frame);
+            }
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    None
+}
+
+/// What a window holds at one point right now, for a failure that has to say
+/// what it saw instead.
+fn colour_at_window(window: HWND, at: (i32, i32)) -> String {
+    match capture_frame(window) {
+        Ok(frame) => format!("{:?} at ({}, {})", frame.colour_at(at.0, at.1), at.0, at.1),
+        Err(error) => format!("nothing readable at ({}, {}): {error:#}", at.0, at.1),
+    }
+}
+
+/// Posts a pointer move to a point in the runtime window.
+///
+/// A mouse message carries client coordinates, which is what the runtime reads
+/// a hover from.
+fn hover_client_point(window: HWND, x: i32, y: i32) {
+    let lparam = LPARAM(((y << 16) | (x & 0xFFFF)) as isize);
+    unsafe { PostMessageW(window, WM_MOUSEMOVE, WPARAM(0), lparam) }
+        .expect("the runtime window accepts a pointer move");
+}
+
+/// Puts the pointer on a point in a window, and reports whether it could.
+///
+/// The runtime answers `WM_SETCURSOR` by asking where the pointer is, so the
+/// pointer has to be moved for real: the point is converted to screen
+/// coordinates and put under the pointer.
+fn put_pointer_on(window: HWND, at: (i32, i32)) -> bool {
+    let mut point = POINT { x: at.0, y: at.1 };
+    if !unsafe { ClientToScreen(window, &mut point) }.as_bool() {
+        return false;
+    }
+    unsafe { SetCursorPos(point.x, point.y) }.is_ok()
+}
+
+/// Puts the pointer on a point in the window and tells the window it is there.
+///
+/// The pointer moves for real, which is what the window's own tracking of the
+/// pointer follows, and the move is posted as well, because a pointer that is
+/// already on the point moves nowhere and Windows would report no move at all.
+fn move_pointer_onto(window: HWND, at: (i32, i32)) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        put_pointer_on(window, at),
+        "the pointer can be moved onto the window"
+    );
+    hover_client_point(window, at.0, at.1);
+    Ok(())
+}
+
+/// Moves the pointer off a window, which is what makes Windows report that it
+/// left.
+///
+/// The corner of the desktop is off a wizard centred on the display, which is
+/// where every fixture window is. A window that reaches that corner is left by
+/// a point under its bottom edge instead.
+fn move_pointer_off(window: HWND) -> anyhow::Result<()> {
+    let mut rect = RECT::default();
+    unsafe { GetWindowRect(window, &mut rect) }.context("the window has a rectangle")?;
+    let corner = (2, 2);
+    let corner_is_inside = corner.0 >= rect.left
+        && corner.0 < rect.right
+        && corner.1 >= rect.top
+        && corner.1 < rect.bottom;
+    let (x, y) = if corner_is_inside {
+        let below = rect.bottom + 8;
+        anyhow::ensure!(
+            below < unsafe { GetSystemMetrics(SM_CYSCREEN) },
+            "there is nowhere on this desktop to move the pointer off the window"
+        );
+        ((rect.left + rect.right) / 2, below)
+    } else {
+        corner
+    };
+    unsafe { SetCursorPos(x, y) }.context("the pointer can be moved off the window")
+}
+
+/// Presses a key in the runtime window, the way the keyboard reports one.
+///
+/// The runtime reads the key code out of the message, so nothing has to hold
+/// the keyboard focus for this to arrive. No character follows, because a key
+/// that types has to be asked for by name.
+fn press_key(window: HWND, key: VIRTUAL_KEY) {
+    unsafe { PostMessageW(window, WM_KEYDOWN, WPARAM(key.0 as usize), LPARAM(0)) }
+        .expect("the runtime window accepts a key");
+}
+
+/// The pointer the desktop is showing, or `None` when it cannot be read.
+fn shown_cursor() -> Option<HCURSOR> {
+    let mut info = CURSORINFO {
+        cbSize: std::mem::size_of::<CURSORINFO>() as u32,
+        ..Default::default()
+    };
+    unsafe { GetCursorInfo(&mut info) }.ok()?;
+    Some(info.hCursor)
+}
+
+/// Puts the pointer on a point in the window and waits for the cursor it should
+/// show there.
+///
+/// The runtime answers `WM_SETCURSOR` by asking where the pointer is, so the
+/// pointer has to move for real: the point is converted to screen coordinates
+/// and put under the pointer, and then the message is posted, which is the pair
+/// of things the system does when a user moves the mouse over a window. The
+/// message is posted more than once, because the pointer arriving on the window
+/// makes Windows set the cursor from the window class first, and the answer
+/// this case is after comes after that.
+fn wait_for_cursor(
+    window: HWND,
+    at: (i32, i32),
+    expected: HCURSOR,
+    deadline: Instant,
+) -> Option<HCURSOR> {
+    if !put_pointer_on(window, at) {
+        return None;
+    }
+    let mut shown = None;
+    while Instant::now() < deadline {
+        let _ = unsafe {
+            PostMessageW(
+                window,
+                WM_SETCURSOR,
+                WPARAM(window.0 as usize),
+                LPARAM(HTCLIENT as isize),
+            )
+        };
+        shown = shown_cursor();
+        if shown == Some(expected) {
+            return shown;
+        }
+        std::thread::sleep(Duration::from_millis(40));
+    }
+    shown
+}
+
+/// Everything a cursor failure has to explain: which shape the desktop is
+/// showing, which of the three names it is, and whether the window the case is
+/// about is the one in front, which is what decides whether the shape its
+/// thread sets is the shape the desktop shows.
+fn cursor_report(window: HWND, hand: HCURSOR, beam: HCURSOR, arrow: HCURSOR) -> String {
+    let shown = shown_cursor();
+    let shape = match shown {
+        Some(shape) if shape == hand => "the hand",
+        Some(shape) if shape == beam => "the beam",
+        Some(shape) if shape == arrow => "the arrow",
+        Some(_) => "a cursor none of the three names",
+        None => "nothing readable",
+    };
+    let front = unsafe { GetForegroundWindow() } == window;
+    format!(
+        "the desktop is showing {shape} ({shown:?}); the hand is {hand:?}, the beam {beam:?} \
+         and the arrow {arrow:?}; the window in front is {}",
+        if front { "this one" } else { "another one" }
+    )
+}
+
+/// Holds a window above the others for as long as a case needs it there, and
+/// puts it back afterwards.
+///
+/// The shape the desktop shows is the one the window under the pointer asks
+/// for, and the suite runs its window cases at the same time, so a case about
+/// the cursor has to be the window the pointer is really over: the wizard's
+/// own client point is where the pointer is put, and something else may be
+/// covering that part of the desk.
+struct WindowInFront(HWND);
+
+impl WindowInFront {
+    /// Lifts a window above every other one, without taking the keyboard.
+    fn lift(window: HWND) -> Self {
+        let _ = unsafe {
+            SetWindowPos(
+                window,
+                HWND_TOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            )
+        };
+        Self(window)
+    }
+}
+
+impl Drop for WindowInFront {
+    fn drop(&mut self) {
+        let _ = unsafe {
+            SetWindowPos(
+                self.0,
+                HWND_NOTOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            )
+        };
+    }
+}
+
+/// Puts the pointer back where a case found it.
+///
+/// A case that moves the pointer for real is only borrowing it: the point it
+/// was on is remembered before the first move and put back when the case ends,
+/// an assertion that failed included.
+struct PointerRestore(POINT);
+
+impl PointerRestore {
+    /// Remembers where the pointer is now.
+    fn capture() -> Self {
+        let mut point = POINT::default();
+        let _ = unsafe { GetCursorPos(&mut point) };
+        Self(point)
+    }
+}
+
+impl Drop for PointerRestore {
+    fn drop(&mut self) {
+        let _ = unsafe { SetCursorPos(self.0.x, self.0.y) };
+    }
+}
+
+/// The top-level windows one process is showing, as `(handle, class)`.
+///
+/// The windows a process is showing, rather than every window it owns: a
+/// process with an input method loaded also owns helper windows that are never
+/// put on screen, and one of those standing in for a dialog would say nothing
+/// about what a click opened.
+fn shown_windows(process_id: u32) -> Vec<(HWND, String)> {
+    let mut lookup = ProcessWindowList {
+        process_id,
+        found: Vec::new(),
+    };
+    let parameter = LPARAM(&mut lookup as *mut ProcessWindowList as isize);
+    // A machine with no window station fails the walk, which reads the same as a
+    // walk that found nothing.
+    let _ = unsafe { EnumWindows(Some(visit_every_window), parameter) };
+    lookup.found
+}
+
+/// What one walk over the top-level windows of a process collects.
+struct ProcessWindowList {
+    process_id: u32,
+    found: Vec<(HWND, String)>,
+}
+
+/// The callback the walk runs per top-level window, for every window of the
+/// process rather than for the runtime's alone.
+unsafe extern "system" fn visit_every_window(window: HWND, parameter: LPARAM) -> BOOL {
+    let lookup = &mut *(parameter.0 as *mut ProcessWindowList);
+    let mut owner = 0u32;
+    GetWindowThreadProcessId(window, Some(&mut owner));
+    if owner == lookup.process_id && IsWindowVisible(window).as_bool() {
+        lookup.found.push((window, window_class(window)));
+    }
+    BOOL(1)
+}
+
+/// Waits for a process to show a second top-level window beside the wizard.
+///
+/// A folder picker is a window of its own rather than a card inside the wizard,
+/// so this is what says that the button that asks for one really asked Windows
+/// for it.
+fn wait_for_other_window(
+    process_id: u32,
+    wizard: HWND,
+    deadline: Instant,
+) -> Option<(HWND, String)> {
+    while Instant::now() < deadline {
+        if let Some(found) = shown_windows(process_id)
+            .into_iter()
+            .find(|(window, _)| *window != wizard)
+        {
+            return Some(found);
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    None
+}
+
+/// Closes a window the case did not open, and reports whether it went away.
+///
+/// The folder picker is modal: the wizard waits inside it until the dialog
+/// answers, so a case that cannot close one leaves the setup running for good.
+/// `WM_CLOSE` is what a dialog answers to, and one that is still there a moment
+/// later is offered the Escape key the shell also reads as a cancel.
+fn dismiss_window(window: HWND, deadline: Instant) -> bool {
+    let _ = unsafe { PostMessageW(window, WM_CLOSE, WPARAM(0), LPARAM(0)) };
+    let offer_escape_from = Instant::now() + Duration::from_secs(2);
+    while Instant::now() < deadline {
+        if !unsafe { IsWindow(window) }.as_bool() {
+            return true;
+        }
+        if Instant::now() >= offer_escape_from {
+            let _ = unsafe {
+                PostMessageW(window, WM_KEYDOWN, WPARAM(VK_ESCAPE.0 as usize), LPARAM(0))
+            };
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    false
+}
+
+/// A PNG holding one flat colour, which is what a case uses for the artwork a
+/// button draws in each of its states.
+///
+/// The fixture writes its own pictures rather than carrying any, so a case that
+/// needs artwork writes it here. The file is a real PNG, because that is what
+/// the builder packs and what the runtime decodes, and it is written by hand
+/// because the test build carries no image crate: the picture is four pixels of
+/// one colour, so a stored-block deflate stream is smaller to write than a
+/// dependency is to add.
+fn solid_png(width: u32, height: u32, colour: (u8, u8, u8)) -> Vec<u8> {
+    let mut raw = Vec::with_capacity((height * (width * 3 + 1)) as usize);
+    // Every row starts with the filter it is stored under, and this one is
+    // stored as it is, so every row is the same row.
+    let mut row = Vec::with_capacity((width * 3 + 1) as usize);
+    row.push(0);
+    for _ in 0..width {
+        row.extend_from_slice(&[colour.0, colour.1, colour.2]);
+    }
+    for _ in 0..height {
+        raw.extend_from_slice(&row);
+    }
+    let mut header = Vec::new();
+    header.extend_from_slice(&width.to_be_bytes());
+    header.extend_from_slice(&height.to_be_bytes());
+    // Eight bits per channel, truecolour, no interlacing.
+    header.extend_from_slice(&[8, 2, 0, 0, 0]);
+    let mut png = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+    png.extend_from_slice(&png_chunk(b"IHDR", &header));
+    png.extend_from_slice(&png_chunk(b"IDAT", &zlib_stored(&raw)));
+    png.extend_from_slice(&png_chunk(b"IEND", &[]));
+    png
+}
+
+/// The zlib stream a PNG's image data sits in, written as stored blocks.
+fn zlib_stored(data: &[u8]) -> Vec<u8> {
+    // The two bytes every zlib stream starts with: deflate, with the window
+    // size and the check bits a stored stream uses.
+    let mut stream = vec![0x78, 0x01];
+    let mut remaining = data;
+    while !remaining.is_empty() {
+        let take = remaining.len().min(0xFFFF);
+        let (block, rest) = remaining.split_at(take);
+        stream.push(u8::from(rest.is_empty()));
+        stream.extend_from_slice(&(take as u16).to_le_bytes());
+        stream.extend_from_slice(&(!(take as u16)).to_le_bytes());
+        stream.extend_from_slice(block);
+        remaining = rest;
+    }
+    stream.extend_from_slice(&adler32(data).to_be_bytes());
+    stream
+}
+
+/// The Adler-32 checksum zlib ends a stream with.
+fn adler32(data: &[u8]) -> u32 {
+    let (mut low, mut high) = (1u32, 0u32);
+    for byte in data {
+        low = (low + u32::from(*byte)) % 65521;
+        high = (high + low) % 65521;
+    }
+    (high << 16) | low
+}
+
+/// One chunk of a PNG: its length, its name, its body, and the checksum over
+/// the last two.
+fn png_chunk(kind: &[u8; 4], body: &[u8]) -> Vec<u8> {
+    let mut chunk = Vec::with_capacity(body.len() + 12);
+    chunk.extend_from_slice(&(body.len() as u32).to_be_bytes());
+    chunk.extend_from_slice(kind);
+    chunk.extend_from_slice(body);
+    let mut checked = Vec::with_capacity(body.len() + 4);
+    checked.extend_from_slice(kind);
+    checked.extend_from_slice(body);
+    chunk.extend_from_slice(&crc32(&checked).to_be_bytes());
+    chunk
+}
+
+/// The CRC-32 a PNG names each of its chunks with.
+fn crc32(data: &[u8]) -> u32 {
+    let mut crc = 0xFFFF_FFFFu32;
+    for byte in data {
+        crc ^= u32::from(*byte);
+        for _ in 0..8 {
+            crc = if crc & 1 != 0 {
+                0xEDB8_8320 ^ (crc >> 1)
+            } else {
+                crc >> 1
+            };
+        }
+    }
+    !crc
+}
+
+/// A setup a case started, ended when the case is over.
+///
+/// A case that fails before it reaches its own teardown would otherwise leave a
+/// wizard on the desk. That is not only untidy: the run's output is a pipe the
+/// process inherited, and a step is over only once everything holding that pipe
+/// has let go, so a wizard left behind can keep a whole job waiting.
+struct SetupGuard(Child);
+
+impl SetupGuard {
+    /// Starts the built setup at the scale a case measures at.
+    fn spawn(setup: &Path) -> anyhow::Result<Self> {
+        Ok(Self(
+            Command::new(setup)
+                .env("NANO_INSTALLER_TEST_DPI", "96")
+                .spawn()?,
+        ))
+    }
+}
+
+impl std::ops::Deref for SetupGuard {
+    type Target = Child;
+
+    fn deref(&self) -> &Child {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for SetupGuard {
+    fn deref_mut(&mut self) -> &mut Child {
+        &mut self.0
+    }
+}
+
+impl Drop for SetupGuard {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
 }
 
 /// Clicks a point inside the runtime window, the way a user's click arrives.

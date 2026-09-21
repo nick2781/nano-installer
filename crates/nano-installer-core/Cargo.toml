@@ -36,6 +36,9 @@ features = [
     "Win32_System_Environment",
     "Win32_Security",
     "Win32_Storage_FileSystem",
+    # `PrintWindow` lives in the Xps module of the bindings, and the end-to-end
+    # cases read a window back through it.
+    "Win32_Storage_Xps",
     "Win32_System_WindowsProgramming",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Input_Ime",

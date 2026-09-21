@@ -3,7 +3,7 @@
 Every behaviour the documentation promises, and the automated case that holds it. A row names the
 cases that fail when that behaviour breaks; a behaviour with no row is one nobody is checking.
 
-`cargo test --locked --workspace` runs 235 cases: 174 in the core library, 25 that build a real
+`cargo test --locked --workspace` runs 241 cases: 176 in the core library, 29 that build a real
 setup and run it, 5 that read a project the way the builder does, 29 in the visual builder, and 2
 in the extraction runtimes. The setup-level cases need real runtime executables built first, which
 is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `target/e2e-report.txt`.
@@ -12,8 +12,8 @@ is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `targe
 
 | Layer | Cases | Proves | Cannot prove |
 | --- | --- | --- | --- |
-| Core library | 174 | what a page becomes — layers, coordinates, hit regions, text — what the bundle carries, what an install writes to disk and the registry, and what each script primitive does | that a packaged setup reaches any of it |
-| Setup end to end | 25 | a built setup installed on the machine: payload bytes, manifest, uninstall entry, shortcuts, autostart, project scripts, the helpers a script runs, the wizard window, the clicks its own pages wait for, a wheel over a list, and the card a script's messages and questions are answered on | what needs a person at the machine: the hover and pressed bitmaps, the caret, IME composition, and the folder picker |
+| Core library | 176 | what a page becomes — layers, coordinates, hit regions, text — what the bundle carries, what an install writes to disk and the registry, and what each script primitive does | that a packaged setup reaches any of it |
+| Setup end to end | 29 | a built setup installed on the machine, its own window driven: payload bytes, manifest, uninstall entry, shortcuts, autostart, project scripts, the helpers a script runs, the wizard window, the clicks its own pages wait for, a wheel over a list, the card a script's messages and questions are answered on, and what only a moving pointer and a real keyboard bring about -- the bitmaps hover and press swap in, the three standard cursor shapes, the language menu's arrow keys with Enter and Escape, and the folder picker | the two windows an input method draws itself, and which field a directory chosen in the shell's folder dialog is written to |
 | Project inspection | 5 | the summary and the warning list the builder shows before a build | |
 | Visual builder | 29 | the window's own state, parameters, log and warnings | clicking the real controls |
 | Extraction runtimes | 2 | a broken archive, and an unsafe path inside one, are refused | extracting an archive that is sound -- the setup-level cases run a real runtime over a real payload |
@@ -60,7 +60,7 @@ is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `targe
 | absolute `Image` and `Icon` | `an_absolute_image_and_icon_draw_at_the_rectangle_they_declare` |
 | the `file`/`dest`/`fade` image form | `a_styled_image_draws_into_a_sub_rectangle_at_the_opacity_it_declares`, `image_style_supports_plain_path_destination_and_fade` |
 | density choice at the display's DPI, both fallbacks | `a_layout_picks_the_image_density_the_display_asks_for`, `dpi_asset_resolution_prefers_requested_density_and_falls_back` |
-| `Button` state images and their fallback | `a_button_state_image_falls_back_to_the_normal_one`, `install_button_uses_xml_images_for_interaction_state` |
+| `Button` state images and their fallback | `a_button_state_image_falls_back_to_the_normal_one`, `install_button_uses_xml_images_for_interaction_state`, `a_hover_and_a_press_show_the_pictures_the_button_declares` |
 | `enabled-when` for every state it can name, a field, a recorded choice, and a list of conditions | `a_button_waits_for_each_state_its_condition_can_name`, `a_button_waits_for_the_field_its_condition_names`, `a_radio_group_holds_one_value_at_a_time` |
 | a field's own rules decide which values it accepts (`required`, `min-length`, `max-length`, `pattern`) | `a_field_checks_the_value_the_project_asks_it_to` |
 | the hint a field shows for the first rule its value breaks | `a_hint_shows_the_rule_the_value_breaks` |
@@ -77,17 +77,20 @@ is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `targe
 | `Label` text, font, alignment and colour | `a_label_takes_its_text_font_and_alignment_from_the_layout`, `text_colors_read_as_rgb_with_or_without_an_alpha_channel`, `a_bound_label_shows_its_own_text_beside_the_value_it_reads` |
 | `Checkbox` state images, text, links, toggling | `an_absolutely_placed_checkbox_draws_its_state_image_and_toggles` |
 | `RadioButton`: one value per group, the layout's default, and the click that replaces it | `a_radio_group_holds_one_value_at_a_time`, `a_click_on_a_radio_is_the_value_the_install_waits_for` |
-| `Select`: the language list, and the options a project declares | `a_language_menu_lists_its_options_and_marks_the_one_in_use`, `a_closed_language_select_draws_its_arrow_over_its_fill_and_outline`, `a_select_offers_the_options_the_page_declares` |
+| `Select`: the language list, and the options a project declares | `a_language_menu_lists_its_options_and_marks_the_one_in_use`, `a_closed_language_select_draws_its_arrow_over_its_fill_and_outline`, `a_select_offers_the_options_the_page_declares`, `the_language_menu_answers_to_the_keyboard` |
 | `ProgressBar` track, clipping and live value | `a_progress_bar_paints_a_rounded_track_and_follows_the_live_value`, `progress_bar_clips_its_sprite_to_the_completed_share` |
 | every `value-source` form and `value-format` | `value_sources_read_the_config_the_disk_and_the_running_step`, `formats_bound_disk_sizes`, `resolves_and_queries_windows_disk_root`, `status_source_replaces_placeholder_text_with_the_published_step` |
 | text field editing: caret, selection, undo, word keys | `a_caret_sits_after_the_characters_before_it`, `a_double_click_selects_the_word_under_the_pointer`, `a_selection_band_covers_the_characters_it_selects`, `a_selection_is_ordered_from_whichever_end_the_caret_is_at`, `removing_a_selection_keeps_the_text_around_it`, `typing_coalesces_into_one_undo_step`, `undo_remembers_the_caret_that_belongs_to_the_value`, `word_keys_stop_at_the_boundaries_they_delete`, `byte_index_walks_characters_not_bytes`, `editable_text_fields_are_recorded_and_readonly_ones_are_not`, `a_typed_value_wins_over_the_bound_default`, `a_readonly_field_shows_its_value_without_taking_edits`, `an_empty_field_is_one_a_user_can_click_into` |
+| the IME composition window and candidate list anchored at the caret the page drew | `an_input_method_anchors_at_the_caret_the_page_drew` |
 | `visible="false"` and panel show/hide | `a_hidden_element_takes_its_whole_subtree_with_it`, `a_panel_pair_shows_the_panel_and_only_the_control_that_fits` |
 | Page order and the job a page declares (`next`, `back`, `role`) | `a_page_role_finds_the_page_that_holds_it`, `a_page_list_without_roles_keeps_its_positions`, `a_next_button_walks_to_the_page_the_project_declares` |
 | every action in the table | `every_action_in_the_table_answers_with_its_own_window_action`, `action_attributes_map_to_window_actions` |
 | dialogs: placement, buttons, notices, growing cards | `a_dialog_is_drawn_over_the_page_and_centred`, `a_dialog_button_answers_with_its_own_action`, `a_dialog_button_is_drawn_from_the_question_rather_than_the_layout`, `a_notice_hides_the_secondary_button`, `a_page_without_a_dialog_draws_no_overlay`, `every_shipped_question_keeps_its_answers_inside_the_card`, `the_example_dialog_places_its_message_and_both_buttons` |
 | link resolution order | `agreement_links_resolve_through_the_project_links_table`, `a_link_the_project_does_not_configure_stays_plain_text`, `link_runs_carry_their_target_and_plain_runs_do_not`, `agreement_markdown_becomes_colored_visible_runs` |
 | the pointer answers only where an action is declared | `an_element_answers_the_pointer_only_when_it_declares_an_action` |
+| the cursor shape over a control: a hand on a button, a beam on a field a person can type in, an arrow on the page | `the_pointer_decides_which_cursor_the_wizard_shows` |
 | the folder picker's target | `pick_directory_writes_to_the_field_the_page_offers_it`, `pick_directory_falls_back_to_the_layout_text_input` |
+| a `pick_directory` button opens the shell's own folder dialog, and closing it again leaves the wizard as it was | `a_browse_button_opens_the_folder_picker_and_leaving_it_changes_nothing` |
 | window placement and scaling | `a_window_is_centred_and_clamped_to_its_work_area`, `a_placed_window_is_pulled_back_inside_its_work_area`, `a_display_scales_the_layout_by_its_own_dpi` |
 | stopping the running task from the window (a `cancel` button, a confirmed `close_confirm`) | `a_cancel_button_stops_the_project_script_and_leaves_nothing_installed` |
 | the example project's own pages | `taptap_first_page_places_controls_at_192_dpi`, `taptap_uninstaller_buttons_have_distinct_hit_regions`, `progress_pages_render_every_control_they_declare` |
@@ -154,9 +157,11 @@ setup-level cases prove the `scripts` directory and the tools directory survive 
 - **Whether a glyph reads correctly.** A rendering check can tell that text was drawn in the colour
   and position the layout asked for; it cannot tell that the sentence is legible. The snapshot
   review script hands that question to a local vision model, or to a person.
-- **Anything that needs a click in the real window.** The hover and pressed bitmap commit, the hand
-  cursor, the language menu's Up/Down/Enter/Escape handling, IME composition placement, and the
-  folder picker dialog are all reachable only by driving a real window.
+- **The two windows an input method draws itself, and choosing inside the shell's folder dialog.** A
+  case proves that the composition point and the candidate point the runtime hands the input method
+  sit on the caret; it cannot prove the input method drew them there. It proves that a
+  `pick_directory` button opened the shell's folder dialog; it cannot prove which field a directory
+  chosen there is written to.
 - **Script primitives that cannot be undone by a test:** `run_detached` deliberately outlives the
   run; `kill_process` ends a process the test did not start; `sleep_ms` has only elapsed time to
   assert on; `is_elevated` would only mirror the implementation.

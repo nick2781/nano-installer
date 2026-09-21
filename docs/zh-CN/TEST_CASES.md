@@ -8,6 +8,7 @@ Rust doc comment，再退回用例名。
 | `a_border_layer_paints_a_ring_and_leaves_the_center_empty` | 带 `border-color` 的层画成一个环：边缘像素上色，内部留空；没有 `border-color` 的控件一个层都不加。 |
 | `a_bound_label_shows_its_own_text_beside_the_value_it_reads` | 绑定了 `value-source` 的 `Label` 在自己那句翻译后面接上读到的值，同一份版面在任何语言下都读得通；没有值可显示时留下占位符而不是空一行。 |
 | `a_broken_project_file_is_reported_to_the_user` | 读不出来的工程文件会被报告出来，而不是让程序崩溃。这些文件是人手改的，所以窗口必须扛得住改坏的那一份：用例先把 JSON 改坏、再把一份版面改坏，要求在侧栏和日志里看到原因，而不是 panic。 |
+| `a_browse_button_opens_the_folder_picker_and_leaving_it_changes_nothing` | 有 `pick_directory` 动作的按钮点下去会开出 Windows 自己的选目录对话框：进程名下多出一个类名是外壳 `#32770` 的窗口，向导还在它底下。把这个对话框关掉，向导没消失、客户区尺寸没变、安装进程也还活着，而且这一路点下来一个文件都没落盘——离开对话框不等于做了选择。 |
 | `a_build_reads_the_project_from_disk_in_its_worker_thread` | 构建在工作线程里从磁盘重读工程，而侧栏那份摘要只是上次检查的快照。在快照之后把工程文件删掉，构建必须失败并指出是哪个文件，因为工作线程会重新检查目录，而不是相信窗口上还显示着的东西。 |
 | `a_built_in_step_clears_a_script_step_text` | 内置步骤用自己的 locale 键起名，脚本发布过的文字不会留到这些步骤里；进度同时被夹在 0 到 100 之间，脚本推不过头。 |
 | `a_built_setup_carries_a_readable_bundle_and_real_resources` | 构建产物是 stub、捆绑数据和 Windows 资源三部分，捆绑数据要在文件最末尾描述自己，运行时才找得到。 |
@@ -37,6 +38,7 @@ Rust doc comment，再退回用例名。
 | `a_file_type_that_would_write_outside_the_classes_tree_is_refused` | 文件类型的两个名字先查再用：扩展名或程序 id 里带路径分隔符、或其中任何一个为空，调用直接返回 `false`；命令行空着的调用同样被拒绝，因为那样的文件类型打不开任何东西。五种被拒的调用一个字节都没写进注册表，manifest 里也没有记录。 |
 | `a_hidden_element_takes_its_whole_subtree_with_it` | 祖先上的 `visible="false"` 把底下整个子树都藏起来：子控件的动作、文字和面板自己的底色都不画，页面上别的地方不受影响。把属性改回 `true` 后这个分支又完整画出来。 |
 | `a_hint_shows_the_rule_the_value_breaks` | 绑 `value-source="field-error:<字段 id>"` 的标签画出那条被破坏的规矩写下的文案：字段空着时报 `required` 那句，值不合格时报 `pattern` 那句，文案按工程自己的语言查表；值合格时这个标签什么都不画，点名页面上没有的字段也一样。 |
+| `a_hover_and_a_press_show_the_pictures_the_button_declares` | 在真窗口里驱动指针：指针落到按钮上，窗口画的是 `hover-image`；按住不放，画的是 `pressed-image`；指针离开窗口，按钮回到 `normal-image`，而且整帧和指针来之前一个像素都不差。三种状态图和页面底色各是一种纯色，所以读按钮中心那一个点就知道此刻挂着哪一张；再看改动有没有落到按钮矩形之外，就知道变的是按钮，而不是整页重画了一遍。 |
 | `a_label_takes_its_text_font_and_alignment_from_the_layout` | `Label` 的内容全是文字，字号、加粗、颜色和对齐都按版面写的那样生效，`value` 和 `text` 一样被接受；没写对齐的标签从自己的左边缘开始，字号也跟着显示缩放走。 |
 | `a_language_menu_lists_its_options_and_marks_the_one_in_use` | 展开的语言菜单按选项一行一个地画在页面之上，当前语言那一行填上选中底色，`visible="false"` 的选项不出现在列表里；点某一行会给出切换到那个语言的区域。 |
 | `a_layout_picks_the_image_density_the_display_asks_for` | 版面只点一个文件名，由运行时选版本：低密度显示器用 1x，高密度用 `@2x`。版面直接写 `@2x` 的文件名也会被归一化，只发布其中一个版本时退回另一个。 |
@@ -107,6 +109,7 @@ Rust doc comment，再退回用例名。
 | `an_empty_runtime_directory_leaves_the_stub_search_automatic` | 运行时目录为空时 stub 的查找保持自动：勾上自动搜索 stub 会清空这个输入框，而把空路径当目录传下去会先在那里搜并且搜不到。所以请求里根本不能带这个覆盖项，预览里也不能显示它。 |
 | `an_explicit_directory_wins_over_the_configured_one` | 命令行给出的目录优先于配置里的目录，静默运行才能自己决定产品装到哪里。 |
 | `an_explicit_install_path_wins_over_the_configured_one` | 显式给出的目录优先于配置里的目录，这样不改工程也能让静默运行决定产品装到哪里。 |
+| `an_input_method_anchors_at_the_caret_the_page_drew` | 输入法组字窗与候选窗锚在页面画出的那个插入符上：组字点就是插入符的左上角，候选点在同一个 x 上、比插入符低一个插入符的高度，用户打字时眼睛就落在那里；光标沿着一行往右走，两个点跟着一起走，候选列表不会留在第一个字底下。输入法自己的窗口不归运行时管，运行时只负责回答插入符画在哪儿。 |
 | `an_install_closes_a_running_copy_of_the_product` | 工程可以要求先关掉正在运行的自身副本，应用开着也能就地升级。 |
 | `an_install_script_creates_shortcuts_the_uninstall_takes_back` | 安装脚本用快捷方式原语建的桌面、开始菜单和卸载链接都落在 Windows 会去找的位置，并被 manifest 逐条记下。卸载时三个链接和安装器自己建的开始菜单文件夹一起删掉，菜单里不留空的产品目录。 |
 | `an_install_script_deploys_files_and_writes_the_manifest` | 安装脚本部署文件后，manifest 列出它管理的文件和注册表值，说明注册表根是 `HKCU`；卸载器和 manifest 自己管自己，不在卸载时删除的文件清单里，产品名也从注册表读得到。 |
@@ -218,10 +221,12 @@ Rust doc comment，再退回用例名。
 | `text_colors_read_as_rgb_with_or_without_an_alpha_channel` | 颜色写六位和八位都读成同一个 RGB，画文字时忽略 alpha，字节顺序是 RGB 而不是 BGR；读不懂的颜色画成白色。 |
 | `the_example_dialog_places_its_message_and_both_buttons` | 示例工程自己的对话框版面能把问题文字和两个按钮都摆好：问题是一行有真实高度、宽度和位置的折行文字，两个按钮并排不重叠，问题也不被按钮盖住。 |
 | `the_example_project_matches_the_schema` | 示例工程自己的配置也要过这张表：它是别人照抄的模板，不能带着没人读的键。 |
+| `the_language_menu_answers_to_the_keyboard` | 在真窗口里用键盘走一遍语言菜单：点一下控件把菜单展开，当前语言那一行标着记号；按一次下箭头，高亮落到下一行，而当前语言那行上的记号还在；按 Escape，菜单收起，页面回到展开之前的样子，一个像素都没变；再展开、再按下箭头、按 Enter，页面上的那句话换成另一种语言写的，而且除那句话和这个控件，别处都没有被重画。 |
 | `the_log_keeps_the_lines_the_view_scrolled_past` | 日志留着视图滚过去的那些行：保存日志写下的和全部复制复制的是同一份文本，导出的应该是整份日志，而不是面板一次能显示的那几行。用例把它填到远超一屏，检查每一行都还在、措辞没变、时间戳还是自己那个。 |
 | `the_manifest_reaches_a_real_executable` | 把清单写进一个真实的 PE 映像再读回来，内容与写进去的一致：提权级别和 DPI 相关的两个元素都在，整份 XML 仍然能被解析，Windows 不会因为清单坏了而拒绝加载。 |
 | `the_panels_draw_in_every_state_they_can_be_in` | 面板在指南说到的每种状态下都画得出来：这里没有一条用例能开窗口，状态是画在无窗口上下文里的——什么都没打开、检查过工程、构建进行中、构建失败、构建完成，两种界面语言都算。一个根本画不出来的状态会让用户看到空白窗口，而画的过程改掉要展示的状态则更糟。 |
 | `the_payload_format_selects_the_runtime_that_gets_embedded` | payload 格式决定嵌入哪个运行时。一直声称错误格式的安装包什么都装不上，因为那个 stub 读不懂归档。 |
+| `the_pointer_decides_which_cursor_the_wizard_shows` | 指针在向导上是什么形状，由它底下那个控件说了算：按钮上是手型，可以输入的文本框上是工字光标，落在页面空白处则是普通箭头；指针再挪回按钮，形状跟着回去。三种标准光标必须先能彼此区分（句柄互不相同），否则这条用例不管窗口做什么都会通过。 |
 | `the_script_queries_fixed_disks_and_notifies_the_shell` | 脚本列出的固定磁盘都是 `C:\` 这样的根目录，测试所在的盘也在里面；取到的可用空间是正数且不超过总容量；`shell_notify` 之后脚本继续往下走。 |
 | `the_script_reads_the_environment_and_the_project_configuration` | 脚本读环境变量拿到真实值，机器上没有的变量读成空字符串而不是报错；读工程配置拿到产品名和可执行文件名，不存在的配置路径类型是 unit，对象是 map，脚本因此分得清写错和空值。 |
 | `the_script_reports_the_image_it_runs_from` | 脚本报告自己运行的映像路径和它所在目录，值就是跑测试的那个可执行文件，而不是它读的捆绑数据。 |

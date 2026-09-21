@@ -96,13 +96,17 @@ files and registry entries, so validate them in a disposable virtual machine onl
   project it writes itself and runs it against a real installation: files land on disk byte for
   byte, the manifest and the uninstall entry are written, an upgrade drops stale files and keeps
   files it does not own, and an uninstall removes the product, the registration, and the directory.
-  Seven of its twenty-five cases open the wizard window and drive it: one measures the client area it
-  drew, one walks the page actions a project declares, one stops a running task from a cancel
+  Eleven of its twenty-nine cases open the wizard window and drive it: one measures the client area
+  it drew, one walks the page actions a project declares, one stops a running task from a cancel
   button, one types a directory into the field a page asks for and starts the install with it, one
   clicks the row a radio group's install button waits for, one rolls the wheel over a list and
-  clicks the row it brings into view, and one answers the card a project script puts up and reads
-  back what the script wrote after each answer. They need an interactive desktop session, so they
-  skip where there is none and `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` makes the skip a failure. The
+  clicks the row it brings into view, one answers the card a project script puts up and reads back
+  what the script wrote after each answer, one moves the pointer onto a button and holds it down
+  and reads the three pictures the button declares back out of the window, one reads which of the
+  three standard pointers the window answers with over a button, a field and the page, one walks
+  the language menu with the arrow keys, Enter and Escape, and one clicks a browse button and
+  closes the shell's folder dialog again. They need an interactive desktop session, so they skip
+  where there is none and `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` makes the skip a failure. The
   other eighteen pass on Windows 11 and in CI.
 - A setup stays a setup after signing: a certificate table appended behind the bundle, which is what
   Authenticode writes into the file, no longer hides the footer the runtime reads its resources from.
