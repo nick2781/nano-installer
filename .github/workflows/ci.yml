@@ -90,18 +90,20 @@ jobs:
       # laid out for a reader: one row per case with what it holds, every
       # failure first, and a target linked to the cases that ran in it.
       #
-      # The script also keeps the suite off the step's console, in two places. A
-      # step is finished when its output has closed, and the linker leaves a
-      # telemetry process behind that inherits whatever the build wrote to and
-      # outlives it: held open that way, the step never ends, archives no log, and
-      # neither a step timeout nor a cancel can finish it. The script has the
-      # operating system open a file for the suite, so nothing it waits on is held
-      # open behind the build's own children; and everything the script starts
-      # joins a job that ends with it, so a process it leaves behind -- a wizard a
-      # failing case did not close, that same telemetry process -- cannot hold the
-      # step's own console open either. A command that does not end is waited on
-      # with a deadline, so a suite that hangs ends the step with a failure and a
-      # log that shows the last case it reached, instead of hanging for hours.
+      # The script also keeps the suite off the step's console, in three places. A
+      # step has finished only once its own output has closed, and the linker
+      # leaves a telemetry process behind that inherits whatever the build wrote
+      # to and outlives it: held open that way the step never ends, archives no
+      # log, and neither a step timeout nor a cancel reaches it -- a suite that
+      # had already passed has taken a build agent half an hour that way. So the
+      # script opens a file for the suite's own output and gives the command that
+      # runs it a console of its own, which shares none of this step's output; and
+      # everything the script starts joins a job that ends with it, so a process it
+      # leaves behind -- a wizard a failing case did not close, that same telemetry
+      # process -- does not outlive the step either. A command that does not end is
+      # waited on with a deadline, which prints the last lines it wrote and the
+      # processes it was waiting on, so a suite that hangs fails this step with a
+      # log that says where, instead of hanging for hours.
       - name: Test workspace
         shell: powershell
         run: .\scripts\run_tests.ps1
@@ -121,17 +123,31 @@ jobs:
       # against a fixture the suite writes itself.
       #
       # This build links, so it gets the same treatment as the suite above: its
-      # output goes into a file the step prints when the build is done, because
-      # a build that writes onto this step's console can leave the step waiting
-      # on a process the linker started, and the step joins the job that ends
-      # with it for the same reason.
+      # output goes into a file the step prints when the build is done, and the
+      # build runs in a process with a console of its own, because a process the
+      # build starts and leaves behind -- the linker's telemetry helper -- inherits
+      # whatever it was given, and one that inherits this step's output holds the
+      # step open for as long as the job lasts. Its deadline is longer than a warm
+      # build needs, so a build that hangs fails the step with the last of its
+      # output rather than hanging for as long as the agent is willing to wait.
       - name: Build Win7+ toolchain
         shell: powershell
         run: |
           . .\scripts\step_job.ps1
           New-Item -ItemType Directory -Force -Path target | Out-Null
-          cmd /c "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build.ps1 > target\build.log 2>&1"
-          $code = $LASTEXITCODE
+          $start = New-Object System.Diagnostics.ProcessStartInfo
+          $start.FileName = "cmd.exe"
+          $start.Arguments = "/c `"powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build.ps1 > target\build.log 2>&1`""
+          $start.UseShellExecute = $true
+          $start.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+          $process = [System.Diagnostics.Process]::Start($start)
+          if (-not $process.WaitForExit(30 * 60 * 1000)) {
+            Write-Output "the build did not end within 30 minute(s); what it wrote so far follows"
+            Get-Content -LiteralPath target\build.log -Tail 60
+            foreach ($line in (& taskkill /PID $process.Id /T /F 2>&1)) { Write-Output "  | $line" }
+            exit 1
+          }
+          $code = $process.ExitCode
           Get-Content -LiteralPath target\build.log
           exit $code
 

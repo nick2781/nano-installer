@@ -50,9 +50,33 @@ jobs:
           $version = [regex]::Match($versionLine, '"([^"]+)"').Groups[1].Value
           .\scripts\release_version.ps1 -Tag $env:GITHUB_REF_NAME -Version $version -Commit $env:GITHUB_SHA
 
+      # The build links, so it runs the way the test job runs its own: in a
+      # process with a console of its own, whose output goes into a file this step
+      # prints. A process the build leaves behind -- the linker's telemetry helper
+      # -- inherits what it was given, and one that inherits this step's output
+      # holds the step open for as long as the job lasts, with no log and no
+      # timeout that reaches it. The deadline is longer than a cold release build
+      # needs, so a build that hangs fails the step with the last of its output.
       - name: Build and audit Win7+ artifacts
         shell: powershell
-        run: .\scripts\build.ps1
+        run: |
+          . .\scripts\step_job.ps1
+          New-Item -ItemType Directory -Force -Path target | Out-Null
+          $start = New-Object System.Diagnostics.ProcessStartInfo
+          $start.FileName = "cmd.exe"
+          $start.Arguments = "/c `"powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build.ps1 > target\build.log 2>&1`""
+          $start.UseShellExecute = $true
+          $start.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+          $process = [System.Diagnostics.Process]::Start($start)
+          if (-not $process.WaitForExit(40 * 60 * 1000)) {
+            Write-Output "the build did not end within 40 minute(s); what it wrote so far follows"
+            Get-Content -LiteralPath target\build.log -Tail 60
+            foreach ($line in (& taskkill /PID $process.Id /T /F 2>&1)) { Write-Output "  | $line" }
+            exit 1
+          }
+          $code = $process.ExitCode
+          Get-Content -LiteralPath target\build.log
+          exit $code
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v7

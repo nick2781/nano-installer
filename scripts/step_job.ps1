@@ -1,22 +1,23 @@
 <#
     Puts the process that runs a build step into a job the system takes down with it.
 
-    Every process a step starts inherits the step's own output, and a step is over
-    only once that output has closed. One process left behind -- a wizard a
-    failing case did not close, the toolchain's telemetry helper the linker starts
-    -- therefore holds the step open: the step never ends, is archived with no log
-    at all, and neither a timeout nor a cancel can end it.
+    A step is over when its script ends, but a process the script leaves behind
+    keeps running on the build agent for as long as the agent lives: a wizard a
+    failing case did not close, the toolchain's telemetry helper the linker starts.
+    Everything the script starts is therefore put in a job of the script's own.
 
     A process that joins a job hands that job to every process it starts
     afterwards, and a job created here is destroyed with the last handle to it,
     which is the one the joining script holds. Joining it therefore means that
-    when the step's script exits, whatever it left behind goes with it and the
-    step's output closes.
+    when the step's script exits, whatever it left behind goes with it.
 
     Joining is best effort: a host may already run its steps in a job of its own
     that refuses a second one, and a step that cannot join still runs -- it only
-    keeps the failure mode above. Either way the step says what happened, so a
-    step that hangs anyway still reports whether the guard was in place.
+    leaves what it started running on the agent. Either way the step says what
+    happened, so a step that goes wrong still reports whether the guard was in
+    place. What keeps a step from ending is a different matter, and it is settled
+    where the command is started: a child of the step inherits the step's own
+    output, so a command is run with a console of its own.
 #>
 
 Set-StrictMode -Version Latest

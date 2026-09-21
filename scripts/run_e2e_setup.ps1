@@ -80,6 +80,18 @@ $suiteCommand = "cargo test --locked -p nano-installer-core --test e2e_setup"
 # The command is started as a process this script holds, rather than waited on
 # through cmd.exe's own exit status, because waiting with a deadline needs the
 # process; its output still goes to a file the operating system opened for it.
+#
+# That process is given a console of its own, because one created with this
+# step's own handles hands this step's output to every process the command
+# starts, and a single one of those that outlives the command -- the linker's
+# telemetry helper, a wizard a failing case did not close -- then holds the
+# step's output open. A step whose output is still open never ends: the build
+# agent waits for it however long the job is given, archives no log, and
+# neither a step timeout nor a cancel reaches it, which is how a suite that had
+# already finished once cost a build agent thirty minutes and said nothing
+# about it. A command with a console of its own shares none of this step's
+# output, so what it leaves behind cannot hold the step open, and the deadline
+# below can always end it.
 function Invoke-NativeStep {
     param([string]$Command, [int]$DeadlineMinutes = 0)
 
@@ -90,7 +102,13 @@ function Invoke-NativeStep {
         $start = New-Object System.Diagnostics.ProcessStartInfo
         $start.FileName = "cmd.exe"
         $start.Arguments = "/c `"$Command > `"$log`" 2>&1`""
-        $start.UseShellExecute = $false
+        # A console of its own: a child created with this step's own handles
+        # inherits this step's output, and so does everything it starts, so one
+        # process the command leaves behind holds the step open however the build
+        # agent is asked to end it. A command with a console of its own shares
+        # none of this step's output.
+        $start.UseShellExecute = $true
+        $start.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
         $process = [System.Diagnostics.Process]::Start($start)
         $finished = $true
         if ($DeadlineMinutes -gt 0) {
@@ -105,11 +123,16 @@ function Invoke-NativeStep {
                 Write-Output "  | $line"
             }
             # The command is taken down here rather than left to the job the step
-            # joined. That job is best effort -- scripts/step_job.ps1 says so and prints
-            # which of the two happened -- and a process of this command's that outlives
-            # the script holds the step's own output open, which is the step that never
-            # ends and is archived with no log at all. /T takes what the command started
-            # with it, which is where a hung build keeps the process that hangs it.
+            # joined, which is best effort -- scripts/step_job.ps1 says so and prints
+            # which of the two happened. /T takes what the command started with it,
+            # which is where a hung build keeps the process that hangs it.
+            # What is still alive is usually what the command was waiting on, so
+            # it is written down before the tree is taken down: a killed tree that
+            # left no record of the process it hung on is a hang nobody can read.
+            Write-Output "the processes still alive while it waited, with what started them:"
+            foreach ($row in (Get-CimInstance Win32_Process | Sort-Object ParentProcessId)) {
+                Write-Output ("  | pid {0} <- {1}  {2}  ::  {3}" -f $row.ProcessId, $row.ParentProcessId, $row.Name, $row.CommandLine)
+            }
             foreach ($line in (& taskkill /PID $process.Id /T /F 2>&1)) {
                 Write-Output "  | $line"
             }
