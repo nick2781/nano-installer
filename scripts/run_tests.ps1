@@ -43,7 +43,9 @@
 param(
     [string]$Report = "target/test-report.txt",
     [string]$Snapshots = "target/setup-snapshots",
-    [string]$Language = "zh-CN"
+    [string]$Language = "zh-CN",
+    [string]$SuiteCommand = "cargo test --locked --workspace",
+    [int]$SuiteDeadlineMinutes = 15
 )
 
 Set-StrictMode -Version Latest
@@ -65,8 +67,6 @@ $reportName = Split-Path -Leaf $reportPath
 . (Join-Path $PSScriptRoot "step_job.ps1")
 
 $text = Get-ReportText -Language $Language
-
-$suiteCommand = "cargo test --locked --workspace"
 
 # A native tool that reports progress on standard error would otherwise trip
 # $ErrorActionPreference = "Stop" on a message that is not a failure.
@@ -125,6 +125,15 @@ function Invoke-NativeStep {
             foreach ($line in (Get-CapturedTail -Path $log -Count 40)) {
                 Write-Output "  | $line"
             }
+            # The command is taken down here rather than left to the job the step
+            # joined. That job is best effort -- scripts/step_job.ps1 says so and prints
+            # which of the two happened -- and a process of this command's that outlives
+            # the script holds the step's own output open, which is the step that never
+            # ends and is archived with no log at all. /T takes what the command started
+            # with it, which is where a hung build keeps the process that hangs it.
+            foreach ($line in (& taskkill /PID $process.Id /T /F 2>&1)) {
+                Write-Output "  | $line"
+            }
             Write-Output "everything this step started ends with it now, so the step can end and keep this log"
             exit 124
         }
@@ -176,25 +185,25 @@ function Get-CommitDescription {
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
         return "unknown, git is not on the path"
     }
-    $head = (Invoke-NativeStep "git rev-parse --short HEAD").Output
+    $head = (Invoke-NativeStep "git rev-parse --short HEAD" -DeadlineMinutes 2).Output
     if (-not $head) {
         return "unknown, not a git checkout"
     }
-    $changes = (Invoke-NativeStep "git status --porcelain").Output
+    $changes = (Invoke-NativeStep "git status --porcelain" -DeadlineMinutes 2).Output
     if ($changes) {
         return "$head with uncommitted changes"
     }
     return $head
 }
 
-$toolchain = (Invoke-NativeStep "cargo --version").Output -join "; "
-$rustcVersion = (Invoke-NativeStep "rustc --version").Output -join "; "
+$toolchain = (Invoke-NativeStep "cargo --version" -DeadlineMinutes 2).Output -join "; "
+$rustcVersion = (Invoke-NativeStep "rustc --version" -DeadlineMinutes 2).Output -join "; "
 $commit = Get-CommitDescription
 $runAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 
 Write-Phase "script started"
 Write-Output (Get-ReportPhrase -Text $text -Key "console.runningsuite" -Values @($suiteCommand))
-$suite = Invoke-NativeStep $suiteCommand -DeadlineMinutes 15
+$suite = Invoke-NativeStep $suiteCommand -DeadlineMinutes $SuiteDeadlineMinutes
 
 Write-Phase "suite finished with exit code $($suite.ExitCode) and $(@($suite.Output).Count) output line(s)"
 $printed = @($suite.Output)
@@ -320,7 +329,11 @@ foreach ($line in $printed) {
 # One row per layer this run has a target in, and the layer every target row
 # names, so a reader can start from what a layer proves rather than from a
 # binary path.
-$layers = Get-ReportLayerTable -Text $text -Document $layerDocument -Keys @($rowLayers | Select-Object -Unique)
+# `@()` around a function's return: PowerShell unrolls a one-element array and answers $null
+# for an empty one, and a suite that never reached a target -- a build that failed to compile
+# is the ordinary way there -- would otherwise kill the script here, before it writes the page
+# a reader opens to see what went wrong.
+$layers = @(Get-ReportLayerTable -Text $text -Document $layerDocument -Keys @($rowLayers | Select-Object -Unique))
 $layerAnchor = Get-ReportLayerAnchor -Layers $layers
 $layerRows = New-Object System.Collections.Generic.List[object]
 $layerIds = New-Object System.Collections.Generic.List[string]
@@ -344,7 +357,7 @@ Write-Phase "layer table read: $($layers.Count) layer(s)"
 # those cases ran this time -- including the behaviours none of whose cases ran
 # at all, and the part of the document where it admits nobody checks a thing.
 $coverageDocument = Get-TestCoverage -RepoRoot $repoRoot -Language $Language
-$behaviourRows = Get-BehaviourRows -Coverage $coverageDocument.Rows -Results $caseResults
+$behaviourRows = @(Get-BehaviourRows -Coverage $coverageDocument.Rows -Results $caseResults)
 Write-Phase "coverage read: $($behaviourRows.Count) behaviour(s), $($coverageDocument.Uncovered.Count) uncovered section(s)"
 
 $groups = New-Object System.Collections.Generic.List[object]

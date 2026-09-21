@@ -31,7 +31,8 @@
 param(
     [string]$Report = "target/e2e-report.txt",
     [switch]$RequireDesktop,
-    [string]$Language = "zh-CN"
+    [string]$Language = "zh-CN",
+    [int]$SuiteDeadlineMinutes = 15
 )
 
 Set-StrictMode -Version Latest
@@ -103,6 +104,15 @@ function Invoke-NativeStep {
             foreach ($line in (Get-CapturedTail -Path $log -Count 40)) {
                 Write-Output "  | $line"
             }
+            # The command is taken down here rather than left to the job the step
+            # joined. That job is best effort -- scripts/step_job.ps1 says so and prints
+            # which of the two happened -- and a process of this command's that outlives
+            # the script holds the step's own output open, which is the step that never
+            # ends and is archived with no log at all. /T takes what the command started
+            # with it, which is where a hung build keeps the process that hangs it.
+            foreach ($line in (& taskkill /PID $process.Id /T /F 2>&1)) {
+                Write-Output "  | $line"
+            }
             Write-Output "everything this step started ends with it now, so the step can end and keep this log"
             exit 124
         }
@@ -154,11 +164,11 @@ function Get-CommitDescription {
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
         return "unknown, git is not on the path"
     }
-    $head = (Invoke-NativeStep "git rev-parse --short HEAD").Output
+    $head = (Invoke-NativeStep "git rev-parse --short HEAD" -DeadlineMinutes 2).Output
     if (-not $head) {
         return "unknown, not a git checkout"
     }
-    $changes = (Invoke-NativeStep "git status --porcelain").Output
+    $changes = (Invoke-NativeStep "git status --porcelain" -DeadlineMinutes 2).Output
     if ($changes) {
         return "$head with uncommitted changes"
     }
@@ -173,12 +183,12 @@ if ($RequireDesktop) {
 }
 
 Write-Output (Get-ReportPhrase -Text $text -Key "console.buildingstubs")
-$stubs = Invoke-NativeStep $stubCommand -DeadlineMinutes 15
+$stubs = Invoke-NativeStep $stubCommand -DeadlineMinutes $SuiteDeadlineMinutes
 
 $suite = $null
 if ($stubs.ExitCode -eq 0) {
     Write-Output (Get-ReportPhrase -Text $text -Key "console.runninge2e")
-    $suite = Invoke-NativeStep $suiteCommand -DeadlineMinutes 15
+    $suite = Invoke-NativeStep $suiteCommand -DeadlineMinutes $SuiteDeadlineMinutes
 }
 else {
     Write-Output (Get-ReportPhrase -Text $text -Key "console.stubsfailed")
