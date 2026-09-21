@@ -100,9 +100,10 @@ declares `unaware`, and the shell scales the window instead.
 in effect, so moving the window to another display re-evaluates it.
 
 `ui.dialog_layout` names the layout the runtime draws inside the window for questions such as "exit
-the installer?" and for notices the user has to acknowledge. The dialog therefore wears the
-product's own skin and cannot end up behind the installer. If your project ships no such layout
-there is no question: the close button then exits immediately. See
+the installer?", for notices the user has to acknowledge, and for what a project script says through
+`show_message`, `show_error` and `ask_yes_no`. The dialog therefore wears the product's own skin and
+cannot end up behind the installer. If your project ships no such layout there is no question: the
+close button then exits immediately, and a script's message falls back to a system message box. See
 [page layout](XML_LAYOUT_GUIDE.md#dialogs).
 
 ## Administrator rights

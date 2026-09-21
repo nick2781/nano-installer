@@ -58,12 +58,14 @@ Rust doc comment，再退回用例名。
 | `a_project_without_a_dialog_layout_still_opens` | 没带对话框版面的工程照样能用：页面自己画出来，调用方退回成不问直接关闭。 |
 | `a_project_without_silent_support_refuses_a_windowless_install` | 从没声明支持静默安装的工程必须拒绝无窗口运行，而不是照样无人值守地装下去。 |
 | `a_project_without_silent_support_refuses_a_windowless_uninstall` | 卸载一个从没声明支持静默的工程会被拒绝，产品不能靠作者没同意过的开关被无人值守地删掉。 |
+| `a_question_a_script_asks_is_drawn_with_both_of_its_answers` | 脚本提出的问题带着两个答案一起画出来：卡片上同时有确认和取消两个按钮各自的位置，问题正文和 `yes`/`no` 两个标签都用传给脚本调用的那几个词。`ask_yes_no` 要等一个答案，只有一个按钮的卡片会让脚本永远拿不到另一种回答。 |
 | `a_radio_group_holds_one_value_at_a_time` | 单选按钮按组记值：版面用 `checked="true"` 标出起始选中的一行，点任意一行就为整组记下那一行的值，选中图和旁边按钮的可用状态跟着换，一组任何时刻只有一行是选中的。 |
 | `a_readonly_field_shows_its_value_without_taking_edits` | `readonly="true"` 的输入框仍然把值画出来，但不接受键入，也不会被记成可编辑字段；`readonly="false"` 则照常可编辑。 |
 | `a_run_without_any_install_path_is_refused` | 命令行和配置都没有给出目录可供退而求其次，这次运行会停下，并在提示里点明提供安装路径的两条途径。 |
 | `a_running_build_refuses_a_second_one` | 正在跑的构建会拒绝第二个打包任务。有任务在跑时按钮是禁用的，这条用例就是按钮背后那道检查：同时开两个会把同一个输出文件写坏。 |
 | `a_running_script_sees_the_cancel_request` | 任务运行中脚本里的 `is_cancelled()` 会变成 `true`：用例像窗口那样从另一个线程在 50 毫秒后提出取消，脚本的等待循环随即退出，并报出自己等了多久。 |
 | `a_script_deletes_the_desktop_shortcut_and_the_start_menu_folder_it_created` | 卸载脚本用 `delete_desktop_shortcut` 和 `delete_start_menu_folder` 删掉安装时建的桌面快捷方式和开始菜单文件夹，两个原语各自报告自己删掉了东西，事后链接和文件夹都不在了。 |
+| `a_script_dialog_is_drawn_in_the_wizard` | 脚本的提示与提问画在向导窗口里，用的是产品自己的皮肤，点一下卡片就把答案交回正在等待的脚本。用例自己写了一份 400x180 的卡片版面，两个按钮摆到它点得到的位置：先证明卡片亮出来时脚本还停在原地（回答文件此刻不存在），再逐个点中卡片上的确认键，让 `ask_yes_no` 拿到答案、`show_message` 和 `show_error` 被收起，每答一次就检查脚本接下来写下的那个文件，最后窗口走到完成页。卡片要是像原来那样另开系统对话框，这些点就会落空。 |
 | `a_script_failure_reports_the_messages_it_logged` | 脚本失败时，它之前用 `log_warn` 之类写下的日志跟着错误一起报出来，作者能看到最后那几行。 |
 | `a_script_reads_the_tools_the_project_bundled` | `get_tools_dir()` 把打包进来的工具摊到磁盘上并返回目录路径，嵌套文件按原相对路径读得到、内容一致；再问一次返回同一个目录，不会重复摊一遍。 |
 | `a_script_recognises_a_running_process_by_its_image_name` | `is_process_running` 按映像名判断进程：正在跑的那个测试可执行文件返回 true，编出来的不存在名字返回 false。这条检查就是安装时不肯覆盖正在运行的产品的原因。 |

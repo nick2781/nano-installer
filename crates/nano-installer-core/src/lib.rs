@@ -90,6 +90,12 @@ const DIALOG_SCRIM: &str = "66000000";
 static UI: OnceLock<Mutex<RuntimeState>> = OnceLock::new();
 static TEMP_EXE_ID: AtomicU64 = AtomicU64::new(0);
 
+/// Answer the script that is waiting on the dialog now on screen, if any.
+///
+/// A script asks on the worker thread and waits here; the click arrives on the
+/// window's thread, so the answer travels back through this channel.
+static DIALOG_REPLY: Mutex<Option<std::sync::mpsc::Sender<bool>>> = Mutex::new(None);
+
 struct NativeImage {
     width: u32,
     height: u32,
@@ -184,6 +190,10 @@ struct RuntimeUi {
     dialog_accept_label: String,
     /// Localized label for a dialog's secondary button.
     dialog_dismiss_label: String,
+    /// Localized label for the answer that agrees, when a script asks.
+    dialog_yes_label: String,
+    /// Localized label for the answer that refuses, when a script asks.
+    dialog_no_label: String,
     /// Controls of the dialog that is currently open. They are kept apart from
     /// the page's own so a modal dialog is the only thing a click can reach.
     dialog: Option<DialogUi>,
@@ -341,15 +351,19 @@ enum DialogKind {
     CloseConfirm,
     /// A notice; confirming dismisses it and leaves the wizard as it was.
     Notice,
+    /// A question a project script asked. Both answers go back to the script
+    /// waiting for one, and neither closes the wizard.
+    Question,
 }
 
 impl DialogState {
     /// Whether this dialog offers a second answer besides confirming.
     ///
-    /// A close question does, because staying in the wizard is a real choice. A
-    /// notice does not, and that is how one layout serves both.
+    /// A question a script asked does, because its two answers are the whole
+    /// point of it. A notice does not, and that is how one layout serves all
+    /// three.
     fn offers_dismiss(&self) -> bool {
-        self.kind == DialogKind::CloseConfirm
+        matches!(self.kind, DialogKind::CloseConfirm | DialogKind::Question)
     }
 }
 
@@ -2528,6 +2542,14 @@ fn load_layout(
             .get("cancel")
             .cloned()
             .unwrap_or_else(|| "Cancel".to_string()),
+        dialog_yes_label: translations
+            .get("yes")
+            .cloned()
+            .unwrap_or_else(|| "Yes".to_string()),
+        dialog_no_label: translations
+            .get("no")
+            .cloned()
+            .unwrap_or_else(|| "No".to_string()),
         dialog,
         product_name: product_name(files),
     })
@@ -6366,6 +6388,10 @@ unsafe extern "system" fn window_proc(
         }
         WM_CLOSE if install::busy() => LRESULT(0),
         WM_DESTROY => {
+            // The window is gone before the answer was given, so a script
+            // waiting on a question stops waiting instead of hanging the worker
+            // thread that runs it.
+            answer_pending_dialog(false);
             PostQuitMessage(0);
             LRESULT(0)
         }
@@ -7325,6 +7351,13 @@ fn hover_control_at(x: i32, y: i32) -> Option<String> {
         .map(|region| region.id.clone())
 }
 
+/// What the dialog on screen means, or `None` when none is open.
+fn open_dialog_kind() -> Option<DialogKind> {
+    UI.get()
+        .and_then(|state| state.lock().ok())
+        .and_then(|state| state.interaction.dialog.as_ref().map(|dialog| dialog.kind))
+}
+
 unsafe fn handle_window_action(window: HWND, action: WindowAction) {
     match action {
         WindowAction::Close => {
@@ -7351,10 +7384,7 @@ unsafe fn handle_window_action(window: HWND, action: WindowAction) {
             }
         }
         WindowAction::DialogOk => {
-            let kind = UI
-                .get()
-                .and_then(|state| state.lock().ok())
-                .and_then(|state| state.interaction.dialog.as_ref().map(|dialog| dialog.kind));
+            let kind = open_dialog_kind();
             if let Err(error) = set_dialog(window, None) {
                 show_runtime_error(&error);
             } else if kind == Some(DialogKind::CloseConfirm) {
@@ -7366,11 +7396,19 @@ unsafe fn handle_window_action(window: HWND, action: WindowAction) {
                 } else {
                     let _ = DestroyWindow(window);
                 }
+            } else if kind.is_some() {
+                // Confirming a notice, or answering a script's question with
+                // yes: the wizard itself stays as it was either way.
+                answer_pending_dialog(true);
             }
         }
         WindowAction::DialogCancel => {
+            let kind = open_dialog_kind();
             if let Err(error) = set_dialog(window, None) {
                 show_runtime_error(&error);
+            } else if kind.is_some() {
+                // Escape and the dialog's own second button both mean no.
+                answer_pending_dialog(false);
             }
         }
         WindowAction::Minimize => {
@@ -7774,6 +7812,9 @@ fn rebuild_runtime_ui(state: &mut RuntimeState) -> Result<()> {
 /// keep painting while the question is up.
 unsafe fn open_close_confirm_dialog(window: HWND) -> Result<()> {
     let (question, accept, dismiss) = dialog_labels()?;
+    // The close question replaces whatever was on screen, and a script's
+    // question cannot be answered once it is gone.
+    answer_pending_dialog(false);
     set_dialog(
         window,
         Some(DialogState {
@@ -7810,6 +7851,9 @@ pub(crate) fn open_notice_dialog(message: String) -> Result<()> {
         bail!("the installer window is not open yet");
     }
     let (_, accept, _) = dialog_labels()?;
+    // A notice from the runtime replaces what is on screen, and a script's
+    // question cannot be answered once it is gone.
+    answer_pending_dialog(false);
     unsafe {
         set_dialog(
             window,
@@ -7820,6 +7864,120 @@ pub(crate) fn open_notice_dialog(message: String) -> Result<()> {
                 dismiss_label: String::new(),
             }),
         )
+    }
+}
+
+/// Shows a message the way the product shows its own questions and waits until
+/// it is acknowledged.
+///
+/// Returns whether the message reached the screen: `false` means there is
+/// nothing to draw a dialog in, which leaves the caller the system box it used
+/// before.
+pub(crate) fn show_script_message(title: &str, message: &str) -> bool {
+    script_dialog(DialogKind::Notice, title, message).is_some()
+}
+
+/// Asks the question `ask_yes_no` puts to the user, in the product's own skin.
+///
+/// Returns `None` when there is no dialog to ask in -- no window, or a project
+/// that ships no dialog layout -- which leaves the caller its system box. The
+/// answer is `false` for everything the click does not confirm, including the
+/// dialog being replaced by another one or the window going away.
+pub(crate) fn ask_script_question(title: &str, message: &str) -> Option<bool> {
+    script_dialog(DialogKind::Question, title, message)
+}
+
+/// Draws a script's message or question in the installer window and blocks the
+/// worker thread until it is answered.
+///
+/// The script runs on the worker thread, so waiting here blocks the task and not
+/// the window: the card keeps painting and its buttons keep taking clicks while
+/// the task it belongs to stands still.
+fn script_dialog(kind: DialogKind, title: &str, message: &str) -> Option<bool> {
+    let window = runtime_window().ok().filter(|window| !window.0.is_null())?;
+    // A project that ships no layout for a dialog draws no card, and waiting for
+    // one that never appears would hang the task, so the caller keeps the system
+    // box it had before this dialog existed.
+    if !dialog_layout_present() {
+        return None;
+    }
+    let labels = script_dialog_labels(kind)?;
+    // The layout carries one message label, so a title becomes its first line
+    // rather than a control the project never declared.
+    let message = match title.trim() {
+        "" => message.to_string(),
+        title => format!("{title}\n\n{message}"),
+    };
+
+    // A question that is on screen when this one opens can no longer be
+    // answered, so whoever asked it stops waiting rather than waiting forever.
+    answer_pending_dialog(false);
+    let (sender, receiver) = std::sync::mpsc::channel();
+    *DIALOG_REPLY.lock().ok()? = Some(sender);
+    let opened = unsafe {
+        set_dialog(
+            window,
+            Some(DialogState {
+                kind,
+                message,
+                accept_label: labels.0,
+                dismiss_label: labels.1,
+            }),
+        )
+    };
+    if let Err(error) = opened {
+        // The caller falls back to the system box, which is what the user sees
+        // of a dialog the runtime could not draw.
+        eprintln!("cannot draw the dialog a script asked for: {error:#}");
+        answer_pending_dialog(false);
+        return None;
+    }
+    // A click that lands while the card is opening answers it before this line
+    // is reached, and the answer is waiting in the channel all the same.
+    receiver.recv().ok()
+}
+
+/// Whether the project ships the layout a script's dialog is drawn from.
+///
+/// A project names the layout it wants or leaves the default to the runtime, so
+/// this reads the same setting the overlay renderer does: when the file is not
+/// in the bundle there is no card, and only then does a script keep the system
+/// box this dialog replaced.
+fn dialog_layout_present() -> bool {
+    let Some(state) = UI.get().and_then(|state| state.lock().ok()) else {
+        return false;
+    };
+    let path = state
+        .files
+        .get("installer_config.json")
+        .and_then(|encoded| serde_json::from_slice::<serde_json::Value>(encoded).ok())
+        .and_then(|config| config["ui"]["dialog_layout"].as_str().map(str::to_string))
+        .unwrap_or_else(|| DEFAULT_DIALOG_LAYOUT.to_string());
+    state.files.contains_key(&path)
+}
+
+/// The labels a script's dialog asks for.
+///
+/// A question offers both answers; a message offers only the one that takes it
+/// off the screen.
+fn script_dialog_labels(kind: DialogKind) -> Option<(String, String)> {
+    let state = UI.get()?.lock().ok()?;
+    Some(match kind {
+        DialogKind::Question => (
+            state.ui.dialog_yes_label.clone(),
+            state.ui.dialog_no_label.clone(),
+        ),
+        _ => (state.ui.dialog_accept_label.clone(), String::new()),
+    })
+}
+
+/// Hands `answer` to the script waiting on the open dialog, if any.
+fn answer_pending_dialog(answer: bool) {
+    let Ok(mut slot) = DIALOG_REPLY.lock() else {
+        return;
+    };
+    if let Some(sender) = slot.take() {
+        let _ = sender.send(answer);
     }
 }
 
@@ -8841,6 +8999,22 @@ mod tests {
         (files, config)
     }
 
+    /// A dialog card whose two buttons are placed where a case can click them.
+    ///
+    /// The shipped layout is a flow of spacers, which is right for a product and
+    /// unusable for a test that has to know where a button is: the two buttons
+    /// here sit on one line at fixed coordinates.
+    const CARD: &str = r##"<Page width="400" height="180" background="#FF2A3844">
+  <Label id="lblMsg" text="@ok" value-source="dialog:message"
+         position="absolute" left="20" top="20" width="360" height="60" wrap="true" />
+  <Button id="btnNo" action="dialog_cancel" visible-with="dismiss"
+          text="@cancel" value-source="dialog:dismiss"
+          position="absolute" left="40" top="120" width="140" height="36" />
+  <Button id="btnYes" action="dialog_ok"
+          text="@ok" value-source="dialog:accept"
+          position="absolute" left="220" top="120" width="140" height="36" />
+</Page>"##;
+
     /// The interaction state with a dialog open, which is what makes a layout
     /// render its dialog branch.
     fn interaction_with_dialog(dialog: DialogState) -> InteractionState {
@@ -8905,6 +9079,60 @@ mod tests {
             assert!(region.left >= expected_left && region.right <= 720 - expected_left);
             assert!(region.top >= expected_top && region.bottom <= 450 - expected_top);
         }
+        Ok(())
+    }
+
+    /// A question a project script asks is drawn with both of its answers, in
+    /// the words the script and the locale give it.
+    ///
+    /// `ask_yes_no` waits for the answer, so the card it waits on has to carry
+    /// both buttons: a question whose second answer was not drawn would leave
+    /// the script with one answer and no way to give the other.
+    #[test]
+    fn a_question_a_script_asks_is_drawn_with_both_of_its_answers() -> anyhow::Result<()> {
+        let (mut files, _) = dialog_fixture();
+        files.insert("layouts/msgBox.xml".to_string(), CARD.as_bytes().to_vec());
+        let question = DialogState {
+            kind: DialogKind::Question,
+            message: "Install this product?".to_string(),
+            accept_label: "Yes".to_string(),
+            dismiss_label: "No".to_string(),
+        };
+        let ui = load_layout(
+            &files,
+            DpiContext {
+                scale: 1.0,
+                use_2x: false,
+            },
+            "zh-CN",
+            None,
+            &interaction_with_dialog(question),
+            RuntimeMode::Installer,
+        )?;
+        let dialog = ui.dialog.expect("the layout reported a dialog");
+        let yes = dialog
+            .actions
+            .iter()
+            .find(|region| matches!(region.action, WindowAction::DialogOk))
+            .context("the question drew no button that agrees")?;
+        let no = dialog
+            .actions
+            .iter()
+            .find(|region| matches!(region.action, WindowAction::DialogCancel))
+            .context("the question drew no button that refuses")?;
+        // The card is centred on the 720x450 page, which puts the button the
+        // layout places at 220,120 inside the card at 220 + 160, 120 + 135.
+        assert_eq!((yes.left, yes.top), (380, 255));
+        assert_eq!((no.left, no.top), (200, 255));
+        let words: Vec<String> = ui.overlay_texts.iter().map(visible_text).collect();
+        assert!(
+            words.contains(&"Install this product?".to_string()),
+            "the question the script asked is not what the card shows: {words:?}"
+        );
+        assert!(
+            words.contains(&"Yes".to_string()) && words.contains(&"No".to_string()),
+            "the two answers are not the words the script gave them: {words:?}"
+        );
         Ok(())
     }
 

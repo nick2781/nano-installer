@@ -47,7 +47,9 @@ Anything the user has to answer, such as the close confirmation, and anything th
 acknowledge, is drawn inside the window from the layout named by `ui.dialog_layout`. A dialog is an
 ordinary layout whose `value-source="dialog:*"` reads the question and button labels of the moment;
 only its own controls respond while it is open, and `Enter`/`Escape` confirm and dismiss it. The
-runtime centres the window on the work area of the monitor it is on, and clamps it into that work
+card takes a project script's `show_message`, `show_error` and `ask_yes_no` too, and the button it
+answers with is what the script carries on from. The runtime centres the window on the work area of
+the monitor it is on, and clamps it into that work
 area when a layout is larger than the desktop.
 
 **Tasks.** Install and uninstall run on a worker thread that publishes progress and page changes

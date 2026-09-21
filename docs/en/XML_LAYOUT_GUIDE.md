@@ -311,8 +311,8 @@ The runtime draws no element when it, or any ancestor, has `visible="false"`.
 | `next` | Switches to the next page the project declares |
 | `back` | Switches to the previous page it declares |
 | `toggle_panel:<id>:show/hide` | Shows or hides a target panel and switches the paired show/hide control |
-| `dialog_ok` | Confirms the open dialog: a close question stops the running task or exits the setup, a notice just closes |
-| `dialog_cancel` | Dismisses the open dialog and returns to the page under it |
+| `dialog_ok` | Confirms the open dialog: a close question stops the running task or exits the setup, a question a script asks answers yes, a notice just closes |
+| `dialog_cancel` | Dismisses the open dialog: a question a script asks answers no, and the page under it takes clicks again |
 
 A project that declares more than one page walks it with `next` and `back`: the first page has
 nothing behind it and the last page nothing in front, so each stops there instead of wrapping
@@ -334,6 +334,11 @@ by `ui.dialog_layout` (default `layouts/msgBox.xml`) in the middle of the window
 separates it from the page. Only the dialog's own controls respond while it is open, so a page
 button underneath cannot be clicked by mistake; `Enter` confirms it and `Escape` dismisses it.
 
+The same card serves every question the product puts to a person: the close confirmation, the
+notices the runtime raises, and what a project script says through `show_message`, `show_error` and
+`ask_yes_no`. A question takes its two labels from the `yes` and `no` keys of the locale file; a
+notice takes the single label its dismissing button shows.
+
 A dialog takes its text from the question being asked rather than from the layout, through
 `value-source`:
 
@@ -354,7 +359,7 @@ A dialog takes its text from the question being asked rather than from the layou
 | `dialog:dismiss` | Label of the dismissing button, empty for a notice |
 
 `visible-with="dismiss"` draws a control only when the dialog offers two answers, which is how one
-layout serves both a close question and a notice with a single "OK".
+layout serves a close question, a script's `ask_yes_no`, and a notice with a single "OK".
 
 The `height` on `Page` is a minimum. A dialog's text follows the language it is shown in, and the
 same sentence can take another line elsewhere; the card then grows to fit and stays centred instead

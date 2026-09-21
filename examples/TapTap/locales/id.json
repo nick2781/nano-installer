@@ -29,6 +29,8 @@
   "uninstall_done": "Pencopotan Selesai",
   "cancel": "Batal",
   "ok": "OK",
+  "yes": "Ya",
+  "no": "Tidak",
   "close_confirm_message": "Instalasi belum selesai, Anda yakin ingin keluar?",
 
   "config.install": "Instal",

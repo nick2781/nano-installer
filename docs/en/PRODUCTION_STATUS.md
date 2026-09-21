@@ -34,6 +34,10 @@ files and registry entries, so validate them in a disposable virtual machine onl
 - Markdown link markup in a label opens its configured URL, `close_confirm` asks its question in the
   product's own skin before closing, and the folder picker writes the chosen directory back into the
   layout's TextInput.
+- A message, an error and a question raised by a project script (`show_message`, `show_error`,
+  `ask_yes_no`) appear in the wizard window the way the product draws its own, and the button a
+  person clicks is the answer the script carries on with. A run with nothing to draw in keeps the
+  system box.
 - Controls paint the `background`, `border-color`, and `border-radius` a layout declares, and the
   language menu takes Up/Down/Enter/Escape while it is open.
 - A text field can be edited in place: clicking places a blinking caret, typing inserts, Backspace
@@ -92,13 +96,14 @@ files and registry entries, so validate them in a disposable virtual machine onl
   project it writes itself and runs it against a real installation: files land on disk byte for
   byte, the manifest and the uninstall entry are written, an upgrade drops stale files and keeps
   files it does not own, and an uninstall removes the product, the registration, and the directory.
-  Six of its twenty-four cases open the wizard window and drive it: one measures the client area it
+  Seven of its twenty-five cases open the wizard window and drive it: one measures the client area it
   drew, one walks the page actions a project declares, one stops a running task from a cancel
   button, one types a directory into the field a page asks for and starts the install with it, one
-  clicks the row a radio group's install button waits for, and one rolls the wheel over a list and
-  clicks the row it brings into view. They need an interactive desktop session, so they skip where
-  there is none and `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` makes the skip a failure. The other
-  eighteen pass on Windows 11 and in CI.
+  clicks the row a radio group's install button waits for, one rolls the wheel over a list and
+  clicks the row it brings into view, and one answers the card a project script puts up and reads
+  back what the script wrote after each answer. They need an interactive desktop session, so they
+  skip where there is none and `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` makes the skip a failure. The
+  other eighteen pass on Windows 11 and in CI.
 - A setup stays a setup after signing: a certificate table appended behind the bundle, which is what
   Authenticode writes into the file, no longer hides the footer the runtime reads its resources from.
 - The builder refuses a configuration key it does not read. A setting that once parsed and then

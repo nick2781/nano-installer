@@ -2070,6 +2070,175 @@ fn a_wheel_over_a_list_brings_the_rows_below_into_reach() -> anyhow::Result<()> 
     Ok(())
 }
 
+/// A script's message and question are drawn in the wizard, in the product's own
+/// skin, and a click on the card answers the script that is waiting.
+///
+/// `ask_yes_no`, `show_message` and `show_error` block until someone presses a
+/// button, which is what kept them out of the suite: a case that cannot press
+/// one waits for a person who is not there. They are answered here by clicking
+/// the card the runtime draws from the project's dialog layout, whose buttons
+/// this case places where it can reach them, so what the click proves is the
+/// whole path: the card is drawn in the wizard window rather than in a window of
+/// its own, its buttons take the click, and the answer reaches the script, which
+/// then carries on.
+#[test]
+fn a_script_dialog_is_drawn_in_the_wizard() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.cancellable_project()?;
+    // A card of the case's own, so its buttons sit where the case clicks them:
+    // the runtime centres a 400x180 card in the page, which puts it at 50,60 on
+    // the 500x300 page the task reports on and its two buttons at the points
+    // below. Both buttons are on the same line, so one point answers the
+    // question and dismisses the two messages that follow it.
+    std::fs::write(
+        fixture.project.join("layouts/msgBox.xml"),
+        r##"<Page width="400" height="180" background="#FF2A3844">
+  <Label id="lblMsg" text="@ok" value-source="dialog:message"
+         position="absolute" left="20" top="20" width="360" height="60" wrap="true" />
+  <Button id="btnNo" action="dialog_cancel" visible-with="dismiss"
+          text="@cancel" value-source="dialog:dismiss"
+          position="absolute" left="40" top="120" width="140" height="36" />
+  <Button id="btnYes" action="dialog_ok"
+          text="@ok" value-source="dialog:accept"
+          position="absolute" left="220" top="120" width="140" height="36" />
+</Page>"##,
+    )?;
+    let title = format!("Nano question {}", fixture.id);
+    fixture.write_script(
+        "install.rhai",
+        &format!(
+            r#"
+            let install_path = get_install_path();
+            copy_uninstaller();
+            write_file(path_join(install_path, "E2eProbe.exe"), "app");
+            write_file(path_join(install_path, "asking.txt"), "asking");
+            let answered = ask_yes_no("{title}", "Install this product?");
+            write_file(path_join(install_path, "answer.txt"), answered.to_string());
+            show_message("{title}", "The product is installed.");
+            write_file(path_join(install_path, "notice.txt"), "dismissed");
+            show_error("{title}", "This is what a failure looks like.");
+            write_file(path_join(install_path, "failure.txt"), "dismissed");
+            "#,
+        ),
+    )?;
+    fixture.build()?;
+
+    let _ = unsafe { SetProcessDPIAware() };
+    let mut setup = Command::new(&fixture.setup)
+        .env("NANO_INSTALLER_TEST_DPI", "96")
+        .spawn()?;
+    let waited = wait_for_runtime_window(&mut setup, Instant::now() + Duration::from_secs(30));
+    let found = match &waited {
+        WindowWait::Found(window) => Some(*window),
+        WindowWait::Exited(_) | WindowWait::Timeout => None,
+    };
+    let Some(window) = found else {
+        let reason = match waited {
+            WindowWait::Exited(status) => format!("the setup {status} instead of opening a window"),
+            WindowWait::Timeout => "no window appeared within 30 seconds".to_string(),
+            WindowWait::Found(_) => "the window could not be measured".to_string(),
+        };
+        let _ = setup.kill();
+        let _ = setup.wait();
+        return skip_missing_desktop(&reason);
+    };
+
+    // The centre of the install button the first page places at 560,390: the
+    // task the script runs in starts here, and the window moves to the 500x300
+    // page it reports on.
+    click_client_point(window, 620, 408);
+    let running =
+        wait_for_client_size(window, (500, 300), Instant::now() + Duration::from_secs(20));
+    let asking = wait_for_text(
+        &fixture.destination.join("asking.txt"),
+        "asking",
+        Instant::now() + Duration::from_secs(20),
+    );
+    // Nothing can answer the script while the card is up, which is what the file
+    // it writes after the answer says: it is still missing here.
+    std::thread::sleep(Duration::from_millis(300));
+    let answered_early = std::fs::read_to_string(fixture.destination.join("answer.txt")).ok();
+    let behind = client_size(window);
+
+    // The card is centred on the page the task reports on, so its buttons sit at
+    // these points of the window's client area.
+    let (yes_x, yes_y) = (340, 198);
+    let answer = click_until_text(
+        window,
+        yes_x,
+        yes_y,
+        &fixture.destination.join("answer.txt"),
+        "true",
+        Instant::now() + Duration::from_secs(20),
+    );
+    let dismissed = click_until_text(
+        window,
+        yes_x,
+        yes_y,
+        &fixture.destination.join("notice.txt"),
+        "dismissed",
+        Instant::now() + Duration::from_secs(20),
+    );
+    let reported = click_until_text(
+        window,
+        yes_x,
+        yes_y,
+        &fixture.destination.join("failure.txt"),
+        "dismissed",
+        Instant::now() + Duration::from_secs(20),
+    );
+    // The finish page the wizard declares is 400x200, and the wizard only gets
+    // there with a task that ran to its end.
+    let finished =
+        wait_for_client_size(window, (400, 200), Instant::now() + Duration::from_secs(20));
+    let _ = setup.kill();
+    let _ = setup.wait();
+
+    assert_eq!(
+        running,
+        Some((500, 300)),
+        "the install button did not start the task on its progress page"
+    );
+    assert_eq!(
+        asking.as_deref(),
+        Some("asking"),
+        "the script never reached the question it asks"
+    );
+    assert_eq!(
+        answered_early, None,
+        "the script answered itself instead of waiting for a click"
+    );
+    assert_eq!(
+        behind,
+        (500, 300),
+        "the card took the window somewhere else instead of being drawn inside it"
+    );
+    assert_eq!(
+        answer.as_deref(),
+        Some("true"),
+        "the click on the card's yes did not reach ask_yes_no"
+    );
+    assert_eq!(
+        dismissed.as_deref(),
+        Some("dismissed"),
+        "the script did not carry on after the message was dismissed"
+    );
+    assert_eq!(
+        reported.as_deref(),
+        Some("dismissed"),
+        "the script did not carry on after the failure report was dismissed"
+    );
+    assert_eq!(
+        finished,
+        Some((400, 200)),
+        "the install did not reach the page the wizard finishes on"
+    );
+    Ok(())
+}
+
 /// Clicks a point inside the runtime window, the way a user's click arrives.
 ///
 /// The runtime answers a button-up with whatever action the layout placed under
@@ -2152,6 +2321,47 @@ fn wait_for_client_size(
         std::thread::sleep(Duration::from_millis(50));
     }
     None
+}
+
+/// Waits for a file to hold exactly the text the script was told to write.
+fn wait_for_text(path: &Path, expected: &str, deadline: Instant) -> Option<String> {
+    while Instant::now() < deadline {
+        if let Ok(text) = std::fs::read_to_string(path) {
+            if text == expected {
+                return Some(text);
+            }
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    std::fs::read_to_string(path).ok()
+}
+
+/// Clicks a point in the wizard until the file the script writes next holds the
+/// text the case is waiting for.
+///
+/// The card opens a moment after the script reaches its question, so the click
+/// is repeated: an early one lands on the page under the card and does nothing,
+/// which is what keeps the case out of the timing between the two. A click that
+/// does land on the card's button is the only thing that can make the script
+/// write the file at all.
+fn click_until_text(
+    window: HWND,
+    x: i32,
+    y: i32,
+    path: &Path,
+    expected: &str,
+    deadline: Instant,
+) -> Option<String> {
+    while Instant::now() < deadline {
+        click_client_point(window, x, y);
+        if let Ok(text) = std::fs::read_to_string(path) {
+            if text == expected {
+                return Some(text);
+            }
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    std::fs::read_to_string(path).ok()
 }
 
 /// Reports that this machine cannot open a window.

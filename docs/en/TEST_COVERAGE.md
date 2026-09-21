@@ -3,7 +3,7 @@
 Every behaviour the documentation promises, and the automated case that holds it. A row names the
 cases that fail when that behaviour breaks; a behaviour with no row is one nobody is checking.
 
-`cargo test --locked --workspace` runs 233 cases: 173 in the core library, 24 that build a real
+`cargo test --locked --workspace` runs 235 cases: 174 in the core library, 25 that build a real
 setup and run it, 5 that read a project the way the builder does, 29 in the visual builder, and 2
 in the extraction runtimes. The setup-level cases need real runtime executables built first, which
 is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `target/e2e-report.txt`.
@@ -12,8 +12,8 @@ is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `targe
 
 | Layer | Cases | Proves | Cannot prove |
 | --- | --- | --- | --- |
-| Core library | 173 | what a page becomes — layers, coordinates, hit regions, text — what the bundle carries, what an install writes to disk and the registry, and what each script primitive does | that a packaged setup reaches any of it |
-| Setup end to end | 24 | a built setup installed on the machine: payload bytes, manifest, uninstall entry, shortcuts, autostart, project scripts, the helpers a script runs, the wizard window, the clicks its own pages wait for, and a wheel over a list | what needs a person at the machine: the hover and pressed bitmaps, the caret, IME composition, the folder picker, and the modal dialogs |
+| Core library | 174 | what a page becomes — layers, coordinates, hit regions, text — what the bundle carries, what an install writes to disk and the registry, and what each script primitive does | that a packaged setup reaches any of it |
+| Setup end to end | 25 | a built setup installed on the machine: payload bytes, manifest, uninstall entry, shortcuts, autostart, project scripts, the helpers a script runs, the wizard window, the clicks its own pages wait for, a wheel over a list, and the card a script's messages and questions are answered on | what needs a person at the machine: the hover and pressed bitmaps, the caret, IME composition, and the folder picker |
 | Project inspection | 5 | the summary and the warning list the builder shows before a build | |
 | Visual builder | 29 | the window's own state, parameters, log and warnings | clicking the real controls |
 | Extraction runtimes | 2 | a broken archive, and an unsafe path inside one, are refused | extracting an archive that is sound -- the setup-level cases run a real runtime over a real payload |
@@ -45,7 +45,7 @@ is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `targe
 | `localization.supported_locales` | `a_supported_locale_without_a_file_is_reported`, `a_translation_missing_page_text_is_reported` |
 | `wizard.pages`, `wizard.uninstall_pages` | `runtime_modes_select_distinct_layout_lists`, `out_of_range_pages_fall_back_to_the_first_layout` |
 | `ui.dpi_aware`, `ui.dpi_threshold` | `a_display_scales_the_layout_by_its_own_dpi`, `a_layout_picks_the_image_density_the_display_asks_for`, `dpi_asset_resolution_prefers_requested_density_and_falls_back`, `dpi_scaling_rounds_layout_coordinates` |
-| `ui.dialog_layout` | `a_project_without_a_dialog_layout_still_opens`, `a_dialog_is_drawn_over_the_page_and_centred` |
+| `ui.dialog_layout` | `a_project_without_a_dialog_layout_still_opens`, `a_dialog_is_drawn_over_the_page_and_centred`, `a_question_a_script_asks_is_drawn_with_both_of_its_answers`, `a_script_dialog_is_drawn_in_the_wizard` |
 | `uninstall.data_paths` | `only_expands_data_paths_inside_a_user_profile`, `ignores_data_paths_when_the_project_declares_none`, `uninstalling_below_appdata_removes_the_data_only_when_the_box_is_cleared` |
 | `advanced.silent_mode_support`, `advanced.uninstall_mode_support` | `a_project_without_silent_support_refuses_a_windowless_install`, `a_project_without_silent_support_refuses_a_windowless_uninstall`, `a_project_that_did_not_opt_in_refuses_a_windowless_run` |
 | payload format detection | `the_payload_format_selects_the_runtime_that_gets_embedded`, `zip_backend_rejects_invalid_archive`, `rejects_unsafe_7z_paths` |
@@ -111,6 +111,7 @@ setup-level cases prove the `scripts` directory and the tools directory survive 
 | processes | `a_script_runs_a_command_and_sees_its_exit_code`, `a_script_recognises_a_running_process_by_its_image_name` |
 | keeping or deleting user data | `uninstalling_below_appdata_removes_the_data_only_when_the_box_is_cleared` |
 | the `scripts` directory reaching a built setup | `a_setup_runs_the_projects_own_install_and_uninstall_scripts` |
+| a message, an error and a question a script raises, drawn in the wizard and answered by a click | `a_question_a_script_asks_is_drawn_with_both_of_its_answers`, `a_script_dialog_is_drawn_in_the_wizard` |
 
 ## Install, upgrade and uninstall
 
@@ -154,9 +155,8 @@ setup-level cases prove the `scripts` directory and the tools directory survive 
   and position the layout asked for; it cannot tell that the sentence is legible. The snapshot
   review script hands that question to a local vision model, or to a person.
 - **Anything that needs a click in the real window.** The hover and pressed bitmap commit, the hand
-  cursor, the language menu's Up/Down/Enter/Escape handling, IME composition placement, the folder
-  picker dialog, and the modal dialogs are all reachable only by driving a real window.
-- **Script primitives that cannot be undone by a test:** `show_message`, `show_error` and
-  `ask_yes_no` block until someone clicks; `run_detached` deliberately outlives the run;
-  `kill_process` ends a process the test did not start; `sleep_ms` has only elapsed time to assert
-  on; `is_elevated` would only mirror the implementation.
+  cursor, the language menu's Up/Down/Enter/Escape handling, IME composition placement, and the
+  folder picker dialog are all reachable only by driving a real window.
+- **Script primitives that cannot be undone by a test:** `run_detached` deliberately outlives the
+  run; `kill_process` ends a process the test did not start; `sleep_ms` has only elapsed time to
+  assert on; `is_elevated` would only mirror the implementation.

@@ -96,6 +96,12 @@ pub(super) fn register(engine: &mut Engine, context: ScriptContext) {
     });
 
     engine.register_fn("show_message", |title: &str, message: &str| {
+        // The product's own dialog carries its skin and stays with the wizard,
+        // which is what a person is looking at; a run with nothing to draw in
+        // keeps the system box it used before.
+        if crate::show_script_message(title, message) {
+            return;
+        }
         message_box(
             title,
             message,
@@ -104,6 +110,9 @@ pub(super) fn register(engine: &mut Engine, context: ScriptContext) {
     });
 
     engine.register_fn("show_error", |title: &str, message: &str| {
+        if crate::show_script_message(title, message) {
+            return;
+        }
         message_box(
             title,
             message,
@@ -121,6 +130,11 @@ pub(super) fn register(engine: &mut Engine, context: ScriptContext) {
             );
             return false;
         }
+        if let Some(answer) = crate::ask_script_question(title, message) {
+            return answer;
+        }
+        // A project that ships no dialog layout keeps the system question,
+        // because the alternative is a question nothing can draw.
         let result = unsafe {
             windows::Win32::UI::WindowsAndMessaging::MessageBoxW(
                 crate::runtime_window().unwrap_or_default(),
@@ -230,9 +244,10 @@ fn tracked_uninstall(context: &ScriptContext, start: f64, end: f64) -> bool {
 
 /// Shows a box on behalf of a project script.
 ///
-/// It is owned by the installer window, so a message a script raises cannot sink
-/// behind the wizard that raised it. A script can also run before that window
-/// exists, in which case the box is unowned exactly as it was before.
+/// This is the fallback for a run with nothing to draw the product's own dialog
+/// in: a silent run, a script that runs before the window exists, or a project
+/// that ships no dialog layout. The box is owned by the installer window, so a
+/// message a script raises cannot sink behind the wizard that raised it.
 fn message_box(
     title: &str,
     message: &str,

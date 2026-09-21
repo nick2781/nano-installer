@@ -29,6 +29,8 @@
   "uninstall_done": "解除安裝完成",
   "cancel": "取消",
   "ok": "確定",
+  "yes": "是",
+  "no": "否",
   "close_confirm_message": "安裝尚未完成，您確定要退出安裝嗎？",
 
   "config.install": "安裝",

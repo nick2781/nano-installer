@@ -127,8 +127,8 @@
 | `get_config_value(path)` | 读取 `installer_config.json`，如 `project.name` |
 | `get_current_exe()`、`get_exe_dir()` | 当前安装包或卸载程序的路径与目录 |
 | `is_elevated()` | 当前进程是否已提权 |
-| `show_message(title, message)` | 提示框 |
-| `show_error(title, message)` | 错误框 |
+| `show_message(title, message)` | 提示框，画在安装窗口内 |
+| `show_error(title, message)` | 错误框，画在安装窗口内 |
 | `ask_yes_no(title, message)` | 询问框，返回 `bool` |
 | `run_tracked_uninstall(start, end)` | 按 manifest 删除产品，仅卸载可用 |
 
@@ -136,6 +136,13 @@
 自己的环境里，进程一退出就没了，写在这里的变量则对之后启动的程序依然有效。这个键归 Windows 和机器上
 的其他产品共用，所以 manifest 记的是值而不是键，卸载只把那个值撤回去，与 `...\CurrentVersion\Run`
 的处理一致。
+
+`show_message`、`show_error` 和 `ask_yes_no` 不弹系统对话框，而是在安装窗口内画出产品自己的卡片，
+版面取自 `ui.dialog_layout`。脚本写的标题压在正文上方，询问框给两个答案，按钮文案来自语言文件的
+`yes` 和 `no`，`ask_yes_no` 返回被点中的那个。脚本在工作线程上等这一下点击，所以卡片打开期间窗口
+照常重绘，也照常接受点击。
+
+没有东西可画时仍旧用系统框：静默安装、窗口还没打开就启动的脚本，以及压根没带对话框版面的工程。
 
 ## 示例
 

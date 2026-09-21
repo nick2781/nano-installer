@@ -29,6 +29,8 @@
   "uninstall_done": "アンインストール完了",
   "cancel": "キャンセル",
   "ok": "確定",
+  "yes": "はい",
+  "no": "いいえ",
   "close_confirm_message": "インストールはまだ完了していません。インストールを終了しますか？",
 
   "config.install": "インストール",

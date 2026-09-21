@@ -29,6 +29,8 @@
   "uninstall_done": "Gỡ cài đặt hoàn tất",
   "cancel": "Hủy",
   "ok": "Xác nhận",
+  "yes": "Có",
+  "no": "Không",
   "close_confirm_message": "Cài đặt chưa hoàn tất, bạn có chắc muốn thoát không?",
 
   "config.install": "Cài đặt",

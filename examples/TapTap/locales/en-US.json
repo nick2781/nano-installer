@@ -29,6 +29,8 @@
   "uninstall_done": "Uninstall Complete",
   "cancel": "Continue install",
   "ok": "Exit installer",
+  "yes": "Yes",
+  "no": "No",
   "close_confirm_message": "Installation is not complete. Exit the installer?",
   "status.preparing": "Preparing...",
   "status.extracting": "Extracting files...",

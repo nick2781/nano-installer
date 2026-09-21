@@ -29,6 +29,8 @@
   "uninstall_done": "Desinstalação concluída",
   "cancel": "Cancelar",
   "ok": "OK",
+  "yes": "Sim",
+  "no": "Não",
   "close_confirm_message": "A instalação ainda não foi concluída. Tem certeza de que deseja sair?",
 
   "config.install": "Instalar",

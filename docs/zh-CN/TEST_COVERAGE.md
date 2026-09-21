@@ -3,7 +3,7 @@
 文档承诺的每一条行为，以及守住它的那条自动化用例。表格里的每一行都列出了该行为失效时会失败的
 用例；没有出现在任何一行里的行为，就是没人看住的行为。
 
-`cargo test --locked --workspace` 会跑 233 条用例：核心库 173 条，真构建并运行安装包的 24 条，
+`cargo test --locked --workspace` 会跑 235 条用例：核心库 174 条，真构建并运行安装包的 25 条，
 按构建器的方式读工程的 5 条，可视化构建器 29 条，解压运行时 2 条。安装包级用例需要真实的运行时
 可执行文件，`.\scripts\run_e2e_setup.ps1` 会先把它们构建出来再跑，并把整次运行写进
 `target/e2e-report.txt`。
@@ -12,8 +12,8 @@
 
 | 层 | 用例数 | 能证明 | 不能证明 |
 | --- | --- | --- | --- |
-| 核心库 | 173 | 一页会变成什么——图层、坐标、命中区域、文字；捆绑数据里装了什么；安装往磁盘和注册表写了什么；每个脚本原语做什么 | 打包出来的安装包能走到这些代码 |
-| 安装包级 | 24 | 构建好的安装包在这台机器上装了一遍：payload 字节、manifest、卸载项、快捷方式、自启动、项目脚本、脚本要跑的辅助程序、向导窗口、它自己页面上那些要等点击的行为，以及在列表上滚动滚轮 | 需要人在机器前才发生的事：悬停与按下状态位图、光标、输入法组字、选目录对话框、模态对话框 |
+| 核心库 | 174 | 一页会变成什么——图层、坐标、命中区域、文字；捆绑数据里装了什么；安装往磁盘和注册表写了什么；每个脚本原语做什么 | 打包出来的安装包能走到这些代码 |
+| 安装包级 | 25 | 构建好的安装包在这台机器上装了一遍：payload 字节、manifest、卸载项、快捷方式、自启动、项目脚本、脚本要跑的辅助程序、向导窗口、它自己页面上那些要等点击的行为、在列表上滚动滚轮，以及脚本的提示与提问所画的那张、由点击作答的卡片 | 需要人在机器前才发生的事：悬停与按下状态位图、光标、输入法组字、选目录对话框 |
 | 工程检查 | 5 | 构建之前窗口会显示的那份摘要与告警列表 | |
 | 可视化构建器 | 29 | 窗口自己的状态、参数、日志与告警 | 真的去点界面上的控件 |
 | 解压运行时 | 2 | 坏归档、以及归档里不安全的路径会被拒绝 | 解压一个完好的归档——安装包级用例会用真实运行时解真实 payload |
@@ -45,7 +45,7 @@
 | `localization.supported_locales` | `a_supported_locale_without_a_file_is_reported`、`a_translation_missing_page_text_is_reported` |
 | `wizard.pages`、`wizard.uninstall_pages` | `runtime_modes_select_distinct_layout_lists`、`out_of_range_pages_fall_back_to_the_first_layout` |
 | `ui.dpi_aware`、`ui.dpi_threshold` | `a_display_scales_the_layout_by_its_own_dpi`、`a_layout_picks_the_image_density_the_display_asks_for`、`dpi_asset_resolution_prefers_requested_density_and_falls_back`、`dpi_scaling_rounds_layout_coordinates` |
-| `ui.dialog_layout` | `a_project_without_a_dialog_layout_still_opens`、`a_dialog_is_drawn_over_the_page_and_centred` |
+| `ui.dialog_layout` | `a_project_without_a_dialog_layout_still_opens`、`a_dialog_is_drawn_over_the_page_and_centred`、`a_question_a_script_asks_is_drawn_with_both_of_its_answers`、`a_script_dialog_is_drawn_in_the_wizard` |
 | `uninstall.data_paths` | `only_expands_data_paths_inside_a_user_profile`、`ignores_data_paths_when_the_project_declares_none`、`uninstalling_below_appdata_removes_the_data_only_when_the_box_is_cleared` |
 | `advanced.silent_mode_support`、`advanced.uninstall_mode_support` | `a_project_without_silent_support_refuses_a_windowless_install`、`a_project_without_silent_support_refuses_a_windowless_uninstall`、`a_project_that_did_not_opt_in_refuses_a_windowless_run` |
 | payload 格式判定 | `the_payload_format_selects_the_runtime_that_gets_embedded`、`zip_backend_rejects_invalid_archive`、`rejects_unsafe_7z_paths` |
@@ -111,6 +111,7 @@
 | 进程 | `a_script_runs_a_command_and_sees_its_exit_code`、`a_script_recognises_a_running_process_by_its_image_name` |
 | 保留还是删除用户数据 | `uninstalling_below_appdata_removes_the_data_only_when_the_box_is_cleared` |
 | `scripts` 目录进入构建好的安装包 | `a_setup_runs_the_projects_own_install_and_uninstall_scripts` |
+| 脚本发出的提示、报错与提问画在向导里、由点击作答 | `a_question_a_script_asks_is_drawn_with_both_of_its_answers`、`a_script_dialog_is_drawn_in_the_wizard` |
 
 ## 安装、升级与卸载
 
@@ -153,7 +154,6 @@
 - **字形读不读得通。** 渲染检查能说明文字按布局要的颜色和位置画了出来，说明不了这句话好不好认。
   这套判断交给截图的模型复核脚本，或者交给人。
 - **任何需要在真实窗口里点一下的事情。** 悬停与按下的位图提交、手型光标、语言菜单的上下键与
-  Enter/Escape、输入法组合窗的位置、目录选择对话框，以及模态对话框，都只有驱动真实窗口才能到达。
-- **测试无法收场的脚本原语：** `show_message`、`show_error`、`ask_yes_no` 会阻塞到有人点击；
-  `run_detached` 有意活得比这次运行长；`kill_process` 会结束一个不是测试启动的进程；`sleep_ms`
-  只能拿墙上时间做断言；`is_elevated` 的期望值只能照抄实现。
+  Enter/Escape、输入法组合窗的位置、目录选择对话框，都只有驱动真实窗口才能到达。
+- **测试无法收场的脚本原语：** `run_detached` 有意活得比这次运行长；`kill_process` 会结束一个
+  不是测试启动的进程；`sleep_ms` 只能拿墙上时间做断言；`is_elevated` 的期望值只能照抄实现。

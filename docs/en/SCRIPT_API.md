@@ -141,8 +141,8 @@ anything is written, because it would write outside the classes tree a user's fi
 | `get_config_value(path)` | Reads `installer_config.json`, for example `project.name` |
 | `get_current_exe()`, `get_exe_dir()` | Path and directory of the running setup or uninstaller |
 | `is_elevated()` | Whether the process is elevated |
-| `show_message(title, message)` | Information dialog |
-| `show_error(title, message)` | Error dialog |
+| `show_message(title, message)` | Information dialog, drawn in the installer window |
+| `show_error(title, message)` | Error dialog, drawn in the installer window |
 | `ask_yes_no(title, message)` | Question dialog, returns a bool |
 | `run_tracked_uninstall(start, end)` | Removes the product from the manifest; uninstall only |
 
@@ -151,6 +151,16 @@ from: a variable the setup exports into its own environment would die with the s
 written here is still there for the program it installs. The key belongs to Windows and to every
 other product on the machine, so the manifest records the value and the uninstall takes that
 value back rather than the key, exactly as it does for `...\CurrentVersion\Run`.
+
+`show_message`, `show_error` and `ask_yes_no` draw the product's own card inside the installer
+window rather than opening a system message box, from the layout `ui.dialog_layout` names. The card
+shows the title the script wrote above its message, and a question carries two answers whose labels
+come from the `yes` and `no` keys of the locale file; `ask_yes_no` returns the one that was clicked.
+The script waits for that click on the worker thread, so the window keeps painting and keeps taking
+clicks while the card is up.
+
+A run with nothing to draw in keeps the system box it used before: a silent install, a script that
+starts before the window opens, and a project that ships no dialog layout.
 
 ## Example
 
