@@ -99,7 +99,9 @@ jobs:
       # open behind the build's own children; and everything the script starts
       # joins a job that ends with it, so a process it leaves behind -- a wizard a
       # failing case did not close, that same telemetry process -- cannot hold the
-      # step's own console open either.
+      # step's own console open either. A command that does not end is waited on
+      # with a deadline, so a suite that hangs ends the step with a failure and a
+      # log that shows the last case it reached, instead of hanging for hours.
       - name: Test workspace
         shell: powershell
         run: .\scripts\run_tests.ps1

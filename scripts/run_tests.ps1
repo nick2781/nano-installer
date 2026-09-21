@@ -89,15 +89,46 @@ function Write-Phase {
 # and neither a step timeout nor a cancel ends the step it runs in. cmd.exe sets
 # the file handle itself, so what this script reads is not held by the build's
 # own children.
+#
+# A command that does not end at all would hold the step for as long as the
+# build agent waits, and a step that never ends is archived with no log, which
+# leaves nothing that says where it stopped. A command given a deadline is
+# therefore waited on with one: when the deadline passes, the last lines it
+# wrote are printed, the script leaves with a code of its own, and the job it
+# joined takes down everything it started -- so the step ends, keeps its log,
+# and says where it hung.
+#
+# The command is started as a process this script holds, rather than waited on
+# through cmd.exe's own exit status, because waiting with a deadline needs the
+# process; its output still goes to a file the operating system opened for it.
 function Invoke-NativeStep {
-    param([string]$Command)
+    param([string]$Command, [int]$DeadlineMinutes = 0)
 
     $log = Join-Path ([System.IO.Path]::GetTempPath()) ("nano-step-{0}.log" -f [guid]::NewGuid().ToString("n"))
     $previous = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     try {
-        & cmd.exe /c "$Command > `"$log`" 2>&1"
-        $code = $LASTEXITCODE
+        $start = New-Object System.Diagnostics.ProcessStartInfo
+        $start.FileName = "cmd.exe"
+        $start.Arguments = "/c `"$Command > `"$log`" 2>&1`""
+        $start.UseShellExecute = $false
+        $process = [System.Diagnostics.Process]::Start($start)
+        $finished = $true
+        if ($DeadlineMinutes -gt 0) {
+            $finished = $process.WaitForExit($DeadlineMinutes * 60 * 1000)
+        }
+        else {
+            $process.WaitForExit()
+        }
+        if (-not $finished) {
+            Write-Output "::error title=command deadline::$Command did not end within $DeadlineMinutes minute(s); what it wrote so far follows"
+            foreach ($line in (Get-CapturedTail -Path $log -Count 40)) {
+                Write-Output "  | $line"
+            }
+            Write-Output "everything this step started ends with it now, so the step can end and keep this log"
+            exit 124
+        }
+        $code = $process.ExitCode
     }
     finally {
         $ErrorActionPreference = $previous
@@ -108,6 +139,35 @@ function Invoke-NativeStep {
         Remove-Item -LiteralPath $log -Force -ErrorAction SilentlyContinue
     }
     return @{ Output = @($output | ForEach-Object { ConvertTo-ReportLine "$_" }); ExitCode = $code }
+}
+
+# A command that is still running holds its output file open for writing, so
+# the tail is read with sharing allowed: what a command that never ends has
+# said so far is the only record of where it stopped.
+function Get-CapturedTail {
+    param([string]$Path, [int]$Count)
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return @()
+    }
+    $lines = New-Object System.Collections.Generic.List[string]
+    $stream = $null
+    $reader = $null
+    try {
+        $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+        $reader = New-Object System.IO.StreamReader($stream)
+        while (-not $reader.EndOfStream) {
+            $lines.Add($reader.ReadLine())
+        }
+    }
+    finally {
+        if ($null -ne $reader) { $reader.Dispose() }
+        elseif ($null -ne $stream) { $stream.Dispose() }
+    }
+    if ($lines.Count -le $Count) {
+        return @($lines)
+    }
+    return @($lines[($lines.Count - $Count)..($lines.Count - 1)])
 }
 
 # The reports say what they were run against, so a green result cannot be read
@@ -134,7 +194,7 @@ $runAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 
 Write-Phase "script started"
 Write-Output (Get-ReportPhrase -Text $text -Key "console.runningsuite" -Values @($suiteCommand))
-$suite = Invoke-NativeStep $suiteCommand
+$suite = Invoke-NativeStep $suiteCommand -DeadlineMinutes 15
 
 Write-Phase "suite finished with exit code $($suite.ExitCode) and $(@($suite.Output).Count) output line(s)"
 $printed = @($suite.Output)
