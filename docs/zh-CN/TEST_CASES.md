@@ -58,6 +58,7 @@ Rust doc comment，再退回用例名。
 | `a_project_that_did_not_opt_in_refuses_a_windowless_run` | 无窗口运行是工程自己的决定，从没声明过它的工程既不能被无人值守地安装，也不能被无人值守地卸载。 |
 | `a_project_that_names_no_tools_bundles_none` | 没写 `resources.tools_dir` 的工程，目录就算摆在自己的树里也不进包：安装包只带工程点名要的东西，不带碰巧放在旁边的东西。 |
 | `a_project_without_a_dialog_layout_still_opens` | 没带对话框版面的工程照样能用：页面自己画出来，调用方退回成不问直接关闭。 |
+| `a_project_without_components_installs_none_of_them` | 没写 `components.items` 的工程一个组件都不装，页面上勾什么都一样：基础载荷照旧，组件这一层根本不存在。 |
 | `a_project_without_silent_support_refuses_a_windowless_install` | 从没声明支持静默安装的工程必须拒绝无窗口运行，而不是照样无人值守地装下去。 |
 | `a_project_without_silent_support_refuses_a_windowless_uninstall` | 卸载一个从没声明支持静默的工程会被拒绝，产品不能靠作者没同意过的开关被无人值守地删掉。 |
 | `a_question_a_script_asks_is_drawn_with_both_of_its_answers` | 脚本提出的问题带着两个答案一起画出来：卡片上同时有确认和取消两个按钮各自的位置，问题正文和 `yes`/`no` 两个标签都用传给脚本调用的那几个词。`ask_yes_no` 要等一个答案，只有一个按钮的卡片会让脚本永远拿不到另一种回答。 |
@@ -74,6 +75,7 @@ Rust doc comment，再退回用例名。
 | `a_script_recognises_a_running_process_by_its_image_name` | `is_process_running` 按映像名判断进程：正在跑的那个测试可执行文件返回 true，编出来的不存在名字返回 false。这条检查就是安装时不肯覆盖正在运行的产品的原因。 |
 | `a_script_registers_a_file_type_where_windows_reads_it` | 脚本登记的文件类型落在 Windows 真正读取的四个位置：扩展名指向程序 id，程序 id 上挂着资源管理器显示的类型名、图标，以及带 `"%1"` 的文件命令行。安装把它们全部记入 manifest，卸载时这个文件类型连同程序 id 一起从注册表里消失。 |
 | `a_script_runs_a_command_and_sees_its_exit_code` | `run_command` 返回命令的退出码，用 `ComSpec` 跑 `exit 3` 和 `exit 0` 分别拿到 3 和 0；起不来的命令返回 -1，脚本因此分得清跑了但失败和根本没跑。 |
+| `a_script_sees_the_components_the_run_installs` | 脚本读到的是这次运行真正装的那些组件：`is_component_selected` 按组件名回答，`selected_components` 按工程声明的顺序给出数组；页面没勾中、工程没声明过的都是 `false`。报告由脚本自己写出来再比对，所以读到的确实是这一次的选择，不是脚本猜的。 |
 | `a_script_step_text_wins_over_the_locale_key` | 脚本发布的字面状态文字会留在屏幕上，即使更早步骤记下的 locale 键还在。 |
 | `a_script_that_asks_for_tools_a_project_did_not_bundle_gets_nothing` | 没写 `resources.tools_dir` 的工程，以及写了这项设置但包里没有对应条目的安装包，`get_tools_dir()` 都返回空字符串并在日志里留一条告警，安装照常完成——没有那个程序时怎么办，由脚本自己决定。 |
 | `a_scrollable_container_shows_the_part_it_is_scrolled_to` | 装不下容器的那部分内容只从窗口里露出一块：偏移量把各行整体推上去，推出容器边缘的那一行既不画出来也不再登记点击，偏移量超出列表末尾时停在末尾，不会露出底下的空白。列表有多长由各行自己声明的高度决定，跟容器拿到多少地方无关，这正是「能滚」与「被压扁」的分界。 |
@@ -86,6 +88,7 @@ Rust doc comment，再退回用例名。
 | `a_setup_unpacks_the_tools_its_project_bundles` | 工程用 `resources.tools_dir` 打包的辅助程序确实进了安装包：安装时脚本从 `get_tools_dir()` 拿到的目录里，那个批处理文件逐字节和工程里的一致（安装包跑起来的时候，工程目录已经不在旁边了），而且能被 `run_command` 真的跑起来，返回它自己声明的退出码 7。 |
 | `a_shrinking_row_stops_at_the_minimum_its_items_declare` | `flex-shrink` 让一行容得下文字旁边的固定按钮，`min-width` 保住控件还能读：行宁可溢出，也不会把某个项压到版面声明的下限以下。`flex-shrink="0"` 的按钮保持设计宽度，溢出全由可以收缩的那个项承担。 |
 | `a_silent_install_writes_the_shortcuts_and_the_autostart_entry` | 无窗口安装没有复选框可读，只能照工程里的默认值处理快捷方式和自启动，它写下的 manifest 则列出安装目录之外创建的每个文件和注册表值。这些条目是用户还没启动产品就先碰到的东西，也是安装唯一写到自身目录之外的内容；跳过它们的安装包照样装得成功，只是会留下一个再也没人回收的开始菜单项。 |
+| `a_silent_run_installs_the_components_the_project_defaults_to` | 没有页面的安装只能照工程自己的答案办：写了 `required` 的装上，`default` 为真的装上，两者都不是的不装。每个组件只带一个文件，装出来的东西在盘上直接读得到。 |
 | `a_spacer_takes_what_the_fixed_items_leave` | `Spacer` 自己不画东西，它把后面的项推到另一端：两个定宽按钮之间剩下的 200 像素全被它吸收。 |
 | `a_styled_image_draws_into_a_sub_rectangle_at_the_opacity_it_declares` | `file='...' dest='...' fade='...'` 这种写法把图片画进控件内的一个子矩形，并按 `fade` 给透明度；目标矩形相对控件而不是页面，跟着控件一起被缩放。 |
 | `a_supported_locale_without_a_file_is_reported` | 工程声明支持、却没有对应语言文件的语言会被报告出来，因为别的环节不会报：运行时会退回默认语言，产品只是显示成另一种语言而已。 |
@@ -189,15 +192,19 @@ Rust doc comment，再退回用例名。
 | `project_pack_progress_describes_assets_payload_and_uninstaller` | 打包过程按进度报出它做了什么：收集素材的数量、没有中间皮肤包、加入 payload、嵌入卸载运行时，卸载运行时也确实进了捆绑数据。 |
 | `refresh_keeps_a_custom_output_path_for_the_same_project` | 刷新会保留为这个工程选好的输出路径：这个输入框可以指向任何地方，刷新时把它重置，下一次安装包就会在没人打招呼的情况下被放回工程目录树里。 |
 | `refresh_replaces_a_custom_output_path_when_the_project_changes` | 自定义输出路径属于当初为它选定的那个工程。换了工程，这条路径就没意义了，留着它会把新工程的安装包写进新工程从没配置过的文件夹。 |
+| `refuses_a_component_without_an_id_or_a_payload` | 组件必须有 `id` 和 `payload`：缺 `id` 时页面上的复选框无从对应，缺 `payload` 时没有东西可装，两者都在构建期报出来，报错说的是第几个条目、该补什么。 |
 | `refuses_a_foreign_manifest_at_the_destination` | 目标目录里的 manifest 属于别的产品时，读取上一次安装会被拒绝。 |
 | `refuses_a_misspelled_setting` | `install.exe_nmae` 这种拼错的键会让构建失败并指出是哪一条，而不是安静地什么也不做。 |
 | `refuses_a_page_role_the_runtime_does_not_run` | 页面写了运行时不会跑的职责（比如 `license`）会让构建失败，指出该用 `progress` 或 `finish`。 |
+| `refuses_a_required_component_whose_default_is_false` | 必需组件的 `default` 写 `false` 没有意义：写了 `required` 就一律安装，不看默认值。两条同时写会被构建拒绝，而不是让工程以为这一条把组件关掉了。 |
 | `refuses_a_section_that_does_nothing` | `validation` 这类整个没有被读取的区块会被拒绝，消息里指出真正会跑的是 `install.required_space_mb`。 |
 | `refuses_a_setting_that_does_nothing` | 写了却没人读的设置会让构建失败：`install.append_to_path` 报错时会说清现在没有任何设置能往 PATH 里加目录。 |
 | `refuses_an_install_when_the_drive_holds_less_space_than_the_project_asks_for` | 目标盘剩余空间少于 `install.required_space_mb` 时，安装在任何文件写下去之前就停下，并报出要多少、报的是哪个盘；要 0 MiB 的工程不受影响。 |
+| `refuses_an_unknown_component_key` | 组件条目里拼错的键会被拒绝：这张表只认 `id`、`payload`、`default`、`required`，多出来的键报出第几个组件和键名，免得工程以为那条设置已经生效。 |
 | `refuses_an_unknown_page_key` | 向导页条目里多写的键会被拒绝，并指出是第几页，防止一个多打的键悄悄沉在配置里。 |
 | `refuses_relative_or_root_installation` | 安装目标必须是绝对路径，相对路径和盘符根目录都被拒绝。 |
 | `refuses_to_install_over_a_directory_it_did_not_create` | 目标目录已经存在、里面还有用户的文件时，读取上次安装和部署都失败，用户的文件原样留着，也不写 manifest。 |
+| `refuses_two_components_that_share_an_id_or_a_payload` | 两个组件不能共用一个 `id` 或一个归档：同名 `id` 让一个复选框代表两个组件，同一个归档让它们无法分别勾选，两种都在构建期拒绝。 |
 | `refuses_two_pages_claiming_one_role` | 两个页面都声明同一个职责会被拒绝，并点出是第几页，免得任务报到哪一页变得看运气。 |
 | `registers_and_cleans_up_scoped_uninstall_key` | 注册卸载项会把键写进去，重复注册同一个键失败，带清理标志再注册一次后键被删掉。 |
 | `registry_path_normalizes_legacy_escaped_separators` | 旧的、带双反斜杠的注册表路径被归一化成单反斜杠，不支持的根键名报错。 |
@@ -220,11 +227,13 @@ Rust doc comment，再退回用例名。
 | `taptap_first_page_places_controls_at_192_dpi` | 在 2 倍缩放下加载示例工程首页：窗口是 1440×900，图层数和顺序符合版面，页面底色、语言选择框、最小化和关闭按钮的位置与透明度都按倍率算对。 |
 | `taptap_uninstaller_buttons_have_distinct_hit_regions` | 示例卸载页上卸载和取消两个按钮的点击区域不重叠，卸载键完全在取消键右侧。 |
 | `text_colors_read_as_rgb_with_or_without_an_alpha_channel` | 颜色写六位和八位都读成同一个 RGB，画文字时忽略 alpha，字节顺序是 RGB 而不是 BGR；读不懂的颜色画成白色。 |
+| `the_boxes_the_page_carries_decide_which_components_install` | 在真窗口里勾上一个组件、再清掉页面上已经勾着的另一个：装完之后被勾中的那个组件的文件在盘上，被清掉的那个不在，页面上没有复选框的组件按工程的 `required` 与 `default` 决定。四个组件四种规则，一次安装全走一遍。 |
 | `the_example_dialog_places_its_message_and_both_buttons` | 示例工程自己的对话框版面能把问题文字和两个按钮都摆好：问题是一行有真实高度、宽度和位置的折行文字，两个按钮并排不重叠，问题也不被按钮盖住。 |
 | `the_example_project_matches_the_schema` | 示例工程自己的配置也要过这张表：它是别人照抄的模板，不能带着没人读的键。 |
 | `the_language_menu_answers_to_the_keyboard` | 在真窗口里用键盘走一遍语言菜单：点一下控件把菜单展开，当前语言那一行标着记号；按一次下箭头，高亮落到下一行，而当前语言那行上的记号还在；按 Escape，菜单收起，页面回到展开之前的样子，一个像素都没变；再展开、再按下箭头、按 Enter，页面上的那句话换成另一种语言写的，而且除那句话和这个控件，别处都没有被重画。 |
 | `the_log_keeps_the_lines_the_view_scrolled_past` | 日志留着视图滚过去的那些行：保存日志写下的和全部复制复制的是同一份文本，导出的应该是整份日志，而不是面板一次能显示的那几行。用例把它填到远超一屏，检查每一行都还在、措辞没变、时间戳还是自己那个。 |
 | `the_manifest_reaches_a_real_executable` | 把清单写进一个真实的 PE 映像再读回来，内容与写进去的一致：提权级别和 DPI 相关的两个元素都在，整份 XML 仍然能被解析，Windows 不会因为清单坏了而拒绝加载。 |
+| `the_page_and_the_project_decide_which_components_install` | 一个组件装不装由三件事按顺序决定：写了 `required` 的一律装；页面有同名复选框就听页面的；页面没有这个复选框（静默安装也算）就听 `default`。用例把这三条各走一遍，包括用户清掉工程默认勾上的组件、以及勾不掉必需的组件。 |
 | `the_panels_draw_in_every_state_they_can_be_in` | 面板在指南说到的每种状态下都画得出来：这里没有一条用例能开窗口，状态是画在无窗口上下文里的——什么都没打开、检查过工程、构建进行中、构建失败、构建完成，两种界面语言都算。一个根本画不出来的状态会让用户看到空白窗口，而画的过程改掉要展示的状态则更糟。 |
 | `the_payload_format_selects_the_runtime_that_gets_embedded` | payload 格式决定嵌入哪个运行时。一直声称错误格式的安装包什么都装不上，因为那个 stub 读不懂归档。 |
 | `the_pointer_decides_which_cursor_the_wizard_shows` | 指针在向导上是什么形状，由它底下那个控件说了算：按钮上是手型，可以输入的文本框上是工字光标，落在页面空白处则是普通箭头；指针再挪回按钮，形状跟着回去。三种标准光标必须先能彼此区分（句柄互不相同），否则这条用例不管窗口做什么都会通过。 |
@@ -234,6 +243,7 @@ Rust doc comment，再退回用例名。
 | `the_setup_opens_its_wizard_window` | 不带 `--silent` 打开真实的安装包，等它的向导窗口画出来再量客户区，这是无窗口用例够不到的那道缝：版面加载失败、捆绑数据丢了资源、窗口类没注册，都可能让静默安装照样成功、让所有只读文件的检查通过。开窗口需要交互式的桌面会话，以服务方式启动的构建代理没有桌面，那种环境下用例跳过并说明原因；在本该有桌面的机器上，`NANO_INSTALLER_E2E_REQUIRE_DESKTOP` 会把这次跳过变成失败，因为从没跑过的检查不能算作跑过并通过。 |
 | `the_summary_reports_what_the_project_declares` | 窗口显示的摘要是工程声明的内容，包括工程可以省略的那些默认值。 |
 | `the_values_the_page_holds_reach_the_script` | 用户在页面上留下的取值真的走进了脚本：用例往安装包窗口的输入框里敲进一个编号、点中单选组里版面没默认选中的那一行，再按下安装键，脚本把读到的值写进安装目录，几个值逐一对得上；其中两个问的是页面上没有的 id，读成空串。安装装得完说明不了什么，脚本用常量也装得完。 |
+| `two_payloads_that_carry_one_file_are_refused` | 两个归档带同一个相对路径时安装失败，而不是按声明顺序互相覆盖：报错点出是哪个组件、哪个文件。用户装到的东西不该取决于工程把组件排在第几个。 |
 | `typing_coalesces_into_one_undo_step` | 连续键入只记一步撤销：一串按键共用同一份快照，Ctrl+Z 回到这串输入开始前的值，换一种编辑动作才另起一步。 |
 | `undo_remembers_the_caret_that_belongs_to_the_value` | 撤销把光标恢复到那个值对应的位置，而不是恢复前的位置；快照里的光标超出缩短后的文本时被拉回文本末尾。 |
 | `uninstall_keeps_a_directory_that_still_holds_user_files` | 用户放进安装目录里的文件会留住这个目录，这是 manifest 清理所做的承诺，同时部署上去的文件照样删掉。 |

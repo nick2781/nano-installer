@@ -35,6 +35,8 @@ operation ceiling, so a runaway loop cannot hang an installation.
 | `get_checkbox_value(id)` | Reads a checkbox; use the layout id for install (`chkShotcut`) and `keep_data` for uninstall |
 | `get_text_value(id)` | Reads what a field holds; an empty string when the page has no such control |
 | `get_choice_value(id)` | Reads the value a select or radio group stands on; a select by its control id, a radio group by the group's name; an empty string when the page has neither |
+| `is_component_selected(id)` | Whether this run installs that component |
+| `selected_components()` | The component names this run installs, in the order the project declares them |
 | `get_mode()` | `"install"` or `"uninstall"` |
 | `log_info(text)`, `log_warn(text)`, `log_error(text)` | Write to the script log |
 
@@ -45,6 +47,15 @@ returns by itself. See [actions](XML_LAYOUT_GUIDE.md#actions).
 
 `get_text_value` and `get_choice_value` read the page as it stood when the user started the
 install; a silent run has no page, so both answer an empty string.
+
+The component selection comes from the same rule: beside the base payload, which of the components
+the project cut out with `components.items` this run installs. `is_component_selected(id)` answers for
+one by name, and `selected_components()` gives them in the order the project declares them, as the
+[configuration reference](CONFIG_REFERENCE.md#components) describes. An uninstall has no page and no
+component selection, so both primitives answer `false` and an empty array. The checkbox itself is
+readable as a control through `get_checkbox_value(<component id>)`, which is what the page holds; ask
+these two whether the run installs it.
+
 
 Scripts have no console. On failure the runtime appends the last 32 log lines to the error the
 wizard shows.
@@ -71,7 +82,9 @@ wizard shows.
 | `sleep_ms(milliseconds)` | Waits |
 
 `extract_payload*` reuses the built-in extraction: it stages the payload to disk, unpacks it with
-the matching runtime, and verifies it holds no uninstaller, no manifest, and no symbolic links.
+the matching runtime, and verifies it holds no uninstaller, no manifest, and no symbolic links. It
+unpacks the base payload and the components this run installs, in the order the project declares
+them, and two archives that carry one relative path fail there and then.
 
 `get_tools_dir()` unpacks the directory `resources.tools_dir` names into the setup's own scratch
 directory, keeping the relative paths, and returns that directory, which a script hands to

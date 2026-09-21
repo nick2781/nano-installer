@@ -92,16 +92,25 @@ files and registry entries, so validate them in a disposable virtual machine onl
   one with `advanced.uninstall_mode_support` runs an uninstall the same way. A silent run opens
   nothing, takes `--dir`, refuses any other option, and reports through the exit code and standard
   error. A project that did not opt in is refused rather than installed or removed unattended.
+- A project can cut its content into components: `resources.payload_file` is what every run
+  installs, each entry of `components.items` carries a ZIP or 7z archive of its own, a `Checkbox`
+  of the same id on a page decides whether this run installs it, and a script asks the same
+  question with `is_component_selected` and `selected_components`. A component marked `required`
+  installs either way, and one the page carries no checkbox for, a silent run included, follows
+  its `default`. One runtime unpacks every archive, so a component in another format fails the
+  build, and two archives that carry one relative path fail at install time rather than
+  overwriting each other in the order the project declares them.
 - The setup-level suite in `crates/nano-installer-core/tests/e2e_setup.rs` builds a setup from a
   project it writes itself and runs it against a real installation: files land on disk byte for
   byte, the manifest and the uninstall entry are written, an upgrade drops stale files and keeps
   files it does not own, and an uninstall removes the product, the registration, and the directory.
-  Twelve of its thirty cases open the wizard window and drive it: one measures the client area
-  it drew, one walks the page actions a project declares, one stops a running task from a cancel
+  Thirteen of its thirty-three cases open the wizard window and drive it: one measures the client
+  area it drew, one walks the page actions a project declares, one stops a running task from a cancel
   button, one types a directory into the field a page asks for and starts the install with it, one
   clicks the row a radio group's install button waits for, one rolls the wheel over a list and
   clicks the row it brings into view, one reads the text the user typed into a page and the row a
-  choice group was left on into the script, one answers the card a project script puts up and
+  choice group was left on into the script, one ticks a component's checkbox and clears another's
+  and reads back which of them landed, one answers the card a project script puts up and
   reads back what the script wrote after each answer, one moves the pointer onto a button and
   holds it down and reads the three pictures the button declares back out of the window, one
   reads which of the three standard pointers the window answers with over a button, a field and
@@ -109,8 +118,8 @@ files and registry entries, so validate them in a disposable virtual machine onl
   browse button and closes the shell's folder dialog again. They need an interactive desktop
   session, so they skip where there is none and `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` makes the
   skip a failure; the cursor case asks that the session be showing a pointer as well, which a
-  hosted runner is not, and it prints its skip there. The other eighteen pass on Windows 11 and
-  in CI.
+  hosted runner is not, and it prints its skip there. The other twenty pass on Windows 11 and in
+  CI.
 - A setup stays a setup after signing: a certificate table appended behind the bundle, which is what
   Authenticode writes into the file, no longer hides the footer the runtime reads its resources from.
 - The builder refuses a configuration key it does not read. A setting that once parsed and then

@@ -141,6 +141,43 @@ The payload is your application's files, already compressed as ZIP or 7z. The bu
 format from the file signature, not the extension: `PK` selects the ZIP runtime and
 `37 7A BC AF 27 1C` selects the 7z runtime. Any other format fails the build.
 
+## Components
+
+`resources.payload_file` is the base payload every run installs. To let the user pick part of the
+product as well, cut it into components with `components.items`:
+
+```json
+"components": {
+  "items": [
+    { "id": "core", "payload": "payload/core.7z", "required": true },
+    { "id": "docs", "payload": "payload/docs.7z" },
+    { "id": "samples", "payload": "payload/samples.7z", "default": true }
+  ]
+}
+```
+
+| Setting | Type | Effect |
+| --- | --- | --- |
+| `components.items[].id` | string | Component name; a checkbox of the same id on a page chooses it, and a script asks with `is_component_selected()` |
+| `components.items[].payload` | string | The component's own ZIP or 7z archive |
+| `components.items[].default` | bool | Whether it installs when the page carries no such checkbox, a silent run included; defaults to `false` |
+| `components.items[].required` | bool | A required component cannot be cleared on the page and installs either way; defaults to `false` |
+
+Whether a component installs is decided in this order: `required` installs it whatever else says;
+a checkbox of its id on the page answers for it, written as in the
+[page layout](XML_LAYOUT_GUIDE.md#scrolling-containers); and a page without that checkbox, a silent
+run included, leaves `default` to answer. One setup can therefore install different things in a
+window and under `--silent`, which is what `default` is for.
+
+Components are the parts beside the base payload, so every component's archive has to match its
+format: one runtime unpacks the whole setup, and mixing ZIP with 7z fails the build. At install time
+the base payload lands first and the components follow into the same directory, and two archives that
+carry one relative path fail there and then rather than overwriting each other in the order the
+project happens to declare them. The build also refuses a component without an `id` or a `payload`,
+one whose `id` or `payload` repeats another's, one whose `payload` is `resources.payload_file`, and
+one that writes `required: true` beside `default: false`, since a required component never reads the
+default.
+
 ## Custom install and uninstall steps
 
 Add `scripts/install.rhai` or `scripts/uninstall.rhai` to replace the built-in steps. See the

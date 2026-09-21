@@ -1106,7 +1106,25 @@ pub fn inspect_project(project: impl AsRef<Path>) -> Result<ProjectSummary> {
             .as_str()
             .context("resources.payload_file is required")?,
     );
-    let payload_format = payload_format(&payload_path)?;
+    let declared_format = payload_format(&payload_path)?;
+    // One stub unpacks every payload a setup carries, so a component in another
+    // format is a build error rather than an install that fails on the machine the
+    // product is being installed on.
+    for item in config["components"]["items"]
+        .as_array()
+        .into_iter()
+        .flatten()
+    {
+        let (Some(id), Some(payload)) = (item["id"].as_str(), item["payload"].as_str()) else {
+            continue;
+        };
+        let format = payload_format(&project.join(payload))?;
+        if format != declared_format {
+            bail!(
+                "component {id} carries a {format:?} payload while resources.payload_file is {declared_format:?}; a setup unpacks every payload with one runtime"
+            );
+        }
+    }
     let payload_size = std::fs::metadata(&payload_path)?.len();
     let project_name = config["project"]["name"]
         .as_str()
@@ -1155,7 +1173,7 @@ pub fn inspect_project(project: impl AsRef<Path>) -> Result<ProjectSummary> {
         default_install_path,
         payload_path,
         payload_size,
-        payload_format,
+        payload_format: declared_format,
         require_admin: manifest.require_admin,
         dpi_aware: manifest.dpi_aware,
         warnings,
@@ -1889,6 +1907,24 @@ fn pack_project_with_progress(
             "Added payload {payload} ({}, already compressed)",
             format_build_size(payload_size as u64)
         ));
+        // Every component's payload travels with the setup as well: which of them
+        // an install unfolds is decided on the page.
+        for item in config["components"]["items"]
+            .as_array()
+            .into_iter()
+            .flatten()
+        {
+            let (Some(id), Some(component)) = (item["id"].as_str(), item["payload"].as_str())
+            else {
+                continue;
+            };
+            collect_file(project, &project.join(component), &mut files)?;
+            let size = files.last().map(|(_, data)| data.len()).unwrap_or_default();
+            progress(format!(
+                "Added payload {component} of component {id} ({}, already compressed)",
+                format_build_size(size as u64)
+            ));
+        }
     }
     if let Some((name, data)) = extra_file {
         progress(format!(

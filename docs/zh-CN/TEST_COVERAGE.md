@@ -3,7 +3,7 @@
 文档承诺的每一条行为，以及守住它的那条自动化用例。表格里的每一行都列出了该行为失效时会失败的
 用例；没有出现在任何一行里的行为，就是没人看住的行为。
 
-`cargo test --locked --workspace` 会跑 243 条用例：核心库 177 条，真构建并运行安装包的 30 条，
+`cargo test --locked --workspace` 会跑 253 条用例：核心库 184 条，真构建并运行安装包的 33 条，
 按构建器的方式读工程的 5 条，可视化构建器 29 条，解压运行时 2 条。安装包级用例需要真实的运行时
 可执行文件，`.\scripts\run_e2e_setup.ps1` 会先把它们构建出来再跑，并把整次运行写进
 `target/e2e-report.txt`。
@@ -12,8 +12,8 @@
 
 | 层 | 用例数 | 能证明 | 不能证明 |
 | --- | --- | --- | --- |
-| 核心库 | 177 | 一页会变成什么——图层、坐标、命中区域、文字；捆绑数据里装了什么；安装往磁盘和注册表写了什么；每个脚本原语做什么；脚本从页面上取回什么 | 打包出来的安装包能走到这些代码 |
-| 安装包级 | 30 | 构建好的安装包在这台机器上装了一遍，它的窗口也是真的被驱动起来的：payload 字节、manifest、卸载项、快捷方式、自启动、项目脚本、脚本要跑的辅助程序、向导窗口、它自己页面上那些要等点击的行为、在列表上滚动滚轮、脚本的提示与提问所画的那张由点击作答的卡片、页面上的取值交到脚本手里，以及只有指针与键盘真的动起来才会发生的事——悬停与按下换上的状态位图、三种标准光标形状、语言菜单的上下键与 Enter/Escape、选目录对话框 | 输入法自己画出来的那两个窗口；在外壳的选目录对话框里选定一个目录之后会写进哪个输入框；以及不显示指针的会话上光标长什么样——那里这条用例打印自己的跳过理由 |
+| 核心库 | 184 | 一页会变成什么——图层、坐标、命中区域、文字；捆绑数据里装了什么；安装往磁盘和注册表写了什么；每个脚本原语做什么；脚本从页面上取回什么、脚本读到的组件选择 | 打包出来的安装包能走到这些代码 |
+| 安装包级 | 33 | 构建好的安装包在这台机器上装了一遍，它的窗口也是真的被驱动起来的：payload 字节、manifest、卸载项、快捷方式、自启动、项目脚本、脚本要跑的辅助程序、向导窗口、它自己页面上那些要等点击的行为、在列表上滚动滚轮、脚本的提示与提问所画的那张由点击作答的卡片、页面上的取值交到脚本手里、勾选决定这次装哪些组件，以及只有指针与键盘真的动起来才会发生的事——悬停与按下换上的状态位图、三种标准光标形状、语言菜单的上下键与 Enter/Escape、选目录对话框 | 输入法自己画出来的那两个窗口；在外壳的选目录对话框里选定一个目录之后会写进哪个输入框；以及不显示指针的会话上光标长什么样——那里这条用例打印自己的跳过理由 |
 | 工程检查 | 5 | 构建之前窗口会显示的那份摘要与告警列表 | |
 | 可视化构建器 | 29 | 窗口自己的状态、参数、日志与告警 | 真的去点界面上的控件 |
 | 解压运行时 | 2 | 坏归档、以及归档里不安全的路径会被拒绝 | 解压一个完好的归档——安装包级用例会用真实运行时解真实 payload |
@@ -40,6 +40,7 @@
 | `shortcuts.desktop_shortcut`、`shortcuts.desktop_default` | `a_silent_install_writes_the_shortcuts_and_the_autostart_entry`、`removes_recorded_shortcuts_and_only_their_empty_folder` |
 | `shortcuts.start_menu`、`shortcuts.start_menu_folder` | 同上两条，另加 `drops_the_shortcut_folder_once_it_is_empty` |
 | `autostart.enabled`、`autostart.default`、`autostart.registry_key`、`autostart.registry_value_name` | `a_silent_install_writes_the_shortcuts_and_the_autostart_entry` |
+| `components.items` | `the_page_and_the_project_decide_which_components_install`、`a_project_without_components_installs_none_of_them`、`a_script_sees_the_components_the_run_installs`、`a_silent_run_installs_the_components_the_project_defaults_to`、`the_boxes_the_page_carries_decide_which_components_install`、`two_payloads_that_carry_one_file_are_refused`、`refuses_a_component_without_an_id_or_a_payload`、`refuses_a_required_component_whose_default_is_false`、`refuses_an_unknown_component_key`、`refuses_two_components_that_share_an_id_or_a_payload` |
 | `resources.*` | `project_bundle_roundtrips_layout_assets_and_locales`、`project_pack_progress_describes_assets_payload_and_uninstaller`、`the_payload_format_selects_the_runtime_that_gets_embedded`、`a_project_bundles_the_tools_directory_it_names`、`a_project_that_names_no_tools_bundles_none`、`a_setup_unpacks_the_tools_its_project_bundles` |
 | `localization.default_locale` | `version::tests::maps_default_locale_to_version_language`、`the_summary_reports_what_the_project_declares` |
 | `localization.supported_locales` | `a_supported_locale_without_a_file_is_reported`、`a_translation_missing_page_text_is_reported` |
@@ -75,6 +76,7 @@
 | `Spacer` | `a_spacer_takes_what_the_fixed_items_leave` |
 | 用 `right`、`bottom`、`inset` 及单边写法贴边 | `an_element_is_pinned_by_the_edge_attribute_it_carries` |
 | `Label` 的文字、字体、对齐与颜色 | `a_label_takes_its_text_font_and_alignment_from_the_layout`、`text_colors_read_as_rgb_with_or_without_an_alpha_channel`、`a_bound_label_shows_its_own_text_beside_the_value_it_reads` |
+| 组件由同名复选框选择，勾选结果就是这次装哪些组件 | `the_boxes_the_page_carries_decide_which_components_install`、`the_page_and_the_project_decide_which_components_install` |
 | `Checkbox` 的状态图、文字、链接与切换 | `an_absolutely_placed_checkbox_draws_its_state_image_and_toggles` |
 | `RadioButton`：一组一个取值、版面给的默认行，以及点掉它的那一次点击 | `a_radio_group_holds_one_value_at_a_time`、`a_click_on_a_radio_is_the_value_the_install_waits_for` |
 | `Select`：语言列表，以及工程自己声明的选项 | `a_language_menu_lists_its_options_and_marks_the_one_in_use`、`a_closed_language_select_draws_its_arrow_over_its_fill_and_outline`、`a_select_offers_the_options_the_page_declares`、`the_language_menu_answers_to_the_keyboard` |
@@ -109,6 +111,7 @@
 | 注册表原语，包括共享键那条规则 | `registry_primitives_round_trip_and_forget_a_key_they_created`、`uninstalling_a_shared_key_removes_only_the_value_the_script_wrote` |
 | 快捷方式原语 | `an_install_script_creates_shortcuts_the_uninstall_takes_back`、`a_script_deletes_the_desktop_shortcut_and_the_start_menu_folder_it_created` |
 | 进度、状态、模式、复选框与取消 | `out_of_range_progress_and_both_status_forms_do_not_disturb_the_install`、`an_uninstall_script_sees_the_uninstall_mode_and_the_keep_data_checkbox`、`a_script_step_text_wins_over_the_locale_key`、`a_built_in_step_clears_a_script_step_text`、`a_running_script_sees_the_cancel_request`、`a_cancelled_install_gives_up_after_the_script_and_undoes_what_it_wrote` |
+| 脚本读到的组件选择：`is_component_selected` 与 `selected_components` 给出这次运行装的组件 | `a_script_sees_the_components_the_run_installs` |
 | 脚本读到的页面取值：文本框与选项控件的当前值，页面没有声明的 id 读成空串 | `a_script_reads_the_values_the_page_holds`、`the_values_the_page_holds_reach_the_script` |
 | 环境变量、配置、磁盘与当前映像 | `the_script_reads_the_environment_and_the_project_configuration`、`the_script_reports_the_image_it_runs_from`、`the_script_queries_fixed_disks_and_notifies_the_shell` |
 | 工程打包进来的工具 | `a_script_reads_the_tools_the_project_bundled`、`a_script_that_asks_for_tools_a_project_did_not_bundle_gets_nothing`、`a_setup_unpacks_the_tools_its_project_bundles` |
@@ -121,6 +124,7 @@
 
 | 行为 | 用例 |
 | --- | --- |
+| 组件：装哪些由页面与工程一起决定，两个归档带同一个路径当场报错 | `a_silent_run_installs_the_components_the_project_defaults_to`、`the_boxes_the_page_carries_decide_which_components_install`、`two_payloads_that_carry_one_file_are_refused` |
 | 全新安装：文件、manifest、注册项 | `installs_a_fresh_directory_and_records_the_manifest`、`a_built_setup_installs_its_payload_and_registers_an_uninstall_entry` |
 | 配置路径展开，显式目录优先 | `configured_install_paths_are_expanded`、`an_explicit_install_path_wins_over_the_configured_one`、`a_configured_percent_path_is_expanded_and_used`、`an_explicit_directory_wins_over_the_configured_one` |
 | 拒绝装进不是自己创建的目录 | `refuses_to_install_over_a_directory_it_did_not_create`、`refuses_a_foreign_manifest_at_the_destination`、`refuses_relative_or_root_installation` |

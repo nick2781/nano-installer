@@ -44,6 +44,21 @@ pub(super) fn register(engine: &mut Engine, context: ScriptContext) {
         c.choice_value(id)
     });
 
+    // What the run installs. A page chooses with a checkbox that carries the
+    // component's id; a component the project marked required is always there.
+    let c = context.clone();
+    engine.register_fn("is_component_selected", move |id: &str| -> bool {
+        c.component_selected(id)
+    });
+
+    let c = context.clone();
+    engine.register_fn("selected_components", move || -> rhai::Array {
+        c.components()
+            .iter()
+            .map(|id| rhai::Dynamic::from(id.clone()))
+            .collect()
+    });
+
     let c = context.clone();
     engine.register_fn("get_mode", move || -> String {
         match c.mode() {

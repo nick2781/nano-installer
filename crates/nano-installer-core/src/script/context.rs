@@ -100,6 +100,8 @@ struct Inner {
     texts: HashMap<String, String>,
     /// What the page's choice controls held, by the id that owns the choice.
     choices: HashMap<String, String>,
+    /// The components this run installs; empty while uninstalling.
+    components: Vec<String>,
     keep_data: bool,
     /// The manifest the uninstaller replays; `Null` while installing.
     manifest: Value,
@@ -128,6 +130,9 @@ pub(super) struct ScriptEnvironment {
     /// reads through `get_text_value` and `get_choice_value`.
     pub(super) texts: HashMap<String, String>,
     pub(super) choices: HashMap<String, String>,
+    /// The components this run installs, which a script reads through
+    /// `is_component_selected` and `selected_components`.
+    pub(super) components: Vec<String>,
     pub(super) keep_data: bool,
     pub(super) manifest: Value,
     pub(super) previous: Option<PreviousInstall>,
@@ -155,6 +160,7 @@ impl ScriptContext {
                 checkboxes: environment.checkboxes,
                 texts: environment.texts,
                 choices: environment.choices,
+                components: environment.components,
                 keep_data: environment.keep_data,
                 manifest: environment.manifest,
                 previous: environment.previous,
@@ -259,6 +265,17 @@ impl ScriptContext {
     /// choice.
     pub(super) fn choice_value(&self, id: &str) -> String {
         self.inner.choices.get(id).cloned().unwrap_or_default()
+    }
+
+    /// The components this run installs, in the order the project declares them.
+    /// An uninstall installs nothing, so the list is empty there.
+    pub(super) fn components(&self) -> &[String] {
+        &self.inner.components
+    }
+
+    /// Whether the component `id` is one of them.
+    pub(super) fn component_selected(&self, id: &str) -> bool {
+        self.inner.components.iter().any(|chosen| chosen == id)
     }
 
     /// Recovers the state even if an earlier script panicked while holding it;

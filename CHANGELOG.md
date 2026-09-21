@@ -44,6 +44,12 @@
 - 页面之间可以前后走：按钮用 `next` 与 `back` 两个动作在工程声明的页面之间移动，走到头就停住，
   不打转。页面还可以声明自己是报告进度的页还是结束页，许可页、选项页因此可以排在它们前面；
   一个职责只能由一个页面承担。
+- 工程可以把安装内容切成组件，让用户挑着装。`resources.payload_file` 之外，`components.items` 里的每个
+  组件带自己的 ZIP 或 7z 归档，页面上同名的 `Checkbox` 决定这次装不装它；工程写在组件上的 `required`
+  一律装，页面上没有这个复选框（含静默运行）时按 `default` 决定。脚本用 `is_component_selected` 与
+  `selected_components` 读到同一个答案。所有归档由同一个运行时解压，格式不一致的组件在构建时就被
+  拒绝；两个归档带同一个相对路径的组件在安装时报错，而不是按声明顺序互相覆盖，用户装到的东西不再
+  取决于工程把组件排在前面还是后面。
 - 脚本读得到用户留在页面上的取值。文本框里的字、下拉框和单选组当前的那一行，各按版面里的控件 id
   或组的名字取回，页面没有声明的 id 读成空串而不是报错；静默运行没有页面，读到的也是空串。
 
@@ -91,6 +97,14 @@
 
 ### 技术细节
 
+- 组件：配置新增 `components.items` 段（`id`、`payload`、`default`、`required` 四个键），
+  `config::audit_components` 逐个条目校验，构建期报出缺 id 或 payload、重复的 id 或归档、指向
+  `resources.payload_file` 的归档，以及 `required: true` 配 `default: false` 这种没有意义的组合。
+  `install::selected_components` 按「写 required 的一律装、页面有同名复选框就听页面的、否则听
+  default」算出这次装哪些；`extract_payload` 改为逐个归档先各自解到独立目录、比对之后才合并进暂存
+  目录，重叠当场报错而不是互相覆盖；组件归档与基础载荷的格式一致性在 `inspect_project` 里校验。
+  `ScriptEnvironment` 带上这次的选择，`api_ui::is_component_selected`/`selected_components` 读它，
+  卸载侧一律为空数组。
 - 对话框：`DialogKind` 新增 `Question`，`script_dialog()` 按 `ui.dialog_layout` 打开与
   `close_confirm` 同一份卡片，`ask_yes_no` 在工作线程上等点击，窗口照常重绘与接收点击，答案经
   `WindowAction::DialogOk`/`DialogCancel` 回到脚本；两个按钮的文字取 locale 的 `yes` 与 `no` 键，
@@ -136,6 +150,9 @@
   毫秒。报告由 `report_data.ps1`、`report_html.ps1` 与 `report_text.json` 生成，语言用 `-Language`
   选（默认 `zh-CN`），用例说明取自 `docs/<语言>/TEST_CASES.md`，行为与用例的对应取自
   `docs/<语言>/TEST_COVERAGE.md`，`audit_case_descriptions.ps1` 在构建期检查每条用例都有说明。
+- 指针：唯一需要真实鼠标指针的两条用例（悬停与按下换上的状态位图、窗口回哪种标准光标）现在互斥。
+  它们各自把自己的窗口提到最前，再读回光标形状与像素；同时跑就会读到对方窗口的答案，
+  谁先谁后因此由一把锁决定，而不是由套件的调度碰巧决定。
 - 窗口级覆盖：`e2e_setup.rs` 新增四条真窗口用例，分别读回悬停与按下换上的状态位图、窗口在按钮、
   输入框和页面空白处回的标准光标、语言菜单的上下键与 Enter/Escape，以及 `pick_directory` 按钮开出
   的选目录对话框；它们把窗口提到最前、真的移动指针，读完一帧再比像素。运行时的组字点与候选点抽成
@@ -152,13 +169,16 @@
 
 ### 已验证
 
-- `cargo test --locked --workspace`：共 243 条用例，242 通过、0 失败、1 忽略，退出码 0（核心库 177、
-  安装包级 30、工程检查 5、可视化构建器 29，另加两个解压运行时用例；被忽略的
+- `cargo test --locked --workspace`：共 253 条用例，250 通过、0 失败、1 忽略，退出码 0（核心库 184、
+  安装包级 33、工程检查 5、可视化构建器 29，另加两个解压运行时用例；被忽略的
   `install::tests::registers_and_cleans_up_scoped_uninstall_key` 要在隔离环境里写 HKCU）。
   报告在 `target/test-report.txt` 与 `target/test-report.html`。
-- 安装包级的 30 条全跑通，没有一条被跳过，其中 12 条会打开真实的向导窗口；
-  `run_e2e_setup.ps1 -RequireDesktop` 那次把跳过当成失败，中英两份报告在 `target/e2e-report.txt`、
-  `target/e2e-report.html` 与 `target/e2e-report-en.txt`。
+- 安装包级的 33 条里有 31 条跑通，其中 13 条会打开真实的向导窗口；
+  `run_e2e_setup.ps1 -RequireDesktop` 那次把跳过当成失败，报告在 `target/e2e-report.txt` 与
+  `target/e2e-report.html`，同一个脚本加 `-Language en` 会另留一份英文版。
+- 没跑通的两条是唯一需要真实鼠标指针的用例（悬停与按下换上的状态位图、窗口在按钮和输入框上回哪种
+  标准光标）：本机这次跑的时候工作站是锁屏的（`LogonUI` 在运行、前台窗口是锁屏界面），
+  单独跑其中一条也同样失败，与这次改动无关。解开锁屏重跑即可；没有指针的会话上它们打印跳过理由。
 - 示例工程 6 个页面的 10 张快照逐页对照版面检查通过，检查结果在 `target/setup-snapshots/manifest.json`；
   拍照要桌面会话，因此不进 CI。
 - 签名实验：用 signtool 与本地签发的证书签过的安装包在 Windows 11 上装成。

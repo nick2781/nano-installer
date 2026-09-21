@@ -43,6 +43,8 @@ pub(super) struct InstallRequest {
     pub(super) config: serde_json::Value,
     pub(super) destination: PathBuf,
     pub(super) selection: InstallSelection,
+    /// The components this run installs, resolved from the page and the project.
+    pub(super) components: Vec<String>,
     /// Scratch directory owned by the caller for the duration of the script.
     pub(super) stage: PathBuf,
     pub(super) prep: InstallPrep,
@@ -58,6 +60,7 @@ pub(super) fn run_install(request: InstallRequest) -> Result<()> {
         config,
         destination,
         selection,
+        components,
         stage,
         mut prep,
         cancel,
@@ -74,6 +77,7 @@ pub(super) fn run_install(request: InstallRequest) -> Result<()> {
         checkboxes: selection.checkboxes().clone(),
         texts: selection.texts().clone(),
         choices: selection.choices().clone(),
+        components,
         keep_data: false,
         manifest: serde_json::Value::Null,
         previous: prep.previous.take(),
@@ -146,6 +150,9 @@ pub(super) fn run_uninstall(request: UninstallRequest) -> Result<()> {
         // value it carries is the keep-data box.
         texts: HashMap::new(),
         choices: HashMap::new(),
+        // Nothing is being installed, so no component is: an uninstall script
+        // reads what is on disk, not what a page chose.
+        components: Vec::new(),
         keep_data,
         manifest: manifest.clone(),
         previous: None,
@@ -499,12 +506,14 @@ mod tests {
             self.install_selection(InstallSelection::default(), task)
         }
 
-        /// Runs the install with the values a page would have handed over, the
-        /// way the wizard does when the user starts the task.
+        /// Runs the install with what a page would have handed over, the way the
+        /// wizard does when the user starts the task: the text its fields held, the
+        /// value each choice control stood on, and the boxes the user left ticked.
         fn install_with_values(
             &self,
             texts: &[(&str, &str)],
             choices: &[(&str, &str)],
+            checkboxes: &[(&str, bool)],
         ) -> Result<()> {
             let texts = texts
                 .iter()
@@ -514,8 +523,12 @@ mod tests {
                 .iter()
                 .map(|(id, value)| (id.to_string(), value.to_string()))
                 .collect();
+            let checkboxes = checkboxes
+                .iter()
+                .map(|(id, checked)| (id.to_string(), *checked))
+                .collect();
             self.install_selection(
-                InstallSelection::from_values(texts, choices),
+                InstallSelection::from_values(texts, choices, checkboxes),
                 install::Cancellation::default(),
             )
         }
@@ -527,12 +540,17 @@ mod tests {
         ) -> Result<()> {
             let bundle = self.bundle()?;
             let (root, registry_path) = install::uninstall_registry_key(&self.config)?;
+            // The same rule the wizard applies before it runs any step.
+            let components = install::selected_components(&self.config, |id, default| {
+                selection.checked(id, default)
+            });
             run_install(InstallRequest {
                 setup: self.setup.clone(),
                 bundle,
                 config: self.config.clone(),
                 destination: self.destination.clone(),
                 selection,
+                components,
                 stage: self.stage()?,
                 prep: InstallPrep {
                     uninstaller_name: "uninst.exe".to_string(),
@@ -1568,11 +1586,53 @@ mod tests {
         let fixture = fixture(&install_script, "")?;
         // What the wizard hands over when the user starts the task: the text the
         // page's field holds, and the value its choice group ended on.
-        fixture.install_with_values(&[("serial", "TT-2026-0001")], &[("edition", "installed")])?;
+        fixture.install_with_values(
+            &[("serial", "TT-2026-0001")],
+            &[("edition", "installed")],
+            &[],
+        )?;
 
         assert_eq!(
             report.text()?,
             "serial=TT-2026-0001\nedition=installed\nuntyped=\nunchosen=\n"
+        );
+        Ok(())
+    }
+
+    /// The components a run installs are the project's and the page's answer
+    /// together, and a script reads them the way the wizard applied them.
+    #[test]
+    fn a_script_sees_the_components_the_run_installs() -> Result<()> {
+        let report = Observation::new("script-components");
+        let install_script = format!(
+            r#"
+            let install_path = get_install_path();
+            copy_uninstaller();
+            write_file(path_join(install_path, "App.exe"), "app");
+            let chosen = selected_components();
+            let report = "";
+            report += "docs=" + is_component_selected("docs").to_string() + "\n";
+            report += "tools=" + is_component_selected("tools").to_string() + "\n";
+            report += "samples=" + is_component_selected("samples").to_string() + "\n";
+            report += "nowhere=" + is_component_selected("nowhere").to_string() + "\n";
+            report += "chosen=" + chosen.len().to_string() + "\n";
+            report += "first=" + chosen[0] + "\n";
+            write_file({}, report);
+            "#,
+            report.script_path()
+        );
+        let mut fixture = fixture(&install_script, "")?;
+        fixture.config["components"] = serde_json::json!({ "items": [
+            { "id": "docs", "payload": "payload/docs.7z" },
+            { "id": "tools", "payload": "payload/tools.7z", "default": true },
+            { "id": "samples", "payload": "payload/samples.7z", "required": true },
+        ] });
+        // The page ticked docs, left tools' default alone, and cannot clear samples.
+        fixture.install_with_values(&[], &[], &[("docs", true)])?;
+
+        assert_eq!(
+            report.text()?,
+            "docs=true\ntools=true\nsamples=true\nnowhere=false\nchosen=3\nfirst=docs\n"
         );
         Ok(())
     }

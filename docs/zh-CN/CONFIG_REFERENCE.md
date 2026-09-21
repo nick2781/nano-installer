@@ -129,6 +129,38 @@
 payload 就是你的应用文件，事先压成 ZIP 或 7z。格式按文件头认，不按扩展名：`PK` 选 ZIP 运行时，
 `37 7A BC AF 27 1C` 选 7z 运行时。其他格式会让构建失败。
 
+## 组件
+
+`resources.payload_file` 是每次安装都会装上的基础载荷。想再让用户挑一部分装，就用 `components.items`
+把它切成若干组件：
+
+```json
+"components": {
+  "items": [
+    { "id": "core", "payload": "payload/core.7z", "required": true },
+    { "id": "docs", "payload": "payload/docs.7z" },
+    { "id": "samples", "payload": "payload/samples.7z", "default": true }
+  ]
+}
+```
+
+| 字段 | 类型 | 作用 |
+| --- | --- | --- |
+| `components.items[].id` | string | 组件名；页面上同名的复选框代表它，脚本用 `is_component_selected()` 问它 |
+| `components.items[].payload` | string | 该组件自己的 ZIP 或 7z 归档 |
+| `components.items[].default` | bool | 页面上没有这个复选框（静默安装也算）时装不装，默认 `false` |
+| `components.items[].required` | bool | 必需组件：页面上勾不掉，也没有装不装的问题，默认 `false` |
+
+一个组件装不装，按这个顺序定：写了 `required` 的一律装；页面上有同名复选框就听页面的，写法见
+[页面布局](XML_LAYOUT_GUIDE.md#可滚动容器)；页面没有这个复选框（静默安装也算）就听 `default`。所以
+同一个安装包在窗口里跑和带 `--silent` 跑，装出来的东西可以不一样，这正是 `default` 的用处。
+
+组件是基础载荷之外的部分，因此每个组件的归档要与基础载荷同格式：整个安装包由一个运行时解压，混用
+ZIP 与 7z 会在构建时被拒绝。安装时基础载荷先落地，各组件再依次解到同一个目录；两个归档带同一个相对
+路径会当场失败，而不是按声明顺序互相覆盖。构建还会拒绝这样的组件：没有 `id` 或 `payload`；`id` 或
+`payload` 与另一个组件重复；`payload` 就是 `resources.payload_file`；以及写了 `required: true` 又写
+`default: false`（必需的组件不看默认值）。
+
 ## 自定义安装与卸载步骤
 
 加入 `scripts/install.rhai` 或 `scripts/uninstall.rhai` 即可替代内置步骤，见

@@ -164,6 +164,11 @@ two colours, which default to a translucent white.
 </VBox>
 ```
 
+Those checkboxes are more than a list of drawn options: a project can cut its content into components
+with `components.items`, a checkbox's `id` is a component's name, and what the user leaves ticked
+decides which components the run installs, as the
+[configuration reference](CONFIG_REFERENCE.md#components) describes.
+
 ## Label, Select and RadioButton
 
 - Absolutely positioned Label: supports `text`/`value`, font-size, font-weight, color, and

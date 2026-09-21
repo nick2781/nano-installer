@@ -14,6 +14,7 @@
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Output, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use anyhow::Context;
@@ -427,6 +428,48 @@ impl Fixture {
         })
     }
 
+    /// Declares a wizard whose page carries a box for two of four components.
+    ///
+    /// The boxes are what a component is chosen by: the page places one for
+    /// `docs`, which it starts clear, and one for `samples`, which it starts
+    /// ticked. `core` is required and `tools` installs by default, and the page
+    /// carries a box for neither, so those two are the project's answer alone.
+    /// The page the task reports on declares a different client area, so the
+    /// window's own size says whether the install started.
+    fn components_project(&self) -> anyhow::Result<()> {
+        std::fs::write(
+            self.project.join("layouts/configpage.xml"),
+            r##"<Page width="720" height="450" background="#FF101010">
+  <Checkbox id="docs" text="Documentation"
+            position="absolute" left="20" top="40" width="200" height="20" />
+  <Checkbox id="samples" text="Samples" checked="true"
+            position="absolute" left="20" top="70" width="200" height="20" />
+  <Button id="install" action="install" text="Install"
+          position="absolute" left="20" top="130" width="140" height="36" />
+</Page>"##,
+        )?;
+        std::fs::write(
+            self.project.join("layouts/taskspage.xml"),
+            r##"<Page width="500" height="300" background="#FF202020" />"##,
+        )?;
+        self.edit_config(|config| {
+            // The page asks for no directory of its own, so the install runs
+            // against the one the project configures.
+            config["install"]["default_path"] =
+                serde_json::json!(self.destination.to_string_lossy());
+            config["components"] = serde_json::json!({ "items": [
+                {"id": "core", "payload": "payload/core.archive", "required": true},
+                {"id": "docs", "payload": "payload/docs.archive"},
+                {"id": "tools", "payload": "payload/tools.archive", "default": true},
+                {"id": "samples", "payload": "payload/samples.archive"}
+            ] });
+            config["wizard"]["pages"] = serde_json::json!([
+                {"id": "config", "title": "Options", "layout": "layouts/configpage.xml"},
+                {"id": "tasks", "title": "Installing", "layout": "layouts/taskspage.xml", "role": "progress"}
+            ]);
+        })
+    }
+
     /// Declares a wizard whose task can be stopped from the page it runs on.
     ///
     /// The first page starts the install, the page the task reports on carries
@@ -732,6 +775,50 @@ impl Fixture {
         anyhow::ensure!(
             output.status.success(),
             "7za failed for {flag}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        std::fs::remove_dir_all(&staged)?;
+        Ok(())
+    }
+
+    /// Builds one component's archive under the project's payload directory.
+    ///
+    /// `entries` are relative paths inside the archive, the way a real product
+    /// splits documentation or samples off from the product itself.
+    fn archive_component(
+        &self,
+        name: &str,
+        format: PayloadFormat,
+        entries: &[(&str, &[u8])],
+    ) -> anyhow::Result<()> {
+        let seven_zip = workspace_root().join("tools/7za.exe");
+        anyhow::ensure!(seven_zip.is_file(), "tools/7za.exe is missing");
+        let staged = self.project.join("component-stage");
+        if staged.is_dir() {
+            std::fs::remove_dir_all(&staged)?;
+        }
+        std::fs::create_dir_all(&staged)?;
+        for (relative, contents) in entries {
+            let path = staged.join(relative);
+            std::fs::create_dir_all(path.parent().expect("entry has a parent"))?;
+            std::fs::write(&path, contents)?;
+        }
+        let archive = self.project.join("payload").join(name);
+        std::fs::remove_file(&archive).ok();
+        let flag = match format {
+            PayloadFormat::Zip => "-tzip",
+            PayloadFormat::SevenZip => "-t7z",
+        };
+        let output = Command::new(&seven_zip)
+            .current_dir(&staged)
+            .arg("a")
+            .arg(flag)
+            .arg(&archive)
+            .arg(".")
+            .output()?;
+        anyhow::ensure!(
+            output.status.success(),
+            "7za failed for {name}: {}",
             String::from_utf8_lossy(&output.stderr)
         );
         std::fs::remove_dir_all(&staged)?;
@@ -1742,6 +1829,111 @@ fn wait_for_exit(child: &mut Child, timeout: Duration) -> bool {
 }
 
 // ---------------------------------------------------------------------------
+// Components
+// ---------------------------------------------------------------------------
+
+/// A windowless run has no boxes to read, so the project's own answer decides:
+/// the required component installs, the default one installs, and the component
+/// with neither stays out.
+///
+/// Each component carries one file, so what the run installed is readable on
+/// the disk afterwards rather than only in the manifest.
+#[test]
+fn a_silent_run_installs_the_components_the_project_defaults_to() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.components_project()?;
+    fixture.archive_component(
+        "core.archive",
+        PayloadFormat::Zip,
+        &[("core/runtime.txt", b"core")],
+    )?;
+    fixture.archive_component(
+        "docs.archive",
+        PayloadFormat::Zip,
+        &[("docs/readme.txt", b"docs")],
+    )?;
+    fixture.archive_component(
+        "tools.archive",
+        PayloadFormat::Zip,
+        &[("tools/tool.txt", b"tools")],
+    )?;
+    fixture.archive_component(
+        "samples.archive",
+        PayloadFormat::Zip,
+        &[("samples/sample.txt", b"samples")],
+    )?;
+    fixture.build()?;
+    fixture.install()?;
+
+    assert!(
+        fixture.destination.join("core/runtime.txt").is_file(),
+        "the required component did not install"
+    );
+    assert!(
+        fixture.destination.join("tools/tool.txt").is_file(),
+        "the component the project defaults to did not install"
+    );
+    assert!(
+        !fixture.destination.join("docs/readme.txt").exists()
+            && !fixture.destination.join("samples/sample.txt").exists(),
+        "a component nobody asked for was installed"
+    );
+    Ok(())
+}
+
+/// Two payloads that carry one path are refused rather than unpacked over each
+/// other: which of the two the user ends up with would otherwise depend on the
+/// order the project happens to declare them in.
+#[test]
+fn two_payloads_that_carry_one_file_are_refused() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.components_project()?;
+    fixture.archive_component(
+        "core.archive",
+        PayloadFormat::Zip,
+        &[("core/runtime.txt", b"core")],
+    )?;
+    fixture.archive_component(
+        "docs.archive",
+        PayloadFormat::Zip,
+        &[("docs/readme.txt", b"docs")],
+    )?;
+    // The same file the product payload carries: a case that would install
+    // whichever archive happened to be unpacked second.
+    fixture.archive_component(
+        "tools.archive",
+        PayloadFormat::Zip,
+        &[("data/expected.bin", b"clash")],
+    )?;
+    fixture.archive_component(
+        "samples.archive",
+        PayloadFormat::Zip,
+        &[("samples/sample.txt", b"samples")],
+    )?;
+    fixture.build()?;
+
+    let result = fixture.install_expecting_failure()?;
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("component tools carries")
+            && stderr.contains("already installed by another payload"),
+        "the failure should name the component and the file both payloads carry: {stderr}"
+    );
+    assert!(
+        !fixture.destination.exists(),
+        "a refused install still created {}",
+        fixture.destination.display()
+    );
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // A payload that cannot be installed
 // ---------------------------------------------------------------------------
 
@@ -2148,6 +2340,117 @@ fn a_click_on_a_radio_is_the_value_the_install_waits_for() -> anyhow::Result<()>
     Ok(())
 }
 
+/// The boxes the page carries are the user's answer, and the boxes it does not
+/// carry leave the answer to the project.
+///
+/// Four components, four rules in one run: `core` is required and has no box,
+/// `docs` installs because the user ticked the box the page placed clear,
+/// `tools` installs because the project made it a default the page did not
+/// override, and `samples` stays out because the user cleared the box the page
+/// started ticked — the page wins over the project's own answer. Each component
+/// carries one file, so the run's answer is on the disk afterwards.
+#[test]
+fn the_boxes_the_page_carries_decide_which_components_install() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.components_project()?;
+    fixture.archive_component(
+        "core.archive",
+        PayloadFormat::Zip,
+        &[("core/runtime.txt", b"core")],
+    )?;
+    fixture.archive_component(
+        "docs.archive",
+        PayloadFormat::Zip,
+        &[("docs/readme.txt", b"docs")],
+    )?;
+    fixture.archive_component(
+        "tools.archive",
+        PayloadFormat::Zip,
+        &[("tools/tool.txt", b"tools")],
+    )?;
+    fixture.archive_component(
+        "samples.archive",
+        PayloadFormat::Zip,
+        &[("samples/sample.txt", b"samples")],
+    )?;
+    fixture.build()?;
+
+    let _ = unsafe { SetProcessDPIAware() };
+    let mut setup = SetupGuard::spawn(&fixture.setup)?;
+    let waited = wait_for_runtime_window(&mut setup, Instant::now() + Duration::from_secs(30));
+    let Some(window) = (match &waited {
+        WindowWait::Found(window) => Some(*window),
+        WindowWait::Exited(_) | WindowWait::Timeout => None,
+    }) else {
+        let reason = match waited {
+            WindowWait::Exited(status) => format!("the setup {status} instead of opening a window"),
+            WindowWait::Timeout => "no window appeared within 30 seconds".to_string(),
+            WindowWait::Found(_) => "the window could not be measured".to_string(),
+        };
+        let _ = setup.kill();
+        let _ = setup.wait();
+        return skip_missing_desktop(&reason);
+    };
+
+    let opened = client_size(window);
+    // The box the page places at 20,40 and starts clear, and the one at 20,70
+    // the layout starts ticked. The user's answer is these two clicks: the first
+    // adds a component, the second takes one away.
+    click_client_point(window, 30, 50);
+    click_client_point(window, 30, 80);
+    // The install button, at 20,130.
+    click_client_point(window, 90, 148);
+    let started =
+        wait_for_client_size(window, (500, 300), Instant::now() + Duration::from_secs(20));
+    // The last file of the deploy in the order the install writes them, so a run
+    // that wrote it has written everything else too.
+    let tool = wait_for_text(
+        &fixture.destination.join("tools/tool.txt"),
+        "tools",
+        Instant::now() + Duration::from_secs(20),
+    );
+    let _ = setup.kill();
+    let _ = setup.wait();
+
+    let readme = std::fs::read_to_string(fixture.destination.join("docs/readme.txt")).ok();
+    let runtime = std::fs::read_to_string(fixture.destination.join("core/runtime.txt")).ok();
+    let sample = fixture.destination.join("samples/sample.txt");
+    assert_eq!(
+        opened,
+        (720, 450),
+        "the wizard opened on {opened:?} rather than the 720x450 page the project declares"
+    );
+    assert_eq!(
+        started,
+        Some((500, 300)),
+        "the install did not start from the button on the page"
+    );
+    assert_eq!(
+        tool.as_deref(),
+        Some("tools"),
+        "the component the project defaults to did not install"
+    );
+    assert_eq!(
+        readme.as_deref(),
+        Some("docs"),
+        "the component the user ticked did not install"
+    );
+    assert_eq!(
+        runtime.as_deref(),
+        Some("core"),
+        "the required component did not install"
+    );
+    assert!(
+        !sample.exists(),
+        "the component the user cleared was installed anyway: {} was written",
+        sample.display()
+    );
+    Ok(())
+}
+
 /// What the user left on the page reaches the script, control by control.
 ///
 /// A script could install with a constant, so the install finishing proves
@@ -2525,7 +2828,9 @@ fn a_hover_and_a_press_show_the_pictures_the_button_declares() -> anyhow::Result
     // the pointer goes back where it was found, and the window back among the
     // others. Lifting it matters, because the suite runs its window cases at the
     // same time and which window the pointer is over decides which of them sees
-    // it at all.
+    // it at all -- which is why the two cases that move the pointer take
+    // `the_pointer` in turn instead of each lifting a window over the other.
+    let _pointer_case = the_pointer();
     let _pointer = PointerRestore::capture();
     let _in_front = WindowInFront::lift(window);
     let _ = unsafe { SetForegroundWindow(window) };
@@ -2657,7 +2962,9 @@ fn the_pointer_decides_which_cursor_the_wizard_shows() -> anyhow::Result<()> {
     }
 
     // The pointer belongs to the machine rather than to the case, so it is put
-    // back where it was found, including when an assertion fails first.
+    // back where it was found, including when an assertion fails first -- and
+    // only one case moves it at a time.
+    let _pointer_case = the_pointer();
     let _pointer = PointerRestore::capture();
     // A window that is not in front can set the cursor without the desktop
     // taking any notice of it, so this window is lifted above the rest of the
@@ -3481,6 +3788,23 @@ fn crc32(data: &[u8]) -> u32 {
 /// wizard on the desk. That is not only untidy: the run's output is a pipe the
 /// process inherited, and a step is over only once everything holding that pipe
 /// has let go, so a wizard left behind can keep a whole job waiting.
+/// The one pointer this desktop has, lent to one case at a time.
+///
+/// Two cases move the real pointer: the button state case and the cursor case.
+/// Each lifts its own window above the rest of the desk so that the shape and
+/// the pixels it reads back belong to that window, and two of them doing it at
+/// once would put one window above the other's -- the pointer would land on the
+/// wrong window and the case would read that window's answer. They take this in
+/// turn instead, however the suite happens to schedule them. A case that fails
+/// while holding it poisons the lock, which is why the guard keeps going: the
+/// pointer is put back by that case's own guard either way.
+static POINTER: Mutex<()> = Mutex::new(());
+
+/// Takes the desktop pointer for the length of the returned guard.
+fn the_pointer() -> MutexGuard<'static, ()> {
+    POINTER.lock().unwrap_or_else(|error| error.into_inner())
+}
+
 struct SetupGuard(Child);
 
 impl SetupGuard {

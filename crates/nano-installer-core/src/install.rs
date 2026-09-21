@@ -34,10 +34,6 @@ pub(super) struct InstallSelection {
 }
 
 impl InstallSelection {
-    fn checked(&self, id: &str, fallback: bool) -> bool {
-        self.checkboxes.get(id).copied().unwrap_or(fallback)
-    }
-
     /// The checkbox states the installer UI held when the user started the task.
     pub(super) fn checkboxes(&self) -> &std::collections::HashMap<String, bool> {
         &self.checkboxes
@@ -59,10 +55,12 @@ impl InstallSelection {
     pub(super) fn from_values(
         texts: std::collections::HashMap<String, String>,
         choices: std::collections::HashMap<String, String>,
+        checkboxes: std::collections::HashMap<String, bool>,
     ) -> Self {
         Self {
             texts,
             choices,
+            checkboxes,
             ..Self::default()
         }
     }
@@ -186,6 +184,67 @@ pub(super) fn start_install() {
             resolve_install_destination(&config, selection.destination.as_deref().map(Path::new))?;
         install_setup(&setup, &destination, &selection, task)
     });
+}
+
+/// Whether the page left the checkbox `id` ticked, with `fallback` standing in
+/// for a page that carries no such checkbox at all.
+impl InstallSelection {
+    pub(super) fn checked(&self, id: &str, fallback: bool) -> bool {
+        self.checkboxes.get(id).copied().unwrap_or(fallback)
+    }
+}
+
+/// The components a run installs, in the order the project declares them.
+///
+/// A component is chosen by the checkbox that carries its id: the page the user
+/// answered decides. A page that carries no such checkbox, and a silent run,
+/// which has no page at all, leave the project's own `default` to decide, and a
+/// component the project marked `required` is installed whatever the page says.
+pub(super) fn selected_components(
+    config: &Value,
+    checked: impl Fn(&str, bool) -> bool,
+) -> Vec<String> {
+    let Some(items) = config["components"]["items"].as_array() else {
+        return Vec::new();
+    };
+    let mut selected = Vec::new();
+    for item in items {
+        let Some(id) = item["id"].as_str() else {
+            continue;
+        };
+        let default = item["default"].as_bool().unwrap_or(false);
+        let required = item["required"].as_bool().unwrap_or(false);
+        if required || checked(id, default) {
+            selected.push(id.to_string());
+        }
+    }
+    selected
+}
+
+/// The archives an install unfolds, with what to call each one when something is
+/// wrong with it: the payload the project declares, then the payload of every
+/// component this run installs.
+fn payload_archives<'a>(
+    config: &'a Value,
+    components: &[String],
+) -> Result<Vec<(&'a str, String)>> {
+    let base = config["resources"]["payload_file"]
+        .as_str()
+        .context("resources.payload_file is required")?;
+    let mut archives = vec![(base, "the payload".to_string())];
+    let items = config["components"]["items"].as_array();
+    for id in components {
+        let payload = items
+            .and_then(|items| {
+                items
+                    .iter()
+                    .find(|item| item["id"].as_str() == Some(id.as_str()))
+            })
+            .and_then(|item| item["payload"].as_str())
+            .with_context(|| format!("component {id} is not one this project declares"))?;
+        archives.push((payload, format!("component {id}")));
+    }
+    Ok(archives)
 }
 
 /// The directory an install writes into.
@@ -400,12 +459,16 @@ fn install_setup(
     let stage = StagingDirectory::create()?;
     let extracted = stage.0.join("files");
     let backups = stage.0.join("rollback");
+    // What this run installs, decided once: the built-in flow unfolds these
+    // payloads, and a project script reads the same answer.
+    let components = selected_components(&config, |id, default| selection.checked(id, default));
     if bundle.contains(script::INSTALL_SCRIPT) {
         return script::run_install(script::InstallRequest {
             setup: setup.to_path_buf(),
             bundle,
             config,
             destination: destination.to_path_buf(),
+            components,
             selection: selection.clone(),
             stage: stage.0.clone(),
             prep,
@@ -413,7 +476,15 @@ fn install_setup(
         });
     }
     super::report_progress(15, "status.extracting")?;
-    let files = extract_payload(setup, &bundle, &config, &stage.0, &extracted, task)?;
+    let files = extract_payload(
+        setup,
+        &bundle,
+        &config,
+        &stage.0,
+        &extracted,
+        &components,
+        task,
+    )?;
     // A cancel is most likely to arrive while the payload unpacks, and this is
     // the last moment it costs nothing: nothing outside the staging directory
     // has been written yet.
@@ -582,23 +653,48 @@ pub(super) fn extract_payload(
     config: &Value,
     scratch: &Path,
     target: &Path,
+    components: &[String],
     task: &Cancellation,
 ) -> Result<Vec<PathBuf>> {
-    let payload_name = config["resources"]["payload_file"]
-        .as_str()
-        .context("resources.payload_file is required")?;
-    if !bundle.contains(payload_name) {
-        bail!("payload missing: {payload_name}");
-    }
     let uninstaller_name = config["output"]["uninstaller_name"]
         .as_str()
         .unwrap_or("uninst.exe");
-    let archive = scratch.join("payload.archive");
-    bundle.copy_file_to(payload_name, &archive)?;
-    extract_archive(setup, &archive, target, task)?;
-    let files = collect_staged_files(target)?;
-    if files.is_empty() {
-        bail!("payload archive contains no files")
+    // Every part is unpacked on its own, so the parts can be compared before they
+    // meet: two archives that carry one path would otherwise take turns silently
+    // overwriting each other, and which file ends up installed would depend on the
+    // order. The payload the project declares unpacks straight into the staging
+    // directory, which is the whole job for a project that declares no components.
+    let mut files: Vec<PathBuf> = Vec::new();
+    for (index, (payload_name, label)) in payload_archives(config, components)?
+        .into_iter()
+        .enumerate()
+    {
+        if !bundle.contains(payload_name) {
+            bail!("{label} is missing: {payload_name}");
+        }
+        let archive = scratch.join(format!("payload-{index}.archive"));
+        bundle.copy_file_to(payload_name, &archive)?;
+        let part = if index == 0 {
+            target.to_path_buf()
+        } else {
+            let part = scratch.join(format!("payload-{index}"));
+            fs::create_dir_all(&part)?;
+            part
+        };
+        extract_archive(setup, &archive, &part, task)?;
+        let unpacked = collect_staged_files(&part)?;
+        if unpacked.is_empty() {
+            bail!("{label} carries no files")
+        }
+        if let Some(path) = unpacked.iter().find(|path| files.contains(path)) {
+            bail!(
+                "{label} carries {}, which is already installed by another payload",
+                path.display()
+            );
+        }
+        merge_staged(&part, target, &unpacked)?;
+        files.extend(unpacked);
+        files.sort();
     }
     if files
         .iter()
@@ -614,6 +710,27 @@ pub(super) fn extract_payload(
         bail!("payload does not contain the configured application executable: {exe_name}")
     }
     Ok(files)
+}
+
+/// Moves the files a part unpacked into the directory the payload deploys from.
+///
+/// The parts are unpacked side by side so they can be compared, and a rename
+/// inside the staging directory costs nothing next to copying a product's worth
+/// of files; the part that unpacked straight into `target` has nothing to move.
+fn merge_staged(part: &Path, target: &Path, files: &[PathBuf]) -> Result<()> {
+    if part == target {
+        return Ok(());
+    }
+    for relative in files {
+        let destination = target.join(relative);
+        fs::create_dir_all(
+            destination
+                .parent()
+                .context("payload target has no parent")?,
+        )?;
+        fs::rename(part.join(relative), &destination)?;
+    }
+    Ok(())
 }
 
 /// Unpacks the payload with the runtime embedded in the setup image.
@@ -1904,8 +2021,8 @@ mod tests {
         begin_deployment, check_cancelled, deploy_files, parse_silent_arguments,
         preserved_data_paths, previous_install, register_uninstaller, registry_key_exists,
         registry_path, require_free_space, require_silent_support, resolve_install_destination,
-        validate_destination, wide, Cancellation, Cancelled, Deployment, InstallArtifacts,
-        PreviousInstall, MANIFEST_NAME,
+        selected_components, validate_destination, wide, Cancellation, Cancelled, Deployment,
+        InstallArtifacts, PreviousInstall, MANIFEST_NAME,
     };
     use anyhow::Result;
     use std::path::{Path, PathBuf};
@@ -2342,6 +2459,41 @@ mod tests {
             Some("nano-installer-path-test")
         );
         Ok(())
+    }
+
+    /// The page the user answered decides which components a run installs. A box
+    /// the page carries answers for the component of that id; a component the page
+    /// carries no box for keeps the project's default; a required component is
+    /// installed whatever the page says.
+    #[test]
+    fn the_page_and_the_project_decide_which_components_install() {
+        let config = serde_json::json!({
+            "components": { "items": [
+                { "id": "core", "payload": "payload/core.7z", "required": true },
+                { "id": "docs", "payload": "payload/docs.7z" },
+                { "id": "samples", "payload": "payload/samples.7z", "default": true }
+            ] }
+        });
+        // The page answered for docs alone, so docs installs and samples keeps the
+        // default the project gave it.
+        let ticked = selected_components(&config, |id, default| id == "docs" || default);
+        assert_eq!(ticked, ["core", "docs", "samples"]);
+        // A silent run has no page, which is the same as a page that carries none of
+        // these boxes: the project decides, except where it said required.
+        let silent = selected_components(&config, |_, default| default);
+        assert_eq!(silent, ["core", "samples"]);
+        // The user can clear a default the project chose, and cannot clear a required
+        // component.
+        let cleared = selected_components(&config, |_, _| false);
+        assert_eq!(cleared, ["core"]);
+    }
+
+    /// A project that declares no components installs its payload and nothing else,
+    /// however the page answers.
+    #[test]
+    fn a_project_without_components_installs_none_of_them() {
+        let config = serde_json::json!({ "resources": { "payload_file": "payload/app.7z" } });
+        assert!(selected_components(&config, |_, _| true).is_empty());
     }
 
     /// An explicit directory wins over the configured one, which is what lets a

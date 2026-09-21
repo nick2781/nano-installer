@@ -30,6 +30,8 @@
 | `get_checkbox_value(id)` | 读取复选框；安装用布局里的控件 id（如 `chkShotcut`），卸载用 `keep_data` |
 | `get_text_value(id)` | 读取文本框当前的值；页面没有这个控件时返回空串 |
 | `get_choice_value(id)` | 读取下拉框或单选组当前的那一行；下拉框用控件 id，单选组用组的名字；页面没有时返回空串 |
+| `is_component_selected(id)` | 这次运行是否装该组件 |
+| `selected_components()` | 这次安装的组件名数组，按工程声明的顺序 |
 | `get_mode()` | `"install"` 或 `"uninstall"` |
 | `log_info(text)`、`log_warn(text)`、`log_error(text)` | 写入脚本日志 |
 
@@ -39,6 +41,12 @@
 
 `get_text_value` 与 `get_choice_value` 读的是用户按下开始安装那一刻页面上的取值；静默运行没有页面，
 两个原语读到的都是空串。
+
+组件选择由同一条规则得出：基础载荷之外，工程用 `components.items` 切出来的组件里这次运行挑了哪些。
+`is_component_selected(id)` 按组件名回答，`selected_components()` 按工程声明的顺序给出数组，规则见
+[配置参考](CONFIG_REFERENCE.md#组件)。卸载没有页面也没有组件选择，两个原语一律给出 `false` 与空数组。
+复选框本身也能用 `get_checkbox_value` 按组件名读到，但那是页面上的控件；要问装不装，用上面这两个。
+
 
 脚本没有控制台输出。失败时最后 32 行日志会附在向导显示的错误后面。
 
@@ -64,7 +72,8 @@
 | `sleep_ms(milliseconds)` | 等待 |
 
 `extract_payload*` 走的是内置流程那一套解压：payload 先落盘，交给对应的运行时展开，同时校验归档
-里没有卸载程序、manifest 和符号链接。
+里没有卸载程序、manifest 和符号链接。解的是基础载荷与这次选中的组件：归档按工程声明的顺序逐个展开，
+两个归档带同一个相对路径会当场失败。
 
 `get_tools_dir()` 把 `resources.tools_dir` 指到的目录摊进安装包自己的暂存目录，保留原来的相对路径，
 再把目录路径返回给脚本，可以直接交给 `run_command`。一次运行只摊一次，再问一次拿到同一个路径。

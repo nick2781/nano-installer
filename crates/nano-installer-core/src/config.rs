@@ -69,6 +69,7 @@ const SECTIONS: &[(&str, &[&str])] = &[
             "tools_dir",
         ],
     ),
+    ("components", &["items"]),
     ("localization", &["default_locale", "supported_locales"]),
     ("ui", &["dpi_aware", "dpi_threshold", "dialog_layout"]),
     ("wizard", &["pages", "uninstall_pages"]),
@@ -88,6 +89,10 @@ const PAGE_KEYS: &[&str] = &["id", "title", "layout", "role"];
 
 /// The two jobs a page can name, so a project can order its pages freely.
 const PAGE_ROLES: &[&str] = &["progress", "finish"];
+
+/// The keys one entry of `components.items` accepts. A component is a part of what a product
+/// installs, chosen on the page by a checkbox that carries the component's id.
+const COMPONENT_KEYS: &[&str] = &["id", "payload", "default", "required"];
 
 /// A section that parses and is read by nothing.
 const INACTIVE_SECTIONS: &[(&str, &str)] = &[(
@@ -160,6 +165,14 @@ pub(super) fn audit(config: &Value) -> Result<()> {
         bail!("installer_config.json: the configuration must be a JSON object")
     };
     let mut problems: Vec<String> = Vec::new();
+    // A component that named the project's own payload would travel twice in one
+    // setup and could never be left out, so the audit needs to know which file that
+    // is before it reads the components.
+    let base_payload = object
+        .get("resources")
+        .and_then(|resources| resources.get("payload_file"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
     for (section, value) in object {
         if FREE_FORM_SECTIONS.contains(&section.as_str()) {
             continue;
@@ -190,8 +203,12 @@ pub(super) fn audit(config: &Value) -> Result<()> {
                     "{path}: not a setting this build knows; check the spelling, or remove it"
                 ));
             }
-            if section == "wizard" && matches!(key.as_str(), "pages" | "uninstall_pages") {
-                audit_pages(&path, entry, &mut problems);
+            match (section.as_str(), key.as_str()) {
+                ("wizard", "pages" | "uninstall_pages") => audit_pages(&path, entry, &mut problems),
+                ("components", "items") => {
+                    audit_components(&path, entry, base_payload, &mut problems)
+                }
+                _ => {}
             }
         }
     }
@@ -248,6 +265,65 @@ fn audit_pages(path: &str, value: &Value, problems: &mut Vec<String>) {
     }
 }
 
+fn audit_components(path: &str, value: &Value, base_payload: &str, problems: &mut Vec<String>) {
+    let Some(entries) = value.as_array() else {
+        problems.push(format!("{path}: must be a list of component entries"));
+        return;
+    };
+    let mut ids: Vec<String> = Vec::new();
+    let mut payloads: Vec<String> = Vec::new();
+    for (index, entry) in entries.iter().enumerate() {
+        let Some(fields) = entry.as_object() else {
+            problems.push(format!("{path}[{index}]: must be a JSON object"));
+            continue;
+        };
+        for key in fields.keys() {
+            if !COMPONENT_KEYS.contains(&key.as_str()) {
+                problems.push(format!(
+                    "{path}[{index}].{key}: not a component setting this build knows; check the spelling, or remove it"
+                ));
+            }
+        }
+        let id = fields.get("id").and_then(Value::as_str).unwrap_or("");
+        if id.trim().is_empty() {
+            problems.push(format!(
+                "{path}[{index}].id: a component needs the id its checkbox carries"
+            ));
+        } else if ids.iter().any(|seen| seen == id) {
+            problems.push(format!(
+                "{path}[{index}].id: {id} names a second component; a checkbox has one id, so two components cannot share one"
+            ));
+        } else {
+            ids.push(id.to_string());
+        }
+        let payload = fields.get("payload").and_then(Value::as_str).unwrap_or("");
+        if payload.trim().is_empty() {
+            problems.push(format!(
+                "{path}[{index}].payload: a component needs the payload archive it installs"
+            ));
+        } else if payload == base_payload {
+            problems.push(format!(
+                "{path}[{index}].payload: {payload} is resources.payload_file, which every install unfolds; a component needs an archive of its own"
+            ));
+        } else if payloads.iter().any(|seen| seen == payload) {
+            problems.push(format!(
+                "{path}[{index}].payload: {payload} is the payload of another component; two components that install one archive cannot be chosen apart"
+            ));
+        } else {
+            payloads.push(payload.to_string());
+        }
+        let required = fields
+            .get("required")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        if required && fields.get("default").and_then(Value::as_bool) == Some(false) {
+            problems.push(format!(
+                "{path}[{index}].default: a required component is installed whatever the page says, so a default of false changes nothing; write true or leave it out"
+            ));
+        }
+    }
+}
+
 fn inactive_section_reason(section: &str) -> Option<&'static str> {
     INACTIVE_SECTIONS
         .iter()
@@ -287,6 +363,12 @@ mod tests {
             "wizard": {
                 "pages": [ { "id": "config", "title": "Options", "layout": "layouts/configpage.xml" } ],
                 "uninstall_pages": [ { "layout": "layouts/uninstallpage.xml" } ]
+            },
+            "components": {
+                "items": [
+                    { "id": "core", "payload": "payload/core.7z", "required": true },
+                    { "id": "docs", "payload": "payload/docs.7z" }
+                ]
             },
             "uninstall": { "data_paths": ["%APPDATA%\\MyApp"] },
             "advanced": { "silent_mode_support": true, "uninstall_mode_support": true }
@@ -367,6 +449,64 @@ mod tests {
         }));
         assert!(
             text.contains("wizard.pages[0].layouts: not a page setting this build knows"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn refuses_two_components_that_share_an_id_or_a_payload() {
+        let text = audit_text(&json!({
+            "components": { "items": [
+                { "id": "docs", "payload": "payload/docs.7z" },
+                { "id": "docs", "payload": "payload/samples.7z" },
+                { "id": "samples", "payload": "payload/samples.7z" }
+            ] }
+        }));
+        assert!(
+            text.contains("components.items[1].id: docs names a second component"),
+            "{text}"
+        );
+        assert!(
+            text.contains("components.items[2].payload: payload/samples.7z is the payload of another component"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn refuses_a_component_without_an_id_or_a_payload() {
+        let text = audit_text(&json!({
+            "components": { "items": [ { "default": true } ] }
+        }));
+        assert!(
+            text.contains("components.items[0].id: a component needs the id"),
+            "{text}"
+        );
+        assert!(
+            text.contains("components.items[0].payload: a component needs the payload"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn refuses_a_required_component_whose_default_is_false() {
+        let text = audit_text(&json!({
+            "components": { "items": [
+                { "id": "core", "payload": "payload/core.7z", "required": true, "default": false }
+            ] }
+        }));
+        assert!(
+            text.contains("components.items[0].default: a required component is installed whatever the page says"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn refuses_an_unknown_component_key() {
+        let text = audit_text(&json!({
+            "components": { "items": [ { "id": "docs", "payload": "payload/docs.7z", "optional": true } ] }
+        }));
+        assert!(
+            text.contains("components.items[0].optional: not a component setting this build knows"),
             "{text}"
         );
     }

@@ -249,6 +249,7 @@ fn extract(context: &ScriptContext, start: f64, end: f64) -> bool {
         context.config(),
         context.stage(),
         &extracted,
+        context.components(),
         context.cancellation(),
     );
     let files = match result {

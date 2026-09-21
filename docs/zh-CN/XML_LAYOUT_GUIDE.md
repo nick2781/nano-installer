@@ -146,6 +146,9 @@ Image/Icon，用来组合文字与图标。
 </VBox>
 ```
 
+上面这几个复选框不只是画出来的一排选项：工程可以用 `components.items` 把安装内容切成组件，复选框的
+`id` 就是组件名，用户留下一行勾着，这次安装就装那个组件，规则见[配置参考](CONFIG_REFERENCE.md#组件)。
+
 ## Label、Select 与 RadioButton
 
 - 绝对定位 Label：支持 `text`/`value`、font-size、font-weight、color 与 `textalign=center`。

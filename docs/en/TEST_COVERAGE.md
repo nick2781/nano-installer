@@ -3,7 +3,7 @@
 Every behaviour the documentation promises, and the automated case that holds it. A row names the
 cases that fail when that behaviour breaks; a behaviour with no row is one nobody is checking.
 
-`cargo test --locked --workspace` runs 243 cases: 177 in the core library, 30 that build a real
+`cargo test --locked --workspace` runs 253 cases: 184 in the core library, 33 that build a real
 setup and run it, 5 that read a project the way the builder does, 29 in the visual builder, and 2
 in the extraction runtimes. The setup-level cases need real runtime executables built first, which
 is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `target/e2e-report.txt`.
@@ -12,8 +12,8 @@ is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `targe
 
 | Layer | Cases | Proves | Cannot prove |
 | --- | --- | --- | --- |
-| Core library | 177 | what a page becomes — layers, coordinates, hit regions, text — what the bundle carries, what an install writes to disk and the registry, what each script primitive does, and what a script reads back off the page | that a packaged setup reaches any of it |
-| Setup end to end | 30 | a built setup installed on the machine, its own window driven: payload bytes, manifest, uninstall entry, shortcuts, autostart, project scripts, the helpers a script runs, the wizard window, the clicks its own pages wait for, a wheel over a list, the card a script's messages and questions are answered on, the page's values reaching the script, and what only a moving pointer and a real keyboard bring about -- the bitmaps hover and press swap in, the three standard cursor shapes, the language menu's arrow keys with Enter and Escape, and the folder picker | the two windows an input method draws itself; which field a directory chosen in the shell's folder dialog is written to; and the cursor shape on a session that is showing no pointer, where that case prints its own skip |
+| Core library | 184 | what a page becomes — layers, coordinates, hit regions, text — what the bundle carries, what an install writes to disk and the registry, what each script primitive does, and what a script reads back off the page and off the run | that a packaged setup reaches any of it |
+| Setup end to end | 33 | a built setup installed on the machine, its own window driven: payload bytes, manifest, uninstall entry, shortcuts, autostart, project scripts, the helpers a script runs, the wizard window, the clicks its own pages wait for, a wheel over a list, the card a script's messages and questions are answered on, the page's values reaching the script, which components a page and a project put in, and what only a moving pointer and a real keyboard bring about -- the bitmaps hover and press swap in, the three standard cursor shapes, the language menu's arrow keys with Enter and Escape, and the folder picker | the two windows an input method draws itself; which field a directory chosen in the shell's folder dialog is written to; and the cursor shape on a session that is showing no pointer, where that case prints its own skip |
 | Project inspection | 5 | the summary and the warning list the builder shows before a build | |
 | Visual builder | 29 | the window's own state, parameters, log and warnings | clicking the real controls |
 | Extraction runtimes | 2 | a broken archive, and an unsafe path inside one, are refused | extracting an archive that is sound -- the setup-level cases run a real runtime over a real payload |
@@ -40,6 +40,7 @@ is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `targe
 | `shortcuts.desktop_shortcut`, `shortcuts.desktop_default` | `a_silent_install_writes_the_shortcuts_and_the_autostart_entry`, `removes_recorded_shortcuts_and_only_their_empty_folder` |
 | `shortcuts.start_menu`, `shortcuts.start_menu_folder` | the same two, plus `drops_the_shortcut_folder_once_it_is_empty` |
 | `autostart.enabled`, `autostart.default`, `autostart.registry_key`, `autostart.registry_value_name` | `a_silent_install_writes_the_shortcuts_and_the_autostart_entry` |
+| `components.items` | `the_page_and_the_project_decide_which_components_install`, `a_project_without_components_installs_none_of_them`, `a_script_sees_the_components_the_run_installs`, `a_silent_run_installs_the_components_the_project_defaults_to`, `the_boxes_the_page_carries_decide_which_components_install`, `two_payloads_that_carry_one_file_are_refused`, `refuses_a_component_without_an_id_or_a_payload`, `refuses_a_required_component_whose_default_is_false`, `refuses_an_unknown_component_key`, `refuses_two_components_that_share_an_id_or_a_payload` |
 | `resources.*` | `project_bundle_roundtrips_layout_assets_and_locales`, `project_pack_progress_describes_assets_payload_and_uninstaller`, `the_payload_format_selects_the_runtime_that_gets_embedded`, `a_project_bundles_the_tools_directory_it_names`, `a_project_that_names_no_tools_bundles_none`, `a_setup_unpacks_the_tools_its_project_bundles` |
 | `localization.default_locale` | `version::tests::maps_default_locale_to_version_language`, `the_summary_reports_what_the_project_declares` |
 | `localization.supported_locales` | `a_supported_locale_without_a_file_is_reported`, `a_translation_missing_page_text_is_reported` |
@@ -75,6 +76,7 @@ is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `targe
 | `Spacer` | `a_spacer_takes_what_the_fixed_items_leave` |
 | pinning by `right`, `bottom`, `inset` and the single-side forms | `an_element_is_pinned_by_the_edge_attribute_it_carries` |
 | `Label` text, font, alignment and colour | `a_label_takes_its_text_font_and_alignment_from_the_layout`, `text_colors_read_as_rgb_with_or_without_an_alpha_channel`, `a_bound_label_shows_its_own_text_beside_the_value_it_reads` |
+| a component chosen by a checkbox of its id, and what the page leaves ticked deciding which components install | `the_boxes_the_page_carries_decide_which_components_install`, `the_page_and_the_project_decide_which_components_install` |
 | `Checkbox` state images, text, links, toggling | `an_absolutely_placed_checkbox_draws_its_state_image_and_toggles` |
 | `RadioButton`: one value per group, the layout's default, and the click that replaces it | `a_radio_group_holds_one_value_at_a_time`, `a_click_on_a_radio_is_the_value_the_install_waits_for` |
 | `Select`: the language list, and the options a project declares | `a_language_menu_lists_its_options_and_marks_the_one_in_use`, `a_closed_language_select_draws_its_arrow_over_its_fill_and_outline`, `a_select_offers_the_options_the_page_declares`, `the_language_menu_answers_to_the_keyboard` |
@@ -109,6 +111,7 @@ setup-level cases prove the `scripts` directory and the tools directory survive 
 | registry primitives, including the shared-key rule | `registry_primitives_round_trip_and_forget_a_key_they_created`, `uninstalling_a_shared_key_removes_only_the_value_the_script_wrote` |
 | shortcut primitives | `an_install_script_creates_shortcuts_the_uninstall_takes_back`, `a_script_deletes_the_desktop_shortcut_and_the_start_menu_folder_it_created` |
 | progress, status, mode, checkboxes and cancellation | `out_of_range_progress_and_both_status_forms_do_not_disturb_the_install`, `an_uninstall_script_sees_the_uninstall_mode_and_the_keep_data_checkbox`, `a_script_step_text_wins_over_the_locale_key`, `a_built_in_step_clears_a_script_step_text`, `a_running_script_sees_the_cancel_request`, `a_cancelled_install_gives_up_after_the_script_and_undoes_what_it_wrote` |
+| the components a script reads off the run: `is_component_selected` and `selected_components` | `a_script_sees_the_components_the_run_installs` |
 | the values the script reads off the page: the text a field holds and the value a choice control stands on, and an empty string for an id the page never declares | `a_script_reads_the_values_the_page_holds`, `the_values_the_page_holds_reach_the_script` |
 | environment, configuration, drives and the running image | `the_script_reads_the_environment_and_the_project_configuration`, `the_script_reports_the_image_it_runs_from`, `the_script_queries_fixed_disks_and_notifies_the_shell` |
 | the tools a project bundles | `a_script_reads_the_tools_the_project_bundled`, `a_script_that_asks_for_tools_a_project_did_not_bundle_gets_nothing`, `a_setup_unpacks_the_tools_its_project_bundles` |
@@ -121,6 +124,7 @@ setup-level cases prove the `scripts` directory and the tools directory survive 
 
 | Behaviour | Cases |
 | --- | --- |
+| components: the page and the project together decide which ones install, and two archives carrying one path are refused | `a_silent_run_installs_the_components_the_project_defaults_to`, `the_boxes_the_page_carries_decide_which_components_install`, `two_payloads_that_carry_one_file_are_refused` |
 | a fresh install: files, manifest, registration | `installs_a_fresh_directory_and_records_the_manifest`, `a_built_setup_installs_its_payload_and_registers_an_uninstall_entry` |
 | config paths expanded, explicit directory wins | `configured_install_paths_are_expanded`, `an_explicit_install_path_wins_over_the_configured_one`, `a_configured_percent_path_is_expanded_and_used`, `an_explicit_directory_wins_over_the_configured_one` |
 | refusing to install over a directory it did not create | `refuses_to_install_over_a_directory_it_did_not_create`, `refuses_a_foreign_manifest_at_the_destination`, `refuses_relative_or_root_installation` |
