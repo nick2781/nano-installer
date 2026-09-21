@@ -17,11 +17,20 @@ use windows::Win32::System::Registry::{
 
 use super::{script, shell, BundleIndex, RuntimeMode, UI};
 
-/// Shortcut and autostart preferences gathered from the installer UI.
+/// What the installer UI held when the user started the task.
+///
+/// A project script decides the steps, so the values the user left on the page
+/// are as much its input as the directory to install into: it reads them
+/// through `get_text_value` and `get_choice_value`.
 #[derive(Default, Clone)]
 pub(super) struct InstallSelection {
     destination: Option<String>,
     checkboxes: std::collections::HashMap<String, bool>,
+    /// What each text field held, under the id the layout gave it.
+    texts: std::collections::HashMap<String, String>,
+    /// What each choice control held, under the id of the control that owns the
+    /// choice: a select's own id, or the group a radio button belongs to.
+    choices: std::collections::HashMap<String, String>,
 }
 
 impl InstallSelection {
@@ -32,6 +41,30 @@ impl InstallSelection {
     /// The checkbox states the installer UI held when the user started the task.
     pub(super) fn checkboxes(&self) -> &std::collections::HashMap<String, bool> {
         &self.checkboxes
+    }
+
+    /// What the page's text fields held when the user started the task.
+    pub(super) fn texts(&self) -> &std::collections::HashMap<String, String> {
+        &self.texts
+    }
+
+    /// What the page's choice controls held when the user started the task.
+    pub(super) fn choices(&self) -> &std::collections::HashMap<String, String> {
+        &self.choices
+    }
+
+    /// A selection carrying the values a page handed over, for a caller that
+    /// drives the script without a window -- which is what a test does.
+    #[cfg(test)]
+    pub(super) fn from_values(
+        texts: std::collections::HashMap<String, String>,
+        choices: std::collections::HashMap<String, String>,
+    ) -> Self {
+        Self {
+            texts,
+            choices,
+            ..Self::default()
+        }
     }
 }
 
@@ -137,6 +170,8 @@ pub(super) fn start_install() {
             matches!(state.mode, RuntimeMode::Installer).then(|| InstallSelection {
                 destination: state.interaction.text_input_values.get("editDir").cloned(),
                 checkboxes: state.interaction.checkbox_states.clone(),
+                texts: state.interaction.text_input_values.clone(),
+                choices: state.interaction.choices.clone(),
             })
         });
     let Some(selection) = selection else {
@@ -239,12 +274,10 @@ pub(super) fn run_silent_install(arguments: &[std::ffi::OsString]) -> Result<()>
     let config = bundle.read_config()?;
     require_silent_support(&config, "silent_mode_support")?;
     let destination = resolve_install_destination(&config, override_destination.as_deref())?;
-    // No window means no checkboxes, so every shortcut and autostart decision
-    // falls back to the default the project configured.
-    let selection = InstallSelection {
-        destination: None,
-        checkboxes: std::collections::HashMap::new(),
-    };
+    // No window means no checkbox and no field is there to be read, so every
+    // shortcut, autostart and value decision falls back to what the project
+    // configured.
+    let selection = InstallSelection::default();
     install_setup(&setup, &destination, &selection, &Cancellation::default())
 }
 

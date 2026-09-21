@@ -3,7 +3,7 @@
 Every behaviour the documentation promises, and the automated case that holds it. A row names the
 cases that fail when that behaviour breaks; a behaviour with no row is one nobody is checking.
 
-`cargo test --locked --workspace` runs 241 cases: 176 in the core library, 29 that build a real
+`cargo test --locked --workspace` runs 243 cases: 177 in the core library, 30 that build a real
 setup and run it, 5 that read a project the way the builder does, 29 in the visual builder, and 2
 in the extraction runtimes. The setup-level cases need real runtime executables built first, which
 is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `target/e2e-report.txt`.
@@ -12,8 +12,8 @@ is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `targe
 
 | Layer | Cases | Proves | Cannot prove |
 | --- | --- | --- | --- |
-| Core library | 176 | what a page becomes — layers, coordinates, hit regions, text — what the bundle carries, what an install writes to disk and the registry, and what each script primitive does | that a packaged setup reaches any of it |
-| Setup end to end | 29 | a built setup installed on the machine, its own window driven: payload bytes, manifest, uninstall entry, shortcuts, autostart, project scripts, the helpers a script runs, the wizard window, the clicks its own pages wait for, a wheel over a list, the card a script's messages and questions are answered on, and what only a moving pointer and a real keyboard bring about -- the bitmaps hover and press swap in, the three standard cursor shapes, the language menu's arrow keys with Enter and Escape, and the folder picker | the two windows an input method draws itself; which field a directory chosen in the shell's folder dialog is written to; and the cursor shape on a session that is showing no pointer, where that case prints its own skip |
+| Core library | 177 | what a page becomes — layers, coordinates, hit regions, text — what the bundle carries, what an install writes to disk and the registry, what each script primitive does, and what a script reads back off the page | that a packaged setup reaches any of it |
+| Setup end to end | 30 | a built setup installed on the machine, its own window driven: payload bytes, manifest, uninstall entry, shortcuts, autostart, project scripts, the helpers a script runs, the wizard window, the clicks its own pages wait for, a wheel over a list, the card a script's messages and questions are answered on, the page's values reaching the script, and what only a moving pointer and a real keyboard bring about -- the bitmaps hover and press swap in, the three standard cursor shapes, the language menu's arrow keys with Enter and Escape, and the folder picker | the two windows an input method draws itself; which field a directory chosen in the shell's folder dialog is written to; and the cursor shape on a session that is showing no pointer, where that case prints its own skip |
 | Project inspection | 5 | the summary and the warning list the builder shows before a build | |
 | Visual builder | 29 | the window's own state, parameters, log and warnings | clicking the real controls |
 | Extraction runtimes | 2 | a broken archive, and an unsafe path inside one, are refused | extracting an archive that is sound -- the setup-level cases run a real runtime over a real payload |
@@ -109,6 +109,7 @@ setup-level cases prove the `scripts` directory and the tools directory survive 
 | registry primitives, including the shared-key rule | `registry_primitives_round_trip_and_forget_a_key_they_created`, `uninstalling_a_shared_key_removes_only_the_value_the_script_wrote` |
 | shortcut primitives | `an_install_script_creates_shortcuts_the_uninstall_takes_back`, `a_script_deletes_the_desktop_shortcut_and_the_start_menu_folder_it_created` |
 | progress, status, mode, checkboxes and cancellation | `out_of_range_progress_and_both_status_forms_do_not_disturb_the_install`, `an_uninstall_script_sees_the_uninstall_mode_and_the_keep_data_checkbox`, `a_script_step_text_wins_over_the_locale_key`, `a_built_in_step_clears_a_script_step_text`, `a_running_script_sees_the_cancel_request`, `a_cancelled_install_gives_up_after_the_script_and_undoes_what_it_wrote` |
+| the values the script reads off the page: the text a field holds and the value a choice control stands on, and an empty string for an id the page never declares | `a_script_reads_the_values_the_page_holds`, `the_values_the_page_holds_reach_the_script` |
 | environment, configuration, drives and the running image | `the_script_reads_the_environment_and_the_project_configuration`, `the_script_reports_the_image_it_runs_from`, `the_script_queries_fixed_disks_and_notifies_the_shell` |
 | the tools a project bundles | `a_script_reads_the_tools_the_project_bundled`, `a_script_that_asks_for_tools_a_project_did_not_bundle_gets_nothing`, `a_setup_unpacks_the_tools_its_project_bundles` |
 | processes | `a_script_runs_a_command_and_sees_its_exit_code`, `a_script_recognises_a_running_process_by_its_image_name` |

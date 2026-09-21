@@ -31,6 +31,19 @@ pub(super) fn register(engine: &mut Engine, context: ScriptContext) {
         c.checkbox(id)
     });
 
+    // What the page held when the user started the task. A page that declares
+    // neither the field nor the choice reads as empty text, so a project's
+    // script can ask without its layout having to carry every control.
+    let c = context.clone();
+    engine.register_fn("get_text_value", move |id: &str| -> String {
+        c.text_value(id)
+    });
+
+    let c = context.clone();
+    engine.register_fn("get_choice_value", move |id: &str| -> String {
+        c.choice_value(id)
+    });
+
     let c = context.clone();
     engine.register_fn("get_mode", move || -> String {
         match c.mode() {

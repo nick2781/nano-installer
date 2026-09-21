@@ -44,6 +44,8 @@
 - 页面之间可以前后走：按钮用 `next` 与 `back` 两个动作在工程声明的页面之间移动，走到头就停住，
   不打转。页面还可以声明自己是报告进度的页还是结束页，许可页、选项页因此可以排在它们前面；
   一个职责只能由一个页面承担。
+- 脚本读得到用户留在页面上的取值。文本框里的字、下拉框和单选组当前的那一行，各按版面里的控件 id
+  或组的名字取回，页面没有声明的 id 读成空串而不是报错；静默运行没有页面，读到的也是空串。
 
 ### 改进
 
@@ -93,6 +95,9 @@
   `Label` 画出哪句文案；`enabled-when` 除复选框与面板外还认 `<字段 id>:valid` 与 `:invalid`。
   空字段原先在取文字的提前返回处被丢掉，`push_text_input` 现在在绝对与流式两条路径上都登记命中
   区域。
+- 页面取值：`InstallSelection` 除复选框外还带上 `texts` 与 `choices` 两份快照，由 `start_install()` 从
+  `InteractionState` 拷出，`api_ui::get_text_value`/`get_choice_value` 按同一份映射取值，缺失的 id 是
+  空串；静默运行交出的是一份空选择，所以没有页面时读到的就是空串。
 - 选择：当前取值存在 `InteractionState.choices` 里，键是下拉框自己的 `id` 或单选组的名字；
   `ToggleLanguageMenu` 改名 `ToggleSelectMenu`，展开的菜单按打开它的控件记账，键盘只走当前打开的
   那个菜单。
@@ -141,11 +146,11 @@
 
 ### 已验证
 
-- `cargo test --locked --workspace`：共 241 条用例，240 通过、0 失败、1 忽略，退出码 0（核心库 176、
-  安装包级 29、工程检查 5、可视化构建器 29，另加两个解压运行时用例；被忽略的
+- `cargo test --locked --workspace`：共 243 条用例，242 通过、0 失败、1 忽略，退出码 0（核心库 177、
+  安装包级 30、工程检查 5、可视化构建器 29，另加两个解压运行时用例；被忽略的
   `install::tests::registers_and_cleans_up_scoped_uninstall_key` 要在隔离环境里写 HKCU）。
   报告在 `target/test-report.txt` 与 `target/test-report.html`。
-- 安装包级的 29 条全跑通，没有一条被跳过，其中 11 条会打开真实的向导窗口；
+- 安装包级的 30 条全跑通，没有一条被跳过，其中 12 条会打开真实的向导窗口；
   `run_e2e_setup.ps1 -RequireDesktop` 那次把跳过当成失败，中英两份报告在 `target/e2e-report.txt`、
   `target/e2e-report.html` 与 `target/e2e-report-en.txt`。
 - 示例工程 6 个页面的 10 张快照逐页对照版面检查通过，检查结果在 `target/setup-snapshots/manifest.json`；

@@ -96,6 +96,10 @@ struct Inner {
     config: Value,
     install_path: PathBuf,
     checkboxes: HashMap<String, bool>,
+    /// What the page's text fields held, by the id the layout gave each one.
+    texts: HashMap<String, String>,
+    /// What the page's choice controls held, by the id that owns the choice.
+    choices: HashMap<String, String>,
     keep_data: bool,
     /// The manifest the uninstaller replays; `Null` while installing.
     manifest: Value,
@@ -120,6 +124,10 @@ pub(super) struct ScriptEnvironment {
     pub(super) config: Value,
     pub(super) install_path: PathBuf,
     pub(super) checkboxes: HashMap<String, bool>,
+    /// The values the page held when the user started the task, which a script
+    /// reads through `get_text_value` and `get_choice_value`.
+    pub(super) texts: HashMap<String, String>,
+    pub(super) choices: HashMap<String, String>,
     pub(super) keep_data: bool,
     pub(super) manifest: Value,
     pub(super) previous: Option<PreviousInstall>,
@@ -145,6 +153,8 @@ impl ScriptContext {
                 config: environment.config,
                 install_path: environment.install_path,
                 checkboxes: environment.checkboxes,
+                texts: environment.texts,
+                choices: environment.choices,
                 keep_data: environment.keep_data,
                 manifest: environment.manifest,
                 previous: environment.previous,
@@ -236,6 +246,19 @@ impl ScriptContext {
 
     pub(super) fn checkbox(&self, id: &str) -> bool {
         self.inner.checkboxes.get(id).copied().unwrap_or(false)
+    }
+
+    /// What the page's field `id` held. A layout that declares no such field
+    /// reads as empty text, so a script can ask for a value the page it runs on
+    /// does not carry.
+    pub(super) fn text_value(&self, id: &str) -> String {
+        self.inner.texts.get(id).cloned().unwrap_or_default()
+    }
+
+    /// What the page's choice `id` held, empty when the page offers no such
+    /// choice.
+    pub(super) fn choice_value(&self, id: &str) -> String {
+        self.inner.choices.get(id).cloned().unwrap_or_default()
     }
 
     /// Recovers the state even if an earlier script panicked while holding it;

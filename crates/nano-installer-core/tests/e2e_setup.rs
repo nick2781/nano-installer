@@ -393,6 +393,40 @@ impl Fixture {
         })
     }
 
+    /// Declares a wizard that asks the user for a value before it installs.
+    ///
+    /// The first page carries a field the user types into and a choice group,
+    /// and the page the task reports on declares a different client area, so the
+    /// window's own size says whether the install started.
+    fn values_project(&self) -> anyhow::Result<()> {
+        std::fs::write(
+            self.project.join("layouts/configpage.xml"),
+            r##"<Page width="720" height="450" background="#FF101010">
+  <TextInput id="serial" position="absolute" left="20" top="40" width="300" height="26" />
+  <RadioButton id="portable" group="edition" value="portable" text="Portable" checked="true"
+               position="absolute" left="20" top="90" width="200" height="20" />
+  <RadioButton id="installed" group="edition" value="installed" text="Installed"
+               position="absolute" left="20" top="120" width="200" height="20" />
+  <Button id="install" action="install" text="Install"
+          position="absolute" left="20" top="170" width="140" height="36" />
+</Page>"##,
+        )?;
+        std::fs::write(
+            self.project.join("layouts/taskspage.xml"),
+            r##"<Page width="500" height="300" background="#FF202020" />"##,
+        )?;
+        self.edit_config(|config| {
+            // The page asks for no directory of its own, so the install runs
+            // against the one the project configures.
+            config["install"]["default_path"] =
+                serde_json::json!(self.destination.to_string_lossy());
+            config["wizard"]["pages"] = serde_json::json!([
+                {"id": "config", "title": "Options", "layout": "layouts/configpage.xml"},
+                {"id": "tasks", "title": "Installing", "layout": "layouts/taskspage.xml", "role": "progress"}
+            ]);
+        })
+    }
+
     /// Declares a wizard whose task can be stopped from the page it runs on.
     ///
     /// The first page starts the install, the page the task reports on carries
@@ -2110,6 +2144,96 @@ fn a_click_on_a_radio_is_the_value_the_install_waits_for() -> anyhow::Result<()>
     assert!(
         installed && fixture.destination.join("E2eProbe.exe").is_file(),
         "the install did not write the product into the configured directory"
+    );
+    Ok(())
+}
+
+/// What the user left on the page reaches the script, control by control.
+///
+/// A script could install with a constant, so the install finishing proves
+/// nothing here. This case types into a field, picks the row of a choice group
+/// the layout does not default to, and clicks install; the script writes what it
+/// read into the destination, which is where the typing and the click have to
+/// have arrived. Two of the four values are asked for by ids the page never
+/// declares: a script reads those as empty text rather than failing, because a
+/// page that carries no such control is a page the project can still run.
+#[test]
+fn the_values_the_page_holds_reach_the_script() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.values_project()?;
+    fixture.write_script(
+        "install.rhai",
+        r#"
+        let install_path = get_install_path();
+        copy_uninstaller();
+        write_file(path_join(install_path, "E2eProbe.exe"), "app");
+        let report = "";
+        report += "serial=" + get_text_value("serial") + "\n";
+        report += "edition=" + get_choice_value("edition") + "\n";
+        report += "untyped=" + get_text_value("nowhere") + "\n";
+        report += "unchosen=" + get_choice_value("nothing") + "\n";
+        write_file(path_join(install_path, "values.txt"), report);
+        "#,
+    )?;
+    fixture.build()?;
+
+    let _ = unsafe { SetProcessDPIAware() };
+    let mut setup = SetupGuard::spawn(&fixture.setup)?;
+    let waited = wait_for_runtime_window(&mut setup, Instant::now() + Duration::from_secs(30));
+    let Some(window) = (match &waited {
+        WindowWait::Found(window) => Some(*window),
+        WindowWait::Exited(_) | WindowWait::Timeout => None,
+    }) else {
+        let reason = match waited {
+            WindowWait::Exited(status) => format!("the setup {status} instead of opening a window"),
+            WindowWait::Timeout => "no window appeared within 30 seconds".to_string(),
+            WindowWait::Found(_) => "the window could not be measured".to_string(),
+        };
+        let _ = setup.kill();
+        let _ = setup.wait();
+        return skip_missing_desktop(&reason);
+    };
+
+    let opened = client_size(window);
+    // The field the page places at 20,40: a press takes its caret, and the
+    // characters that follow land in it.
+    press_client_point(window, 170, 53);
+    type_client_text(window, "TT-2026-0001");
+    // The second row of the group, which the layout does not default to.
+    click_client_point(window, 120, 130);
+    // The install button, at 20,170.
+    click_client_point(window, 90, 188);
+    let started =
+        wait_for_client_size(window, (500, 300), Instant::now() + Duration::from_secs(20));
+    let expected = "serial=TT-2026-0001\nedition=installed\nuntyped=\nunchosen=\n";
+    let written = wait_for_text(
+        &fixture.destination.join("values.txt"),
+        expected,
+        Instant::now() + Duration::from_secs(20),
+    );
+    let _ = setup.kill();
+    let _ = setup.wait();
+
+    // What the file really holds, so a failure names the values the script read
+    // rather than only saying it read the wrong ones.
+    let asked = std::fs::read_to_string(fixture.destination.join("values.txt")).ok();
+    assert_eq!(
+        opened,
+        (720, 450),
+        "the wizard opened on {opened:?} rather than the 720x450 page the project declares"
+    );
+    assert_eq!(
+        started,
+        Some((500, 300)),
+        "the install did not start from the button on the page"
+    );
+    assert_eq!(
+        asked.as_deref(),
+        Some(expected),
+        "the script did not read the values the page held (the wait saw {written:?})"
     );
     Ok(())
 }

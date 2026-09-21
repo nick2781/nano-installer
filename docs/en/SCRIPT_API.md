@@ -33,6 +33,8 @@ operation ceiling, so a runaway loop cannot hang an installation.
 | `is_cancelled()` | `true` once the user asked the running task to stop |
 | `get_install_path()` | Current install directory |
 | `get_checkbox_value(id)` | Reads a checkbox; use the layout id for install (`chkShotcut`) and `keep_data` for uninstall |
+| `get_text_value(id)` | Reads what a field holds; an empty string when the page has no such control |
+| `get_choice_value(id)` | Reads the value a select or radio group stands on; a select by its control id, a radio group by the group's name; an empty string when the page has neither |
 | `get_mode()` | `"install"` or `"uninstall"` |
 | `log_info(text)`, `log_warn(text)`, `log_error(text)` | Write to the script log |
 
@@ -40,6 +42,9 @@ A `cancel` button, or the close question answered with Yes, asks the running tas
 runtime then gives up at the checkpoint after the step that is running and undoes what it wrote, so
 a script that would rather end a long step of its own early asks `is_cancelled()` in its loop and
 returns by itself. See [actions](XML_LAYOUT_GUIDE.md#actions).
+
+`get_text_value` and `get_choice_value` read the page as it stood when the user started the
+install; a silent run has no page, so both answer an empty string.
 
 Scripts have no console. On failure the runtime appends the last 32 log lines to the error the
 wizard shows.

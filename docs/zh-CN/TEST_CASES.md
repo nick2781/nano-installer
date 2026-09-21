@@ -70,6 +70,7 @@ Rust doc comment，再退回用例名。
 | `a_script_dialog_is_drawn_in_the_wizard` | 脚本的提示与提问画在向导窗口里，用的是产品自己的皮肤，点一下卡片就把答案交回正在等待的脚本。用例自己写了一份 400x180 的卡片版面，两个按钮摆到它点得到的位置：先证明卡片亮出来时脚本还停在原地（回答文件此刻不存在），再逐个点中卡片上的确认键，让 `ask_yes_no` 拿到答案、`show_message` 和 `show_error` 被收起，每答一次就检查脚本接下来写下的那个文件，最后窗口走到完成页。卡片要是像原来那样另开系统对话框，这些点就会落空。 |
 | `a_script_failure_reports_the_messages_it_logged` | 脚本失败时，它之前用 `log_warn` 之类写下的日志跟着错误一起报出来，作者能看到最后那几行。 |
 | `a_script_reads_the_tools_the_project_bundled` | `get_tools_dir()` 把打包进来的工具摊到磁盘上并返回目录路径，嵌套文件按原相对路径读得到、内容一致；再问一次返回同一个目录，不会重复摊一遍。 |
+| `a_script_reads_the_values_the_page_holds` | 脚本读得到页面上的取值：文本框里的字和单选组选中的那一行各按自己的 id 取回，页面从没声明过的 id 读成空串而不是报错。两条规则合在一份由脚本写出的报告里比对，所以取回的确实是用户留在页面上的那几个。 |
 | `a_script_recognises_a_running_process_by_its_image_name` | `is_process_running` 按映像名判断进程：正在跑的那个测试可执行文件返回 true，编出来的不存在名字返回 false。这条检查就是安装时不肯覆盖正在运行的产品的原因。 |
 | `a_script_registers_a_file_type_where_windows_reads_it` | 脚本登记的文件类型落在 Windows 真正读取的四个位置：扩展名指向程序 id，程序 id 上挂着资源管理器显示的类型名、图标，以及带 `"%1"` 的文件命令行。安装把它们全部记入 manifest，卸载时这个文件类型连同程序 id 一起从注册表里消失。 |
 | `a_script_runs_a_command_and_sees_its_exit_code` | `run_command` 返回命令的退出码，用 `ComSpec` 跑 `exit 3` 和 `exit 0` 分别拿到 3 和 0；起不来的命令返回 -1，脚本因此分得清跑了但失败和根本没跑。 |
@@ -232,6 +233,7 @@ Rust doc comment，再退回用例名。
 | `the_script_reports_the_image_it_runs_from` | 脚本报告自己运行的映像路径和它所在目录，值就是跑测试的那个可执行文件，而不是它读的捆绑数据。 |
 | `the_setup_opens_its_wizard_window` | 不带 `--silent` 打开真实的安装包，等它的向导窗口画出来再量客户区，这是无窗口用例够不到的那道缝：版面加载失败、捆绑数据丢了资源、窗口类没注册，都可能让静默安装照样成功、让所有只读文件的检查通过。开窗口需要交互式的桌面会话，以服务方式启动的构建代理没有桌面，那种环境下用例跳过并说明原因；在本该有桌面的机器上，`NANO_INSTALLER_E2E_REQUIRE_DESKTOP` 会把这次跳过变成失败，因为从没跑过的检查不能算作跑过并通过。 |
 | `the_summary_reports_what_the_project_declares` | 窗口显示的摘要是工程声明的内容，包括工程可以省略的那些默认值。 |
+| `the_values_the_page_holds_reach_the_script` | 用户在页面上留下的取值真的走进了脚本：用例往安装包窗口的输入框里敲进一个编号、点中单选组里版面没默认选中的那一行，再按下安装键，脚本把读到的值写进安装目录，几个值逐一对得上；其中两个问的是页面上没有的 id，读成空串。安装装得完说明不了什么，脚本用常量也装得完。 |
 | `typing_coalesces_into_one_undo_step` | 连续键入只记一步撤销：一串按键共用同一份快照，Ctrl+Z 回到这串输入开始前的值，换一种编辑动作才另起一步。 |
 | `undo_remembers_the_caret_that_belongs_to_the_value` | 撤销把光标恢复到那个值对应的位置，而不是恢复前的位置；快照里的光标超出缩短后的文本时被拉回文本末尾。 |
 | `uninstall_keeps_a_directory_that_still_holds_user_files` | 用户放进安装目录里的文件会留住这个目录，这是 manifest 清理所做的承诺，同时部署上去的文件照样删掉。 |

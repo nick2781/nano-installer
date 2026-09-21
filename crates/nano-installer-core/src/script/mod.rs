@@ -72,6 +72,8 @@ pub(super) fn run_install(request: InstallRequest) -> Result<()> {
         config,
         install_path: destination.clone(),
         checkboxes: selection.checkboxes().clone(),
+        texts: selection.texts().clone(),
+        choices: selection.choices().clone(),
         keep_data: false,
         manifest: serde_json::Value::Null,
         previous: prep.previous.take(),
@@ -140,6 +142,10 @@ pub(super) fn run_uninstall(request: UninstallRequest) -> Result<()> {
         config: config.clone(),
         install_path: destination.clone(),
         checkboxes: HashMap::from([("keep_data".to_string(), keep_data)]),
+        // An uninstall page hands over no field a script can read: the only
+        // value it carries is the keep-data box.
+        texts: HashMap::new(),
+        choices: HashMap::new(),
         keep_data,
         manifest: manifest.clone(),
         previous: None,
@@ -490,6 +496,35 @@ mod tests {
         /// Runs the install with the handle the caller keeps, so a test can ask
         /// it to stop the way the wizard's cancel button does.
         fn install_with(&self, task: install::Cancellation) -> Result<()> {
+            self.install_selection(InstallSelection::default(), task)
+        }
+
+        /// Runs the install with the values a page would have handed over, the
+        /// way the wizard does when the user starts the task.
+        fn install_with_values(
+            &self,
+            texts: &[(&str, &str)],
+            choices: &[(&str, &str)],
+        ) -> Result<()> {
+            let texts = texts
+                .iter()
+                .map(|(id, value)| (id.to_string(), value.to_string()))
+                .collect();
+            let choices = choices
+                .iter()
+                .map(|(id, value)| (id.to_string(), value.to_string()))
+                .collect();
+            self.install_selection(
+                InstallSelection::from_values(texts, choices),
+                install::Cancellation::default(),
+            )
+        }
+
+        fn install_selection(
+            &self,
+            selection: InstallSelection,
+            task: install::Cancellation,
+        ) -> Result<()> {
             let bundle = self.bundle()?;
             let (root, registry_path) = install::uninstall_registry_key(&self.config)?;
             run_install(InstallRequest {
@@ -497,7 +532,7 @@ mod tests {
                 bundle,
                 config: self.config.clone(),
                 destination: self.destination.clone(),
-                selection: InstallSelection::default(),
+                selection,
                 stage: self.stage()?,
                 prep: InstallPrep {
                     uninstaller_name: "uninst.exe".to_string(),
@@ -1510,6 +1545,35 @@ mod tests {
                 format!("mode=uninstall\nkeep_data={keep_data}\nunknown=false\ncancelled=false\n")
             );
         }
+        Ok(())
+    }
+
+    #[test]
+    fn a_script_reads_the_values_the_page_holds() -> Result<()> {
+        let report = Observation::new("script-page-values");
+        let install_script = format!(
+            r#"
+            let install_path = get_install_path();
+            copy_uninstaller();
+            write_file(path_join(install_path, "App.exe"), "app");
+            let report = "";
+            report += "serial=" + get_text_value("serial") + "\n";
+            report += "edition=" + get_choice_value("edition") + "\n";
+            report += "untyped=" + get_text_value("nowhere") + "\n";
+            report += "unchosen=" + get_choice_value("nothing") + "\n";
+            write_file({}, report);
+            "#,
+            report.script_path()
+        );
+        let fixture = fixture(&install_script, "")?;
+        // What the wizard hands over when the user starts the task: the text the
+        // page's field holds, and the value its choice group ended on.
+        fixture.install_with_values(&[("serial", "TT-2026-0001")], &[("edition", "installed")])?;
+
+        assert_eq!(
+            report.text()?,
+            "serial=TT-2026-0001\nedition=installed\nuntyped=\nunchosen=\n"
+        );
         Ok(())
     }
 
