@@ -106,8 +106,9 @@ files and registry entries, so validate them in a disposable virtual machine onl
   three standard pointers the window answers with over a button, a field and the page, one walks
   the language menu with the arrow keys, Enter and Escape, and one clicks a browse button and
   closes the shell's folder dialog again. They need an interactive desktop session, so they skip
-  where there is none and `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` makes the skip a failure. The
-  other eighteen pass on Windows 11 and in CI.
+  where there is none and `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` makes the skip a failure; the
+  cursor case asks that the session be showing a pointer as well, which a hosted runner is not, and
+  it prints its skip there. The other eighteen pass on Windows 11 and in CI.
 - A setup stays a setup after signing: a certificate table appended behind the bundle, which is what
   Authenticode writes into the file, no longer hides the footer the runtime reads its resources from.
 - The builder refuses a configuration key it does not read. A setting that once parsed and then

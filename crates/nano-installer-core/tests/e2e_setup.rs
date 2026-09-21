@@ -2536,6 +2536,16 @@ fn the_pointer_decides_which_cursor_the_wizard_shows() -> anyhow::Result<()> {
         return skip_missing_desktop(&reason);
     };
 
+    // A session with no cursor to show cannot answer this question. A hosted
+    // runner has a window to draw into but no pointer, and `GetCursorInfo`
+    // reports a null cursor there; a desktop that is showing one always has a
+    // handle, whether or not the pointer is over this window.
+    if shown_cursor().is_none_or(|cursor| cursor.is_invalid()) {
+        let _ = setup.kill();
+        let _ = setup.wait();
+        return skip_without_a_cursor();
+    }
+
     // The pointer belongs to the machine rather than to the case, so it is put
     // back where it was found, including when an assertion fails first.
     let _pointer = PointerRestore::capture();
@@ -3521,6 +3531,23 @@ fn click_until_text(
 }
 
 /// Reports that this machine cannot open a window.
+/// Leaves the case when the desktop shows no cursor at all, which is what a
+/// hosted runner reports: Windows says there is no pointer on this session, so
+/// there is no shape to ask a window about.
+///
+/// `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` turns this skip into a failure, the
+/// way it does for a window that never appeared.
+fn skip_without_a_cursor() -> anyhow::Result<()> {
+    let required =
+        std::env::var_os("NANO_INSTALLER_E2E_REQUIRE_DESKTOP").is_some_and(|value| value != "0");
+    anyhow::ensure!(
+        !required,
+        "the desktop is showing no cursor, so the window cannot be asked which shape it wants"
+    );
+    eprintln!("skipping: the desktop is showing no cursor");
+    Ok(())
+}
+
 fn skip_missing_desktop(reason: &str) -> anyhow::Result<()> {
     let required =
         std::env::var_os("NANO_INSTALLER_E2E_REQUIRE_DESKTOP").is_some_and(|value| value != "0");

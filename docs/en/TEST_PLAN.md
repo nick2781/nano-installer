@@ -99,10 +99,12 @@ Every case generates its fixture, carries no product payload and no third-party 
 below the temporary directory, and registers under a registry key naming only that case, so parallel
 cases cannot see each other and repeated runs do not collide. A case that fails still cleans up
 after itself. Without the runtime stubs the suite prints a skip and passes, so a job that validates
-setups sets `NANO_INSTALLER_E2E_REQUIRE_STUBS=1` to turn that skip into a failure. The window case
-needs an interactive desktop session on top of that, which a process started as a service has no
-window station for: it skips there, and `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` turns that skip into
-a failure.
+setups sets `NANO_INSTALLER_E2E_REQUIRE_STUBS=1` to turn that skip into a failure. The cases that
+drive a window need an interactive desktop session on top of that, which a process started as a
+service has no window station for: they skip there, and `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` turns
+that skip into a failure. One of them asks for more than a window: the cursor case can only be
+answered by a session that is showing a pointer. A hosted runner has a window station and draws
+windows, but has no mouse and reports a null cursor, so that case prints its own skip there.
 
 Signing a built setup belongs to the release pipeline rather than to this suite: `scripts/sign.ps1`
 signs a file with the certificate `NANO_INSTALLER_CERT_THUMBPRINT` names and verifies the result.
