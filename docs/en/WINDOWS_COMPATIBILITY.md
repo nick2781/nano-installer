@@ -13,6 +13,9 @@ eframe/egui. It only creates installers; the setup it produces still runs on Win
 - Registry, shell, and process APIs that exist on Windows 7 SP1
 - IMM32 for the IME composition and candidate windows of a text field, which Windows 7 has shipped
   since release
+- WinHTTP to fetch a dependency a project declares for download, with TLS 1.1/1.2 turned on for
+  https (Windows 7 SP1 also needs the machine's own schannel to support TLS 1.2, which KB3140245 and
+  later bring; without it the download fails rather than falling back to plain text)
 
 Release builds use the pinned `nightly-2025-11-08` toolchain with `rust-src`,
 `-Z build-std=std,panic_abort`, a statically linked CRT, and `panic=abort`.

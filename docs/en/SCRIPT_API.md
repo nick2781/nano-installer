@@ -146,6 +146,28 @@ anything is written, because it would write outside the classes tree a user's fi
 | `run_detached(command)` | Starts in the background |
 | `run_command(command, args)` | Waits for exit, returns the exit code or `-1` |
 
+## Dependencies and downloads
+
+| Primitive | Description |
+| --- | --- |
+| `dependency_installed(id)` | Asks the machine whether it has this dependency, by the project's own rule |
+| `install_dependency(id)` | Installs it when it is missing, and reports whether the rule says it is there afterwards; install only |
+| `download_file(url, path)` | Fetches a URL into `path` |
+| `download_file_with_hash(url, path, sha256)` | The same, keeping the file only when its digest matches |
+| `sha256_of_file(path)` | The file's SHA-256 in lower-case hexadecimal, empty when it cannot be read |
+
+Both dependency primitives read the project's `dependencies.items`, described in the
+[configuration reference](CONFIG_REFERENCE.md#dependencies): the script decides when to check and
+whether to install, and the project says what the dependency is and how it is recognized.
+`install_dependency` always answers `false` in an uninstall script: removing a product does not
+remove a dependency, and does not install anything for another one.
+
+A download goes through the machine's own HTTP stack, so its proxy, certificate store and TLS
+settings are the ones a browser on that machine uses, and `https` is offered TLS 1.2. What arrives
+is compared with `sha256` before anything else happens: a file that does not match is deleted and
+the call answers `false`, so no half of it is left for the next step. Neither download reports
+progress; a script that wants the progress bar to say something calls `set_progress()` around it.
+
 ## System
 
 | Primitive | Description |

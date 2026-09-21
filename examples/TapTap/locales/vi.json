@@ -50,6 +50,7 @@
   "button.cancel": "Hủy",
 
   "status.preparing": "Đang chuẩn bị cài đặt...",
+  "status.dependencies": "Đang chuẩn bị các thành phần cần thiết...",
   "status.extracting": "Đang giải nén tệp...",
   "status.deploying": "Đang triển khai tệp...",
   "status.finishing": "Đang hoàn tất cài đặt...",

@@ -52,6 +52,13 @@
   取决于工程把组件排在前面还是后面。
 - 脚本读得到用户留在页面上的取值。文本框里的字、下拉框和单选组当前的那一行，各按版面里的控件 id
   或组的名字取回，页面没有声明的 id 读成空串而不是报错；静默运行没有页面，读到的也是空串。
+- 工程可以声明机器上必须先有的东西，安装时先补齐、再装产品。每条依赖写清怎么认（查一个文件，或查注册
+  表的某个值是否存在、是否等于某个值、是否不低于某个版本）、怎么装（随安装包带一个 `.exe`，或按 URL
+  下载一个），以及缺了算不算致命：已经有的不动，缺的装上，必需的装不上就停下并说出依赖名与安装程序的
+  退出码，非必需的只记一条告警。下载回来的程序要先对得上工程记下的 SHA-256 才允许跑，对不上就地删掉。
+  装进机器的是依赖本身，它不在卸载清单里——产品卸掉之后，机器上原本缺的东西仍然留着。脚本要自己挑时机
+  时，`dependency_installed`、`install_dependency`、`download_file`、`download_file_with_hash` 和
+  `sha256_of_file` 问的是同一份声明、走的是同一条取文件的路径。
 
 ### 改进
 
@@ -167,18 +174,34 @@
   「由…」被动和「产物/自身/该/其」这类译文腔，落地页的 logo 与语言切换改成在站点根目录下也成立
   的路径。
 
+- 依赖与获取：配置新增 `dependencies.items`，`config::audit_dependencies` 在构建期校验 id 非空且唯一、
+  载荷与下载二选一、载荷必须是 `.exe`、`detect` 必填且文件与注册表二选一、`equals` 与 `at_least` 需
+  要值名且互斥、下载必须是 http(s) 且带 64 位十六进制 `sha256`。`dependency::install_missing` 排在脚
+  本分派之后、解压 payload 之前（占进度 6% 到 14%，状态键 `status.dependencies`），缺哪条装哪条，必
+  需的失败就中止这次安装；`dependency::detect` 按文件或注册表值回答「有没有」；`dependency::install`
+  用 `CREATE_NO_WINDOW` 起安装程序并轮询等待、可取消，退出码 0、1638（已装更新版本）、3010 与 1641（
+  要重启）算成功，其余报出依赖名与退出码。`net::download` 走 WinHTTP（默认代理、跟随重定向、https 打
+  开 TLS 1.1/1.2、逐块检查取消），哈希用 CryptoAPI 算（`advapi32`，不是 Windows 8 才有的
+  `bcryptprimitives`）；长度与 `Content-Length` 不符或哈希不符都会把目标文件删掉。脚本侧新增
+  `dependency_installed`、`install_dependency`、`download_file`、`download_file_with_hash` 与
+  `sha256_of_file`：前两个读同一份声明，卸载模式下 `install_dependency` 一律返回 false。构建时依赖的
+  载荷一并收进捆绑数据，`inspect_project` 校验这些文件确实存在。
+
 ### 已验证
 
-- `cargo test --locked --workspace`：共 253 条用例，250 通过、0 失败、1 忽略，退出码 0（核心库 184、
-  安装包级 33、工程检查 5、可视化构建器 29，另加两个解压运行时用例；被忽略的
+- `cargo test --locked --workspace`：共 274 条用例，271 通过、0 失败、1 忽略，退出码 0（核心库 199、
+  安装包级 39、工程检查 5、可视化构建器 29，另加两个解压运行时用例；被忽略的
   `install::tests::registers_and_cleans_up_scoped_uninstall_key` 要在隔离环境里写 HKCU）。
   报告在 `target/test-report.txt` 与 `target/test-report.html`。
-- 安装包级的 33 条里有 31 条跑通，其中 13 条会打开真实的向导窗口；
+- 安装包级的 39 条里有 37 条跑通，其中 13 条会打开真实的向导窗口；
   `run_e2e_setup.ps1 -RequireDesktop` 那次把跳过当成失败，报告在 `target/e2e-report.txt` 与
   `target/e2e-report.html`，同一个脚本加 `-Language en` 会另留一份英文版。
-- 没跑通的两条是唯一需要真实鼠标指针的用例（悬停与按下换上的状态位图、窗口在按钮和输入框上回哪种
+- 依赖用例跑的是真程序：随安装包带上的依赖真被装上，而且按它自己留下的文件判断机器上有没有；按 URL
+  下载的依赖先过一遍独立算出的摘要（`certutil` 算的，不是运行时自己算给自己看的那份）才跑，摘要对不
+  上时那个程序一次都没有被启动，目标文件也没留下。
+- 这一次过滤掉的两条是唯一需要真实鼠标指针的用例（悬停与按下换上的状态位图、窗口在按钮和输入框上回哪种
   标准光标）：本机这次跑的时候工作站是锁屏的（`LogonUI` 在运行、前台窗口是锁屏界面），
-  单独跑其中一条也同样失败，与这次改动无关。解开锁屏重跑即可；没有指针的会话上它们打印跳过理由。
+  整批跑的时候它们同样失败，与这次改动无关。解开锁屏重跑即可；没有指针的会话上它们打印跳过理由。
 - 示例工程 6 个页面的 10 张快照逐页对照版面检查通过，检查结果在 `target/setup-snapshots/manifest.json`；
   拍照要桌面会话，因此不进 CI。
 - 签名实验：用 signtool 与本地签发的证书签过的安装包在 Windows 11 上装成。

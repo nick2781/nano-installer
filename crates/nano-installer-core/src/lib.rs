@@ -2,9 +2,11 @@
 compile_error!("nano-installer-native-x64 must be built for x86_64");
 
 mod config;
+mod dependency;
 mod icon;
 mod install;
 mod manifest;
+mod net;
 mod script;
 mod shell;
 mod version;
@@ -1125,6 +1127,22 @@ pub fn inspect_project(project: impl AsRef<Path>) -> Result<ProjectSummary> {
             );
         }
     }
+    // A dependency's program is part of the setup, so a project that names one
+    // it does not ship is a build error rather than an install that fails on
+    // the machine that needed it.
+    for item in config["dependencies"]["items"]
+        .as_array()
+        .into_iter()
+        .flatten()
+    {
+        let (Some(id), Some(payload)) = (item["id"].as_str(), item["payload"].as_str()) else {
+            continue;
+        };
+        let path = project.join(payload);
+        if !path.is_file() {
+            bail!("dependency {id} ships no program at {}", path.display());
+        }
+    }
     let payload_size = std::fs::metadata(&payload_path)?.len();
     let project_name = config["project"]["name"]
         .as_str()
@@ -1922,6 +1940,24 @@ fn pack_project_with_progress(
             let size = files.last().map(|(_, data)| data.len()).unwrap_or_default();
             progress(format!(
                 "Added payload {component} of component {id} ({}, already compressed)",
+                format_build_size(size as u64)
+            ));
+        }
+        // A dependency's program travels with the setup too: the machine that
+        // runs it is the one that turned out not to have what the product needs.
+        for item in config["dependencies"]["items"]
+            .as_array()
+            .into_iter()
+            .flatten()
+        {
+            let (Some(id), Some(dependency)) = (item["id"].as_str(), item["payload"].as_str())
+            else {
+                continue;
+            };
+            collect_file(project, &project.join(dependency), &mut files)?;
+            let size = files.last().map(|(_, data)| data.len()).unwrap_or_default();
+            progress(format!(
+                "Added dependency {id} ({})",
                 format_build_size(size as u64)
             ));
         }

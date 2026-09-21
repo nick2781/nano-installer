@@ -3,7 +3,7 @@
 文档承诺的每一条行为，以及守住它的那条自动化用例。表格里的每一行都列出了该行为失效时会失败的
 用例；没有出现在任何一行里的行为，就是没人看住的行为。
 
-`cargo test --locked --workspace` 会跑 253 条用例：核心库 184 条，真构建并运行安装包的 33 条，
+`cargo test --locked --workspace` 会跑 274 条用例：核心库 199 条，真构建并运行安装包的 39 条，
 按构建器的方式读工程的 5 条，可视化构建器 29 条，解压运行时 2 条。安装包级用例需要真实的运行时
 可执行文件，`.\scripts\run_e2e_setup.ps1` 会先把它们构建出来再跑，并把整次运行写进
 `target/e2e-report.txt`。
@@ -12,8 +12,8 @@
 
 | 层 | 用例数 | 能证明 | 不能证明 |
 | --- | --- | --- | --- |
-| 核心库 | 184 | 一页会变成什么——图层、坐标、命中区域、文字；捆绑数据里装了什么；安装往磁盘和注册表写了什么；每个脚本原语做什么；脚本从页面上取回什么、脚本读到的组件选择 | 打包出来的安装包能走到这些代码 |
-| 安装包级 | 33 | 构建好的安装包在这台机器上装了一遍，它的窗口也是真的被驱动起来的：payload 字节、manifest、卸载项、快捷方式、自启动、项目脚本、脚本要跑的辅助程序、向导窗口、它自己页面上那些要等点击的行为、在列表上滚动滚轮、脚本的提示与提问所画的那张由点击作答的卡片、页面上的取值交到脚本手里、勾选决定这次装哪些组件，以及只有指针与键盘真的动起来才会发生的事——悬停与按下换上的状态位图、三种标准光标形状、语言菜单的上下键与 Enter/Escape、选目录对话框 | 输入法自己画出来的那两个窗口；在外壳的选目录对话框里选定一个目录之后会写进哪个输入框；以及不显示指针的会话上光标长什么样——那里这条用例打印自己的跳过理由 |
+| 核心库 | 199 | 一页会变成什么——图层、坐标、命中区域、文字；捆绑数据里装了什么；安装往磁盘和注册表写了什么；每个脚本原语做什么；脚本从页面上取回什么、脚本读到的组件选择；工程声明的依赖怎么被查出来、下载下来、校验并装上，以及哪些情形会被拒绝 | 打包出来的安装包能走到这些代码 |
+| 安装包级 | 39 | 构建好的安装包在这台机器上装了一遍，它的窗口也是真的被驱动起来的：payload 字节、manifest、卸载项、快捷方式、自启动、项目脚本、脚本要跑的辅助程序、向导窗口、它自己页面上那些要等点击的行为、在列表上滚动滚轮、脚本的提示与提问所画的那张由点击作答的卡片、页面上的取值交到脚本手里、勾选决定这次装哪些组件，工程声明的依赖真的被问了一遍——缺的装上、已经有的不再装一遍、装不上的让整次安装停下、下载来的程序对不上哈希就一次都不跑——以及只有指针与键盘真的动起来才会发生的事——悬停与按下换上的状态位图、三种标准光标形状、语言菜单的上下键与 Enter/Escape、选目录对话框 | 输入法自己画出来的那两个窗口；在外壳的选目录对话框里选定一个目录之后会写进哪个输入框；以及不显示指针的会话上光标长什么样——那里这条用例打印自己的跳过理由 |
 | 工程检查 | 5 | 构建之前窗口会显示的那份摘要与告警列表 | |
 | 可视化构建器 | 29 | 窗口自己的状态、参数、日志与告警 | 真的去点界面上的控件 |
 | 解压运行时 | 2 | 坏归档、以及归档里不安全的路径会被拒绝 | 解压一个完好的归档——安装包级用例会用真实运行时解真实 payload |
@@ -41,6 +41,7 @@
 | `shortcuts.start_menu`、`shortcuts.start_menu_folder` | 同上两条，另加 `drops_the_shortcut_folder_once_it_is_empty` |
 | `autostart.enabled`、`autostart.default`、`autostart.registry_key`、`autostart.registry_value_name` | `a_silent_install_writes_the_shortcuts_and_the_autostart_entry` |
 | `components.items` | `the_page_and_the_project_decide_which_components_install`、`a_project_without_components_installs_none_of_them`、`a_script_sees_the_components_the_run_installs`、`a_silent_run_installs_the_components_the_project_defaults_to`、`the_boxes_the_page_carries_decide_which_components_install`、`two_payloads_that_carry_one_file_are_refused`、`refuses_a_component_without_an_id_or_a_payload`、`refuses_a_required_component_whose_default_is_false`、`refuses_an_unknown_component_key`、`refuses_two_components_that_share_an_id_or_a_payload` |
+| `dependencies.items` | `a_silent_run_installs_the_dependency_the_machine_is_missing`、`a_dependency_the_machine_already_has_is_not_installed_again`、`a_dependency_that_cannot_be_installed_stops_the_install`、`a_downloaded_dependency_is_checked_before_it_runs`、`a_download_that_is_not_the_recorded_file_is_refused`、`accepts_a_dependency_the_machine_is_asked_about`、`refuses_a_dependency_that_is_not_checked_or_not_installed`、`refuses_a_download_that_does_not_say_what_should_arrive`、`refuses_a_detection_rule_that_asks_the_wrong_thing`、`refuses_a_dependency_that_cannot_be_run_or_told_apart` |
 | `resources.*` | `project_bundle_roundtrips_layout_assets_and_locales`、`project_pack_progress_describes_assets_payload_and_uninstaller`、`the_payload_format_selects_the_runtime_that_gets_embedded`、`a_project_bundles_the_tools_directory_it_names`、`a_project_that_names_no_tools_bundles_none`、`a_setup_unpacks_the_tools_its_project_bundles` |
 | `localization.default_locale` | `version::tests::maps_default_locale_to_version_language`、`the_summary_reports_what_the_project_declares` |
 | `localization.supported_locales` | `a_supported_locale_without_a_file_is_reported`、`a_translation_missing_page_text_is_reported` |
@@ -115,6 +116,7 @@
 | 脚本读到的页面取值：文本框与选项控件的当前值，页面没有声明的 id 读成空串 | `a_script_reads_the_values_the_page_holds`、`the_values_the_page_holds_reach_the_script` |
 | 环境变量、配置、磁盘与当前映像 | `the_script_reads_the_environment_and_the_project_configuration`、`the_script_reports_the_image_it_runs_from`、`the_script_queries_fixed_disks_and_notifies_the_shell` |
 | 工程打包进来的工具 | `a_script_reads_the_tools_the_project_bundled`、`a_script_that_asks_for_tools_a_project_did_not_bundle_gets_nothing`、`a_setup_unpacks_the_tools_its_project_bundles` |
+| 依赖与下载：脚本问机器装没装工程声明的依赖、可以让它装上，也可以自己按地址取回一个文件、校验它并报出它的哈希 | `a_script_asks_the_machine_about_the_dependencies_the_project_declares`、`a_script_downloads_a_file_and_checks_what_arrived` |
 | 进程 | `a_script_runs_a_command_and_sees_its_exit_code`、`a_script_recognises_a_running_process_by_its_image_name` |
 | 保留还是删除用户数据 | `uninstalling_below_appdata_removes_the_data_only_when_the_box_is_cleared` |
 | `scripts` 目录进入构建好的安装包 | `a_setup_runs_the_projects_own_install_and_uninstall_scripts` |
@@ -125,6 +127,7 @@
 | 行为 | 用例 |
 | --- | --- |
 | 组件：装哪些由页面与工程一起决定，两个归档带同一个路径当场报错 | `a_silent_run_installs_the_components_the_project_defaults_to`、`the_boxes_the_page_carries_decide_which_components_install`、`two_payloads_that_carry_one_file_are_refused` |
+| 依赖：装产品之前先问机器缺不缺，缺的装上，装不上就停下；下载来的程序要对得上工程记下的哈希 | `a_silent_run_installs_the_dependency_the_machine_is_missing`、`a_dependency_the_machine_already_has_is_not_installed_again`、`a_dependency_that_cannot_be_installed_stops_the_install`、`a_downloaded_dependency_is_checked_before_it_runs`、`a_download_that_is_not_the_recorded_file_is_refused` |
 | 全新安装：文件、manifest、注册项 | `installs_a_fresh_directory_and_records_the_manifest`、`a_built_setup_installs_its_payload_and_registers_an_uninstall_entry` |
 | 配置路径展开，显式目录优先 | `configured_install_paths_are_expanded`、`an_explicit_install_path_wins_over_the_configured_one`、`a_configured_percent_path_is_expanded_and_used`、`an_explicit_directory_wins_over_the_configured_one` |
 | 拒绝装进不是自己创建的目录 | `refuses_to_install_over_a_directory_it_did_not_create`、`refuses_a_foreign_manifest_at_the_destination`、`refuses_relative_or_root_installation` |

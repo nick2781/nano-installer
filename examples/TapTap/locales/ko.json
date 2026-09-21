@@ -50,6 +50,7 @@
   "button.cancel": "취소",
 
   "status.preparing": "설치 준비 중...",
+  "status.dependencies": "필요한 구성 요소 준비 중...",
   "status.extracting": "파일 압축 해제 중...",
   "status.deploying": "파일 배포 중...",
   "status.finishing": "설치 마무리 중...",

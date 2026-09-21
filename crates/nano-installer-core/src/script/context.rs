@@ -476,7 +476,10 @@ thread_local! {
     static LOG: RefCell<VecDeque<String>> = const { RefCell::new(VecDeque::new()) };
 }
 
-pub(super) fn log(level: &str, message: &str) {
+/// The buffer and this function belong to the run rather than to the script, so
+/// the built-in step that installs a project's dependencies writes into the
+/// same log a failing script reports.
+pub(crate) fn log(level: &str, message: &str) {
     LOG.with(|buffer| {
         let mut buffer = buffer.borrow_mut();
         if buffer.len() == LOG_LIMIT {

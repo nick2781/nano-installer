@@ -50,6 +50,7 @@
   "button.cancel": "キャンセル",
 
   "status.preparing": "インストールの準備中...",
+  "status.dependencies": "必要なコンポーネントを準備中...",
   "status.extracting": "ファイルを展開中...",
   "status.deploying": "ファイルを配置中...",
   "status.finishing": "インストールを完了中...",

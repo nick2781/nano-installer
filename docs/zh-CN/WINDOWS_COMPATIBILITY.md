@@ -12,6 +12,8 @@
 - WIC 解码 PNG，GDI 做透明混合绘制
 - Windows 7 SP1 就已存在的注册表、shell 与进程 API
 - IMM32：管文本框的输入法组合窗与候选窗，Windows 7 自带
+- WinHTTP 取回工程声明要下载的依赖，https 时打开 TLS 1.1/1.2（Windows 7 SP1 上还需要机器自己的
+  schannel 支持 TLS 1.2，即 KB3140245 及后续更新；缺了就报错，不会退回明文）
 
 正式构建使用固定的 `nightly-2025-11-08` 工具链、`rust-src`、
 `-Z build-std=std,panic_abort`、静态链接 CRT 与 `panic=abort`。

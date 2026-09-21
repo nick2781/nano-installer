@@ -161,6 +161,76 @@ ZIP 与 7z 会在构建时被拒绝。安装时基础载荷先落地，各组件
 `payload` 与另一个组件重复；`payload` 就是 `resources.payload_file`；以及写了 `required: true` 又写
 `default: false`（必需的组件不看默认值）。
 
+## 依赖
+
+产品需要的 VC++ 运行库、WebView2 运行库、某个 .NET Framework 版本不属于产品自己：它们装在机器上
+一次，供机器上所有产品共用。`dependencies.items` 声明这类依赖——怎么判断机器上有没有，以及没有时
+用哪个程序把它装上。
+
+```json
+"dependencies": {
+  "items": [
+    {
+      "id": "vcredist_x64",
+      "detect": {
+        "registry": {
+          "key": "HKLM\\SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\x64",
+          "name": "Installed",
+          "equals": "1"
+        }
+      },
+      "payload": "payload/vc_redist.x64.exe",
+      "arguments": ["/install", "/quiet", "/norestart"],
+      "required": true
+    },
+    {
+      "id": "webview2",
+      "detect": {
+        "file": "%ProgramFiles(x86)%\\Microsoft\\EdgeWebView\\Application\\msedgewebview2.exe"
+      },
+      "download": {
+        "url": "https://go.microsoft.com/fwlink/?linkid=2124703",
+        "sha256": "e5f5a4b0b1b7c0d4a4f0d2a0f9c1e8b6d3a7c2f4b8e6d1a3c5f7b9d0e2a4c6f8"
+      },
+      "arguments": ["/silent", "/install"]
+    }
+  ]
+}
+```
+
+| 字段 | 类型 | 作用 |
+| --- | --- | --- |
+| `dependencies.items[].id` | string | 依赖名；脚本用 `dependency_installed()`、`install_dependency()` 问它 |
+| `dependencies.items[].detect` | object | 判断机器上有没有它，`file` 或 `registry` 二选一 |
+| `dependencies.items[].payload` | string | 随安装包带上的安装程序，必须是 `.exe` |
+| `dependencies.items[].download` | object | 安装时现取的安装程序，见下 |
+| `dependencies.items[].arguments` | array | 跑安装程序时带的参数，默认不传 |
+| `dependencies.items[].required` | bool | 必需依赖：装不上就中止安装，默认 `false` |
+
+`detect` 有两种写法，一次只说一件事：
+
+- `{ "file": "%ProgramFiles(x86)%\\...\\msedgewebview2.exe" }`：这个文件在就算有。路径里的环境
+  变量会先展开。
+- `{ "registry": { ... } }`：读注册表。`key` 要打开的键，`HKCU` 或 `HKLM` 开头；`name` 要读的值，
+  不写就只问这个键在不在；写了 `name` 还能比一次，`equals` 是逐字相等，`at_least` 按点分数字比较。
+  值的类型是文本还是 DWORD 都认，所以 VC++ 运行库写的 `1`、WebView2 写的版本号、.NET 记的那串数字
+  都能比。`at_least` 里缺的段算 0，写 `14.0.1` 与写 `14.0.1.0` 是一回事。
+
+`payload` 与 `download` 二选一。带在包里的那个由构建收进安装包，安装时解到临时目录再跑；`download`
+的那个在安装时现取，取回来先按下 `sha256` 校验，对不上就把文件删掉，绝不执行——所以 `sha256` 是必填
+的，用 `certutil -hashfile <文件> SHA256` 之类算出来填进去。URL 最后一段是可执行文件名时按它命名，
+否则用依赖自己的 id 加 `.exe`，Windows 能跑起来才有意义。
+
+依赖在 payload 之前处理：内置流程先逐个检查，缺的装上，都就绪了才开解压。装不上的依赖，写了
+`required: true` 的中止安装并说明原因，此时产品一个字节都还没写；没写的记一条日志继续装。安装程序
+报告「已装过更新版本」（退出码 1638）或「装好了但要重启」（3010、1641）都算成功，其余非零退出码算
+失败。内置流程处理依赖时的状态文案取 locale 的 `status.dependencies` 键。
+
+依赖不随产品卸载：它属于机器，装它的也不止这一个产品。
+
+工程带了 `scripts/install.rhai` 时内置流程不再插手，脚本自己决定什么时候检查、要不要装，用
+`dependency_installed()` 与 `install_dependency()`，读的是同一份声明，见[脚本 API](SCRIPT_API.md#依赖与下载)。
+
 ## 自定义安装与卸载步骤
 
 加入 `scripts/install.rhai` 或 `scripts/uninstall.rhai` 即可替代内置步骤，见

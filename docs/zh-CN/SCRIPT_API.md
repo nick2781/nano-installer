@@ -128,6 +128,24 @@
 | `run_detached(command)` | 后台启动 |
 | `run_command(command, args)` | 等待结束，返回退出码，失败返回 `-1` |
 
+## 依赖与下载
+
+| 原语 | 说明 |
+| --- | --- |
+| `dependency_installed(id)` | 按工程声明的规则问机器上有没有这个依赖 |
+| `install_dependency(id)` | 缺就装上；返回装完之后规则是否认为它在，只在安装时可用 |
+| `download_file(url, path)` | 把 URL 取到 `path` |
+| `download_file_with_hash(url, path, sha256)` | 同上，取到的文件要哈希对得上才留下 |
+| `sha256_of_file(path)` | 文件的 SHA-256，小写十六进制；读不到时返回空串 |
+
+两个依赖原语读的是工程的 `dependencies.items`，见[配置参考](CONFIG_REFERENCE.md#依赖)：脚本决定
+什么时候检查、要不要装，工程只说这个依赖是什么、怎么认。`install_dependency` 在卸载脚本里一律返回
+`false`，卸载不移除依赖，也不替别的产品装东西。
+
+下载走机器自己的 HTTP 栈，代理、证书和 TLS 设置就是这台机器上浏览器用的那一套；`https` 会用上
+TLS 1.2。取到的文件先与 `sha256` 比一次，对不上就删掉并返回 `false`，不会留半份给下一步；两次
+下载都没有进度输出，要在进度条上说明什么，由脚本自己在调用前后 `set_progress()`。
+
 ## 系统
 
 | 原语 | 说明 |

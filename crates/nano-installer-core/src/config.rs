@@ -70,6 +70,7 @@ const SECTIONS: &[(&str, &[&str])] = &[
         ],
     ),
     ("components", &["items"]),
+    ("dependencies", &["items"]),
     ("localization", &["default_locale", "supported_locales"]),
     ("ui", &["dpi_aware", "dpi_threshold", "dialog_layout"]),
     ("wizard", &["pages", "uninstall_pages"]),
@@ -93,6 +94,30 @@ const PAGE_ROLES: &[&str] = &["progress", "finish"];
 /// The keys one entry of `components.items` accepts. A component is a part of what a product
 /// installs, chosen on the page by a checkbox that carries the component's id.
 const COMPONENT_KEYS: &[&str] = &["id", "payload", "default", "required"];
+
+/// The keys one entry of `dependencies.items` accepts. A dependency is something the product
+/// needs from the machine rather than something it installs: the setup checks for it, and
+/// puts it there when it is missing.
+const DEPENDENCY_KEYS: &[&str] = &[
+    "id",
+    "detect",
+    "payload",
+    "download",
+    "arguments",
+    "required",
+];
+
+/// The keys a dependency's `detect` rule accepts, whichever kind it is.
+const DETECT_KEYS: &[&str] = &["file", "registry"];
+
+/// The keys a registry detection rule accepts.
+const REGISTRY_RULE_KEYS: &[&str] = &["key", "name", "equals", "at_least"];
+
+/// The keys a dependency's `download` accepts.
+const DOWNLOAD_KEYS: &[&str] = &["url", "sha256"];
+
+/// How long a SHA-256 is, in hexadecimal characters.
+const SHA256_LENGTH: usize = 64;
 
 /// A section that parses and is read by nothing.
 const INACTIVE_SECTIONS: &[(&str, &str)] = &[(
@@ -208,6 +233,7 @@ pub(super) fn audit(config: &Value) -> Result<()> {
                 ("components", "items") => {
                     audit_components(&path, entry, base_payload, &mut problems)
                 }
+                ("dependencies", "items") => audit_dependencies(&path, entry, &mut problems),
                 _ => {}
             }
         }
@@ -321,6 +347,206 @@ fn audit_components(path: &str, value: &Value, base_payload: &str, problems: &mu
                 "{path}[{index}].default: a required component is installed whatever the page says, so a default of false changes nothing; write true or leave it out"
             ));
         }
+    }
+}
+
+fn audit_dependencies(path: &str, value: &Value, problems: &mut Vec<String>) {
+    let Some(entries) = value.as_array() else {
+        problems.push(format!("{path}: must be a list of dependency entries"));
+        return;
+    };
+    let mut ids: Vec<String> = Vec::new();
+    for (index, entry) in entries.iter().enumerate() {
+        let Some(fields) = entry.as_object() else {
+            problems.push(format!("{path}[{index}]: must be a JSON object"));
+            continue;
+        };
+        let at = format!("{path}[{index}]");
+        for key in fields.keys() {
+            if !DEPENDENCY_KEYS.contains(&key.as_str()) {
+                problems.push(format!(
+                    "{at}.{key}: not a dependency setting this build knows; check the spelling, or remove it"
+                ));
+            }
+        }
+        let id = fields.get("id").and_then(Value::as_str).unwrap_or("");
+        if id.trim().is_empty() {
+            problems.push(format!(
+                "{at}.id: a dependency needs the id a script and a log line call it by"
+            ));
+        } else if ids.iter().any(|seen| seen == id) {
+            problems.push(format!(
+                "{at}.id: {id} names a second dependency; one id names one check"
+            ));
+        } else {
+            ids.push(id.to_string());
+        }
+        let payload = fields.get("payload").and_then(Value::as_str);
+        match (payload, fields.get("download")) {
+            (None, None) => problems.push(format!(
+                "{at}: a dependency needs the payload it ships or the download it takes"
+            )),
+            (Some(_), Some(_)) => problems.push(format!(
+                "{at}: a dependency is installed from a payload or from a download, not from both"
+            )),
+            _ => {}
+        }
+        if let Some(payload) = payload {
+            // A dependency is put there by running a program, and Windows runs
+            // only what it recognizes as one.
+            if !payload.to_ascii_lowercase().ends_with(".exe") {
+                problems.push(format!(
+                    "{at}.payload: {payload} is not an executable; a dependency is installed by running one"
+                ));
+            }
+        }
+        if let Some(download) = fields.get("download") {
+            audit_download(&format!("{at}.download"), download, problems);
+        }
+        match fields.get("detect") {
+            Some(detect) => audit_detect(&format!("{at}.detect"), detect, problems),
+            None => problems.push(format!(
+                "{at}.detect: a dependency needs the rule that says whether the machine already has it"
+            )),
+        }
+        if let Some(arguments) = fields.get("arguments") {
+            match arguments.as_array() {
+                Some(arguments) if arguments.iter().all(Value::is_string) => {}
+                _ => problems.push(format!(
+                    "{at}.arguments: must be a list of the arguments the installer is run with"
+                )),
+            }
+        }
+        if let Some(required) = fields.get("required") {
+            if !required.is_boolean() {
+                problems.push(format!(
+                    "{at}.required: must be true or false; a dependency that is required stops the install when it cannot be installed"
+                ));
+            }
+        }
+    }
+}
+
+fn audit_detect(path: &str, value: &Value, problems: &mut Vec<String>) {
+    let Some(fields) = value.as_object() else {
+        problems.push(format!(
+            "{path}: must be an object naming the file or the registry value to look at"
+        ));
+        return;
+    };
+    for key in fields.keys() {
+        if !DETECT_KEYS.contains(&key.as_str()) {
+            problems.push(format!(
+                "{path}.{key}: not a detection this build knows; write \"file\" or \"registry\""
+            ));
+        }
+    }
+    match (fields.get("file"), fields.get("registry")) {
+        (Some(_), Some(_)) => problems.push(format!(
+            "{path}: names both a file and a registry value; one rule answers one question"
+        )),
+        (None, None) => problems.push(format!(
+            "{path}: names neither a file nor a registry value, so nothing is checked"
+        )),
+        (Some(file), None) => {
+            if file.as_str().map(str::trim).is_none_or(str::is_empty) {
+                problems.push(format!(
+                    "{path}.file: must be the path the rule looks for, as text"
+                ));
+            }
+        }
+        (None, Some(rule)) => audit_registry_rule(&format!("{path}.registry"), rule, problems),
+    }
+}
+
+fn audit_registry_rule(path: &str, value: &Value, problems: &mut Vec<String>) {
+    let Some(fields) = value.as_object() else {
+        problems.push(format!(
+            "{path}: must be a JSON object naming the key to read"
+        ));
+        return;
+    };
+    for key in fields.keys() {
+        if !REGISTRY_RULE_KEYS.contains(&key.as_str()) {
+            problems.push(format!(
+                "{path}.{key}: not a registry detection this build knows; check the spelling, or remove it"
+            ));
+        }
+    }
+    let key = fields.get("key").and_then(Value::as_str).unwrap_or("");
+    if key.trim().is_empty() {
+        problems.push(format!(
+            "{path}.key: a registry detection needs the key to open, under HKCU or HKLM"
+        ));
+    }
+    let name = fields.get("name").and_then(Value::as_str).unwrap_or("");
+    let compared = fields.get("equals").is_some() || fields.get("at_least").is_some();
+    if compared && name.trim().is_empty() {
+        problems.push(format!(
+            "{path}.name: a rule that compares a value needs the value's name; without one the rule only asks whether the key exists"
+        ));
+    }
+    if fields.get("equals").is_some() && fields.get("at_least").is_some() {
+        problems.push(format!(
+            "{path}: compares the value in two ways at once; write either \"equals\" or \"at_least\""
+        ));
+    }
+    for key in ["equals", "at_least"] {
+        if let Some(value) = fields.get(key) {
+            if value.as_str().map(str::trim).is_none_or(str::is_empty) {
+                problems.push(format!(
+                    "{path}.{key}: must be the value to compare against, as text"
+                ));
+            }
+        }
+    }
+}
+
+fn audit_download(path: &str, value: &Value, problems: &mut Vec<String>) {
+    let Some(fields) = value.as_object() else {
+        problems.push(format!(
+            "{path}: must be a JSON object naming the URL to fetch"
+        ));
+        return;
+    };
+    for key in fields.keys() {
+        if !DOWNLOAD_KEYS.contains(&key.as_str()) {
+            problems.push(format!(
+                "{path}.{key}: not a download setting this build knows; check the spelling, or remove it"
+            ));
+        }
+    }
+    let url = fields.get("url").and_then(Value::as_str).unwrap_or("");
+    if url.trim().is_empty() {
+        problems.push(format!(
+            "{path}.url: a download needs the URL to fetch, as text"
+        ));
+    } else {
+        let scheme = url.to_ascii_lowercase();
+        if !scheme.starts_with("http://") && !scheme.starts_with("https://") {
+            problems.push(format!(
+                "{path}.url: {url} is not an http or https URL, which is all a download can fetch"
+            ));
+        }
+    }
+    // The machine a setup runs on is not the one the project was written on, so
+    // what arrives is checked: a URL without a digest would install whatever the
+    // server happened to answer with.
+    match fields.get("sha256") {
+        Some(value) => match value.as_str() {
+            Some(hash)
+                if hash.len() == SHA256_LENGTH
+                    && hash.chars().all(|character| character.is_ascii_hexdigit()) => {}
+            Some(_) => problems.push(format!(
+                "{path}.sha256: must be the {SHA256_LENGTH} hexadecimal characters of the file's SHA-256"
+            )),
+            None => problems.push(format!(
+                "{path}.sha256: must be the file's SHA-256, as text"
+            )),
+        },
+        None => problems.push(format!(
+            "{path}.sha256: a download without the file's SHA-256 would install whatever the server answered with"
+        )),
     }
 }
 
@@ -470,6 +696,170 @@ mod tests {
             text.contains("components.items[2].payload: payload/samples.7z is the payload of another component"),
             "{text}"
         );
+    }
+
+    #[test]
+    fn accepts_a_dependency_the_machine_is_asked_about() {
+        audit(&json!({
+            "dependencies": { "items": [
+                {
+                    "id": "vcredist_x64",
+                    "detect": { "registry": {
+                        "key": "HKLM\\SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\x64",
+                        "name": "Installed",
+                        "equals": "1"
+                    } },
+                    "payload": "payload/vc_redist.x64.exe",
+                    "arguments": ["/install", "/quiet", "/norestart"],
+                    "required": true
+                },
+                {
+                    "id": "webview2",
+                    "detect": { "file": "%ProgramFiles(x86)%\\Microsoft\\EdgeWebView\\Application\\msedgewebview2.exe" },
+                    "download": {
+                        "url": "https://go.microsoft.com/fwlink/?linkid=2124703",
+                        "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                    }
+                }
+            ] }
+        }))
+        .expect("both shapes are settings the build reads");
+    }
+
+    #[test]
+    fn refuses_a_dependency_that_is_not_checked_or_not_installed() {
+        let text = audit_text(&json!({
+            "dependencies": { "items": [
+                { "id": "vcredist", "payload": "payload/vc_redist.x64.exe" },
+                { "id": "webview2", "detect": { "file": "webview2.dll" } }
+            ] }
+        }));
+        assert!(text.contains("dependencies.items[0].detect"), "{text}");
+        assert!(
+            text.contains("dependencies.items[1]: a dependency needs the payload"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn refuses_a_download_that_does_not_say_what_should_arrive() {
+        let text = audit_text(&json!({
+            "dependencies": { "items": [
+                {
+                    "id": "webview2",
+                    "detect": { "file": "webview2.dll" },
+                    "download": { "url": "https://example.test/webview2.exe" }
+                },
+                {
+                    "id": "short_hash",
+                    "detect": { "file": "webview2.dll" },
+                    "download": { "url": "https://example.test/webview2.exe", "sha256": "abc123" }
+                },
+                {
+                    "id": "wrong_scheme",
+                    "detect": { "file": "webview2.dll" },
+                    "download": { "url": "file://C:/webview2.exe", "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" }
+                }
+            ] }
+        }));
+        assert!(
+            text.contains("dependencies.items[0].download.sha256"),
+            "{text}"
+        );
+        assert!(
+            text.contains("dependencies.items[1].download.sha256"),
+            "{text}"
+        );
+        assert!(
+            text.contains("file://C:/webview2.exe is not an http or https URL"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn refuses_a_detection_rule_that_asks_the_wrong_thing() {
+        let text = audit_text(&json!({
+            "dependencies": { "items": [
+                {
+                    "id": "both",
+                    "detect": { "file": "a.dll", "registry": { "key": "HKLM\\Software\\A" } },
+                    "payload": "payload/a.exe"
+                },
+                {
+                    "id": "compared_without_a_name",
+                    "detect": { "registry": { "key": "HKLM\\Software\\A", "at_least": "1" } },
+                    "payload": "payload/a.exe"
+                },
+                {
+                    "id": "compared_twice",
+                    "detect": { "registry": { "key": "HKLM\\Software\\A", "name": "v", "equals": "1", "at_least": "1" } },
+                    "payload": "payload/a.exe"
+                },
+                {
+                    "id": "misspelled",
+                    "detect": { "registy": { "key": "HKLM\\Software\\A" } },
+                    "payload": "payload/a.exe"
+                }
+            ] }
+        }));
+        assert!(
+            text.contains("names both a file and a registry value"),
+            "{text}"
+        );
+        assert!(
+            text.contains("a rule that compares a value needs the value's name"),
+            "{text}"
+        );
+        assert!(
+            text.contains("compares the value in two ways at once"),
+            "{text}"
+        );
+        assert!(
+            text.contains("dependencies.items[3].detect.registy"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn refuses_a_dependency_that_cannot_be_run_or_told_apart() {
+        let text = audit_text(&json!({
+            "dependencies": { "items": [
+                {
+                    "id": "script",
+                    "detect": { "file": "a.dll" },
+                    "payload": "payload/install.cmd"
+                },
+                {
+                    "id": "twice",
+                    "detect": { "file": "a.dll" },
+                    "payload": "payload/a.exe",
+                    "download": { "url": "https://example.test/a.exe", "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" }
+                },
+                {
+                    "id": "twice",
+                    "detect": { "file": "a.dll" },
+                    "payload": "payload/a.exe"
+                },
+                {
+                    "id": "typed",
+                    "detect": { "file": "a.dll" },
+                    "payload": "payload/a.exe",
+                    "arguments": "/quiet",
+                    "required": "yes"
+                }
+            ] }
+        }));
+        assert!(
+            text.contains("payload/install.cmd is not an executable"),
+            "{text}"
+        );
+        assert!(text.contains("not from both"), "{text}");
+        assert!(
+            text.contains("dependencies.items[2].id: twice names a second dependency"),
+            "{text}"
+        );
+        assert!(text.contains("dependencies.items[3].arguments"), "{text}");
+        assert!(text.contains("dependencies.items[3].required"), "{text}");
     }
 
     #[test]

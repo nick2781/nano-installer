@@ -10,6 +10,8 @@
 //! an installation in a loop.
 
 mod api_association;
+mod api_dependency;
+mod api_download;
 mod api_file;
 mod api_process;
 mod api_registry;
@@ -25,9 +27,10 @@ use std::path::{Path, PathBuf};
 
 use crate::install::{self, InstallPrep, InstallSelection};
 use crate::BundleIndex;
-use context::{
-    log, log_tail, read_script, reset_log, undo, ScriptContext, ScriptEnvironment, Snapshot,
-};
+/// The log the run keeps, which the built-in flow writes into as well: a dependency it
+/// had to install belongs in the report of a failure that follows.
+pub(crate) use context::log;
+use context::{log_tail, read_script, reset_log, undo, ScriptContext, ScriptEnvironment, Snapshot};
 
 /// Script entry points inside a project's `scripts/` directory.
 pub(super) const INSTALL_SCRIPT: &str = "scripts/install.rhai";
@@ -312,6 +315,8 @@ fn run(context: &ScriptContext, source: &str) -> Result<()> {
     engine.set_max_operations(MAX_OPERATIONS);
     api_ui::register(&mut engine, context.clone());
     api_association::register(&mut engine, context.clone());
+    api_dependency::register(&mut engine, context.clone());
+    api_download::register(&mut engine, context.clone());
     api_file::register(&mut engine, context.clone());
     api_registry::register(&mut engine, context.clone());
     api_process::register(&mut engine);
@@ -1633,6 +1638,67 @@ mod tests {
         assert_eq!(
             report.text()?,
             "docs=true\ntools=true\nsamples=true\nnowhere=false\nchosen=3\nfirst=docs\n"
+        );
+        Ok(())
+    }
+
+    /// A script asks the machine about a dependency, and asks for one to be
+    /// installed, through the project's own declaration of it.
+    ///
+    /// The two answers a script needs are "is it there" and "put it there".
+    /// Both read `dependencies.items`, so a script that decides *when* to check
+    /// a dependency does not also have to restate *what* it is: the project
+    /// keeps one rule, and the built-in flow and the script ask it the same
+    /// question.
+    #[test]
+    fn a_script_asks_the_machine_about_the_dependencies_the_project_declares() -> Result<()> {
+        let report = Observation::new("script-dependencies");
+        let install_script = deploying_script(&format!(
+            r#"
+            let report = "";
+            report += "present=" + dependency_installed("present").to_string() + "\n";
+            report += "absent=" + dependency_installed("absent").to_string() + "\n";
+            report += "undeclared=" + dependency_installed("nowhere").to_string() + "\n";
+            report += "installs_present=" + install_dependency("present").to_string() + "\n";
+            report += "installs_absent=" + install_dependency("absent").to_string() + "\n";
+            write_file({}, report);
+            "#,
+            report.script_path()
+        ));
+        let mut fixture = fixture(&install_script, "")?;
+        // The machine has the first dependency and not the second: the rule the
+        // project writes is what says so, and the value the test wrote into the
+        // fixture's own key is what the first rule reads.
+        let (root, path) = install::registry_path(&fixture.registry_key)?;
+        install::write_registry_dword(root, &path, "Installed", 1)?;
+        fixture.config["dependencies"] = serde_json::json!({ "items": [
+            {
+                "id": "present",
+                "detect": { "registry": {
+                    "key": fixture.registry_key,
+                    "name": "Installed",
+                    "equals": "1"
+                } },
+                "payload": "payload/present.exe"
+            },
+            {
+                "id": "absent",
+                "detect": { "registry": {
+                    "key": format!(r"{}\Nowhere", fixture.registry_key),
+                    "name": "Installed"
+                } },
+                "payload": "payload/absent.exe"
+            }
+        ] });
+        fixture.install()?;
+
+        // The one that is there needs nothing done to it, and the one that is
+        // not cannot be installed from a bundle that does not carry its
+        // program, which is what the last line reports rather than an error that
+        // stops the install.
+        assert_eq!(
+            report.text()?,
+            "present=true\nabsent=false\nundeclared=false\ninstalls_present=true\ninstalls_absent=false\n"
         );
         Ok(())
     }

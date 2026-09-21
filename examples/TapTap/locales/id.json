@@ -50,6 +50,7 @@
   "button.cancel": "Batal",
 
   "status.preparing": "Mempersiapkan instalasi...",
+  "status.dependencies": "Menyiapkan komponen yang diperlukan...",
   "status.extracting": "Mengekstrak file...",
   "status.deploying": "Menyalin file...",
   "status.finishing": "Menyelesaikan instalasi...",

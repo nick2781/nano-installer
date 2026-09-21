@@ -34,6 +34,10 @@ features = [
     "Win32_UI_Shell",
     "Win32_UI_Shell_Common",
     "Win32_System_Environment",
+    # A dependency the project cannot ship is fetched over the machine's own
+    # HTTP stack, and what arrives is checked with the machine's own SHA-256.
+    "Win32_Networking_WinHttp",
+    "Win32_Security_Cryptography",
     "Win32_Security",
     "Win32_Storage_FileSystem",
     # `PrintWindow` lives in the Xps module of the bindings, and the end-to-end

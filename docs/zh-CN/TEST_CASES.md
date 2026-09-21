@@ -25,12 +25,16 @@ Rust doc comment，再退回用例名。
 | `a_closed_language_select_draws_its_arrow_over_its_fill_and_outline` | 收起的 `Select` 由底色、描边和箭头三层组成，箭头从远端边向内缩一段并垂直居中，跟着显示缩放一起变大；收起时画向下的那张，展开时画向上的那张。 |
 | `a_configured_percent_path_is_expanded_and_used` | 配置里带 `%LOCALAPPDATA%` 的路径必须先展开再用，没展开的路径不是绝对路径，安装会拒绝相对目录。这条用例完全不带 `--dir` 运行，等同于静默运行里没有指定目录的情况。 |
 | `a_container_measures_the_edge_its_children_are_asked_for` | 问 `HBox` 要竖直方向的尺寸时，报的是最高的那个子项加上自己的上下内边距；问水平方向时报子项沿宽度要的总和。内嵌的百分比宽度容器透过它自己的子项来量，不会把外层的行撑大或压塌。 |
+| `a_dependency_that_cannot_be_installed_stops_the_install` | 装不上的必需依赖会中止安装，而且在产品落盘之前就中止：报错点出依赖名和安装程序返回的退出码（用例那条命令返回 7），目的目录事后根本不存在。机器给不了产品需要的东西时，用户看到的是这句话，而不是一个起不来的产品。 |
+| `a_dependency_the_machine_already_has_is_not_installed_again` | 机器上已经有产品要的东西时不再装一遍：规则认得出它，安装程序就一次都不跑。用例把安装程序的参数写成一个它必然报错的命令，又把这条依赖标成必需，所以真去装了的话安装会当场失败，而不是悄悄放过去。 |
 | `a_dialog_button_answers_with_its_own_action` | 对话框里的按钮按自己声明的动作登记点击区域，确认键给出 `DialogOk`，取消键给出 `DialogCancel`。 |
 | `a_dialog_button_is_drawn_from_the_question_rather_than_the_layout` | 同一份对话框版面服务所有问题，按钮上的字来自对话框状态本身，也就是问题、确认和取消三个角色；对话框没提供文字的角色不显示内容，版面里写死的占位文字也不会顶上来。 |
 | `a_dialog_is_drawn_over_the_page_and_centred` | 对话框画在页面之上，比页面小时居中放置，它自己的版面因此可以用普通坐标系；画出来的问题文字来自对话框，而不是版面里的占位文字。 |
 | `a_disabled_button_registers_no_click_and_no_hover` | 条件不满足时按钮是惰性的，既不登记点击区域也不登记悬停区域；条件满足后恢复成它声明的动作，区域就是布局给它的那个矩形。 |
 | `a_display_scales_the_layout_by_its_own_dpi` | 开着 DPI 感知时，96 DPI 是 1.0 倍，144 和 192 DPI 分别是 1.5 和 2.0 倍，120 DPI 是 1.25 倍但仍取 1x 素材。关掉 DPI 感知的工程不管落在什么显示器上都留在 96 DPI 基准，缩放交给外壳去做。 |
 | `a_double_click_selects_the_word_under_the_pointer` | 双击选中指针下的那个词：字母和数字连成一段，路径分隔符单独一个，空白按一段算，下划线算词的一部分，点在文本之外没有东西可选。 |
+| `a_download_that_is_not_the_recorded_file_is_refused` | 取回来的不是工程记下的那个文件时一个字节都不执行：URL 回的是真的可执行文件，哈希位数对得上但不是它的，下载当场失败并说明到达的与期望的各是什么，目标文件与安装目录都不留下。被篡改或被截断的发布就是这样被挡在门外的。 |
+| `a_downloaded_dependency_is_checked_before_it_runs` | 带不进安装包的依赖在安装时现取：本机回环上开一个服务端，取回来的是真的可执行文件，哈希对得上才放行，然后才跑它、才留下它该留下东西。校验用的是 Windows 自带的 certutil 算出来的摘要，不是运行时自己算给自己看的那份。 |
 | `a_failed_upgrade_restores_the_previous_version` | 升级中途失败（这里让注册表登记报错）会回滚到上个版本：旧文件和旧 manifest 都还原，新 payload 的文件不在，manifest 里也只有旧文件。 |
 | `a_failing_install_script_removes_what_it_wrote` | 安装脚本抛错时，它写过的东西被清掉，错误里带着脚本抛出的那句消息，安装目录也不留残余。 |
 | `a_field_checks_the_value_the_project_asks_it_to` | 输入框自己的规矩就写在版面上：`required` 管值有没有，`min-length` 与 `max-length` 按字符数算（中文按字算，不按字节），`pattern` 是掩码而不是正则——`*` 是任意长的一段（可以为空），`?` 恰好一个字符，整段值都要对得上，所以安装目录写 `?:*` 就是要一个盘符开头的路径。没写规矩的字段一律合格，可留空的字段空着也合格；值最先破坏的那条规矩留下自己那句文案，没写文案的规矩只让字段不合格、什么也不说。 |
@@ -67,8 +71,10 @@ Rust doc comment，再退回用例名。
 | `a_run_without_any_install_path_is_refused` | 命令行和配置都没有给出目录可供退而求其次，这次运行会停下，并在提示里点明提供安装路径的两条途径。 |
 | `a_running_build_refuses_a_second_one` | 正在跑的构建会拒绝第二个打包任务。有任务在跑时按钮是禁用的，这条用例就是按钮背后那道检查：同时开两个会把同一个输出文件写坏。 |
 | `a_running_script_sees_the_cancel_request` | 任务运行中脚本里的 `is_cancelled()` 会变成 `true`：用例像窗口那样从另一个线程在 50 毫秒后提出取消，脚本的等待循环随即退出，并报出自己等了多久。 |
+| `a_script_asks_the_machine_about_the_dependencies_the_project_declares` | 脚本按工程自己的声明问两件事：机器上有没有（`dependency_installed`），没有就让运行时装上（`install_dependency`）。用例把两条依赖分别摆成「有」和「没有」，已经有的那条什么都不用做就返回 `true`；没有的那条因为安装包里根本没带它的程序而返回 `false`，安装照常往下走。问一个工程没声明的名字同样是 `false`，并留下一条说明原因的错误。 |
 | `a_script_deletes_the_desktop_shortcut_and_the_start_menu_folder_it_created` | 卸载脚本用 `delete_desktop_shortcut` 和 `delete_start_menu_folder` 删掉安装时建的桌面快捷方式和开始菜单文件夹，两个原语各自报告自己删掉了东西，事后链接和文件夹都不在了。 |
 | `a_script_dialog_is_drawn_in_the_wizard` | 脚本的提示与提问画在向导窗口里，用的是产品自己的皮肤，点一下卡片就把答案交回正在等待的脚本。用例自己写了一份 400x180 的卡片版面，两个按钮摆到它点得到的位置：先证明卡片亮出来时脚本还停在原地（回答文件此刻不存在），再逐个点中卡片上的确认键，让 `ask_yes_no` 拿到答案、`show_message` 和 `show_error` 被收起，每答一次就检查脚本接下来写下的那个文件，最后窗口走到完成页。卡片要是像原来那样另开系统对话框，这些点就会落空。 |
+| `a_script_downloads_a_file_and_checks_what_arrived` | 脚本自己按地址取回一个文件：`download_file_with_hash` 拿工程记下的 SHA-256 校验到达的字节，返回 `true`；`sha256_of_file` 读回来的正是那个摘要。用例在本机回环上开一个服务端，把仓库里那个真的可执行文件发出去，事后比对安装目录里的文件逐字节一致，所以脚本拿到的确实是服务器发的那一份。 |
 | `a_script_failure_reports_the_messages_it_logged` | 脚本失败时，它之前用 `log_warn` 之类写下的日志跟着错误一起报出来，作者能看到最后那几行。 |
 | `a_script_reads_the_tools_the_project_bundled` | `get_tools_dir()` 把打包进来的工具摊到磁盘上并返回目录路径，嵌套文件按原相对路径读得到、内容一致；再问一次返回同一个目录，不会重复摊一遍。 |
 | `a_script_reads_the_values_the_page_holds` | 脚本读得到页面上的取值：文本框里的字和单选组选中的那一行各按自己的 id 取回，页面从没声明过的 id 读成空串而不是报错。两条规则合在一份由脚本写出的报告里比对，所以取回的确实是用户留在页面上的那几个。 |
@@ -89,6 +95,7 @@ Rust doc comment，再退回用例名。
 | `a_shrinking_row_stops_at_the_minimum_its_items_declare` | `flex-shrink` 让一行容得下文字旁边的固定按钮，`min-width` 保住控件还能读：行宁可溢出，也不会把某个项压到版面声明的下限以下。`flex-shrink="0"` 的按钮保持设计宽度，溢出全由可以收缩的那个项承担。 |
 | `a_silent_install_writes_the_shortcuts_and_the_autostart_entry` | 无窗口安装没有复选框可读，只能照工程里的默认值处理快捷方式和自启动，它写下的 manifest 则列出安装目录之外创建的每个文件和注册表值。这些条目是用户还没启动产品就先碰到的东西，也是安装唯一写到自身目录之外的内容；跳过它们的安装包照样装得成功，只是会留下一个再也没人回收的开始菜单项。 |
 | `a_silent_run_installs_the_components_the_project_defaults_to` | 没有页面的安装只能照工程自己的答案办：写了 `required` 的装上，`default` 为真的装上，两者都不是的不装。每个组件只带一个文件，装出来的东西在盘上直接读得到。 |
+| `a_silent_run_installs_the_dependency_the_machine_is_missing` | 机器缺什么就补什么，然后产品照常落地：依赖的规则看的是它安装程序留下的那个文件，用例读的也是同一件东西——装之前不在，装完就在，产品自己也在。中间没有一样是模拟的，跑起来的是真程序、真参数。 |
 | `a_spacer_takes_what_the_fixed_items_leave` | `Spacer` 自己不画东西，它把后面的项推到另一端：两个定宽按钮之间剩下的 200 像素全被它吸收。 |
 | `a_styled_image_draws_into_a_sub_rectangle_at_the_opacity_it_declares` | `file='...' dest='...' fade='...'` 这种写法把图片画进控件内的一个子矩形，并按 `fade` 给透明度；目标矩形相对控件而不是页面，跟着控件一起被缩放。 |
 | `a_supported_locale_without_a_file_is_reported` | 工程声明支持、却没有对应语言文件的语言会被报告出来，因为别的环节不会报：运行时会退回默认语言，产品只是显示成另一种语言而已。 |
@@ -100,6 +107,7 @@ Rust doc comment，再退回用例名。
 | `a_wrapping_row_gives_each_line_the_height_of_its_tallest_item` | 窗口变窄时换行行重新排布，下一行从上一行最高那个项的下方开始，再加上间距，高度不同的卡片因此不会互相压住。 |
 | `a_wrapping_row_starts_a_new_line_when_the_next_item_does_not_fit` | 放不下下一个项时换行行另起一行；整行放得下就不换；比行还宽的项自己占一行而不是被丢掉；空容器没有行。 |
 | `accepts_a_configuration_of_read_settings` | 一份只写了本项目真会读的设置的配置能通过检查：每个区块的合法键都试一遍，`links` 这种由工程自己命名的表不在管辖之内。 |
+| `accepts_a_dependency_the_machine_is_asked_about` | 两种依赖写法都能通过审计：随安装包带上的 `.exe` 配注册表规则，以及安装时下载的安装程序配文件规则。 |
 | `action_attributes_map_to_window_actions` | `action` 属性映射到窗口动作：`close_confirm`、`open_url:`、`pick_directory` 各自落到对应的动作上，链接表的键先解析成 URL，直接写 URL 的照原样用，没配置的键什么也不做。 |
 | `agreement_links_resolve_through_the_project_links_table` | 链接名通过工程的 `links` 表解析：示例语言里用的 `agreement`、`policy` 别名和完整的 `terms_of_service` 都要落到配置的 URL 上，绝对 URL 绕过这张表，表里没有的名字解析不出目标。 |
 | `agreement_markdown_becomes_colored_visible_runs` | 协议句里的 Markdown 链接变成按链接色着色的文字段：方括号和圆括号被去掉，链接名留在原处，普通文字仍旧用原来的颜色。 |
@@ -152,6 +160,8 @@ Rust doc comment，再退回用例名。
 | `flow_items_honour_align_self_basis_and_anchored_edges` | 流式项既遵守容器的 `align-items` 和 `align-self`，也遵守 `right`、`bottom` 这类贴边属性：居中的按钮落在行的中间，`align-self="start"` 的贴顶，写死右边和下边的按钮落在页面那个角上。 |
 | `formats_bound_disk_sizes` | 绑定磁盘容量时按 MB、GB 这样的单位格式化字节数。 |
 | `formats_gui_sizes` | 构建器里显示的字节数按 KiB、MiB 格式化，并保留相应的小数位。 |
+| `hashes_a_file_the_way_it_hashes_the_bytes` | 对着文件算哈希与对着同一份字节算哈希结果一致，文件比一次读取大，所以跨读取块的那一段也走到了。 |
+| `hashes_to_the_published_digest` | 哈希要给出公开的答案：空串与 `abc` 两个已知向量的 SHA-256 逐字对上。返回什么由调用者说了算的实现过不了这一关。 |
 | `hbox_shrinks_text_before_fixed_button` | 一行放不下时，可收缩的文本项先把空间让出去，定宽按钮保持 184 像素，结果是 392、0、184。 |
 | `ignores_data_paths_when_the_project_declares_none` | 工程没声明 `uninstall.data_paths` 时，保留用户数据的路径列表为空。 |
 | `image_style_supports_plain_path_destination_and_fade` | 图片写法两种都认：只写路径时整块控件都用这张图、完全不透明；写 `file`、`dest`、`fade` 时目标矩形的宽高由坐标算出来，透明度按 `fade` 取。 |
@@ -171,9 +181,11 @@ Rust doc comment，再退回用例名。
 | `manifest_asks_for_elevation_only_when_the_project_does` | 清单文件只在工程要求时才请求提权：默认是 `asInvoker`，`install.require_admin` 为真时写 `requireAdministrator`；DPI 相关的两个元素跟着 `ui.dpi_aware` 一起切换，整份清单仍然是 Windows 加载器读得通的完整 XML。 |
 | `maps_default_locale_to_version_language` | 默认 locale 映射成 PE 版本资源里的语言 ID：`zh-CN` 是 0x0804、`ru` 是 0x0419，认不出的用英文 0x0409。 |
 | `menu_labels_stay_on_one_line_in_both_languages` | 菜单的宽度不变，标签都待在一行里。菜单栏只排一次，切换界面语言后重新读一遍，标签一折行，用户每次换语言旁边的菜单都会跟着移动。 |
+| `names_the_file_a_download_is_written_to` | 下载回来的程序在盘上叫什么：URL 最后一段本身就是可执行文件名时沿用它（有的安装程序在意自己的名字），否则用依赖自己的 id 加 `.exe`——Windows 只跑它认得出的程序。带查询串和结尾是目录的 URL 都按这条规则命名。 |
 | `only_expands_data_paths_inside_a_user_profile` | `uninstall.data_paths` 里只有用户配置目录下的路径会被展开并保留，`%APPDATA%` 本身、`%SystemRoot%` 和相对路径都被过滤掉。 |
 | `open_project_names_the_missing_project_file` | 选中一个没有工程文件的文件夹会被拒绝，并指出缺的是哪个文件：选错文件夹是最常见的失误，什么都不报的窗口只会让用户猜它想要哪个文件。 |
 | `open_project_reads_the_folder_that_holds_installer_config_json` | 打开工程读的是用户选中的那个文件夹，之后窗口显示的每个名字、路径和默认值都出自这里。用例把应用指向一个文件夹，要求摘要从磁盘上的文件填出来。 |
+| `orders_versions_the_way_a_rule_means_them` | `at_least` 按点分数字判断大小：四位版本号、.NET 那种纯数字的 `Release`、缺段的版本号（缺的算 0，所以 `14.0.1` 大于 `14.0`）各按预期给出答案。 |
 | `out_of_range_pages_fall_back_to_the_first_layout` | 安装模式取到 `installingpage.xml` 和 `finishpage.xml`，卸载模式取到 `uninstallingpage.xml` 和 `uninstallpage.xml`；页码越界时退回第一份版面，两个模式的页面总数都是 3。 |
 | `out_of_range_progress_and_both_status_forms_do_not_disturb_the_install` | 进度设成负数、超过 100 或非数字，以及两种形式的状态文字，都不会打断安装：部署照常完成，manifest 写好，模式和取消状态也照常读得到。 |
 | `padding_and_margin_take_one_to_four_values_and_their_single_side_forms` | `padding` 和 `margin` 接受一到四个值，按 CSS 的写法分到四边；单边写法独立生效并覆盖简写里那一边，两个属性互不干扰，所有值都按 96 DPI 计算并随显示缩放。 |
@@ -190,15 +202,23 @@ Rust doc comment，再退回用例名。
 | `project_bundle_roundtrips_layout_assets_and_locales` | 工程打包再解开后，配置文件、版面、素材、语言文件和 payload 五项内容和原文件一致。 |
 | `project_file_version_overrides_release_version_for_pe` | PE 资源的文件版本取自 `project.file_version`，发布版本号里带的后缀不进版本资源。 |
 | `project_pack_progress_describes_assets_payload_and_uninstaller` | 打包过程按进度报出它做了什么：收集素材的数量、没有中间皮肤包、加入 payload、嵌入卸载运行时，卸载运行时也确实进了捆绑数据。 |
+| `reads_a_file_rule_with_the_variables_the_machine_sets` | 文件规则按机器上的真实路径判断：规则里写的是 `%TEMP%`，判断前先展开成这台机器的临时目录，文件在就算有，文件删掉就算没有。 |
+| `reads_the_value_the_machine_actually_stores` | 机器怎么写就怎么读：VC++ 运行库那种 DWORD 的 `1`、WebView2 那种文本版本号都能按规则比相等与比大小；只写 `key` 的规则问的是键在不在；键不存在与值不存在给出同一个答案。 |
 | `refresh_keeps_a_custom_output_path_for_the_same_project` | 刷新会保留为这个工程选好的输出路径：这个输入框可以指向任何地方，刷新时把它重置，下一次安装包就会在没人打招呼的情况下被放回工程目录树里。 |
 | `refresh_replaces_a_custom_output_path_when_the_project_changes` | 自定义输出路径属于当初为它选定的那个工程。换了工程，这条路径就没意义了，留着它会把新工程的安装包写进新工程从没配置过的文件夹。 |
 | `refuses_a_component_without_an_id_or_a_payload` | 组件必须有 `id` 和 `payload`：缺 `id` 时页面上的复选框无从对应，缺 `payload` 时没有东西可装，两者都在构建期报出来，报错说的是第几个条目、该补什么。 |
+| `refuses_a_dependency_that_cannot_be_run_or_told_apart` | 依赖的安装程序和身份都要说得清楚：非 `.exe` 的载荷、同时写 `payload` 与 `download`、重复的 `id`、`arguments` 不是字符串数组、`required` 不是布尔值，都在构建期一次报出来。 |
+| `refuses_a_dependency_that_is_not_checked_or_not_installed` | 依赖缺了「怎么认」或「怎么装」都不行：没写 `detect` 就无从判断机器上有没有，`payload` 与 `download` 都没写就没有东西可跑，两条各自报出第几个条目缺什么。 |
+| `refuses_a_dependency_the_project_never_declared` | 脚本问一个工程没声明的依赖名，拿到的是明确的错误（哪个名字不是本工程声明的依赖），而不是一个像「没装」那样的答案。 |
+| `refuses_a_detection_rule_that_asks_the_wrong_thing` | 判断规则一次只回答一个问题：同时写文件与注册表、比大小却没写值名、同时写 `equals` 与 `at_least`、把 `registry` 拼错，都会在构建期被指出。 |
+| `refuses_a_download_that_does_not_say_what_should_arrive` | 下载必须写明哈希与 http(s) 地址：没写 `sha256`、写了但位数不对、URL 不是 http(s)，三种都在构建期拒绝。机器上装的东西不该是服务器那天回什么就是什么。 |
 | `refuses_a_foreign_manifest_at_the_destination` | 目标目录里的 manifest 属于别的产品时，读取上一次安装会被拒绝。 |
 | `refuses_a_misspelled_setting` | `install.exe_nmae` 这种拼错的键会让构建失败并指出是哪一条，而不是安静地什么也不做。 |
 | `refuses_a_page_role_the_runtime_does_not_run` | 页面写了运行时不会跑的职责（比如 `license`）会让构建失败，指出该用 `progress` 或 `finish`。 |
 | `refuses_a_required_component_whose_default_is_false` | 必需组件的 `default` 写 `false` 没有意义：写了 `required` 就一律安装，不看默认值。两条同时写会被构建拒绝，而不是让工程以为这一条把组件关掉了。 |
 | `refuses_a_section_that_does_nothing` | `validation` 这类整个没有被读取的区块会被拒绝，消息里指出真正会跑的是 `install.required_space_mb`。 |
 | `refuses_a_setting_that_does_nothing` | 写了却没人读的设置会让构建失败：`install.append_to_path` 报错时会说清现在没有任何设置能往 PATH 里加目录。 |
+| `refuses_a_url_it_cannot_fetch` | 取不了的东西在开口之前就被拒：不是 http(s) 的协议、没有协议头、没有主机名、端口不是数字的写法各返回错误。 |
 | `refuses_an_install_when_the_drive_holds_less_space_than_the_project_asks_for` | 目标盘剩余空间少于 `install.required_space_mb` 时，安装在任何文件写下去之前就停下，并报出要多少、报的是哪个盘；要 0 MiB 的工程不受影响。 |
 | `refuses_an_unknown_component_key` | 组件条目里拼错的键会被拒绝：这张表只认 `id`、`payload`、`default`、`required`，多出来的键报出第几个组件和键名，免得工程以为那条设置已经生效。 |
 | `refuses_an_unknown_page_key` | 向导页条目里多写的键会被拒绝，并指出是第几页，防止一个多打的键悄悄沉在配置里。 |
@@ -222,6 +242,7 @@ Rust doc comment，再退回用例名。
 | `runtime_modes_select_distinct_layout_lists` | 安装和卸载两种模式各自取自己那份版面列表的第一页，互不混用。 |
 | `sidebar_paths_keep_drive_and_relevant_tail` | 侧栏里的长路径压缩成盘符加末尾几段，路径本身很短时原样显示。 |
 | `silent_arguments_read_the_directory_and_reject_anything_else` | 静默参数只认 `--dir`：没有参数时没有目录覆盖，`--dir` 后面带上路径就用它；写错的选项和后面缺路径的 `--dir` 都让运行停下。 |
+| `splits_a_url_into_what_a_request_asks_for` | URL 拆成请求要的那几段：http 与 https 各自的默认端口、写明的端口、没有路径时补 `/`、查询串留在路径里、协议名大小写不影响判断。 |
 | `startup_waits_for_project_selection` | 构建器启动后还没选工程：工程目录和输出路径都是空的，摘要、日志和结果都没有。 |
 | `status_source_replaces_placeholder_text_with_the_published_step` | `value-source="status"` 的标签在步骤发布时显示该步骤的翻译文字，没有发布的步骤时保留版面里写死的占位文字。 |
 | `taptap_first_page_places_controls_at_192_dpi` | 在 2 倍缩放下加载示例工程首页：窗口是 1440×900，图层数和顺序符合版面，页面底色、语言选择框、最小化和关闭按钮的位置与透明度都按倍率算对。 |

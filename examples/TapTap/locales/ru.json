@@ -50,6 +50,7 @@
   "button.cancel": "Отмена",
 
   "status.preparing": "Подготовка к установке...",
+  "status.dependencies": "Подготовка необходимых компонентов...",
   "status.extracting": "Распаковка файлов...",
   "status.deploying": "Развёртывание файлов...",
   "status.finishing": "Завершение установки...",

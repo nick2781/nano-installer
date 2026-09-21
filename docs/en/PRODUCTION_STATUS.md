@@ -100,11 +100,25 @@ files and registry entries, so validate them in a disposable virtual machine onl
   its `default`. One runtime unpacks every archive, so a component in another format fails the
   build, and two archives that carry one relative path fail at install time rather than
   overwriting each other in the order the project declares them.
+- A project can declare what the machine has to have first. Each entry of `dependencies.items` says
+  how to recognise it (a file, or a registry value that has to exist, equal a value or be at least a
+  version), how to install it (an `.exe` the setup carries, or one fetched from a URL), and whether
+  missing it is fatal. The run asks before it extracts the payload: what is there is left alone,
+  what is missing is installed, a required one that cannot be installed stops the run and reports
+  the dependency and the installer's exit code, and an optional one leaves a warning. A downloaded
+  program has to match the SHA-256 the project recorded before it runs, and is removed again when it
+  does not. What lands on the machine is the dependency itself and is not part of the uninstall
+  manifest, so uninstalling the product leaves what the machine was missing in place. A script that
+  wants to decide when for itself asks the same declaration and takes the same fetch route through
+  `dependency_installed`, `install_dependency`, `download_file`, `download_file_with_hash` and
+  `sha256_of_file`.
 - The setup-level suite in `crates/nano-installer-core/tests/e2e_setup.rs` builds a setup from a
   project it writes itself and runs it against a real installation: files land on disk byte for
   byte, the manifest and the uninstall entry are written, an upgrade drops stale files and keeps
-  files it does not own, and an uninstall removes the product, the registration, and the directory.
-  Thirteen of its thirty-three cases open the wizard window and drive it: one measures the client
+  files it does not own, and an uninstall removes the product, the registration, and the directory; a
+  dependency the machine is missing is really installed, and a downloaded one is checked before it
+  runs.
+  Thirteen of its thirty-nine cases open the wizard window and drive it: one measures the client
   area it drew, one walks the page actions a project declares, one stops a running task from a cancel
   button, one types a directory into the field a page asks for and starts the install with it, one
   clicks the row a radio group's install button waits for, one rolls the wheel over a list and
@@ -118,7 +132,7 @@ files and registry entries, so validate them in a disposable virtual machine onl
   browse button and closes the shell's folder dialog again. They need an interactive desktop
   session, so they skip where there is none and `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` makes the
   skip a failure; the cursor case asks that the session be showing a pointer as well, which a
-  hosted runner is not, and it prints its skip there. The other twenty pass on Windows 11 and in
+  hosted runner is not, and it prints its skip there. The other twenty-six pass on Windows 11 and in
   CI.
 - A setup stays a setup after signing: a certificate table appended behind the bundle, which is what
   Authenticode writes into the file, no longer hides the footer the runtime reads its resources from.
@@ -175,6 +189,11 @@ Windows 7 SP1 nothing has been observed.
   `PerMonitorV2, PerMonitor`). A window dragged to a display with a different scaling factor is laid
   out again for that display, so text and artwork stay sharp; on Windows 7 the system still scales
   the window for the primary display.
+
+- A dependency is downloaded through the WinHTTP stack Windows ships, with TLS 1.1/1.2 turned on for
+  https. On Windows 7 SP1 that also needs the machine's own schannel to support TLS 1.2 (KB3140245
+  and later); without it the download fails and says so rather than falling back to plain text. An
+  http URL is unaffected.
 
 Once signing and the Windows 7 acceptance run are done, you can onboard a product using the
 `examples/TapTap` structure.

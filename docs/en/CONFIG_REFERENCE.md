@@ -178,6 +178,88 @@ one whose `id` or `payload` repeats another's, one whose `payload` is `resources
 one that writes `required: true` beside `default: false`, since a required component never reads the
 default.
 
+## Dependencies
+
+The VC++ runtimes, the WebView2 runtime, a .NET Framework version: these are not part of the product.
+They are installed once on the machine and shared by everything on it. `dependencies.items` declares
+them -- how to tell whether the machine has one, and which program puts it there when it does not.
+
+```json
+"dependencies": {
+  "items": [
+    {
+      "id": "vcredist_x64",
+      "detect": {
+        "registry": {
+          "key": "HKLM\\SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\x64",
+          "name": "Installed",
+          "equals": "1"
+        }
+      },
+      "payload": "payload/vc_redist.x64.exe",
+      "arguments": ["/install", "/quiet", "/norestart"],
+      "required": true
+    },
+    {
+      "id": "webview2",
+      "detect": {
+        "file": "%ProgramFiles(x86)%\\Microsoft\\EdgeWebView\\Application\\msedgewebview2.exe"
+      },
+      "download": {
+        "url": "https://go.microsoft.com/fwlink/?linkid=2124703",
+        "sha256": "e5f5a4b0b1b7c0d4a4f0d2a0f9c1e8b6d3a7c2f4b8e6d1a3c5f7b9d0e2a4c6f8"
+      },
+      "arguments": ["/silent", "/install"]
+    }
+  ]
+}
+```
+
+| Setting | Type | Effect |
+| --- | --- | --- |
+| `dependencies.items[].id` | string | Dependency name; a script asks with `dependency_installed()` and `install_dependency()` |
+| `dependencies.items[].detect` | object | How the machine is asked, either `file` or `registry` |
+| `dependencies.items[].payload` | string | The installer shipped inside the setup; it has to be an `.exe` |
+| `dependencies.items[].download` | object | The installer fetched at install time, described below |
+| `dependencies.items[].arguments` | array | What the installer is run with; empty by default |
+| `dependencies.items[].required` | bool | A required dependency stops the install when it cannot be installed; defaults to `false` |
+
+`detect` is written one of two ways, and one rule answers one question:
+
+- `{ "file": "%ProgramFiles(x86)%\\...\\msedgewebview2.exe" }`: the machine has it when this file
+  is there. Environment variables in the path are expanded first.
+- `{ "registry": { ... } }`: read the registry. `key` is the key to open, under `HKCU` or `HKLM`;
+  `name` is the value to read, and a rule without one only asks whether the key exists. With a
+  `name`, the value can also be compared: `equals` is an exact match, `at_least` compares the
+  dot-separated numbers. The value is read as text whether the machine stored text or a dword, so
+  the `1` the VC++ runtimes write, the version the WebView2 runtime writes, and the number .NET
+  Framework records are all comparable. A missing part in `at_least` counts as zero, which makes
+  `14.0.1` and `14.0.1.0` the same version.
+
+`payload` and `download` are alternatives. A bundled installer is collected into the setup by the
+build and unpacked to a temporary directory before it runs; a download is fetched while the setup
+runs and checked against `sha256` before anything is executed. A file that does not match is deleted
+rather than run, which is why `sha256` is required: compute it with something like
+`certutil -hashfile <file> SHA256`. A URL whose last segment is an executable keeps that name;
+anything else is named after the dependency's id with an `.exe` suffix, because Windows only runs
+what it recognizes as a program.
+
+Dependencies are handled before the payload: the built-in flow checks each one, installs the ones
+that are missing, and only unpacks once they are all in place. A dependency that cannot be installed
+stops the install when the project marks it `required`, and says why -- nothing of the product has
+been written at that point; one that is not required is noted in the log and the run carries on. An
+installer that reports `1638`, meaning a newer version is already installed, or `3010`/`1641`,
+meaning it worked and Windows wants a restart, counts as success; any other non-zero exit code is a
+failure. The status text the built-in flow publishes while it works comes from the locale key
+`status.dependencies`.
+
+A dependency is not uninstalled with the product: it belongs to the machine, and other products use
+it too.
+
+A project that ships `scripts/install.rhai` keeps the built-in flow out of the way and decides when
+to check and whether to install, through `dependency_installed()` and `install_dependency()`, which
+read the same declaration. See the [script API](SCRIPT_API.md#dependencies-and-downloads).
+
 ## Custom install and uninstall steps
 
 Add `scripts/install.rhai` or `scripts/uninstall.rhai` to replace the built-in steps. See the

@@ -825,6 +825,35 @@ impl Fixture {
         Ok(())
     }
 
+    /// A path inside the case's own directory, which goes away with it.
+    fn case_path(&self, name: &str) -> PathBuf {
+        self._temp.path().join(name)
+    }
+
+    /// Ships the repository's archiver as the program a dependency runs.
+    ///
+    /// A dependency is installed by running a real program, and this is the one
+    /// the fixtures already use to write payloads: told to archive a file it
+    /// leaves an archive behind, which is what a case watches for.
+    fn bundle_dependency_program(&self) -> anyhow::Result<()> {
+        let seven_zip = workspace_root().join("tools/7za.exe");
+        anyhow::ensure!(seven_zip.is_file(), "tools/7za.exe is missing");
+        let target = self.project.join("payload/dependency.exe");
+        std::fs::create_dir_all(target.parent().expect("the payload directory"))?;
+        std::fs::copy(&seven_zip, &target)?;
+        Ok(())
+    }
+
+    /// Declares the one dependency a case is about, and where a silent run
+    /// installs to.
+    fn dependency_project(&self, dependency: serde_json::Value) -> anyhow::Result<()> {
+        self.edit_config(|config| {
+            config["install"]["default_path"] =
+                serde_json::json!(self.destination.to_string_lossy());
+            config["dependencies"] = serde_json::json!({ "items": [dependency] });
+        })
+    }
+
     fn registry_key(&self) -> String {
         format!(
             r"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\nano-installer-e2e-{}",
@@ -1625,6 +1654,59 @@ fn a_setup_unpacks_the_tools_its_project_bundles() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// A project script fetches a file of its own, checks what arrived against the
+/// digest it names, and reads the digest of a file it holds.
+///
+/// The built-in dependency flow and a script go through the same fetch, and the
+/// dependency cases prove the flow. This is the half a script reaches for when
+/// the project decides for itself when to fetch what it does not ship, and it
+/// runs against a real server answering on the loopback interface.
+#[test]
+fn a_script_downloads_a_file_and_checks_what_arrived() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    // Real bytes from a real server: the archiver the fixtures already write
+    // payloads with, answered over HTTP.
+    let program = workspace_root().join("tools/7za.exe");
+    anyhow::ensure!(program.is_file(), "tools/7za.exe is missing");
+    let digest = sha256_of(&program)?;
+    let server = LocalServer::serve(&program)?;
+    fixture.write_script(
+        "install.rhai",
+        &format!(
+            r#"
+            let install_path = get_install_path();
+            if !extract_payload_with_progress(0.0, 60.0) {{
+                return;
+            }}
+            copy_uninstaller();
+            let fetched = path_join(install_path, "fetched.exe");
+            let arrived = download_file_with_hash("{0}", fetched, "{1}");
+            write_file(path_join(install_path, "report.txt"), arrived.to_string() + "\n" + sha256_of_file(fetched));
+            "#,
+            server.url, digest
+        ),
+    )?;
+    fixture.build()?;
+    fixture.install()?;
+
+    // Byte for byte what the server answered with, and the digest the script
+    // read back is the one the project recorded.
+    assert_eq!(
+        std::fs::read(fixture.destination.join("fetched.exe"))?,
+        std::fs::read(&program)?,
+        "the file the script downloaded is not the one the server answered with"
+    );
+    assert_eq!(
+        std::fs::read_to_string(fixture.destination.join("report.txt"))?,
+        format!("true\n{digest}"),
+        "the script's download, or its own hash of the result, did not come out right"
+    );
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Shortcuts and autostart
 // ---------------------------------------------------------------------------
@@ -1953,6 +2035,297 @@ fn a_payload_without_the_declared_executable_is_refused() -> anyhow::Result<()> 
     assert!(
         stderr.contains("E2eProbe.exe"),
         "the failure should name the missing executable: {stderr}"
+    );
+    assert!(
+        !fixture.destination.exists(),
+        "a refused install still created {}",
+        fixture.destination.display()
+    );
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// What the product needs from the machine
+// ---------------------------------------------------------------------------
+
+/// The SHA-256 of a file, computed by a program that is not the one under test.
+///
+/// `certutil` ships with Windows and hashes a file its own way, so the digest a
+/// case hands the setup to check against is an independent answer rather than
+/// the runtime's own arithmetic read back to itself.
+fn sha256_of(path: &Path) -> anyhow::Result<String> {
+    let output = Command::new("certutil")
+        .arg("-hashfile")
+        .arg(path)
+        .arg("SHA256")
+        .output()?;
+    anyhow::ensure!(
+        output.status.success(),
+        "certutil failed on {}: {}",
+        path.display(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = String::from_utf8_lossy(&output.stdout).to_string();
+    let digest = text
+        .lines()
+        .nth(1)
+        .unwrap_or_default()
+        .trim()
+        .replace(' ', "")
+        .to_ascii_lowercase();
+    anyhow::ensure!(
+        digest.len() == 64
+            && digest
+                .chars()
+                .all(|character| character.is_ascii_hexdigit()),
+        "certutil did not report a digest: {text}"
+    );
+    Ok(digest)
+}
+
+/// Serves one file over the loopback for the length of one case.
+///
+/// A download is only a download when something answers it, so a case that
+/// checks one puts a server on the other end: the bytes travel through the same
+/// stack a product's own update would use, over a socket that answers the way a
+/// release host does.
+struct LocalServer {
+    url: String,
+    _thread: std::thread::JoinHandle<()>,
+}
+
+impl LocalServer {
+    fn serve(path: &Path) -> anyhow::Result<Self> {
+        let body = std::fs::read(path)?;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+        listener.set_nonblocking(true)?;
+        let port = listener.local_addr()?.port();
+        let thread = std::thread::spawn(move || {
+            // How many connections a download makes is the client's business,
+            // so the server answers whatever arrives and then stops on its own
+            // rather than holding the port for the rest of the run.
+            let deadline = Instant::now() + Duration::from_secs(30);
+            while Instant::now() < deadline {
+                let Ok((mut stream, _)) = listener.accept() else {
+                    std::thread::sleep(Duration::from_millis(20));
+                    continue;
+                };
+                let mut request = [0u8; 4096];
+                let _ = std::io::Read::read(&mut stream, &mut request);
+                let mut response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: application/octet-stream\r\nConnection: close\r\n\r\n",
+                    body.len()
+                )
+                .into_bytes();
+                response.extend_from_slice(&body);
+                let _ = std::io::Write::write_all(&mut stream, &response);
+                let _ = std::io::Write::flush(&mut stream);
+            }
+        });
+        Ok(Self {
+            url: format!("http://127.0.0.1:{port}/tool.exe"),
+            _thread: thread,
+        })
+    }
+}
+
+/// What the archiver is told to do: write `archive` out of `source`.
+fn archive_arguments(source: &Path, archive: &Path) -> serde_json::Value {
+    serde_json::json!([
+        "a",
+        "-tzip",
+        archive.display().to_string(),
+        source.display().to_string()
+    ])
+}
+
+/// A machine missing what the product needs is given it, and the product lands
+/// afterwards.
+///
+/// The dependency's rule looks for a file its installer leaves behind, so the
+/// case reads the same thing the setup read: the file is not there before the
+/// run, and is after it. Nothing about the check is simulated -- a real program
+/// is run with the arguments the project declares.
+#[test]
+fn a_silent_run_installs_the_dependency_the_machine_is_missing() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.bundle_dependency_program()?;
+    let source = fixture.case_path("marker.txt");
+    std::fs::write(&source, b"the dependency ran")?;
+    let archive = fixture.case_path("dependency.zip");
+    fixture.dependency_project(serde_json::json!({
+        "id": "probe",
+        "detect": { "file": archive.display().to_string() },
+        "payload": "payload/dependency.exe",
+        "arguments": archive_arguments(&source, &archive),
+        "required": true
+    }))?;
+    fixture.build()?;
+    assert!(
+        !archive.exists(),
+        "the case has to start with the machine missing the dependency"
+    );
+
+    fixture.install()?;
+
+    assert!(
+        archive.is_file(),
+        "the dependency's installer never ran, so the machine was left without it"
+    );
+    assert!(
+        fixture.destination.join("E2eProbe.exe").is_file(),
+        "the product did not install after the dependency it needs did"
+    );
+    Ok(())
+}
+
+/// A machine that already has what the product needs is not given it again.
+///
+/// The rule finds the file, so the installer must not run at all: it is shipped
+/// with an argument no archiver understands, and the project marks the
+/// dependency required, so a run that decided to install it anyway would stop
+/// with the installer's own failure instead of passing quietly.
+#[test]
+fn a_dependency_the_machine_already_has_is_not_installed_again() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.bundle_dependency_program()?;
+    let archive = fixture.case_path("dependency.zip");
+    std::fs::write(&archive, b"already installed")?;
+    fixture.dependency_project(serde_json::json!({
+        "id": "probe",
+        "detect": { "file": archive.display().to_string() },
+        "payload": "payload/dependency.exe",
+        "arguments": ["__not_a_command__"],
+        "required": true
+    }))?;
+    fixture.build()?;
+
+    fixture.install()?;
+
+    assert_eq!(
+        std::fs::read(&archive)?,
+        b"already installed",
+        "the dependency was installed over what the machine already had"
+    );
+    Ok(())
+}
+
+/// A dependency that cannot be installed stops the run before the product is
+/// written.
+///
+/// This is also what says the check happens before the payload: the destination
+/// the payload would have been unpacked into does not exist afterwards, so a
+/// machine that cannot be given what the product needs is told so instead of
+/// being left with a product that will not start.
+#[test]
+fn a_dependency_that_cannot_be_installed_stops_the_install() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.bundle_dependency_program()?;
+    let source = fixture.case_path("marker.txt");
+    std::fs::write(&source, b"the dependency ran")?;
+    let archive = fixture.case_path("dependency.zip");
+    fixture.dependency_project(serde_json::json!({
+        "id": "probe",
+        "detect": { "file": archive.display().to_string() },
+        "payload": "payload/dependency.exe",
+        "arguments": ["__not_a_command__"],
+        "required": true
+    }))?;
+    fixture.build()?;
+
+    let result = fixture.install_expecting_failure()?;
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("dependency probe failed with exit code 7"),
+        "the failure should name the dependency and what its installer returned: {stderr}"
+    );
+    assert!(
+        !fixture.destination.exists(),
+        "a refused install still created {}",
+        fixture.destination.display()
+    );
+    Ok(())
+}
+
+/// A dependency the project cannot ship is fetched, checked, and only then run.
+#[test]
+fn a_downloaded_dependency_is_checked_before_it_runs() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    let program = workspace_root().join("tools/7za.exe");
+    anyhow::ensure!(program.is_file(), "tools/7za.exe is missing");
+    let digest = sha256_of(&program)?;
+    let server = LocalServer::serve(&program)?;
+    let source = fixture.case_path("marker.txt");
+    std::fs::write(&source, b"the downloaded dependency ran")?;
+    let archive = fixture.case_path("downloaded.zip");
+    fixture.dependency_project(serde_json::json!({
+        "id": "probe",
+        "detect": { "file": archive.display().to_string() },
+        "download": { "url": server.url.clone(), "sha256": digest },
+        "arguments": archive_arguments(&source, &archive),
+        "required": true
+    }))?;
+    fixture.build()?;
+
+    fixture.install()?;
+
+    assert!(
+        archive.is_file(),
+        "the downloaded program never ran, so the machine was left without it"
+    );
+    Ok(())
+}
+
+/// A download that is not the file the project recorded never runs.
+///
+/// The URL answers with a real executable and the digest is the right shape but
+/// not the file's, which is what a tampered or truncated release looks like
+/// from the machine installing it.
+#[test]
+fn a_download_that_is_not_the_recorded_file_is_refused() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    let program = workspace_root().join("tools/7za.exe");
+    anyhow::ensure!(program.is_file(), "tools/7za.exe is missing");
+    let server = LocalServer::serve(&program)?;
+    let source = fixture.case_path("marker.txt");
+    std::fs::write(&source, b"the downloaded dependency ran")?;
+    let archive = fixture.case_path("downloaded.zip");
+    // A digest of the right shape and not the file's, so what fails is the
+    // check rather than the way the check was written down.
+    let wrong = "0".repeat(64);
+    fixture.dependency_project(serde_json::json!({
+        "id": "probe",
+        "detect": { "file": archive.display().to_string() },
+        "download": { "url": server.url.clone(), "sha256": wrong },
+        "arguments": archive_arguments(&source, &archive),
+        "required": true
+    }))?;
+    fixture.build()?;
+
+    let result = fixture.install_expecting_failure()?;
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("arrived as sha256") && stderr.contains("but the project expects"),
+        "the failure should say what arrived and what was expected: {stderr}"
+    );
+    assert!(
+        !archive.exists(),
+        "a download that failed its check was run anyway"
     );
     assert!(
         !fixture.destination.exists(),

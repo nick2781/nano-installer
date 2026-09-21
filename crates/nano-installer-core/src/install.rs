@@ -12,10 +12,10 @@ use windows::Win32::System::Registry::{
     RegCloseKey, RegCreateKeyExW, RegDeleteKeyW, RegDeleteTreeW, RegDeleteValueW, RegOpenKeyExW,
     RegQueryValueExW, RegSetValueExW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_QUERY_VALUE,
     KEY_READ, KEY_SET_VALUE, KEY_WRITE, REG_CREATED_NEW_KEY, REG_CREATE_KEY_DISPOSITION, REG_DWORD,
-    REG_OPTION_NON_VOLATILE, REG_SZ, REG_VALUE_TYPE,
+    REG_EXPAND_SZ, REG_OPTION_NON_VOLATILE, REG_SZ, REG_VALUE_TYPE,
 };
 
-use super::{script, shell, BundleIndex, RuntimeMode, UI};
+use super::{dependency, script, shell, BundleIndex, RuntimeMode, UI};
 
 /// What the installer UI held when the user started the task.
 ///
@@ -475,6 +475,11 @@ fn install_setup(
             cancel: task.clone(),
         });
     }
+    // What the product needs from the machine comes before what the product is:
+    // a machine that cannot be given it is a machine the product would not
+    // start on, and saying so costs nothing while the destination is still
+    // untouched.
+    dependency::install_missing(&config, &bundle, &stage.0, task)?;
     super::report_progress(15, "status.extracting")?;
     let files = extract_payload(
         setup,
@@ -1514,6 +1519,96 @@ pub(super) fn read_registry_string(root: HKEY, path: &str, name: &str) -> Result
         .take_while(|unit| *unit != 0)
         .collect::<Vec<_>>();
     Ok(Some(String::from_utf16(&units)?))
+}
+
+/// Reads a single value as text, whatever type the machine stored it as.
+///
+/// A dependency's detection rule names the value a product writes when it is
+/// installed, and vendors disagree about the type: the VC++ runtimes write a
+/// `REG_DWORD` of 1, the WebView2 runtime writes its version as `REG_SZ`, and
+/// .NET Framework records a release number as a `REG_DWORD`. All three read as
+/// text here, which is what a comparison needs.
+///
+/// A value stored as neither text nor a dword reads as absent rather than
+/// guessed at. `REG_EXPAND_SZ` is text with `%VAR%` references in it, and the
+/// caller compares it as written.
+pub(super) fn read_registry_value_text(
+    root: HKEY,
+    path: &str,
+    name: &str,
+) -> Result<Option<String>> {
+    let mut key = Default::default();
+    let opened = unsafe {
+        RegOpenKeyExW(
+            root,
+            PCWSTR(wide(path).as_ptr()),
+            0,
+            KEY_QUERY_VALUE,
+            &mut key,
+        )
+    };
+    if opened == ERROR_FILE_NOT_FOUND || opened == ERROR_PATH_NOT_FOUND {
+        return Ok(None);
+    }
+    opened.ok()?;
+    let mut kind = REG_VALUE_TYPE::default();
+    let mut size = 0u32;
+    let status = unsafe {
+        RegQueryValueExW(
+            key,
+            PCWSTR(wide(name).as_ptr()),
+            None,
+            Some(&mut kind),
+            None,
+            Some(&mut size),
+        )
+    };
+    if status == ERROR_FILE_NOT_FOUND || status == ERROR_PATH_NOT_FOUND {
+        unsafe {
+            let _ = RegCloseKey(key);
+        }
+        return Ok(None);
+    }
+    if status.is_err() {
+        unsafe {
+            let _ = RegCloseKey(key);
+        }
+        status.ok()?;
+        return Ok(None);
+    }
+    let mut buffer = vec![0u8; size as usize];
+    let status = unsafe {
+        RegQueryValueExW(
+            key,
+            PCWSTR(wide(name).as_ptr()),
+            None,
+            Some(&mut kind),
+            Some(buffer.as_mut_ptr()),
+            Some(&mut size),
+        )
+    };
+    unsafe {
+        let _ = RegCloseKey(key);
+    }
+    status.ok()?;
+    buffer.truncate(size as usize);
+    match kind {
+        REG_DWORD if buffer.len() >= 4 => Ok(Some(
+            u32::from_le_bytes([buffer[0], buffer[1], buffer[2], buffer[3]]).to_string(),
+        )),
+        REG_SZ | REG_EXPAND_SZ => Ok(Some(utf16_text(&buffer))),
+        _ => Ok(None),
+    }
+}
+
+/// Decodes a `REG_SZ` payload, which runs to the first NUL.
+fn utf16_text(buffer: &[u8]) -> String {
+    let units = buffer
+        .chunks_exact(2)
+        .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+        .take_while(|unit| *unit != 0)
+        .collect::<Vec<_>>();
+    String::from_utf16_lossy(&units)
 }
 
 /// Writes a single `REG_SZ` value, creating the key when needed.

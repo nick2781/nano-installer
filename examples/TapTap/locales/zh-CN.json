@@ -50,6 +50,7 @@
   "button.cancel": "取消",
 
   "status.preparing": "准备安装...",
+  "status.dependencies": "正在准备运行环境...",
   "status.extracting": "正在解压文件...",
   "status.deploying": "正在部署文件...",
   "status.finishing": "正在完成安装...",

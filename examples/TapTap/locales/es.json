@@ -50,6 +50,7 @@
   "button.cancel": "Cancelar",
 
   "status.preparing": "Preparando la instalación...",
+  "status.dependencies": "Preparando los componentes necesarios...",
   "status.extracting": "Extrayendo archivos...",
   "status.deploying": "Copiando archivos...",
   "status.finishing": "Finalizando la instalacion...",
