@@ -205,6 +205,30 @@ is compared with `sha256` before anything else happens: a file that does not mat
 the call answers `false`, so no half of it is left for the next step. Neither download reports
 progress; a script that wants the progress bar to say something calls `set_progress()` around it.
 
+## Services
+
+| Primitive | Description |
+| --- | --- |
+| `service_install(name, display_name, binary, args)` | Installs this product's own service, set to start with the machine |
+| `service_exists(name)` | Whether the machine keeps a service of this name |
+| `service_running(name)` | Whether it is running right now |
+| `service_start(name)` | Starts it, waiting for it to report that it runs |
+| `service_stop(name)` | Stops it, waiting for it to report that it stopped |
+| `service_set_start_type(name, kind)` | Changes how it starts: `auto`, `delayed`, `manual` or `disabled` |
+| `service_delete(name)` | Deletes it, stopping it first |
+
+A service is not a file of the installation but a record the machine keeps, pointing at a program
+inside it. Installing, changing, starting and deleting one therefore need an elevated process:
+Windows refuses a plain run, that refusal is reported as it came, and the call answers `false`.
+`service_install` installs without starting anything -- `service_start` is a call of its own, so the
+product decides when its service runs -- and a `binary` with no directory of its own names a file of
+the installation, as in `"MyGameService.exe"`. A service of the same name that already runs the same
+command line is this installation's own, which is what an upgrade replays; one that runs another
+program is refused with both command lines logged, because taking it over would delete another
+product's service at uninstall. What a script installs travels in the manifest: the uninstall stops
+and deletes it before the files it runs from are removed, and a service the script deleted itself is
+dropped from that record.
+
 ## System
 
 | Primitive | Description |

@@ -14,6 +14,8 @@ eframe/egui. It only creates installers; the setup it produces still runs on Win
   key are read with `KEY_WOW64_32KEY` and `KEY_WOW64_64KEY`, and what a command wrote is decoded in
   the machine's ANSI code page with `MultiByteToWideChar`, both of which have been there since
   Windows XP
+- The service control manager, for the service a project's script installs, changes, starts and
+  deletes: every Windows this project supports has shipped it since long before Windows 7
 - IMM32 for the IME composition and candidate windows of a text field, which Windows 7 has shipped
   since release
 - WinHTTP to fetch a dependency a project declares for download, with TLS 1.1/1.2 turned on for

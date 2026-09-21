@@ -28,6 +28,9 @@ features = [
     "Win32_System_Ole",
     "Win32_System_LibraryLoader",
     "Win32_System_Registry",
+    # A service is a record the machine keeps, so a script that installs one
+    # talks to the service control manager.
+    "Win32_System_Services",
     "Win32_System_SystemInformation",
     "Win32_System_Threading",
     "Win32_System_Diagnostics_ToolHelp",

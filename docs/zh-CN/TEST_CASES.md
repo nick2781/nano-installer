@@ -91,6 +91,12 @@ Rust doc comment，再退回用例名。
 | `a_select_offers_the_options_the_page_declares` | 下拉框是页面提供的一种选择，不只是语言控件：关闭时显示当前选项的文字（没人点过时是第一个），点击它要的是自己的菜单而不是语言列表，展开的选项按版面顺序排列、各用各的文字，隐藏的选项不出现；被选中的值决定旁边按钮是否可点。 |
 | `a_selection_band_covers_the_characters_it_selects` | 选中区域画出一条色带盖住选中的字符：没选中的范围什么都不画，色带始终停在输入框内，纵向也留出与文字高度匹配的位置。 |
 | `a_selection_is_ordered_from_whichever_end_the_caret_is_at` | 选区按两端排好序，从哪头拖都得到同一段区间；光标和锚点重合不算选区，清空后也没有选区。 |
+| `a_service_command_line_quotes_the_program` | 服务跑的命令行由安装器拼出来：程序路径始终带引号，参数按脚本写的样子接在后面、两头空白丢掉。`Program Files` 底下带空格的路径是常态，服务命令行又不经过 shell 解析，不引起来 Windows 就分不清程序到哪里为止。 |
+| `a_service_is_found_and_told_apart_from_one_that_is_not_there` | 问机器有没有某个服务、它在不在跑，答得出来，也说得出「没有」：Windows 自带的事件日志服务一定在且在跑，编出来的名字查到的是「不存在」而不是报错，启动和停止一个不存在的服务会被拒绝。脚本靠这两个答案决定要不要再装一遍，所以「没有」必须是答案而不是失败。 |
+| `a_service_is_installed_and_removed_where_the_run_may` | 装一个服务再删掉它，前提是这次运行有权限这么做：没有管理员权限时 Windows 自己会拒绝，用例守住的就是「被拒绝、机器上也没有留下服务」；有权限时走完安装、升级时重放同一条命令行、删除这三步，服务名归这次运行独有，出错也有兜底清理。服务装上以后是不是真的跑起来不在这条用例里——服务程序是产品自己的，测试带不了。 |
+| `a_service_start_kind_is_read_from_its_word` | 启动方式按脚本写下的词解析：`auto`、`delayed`、`manual`、`disabled` 各对应一种，大小写和两头空格都不影响；写成别的词一律拒绝，而不是猜一个。猜出来的启动方式会跟着机器一起启动或干脆不起来，错的那一种用户很难发现。 |
+| `a_service_that_runs_another_program_is_not_taken_over` | 同名服务已经存在、但跑的是别的程序时，安装被拒绝，消息里两条命令行都在。接管它的代价是：这次安装会把它记进自己的 manifest，卸载时删掉的是别人产品的服务。 |
+| `a_setup_installs_a_service_the_uninstall_takes_away` | 这条路径在打包之后仍然成立：脚本在真安装包里装一个服务，用例绕过安装包直接问机器（`sc query`）它在不在，再跑卸载程序，最后再看它还有没有。没有权限时守住的是另一半——安装自己报 `false`，机器上什么都没有留下，脚本的答案和机器的答案必须一致。装上以后服务跑不跑，同样不在这条用例里。 |
 | `a_setup_reads_what_a_command_its_script_ran_wrote` | 这条路径在打包之后仍然成立：脚本写进安装包的 `run_command_output` 调用真的跑起来，读回的退出码与两个输出流逐字节落进报告文件再比对，工程脚本、捆绑数据与运行时之间没有哪一环把输出吃掉。 |
 | `a_setup_stores_every_registry_type_its_script_names` | 安装包写下的每个注册表值都由机器自己认：`reg query` 读回来的类型是 `REG_SZ`、`REG_EXPAND_SZ`（引用按原样存着）、`REG_MULTI_SZ`、`REG_DWORD`、`REG_QWORD` 与 `REG_BINARY` 各一份，可展开的那条按 `%TEMP%` 展开后与这台机器的临时目录一致，带视图后缀的键名建得出、读得到、删得掉，卸载再按 manifest 把这六个值全部收回。脚本会写类型是一回事，用户机器上那个安装包真写下这些类型是另一回事。 |
 | `a_setup_runs_the_projects_own_install_and_uninstall_scripts` | 自带步骤的工程会把这些步骤带进安装包，由真实运行时执行；进程内的脚本用例直接驱动脚本驱动层，而它和工程目录之间还隔着把 `scripts/` 打进捆绑数据、再由 stub 找回来这两件事。少了其中任何一件的安装包，仍然能让那批进程内用例全部通过。 |
@@ -249,6 +255,7 @@ Rust doc comment，再退回用例名。
 | `retry_repeats_a_failed_build_with_the_parameters_it_stored` | 重试用失败那次存下的参数重跑构建：重试的意义就在于变的只是磁盘上的一个文件，所以用例在失败后改掉屏幕上的字段，要求工作线程收到的是存下的那份请求，而不是表单上的。 |
 | `runtime_modes_select_distinct_layout_lists` | 安装和卸载两种模式各自取自己那份版面列表的第一页，互不混用。 |
 | `sidebar_paths_keep_drive_and_relevant_tail` | 侧栏里的长路径压缩成盘符加末尾几段，路径本身很短时原样显示。 |
+| `service_primitives_ask_the_machine_and_install_where_the_run_may` | 脚本层的这组服务原语：装之前先问机器（事件日志为真、编出来的名字为假），装一个自己的服务后 manifest 记下它，按 manifest 卸载时它被删掉；没有权限时安装返回 `false`、机器上不留服务，manifest 里也没有这一项。启动方式写成看不懂的词返回 `false`；删一个不存在的服务返回 `true`，第二次卸载就是这个样子。 |
 | `silent_arguments_read_the_directory_and_reject_anything_else` | 静默参数只认 `--dir`：没有参数时没有目录覆盖，`--dir` 后面带上路径就用它；写错的选项和后面缺路径的 `--dir` 都让运行停下。 |
 | `splits_a_url_into_what_a_request_asks_for` | URL 拆成请求要的那几段：http 与 https 各自的默认端口、写明的端口、没有路径时补 `/`、查询串留在路径里、协议名大小写不影响判断。 |
 | `startup_waits_for_project_selection` | 构建器启动后还没选工程：工程目录和输出路径都是空的，摘要、日志和结果都没有。 |

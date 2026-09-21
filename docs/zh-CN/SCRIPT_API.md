@@ -178,6 +178,26 @@
 TLS 1.2。取到的文件先与 `sha256` 比一次，对不上就删掉并返回 `false`，不会留半份给下一步；两次
 下载都没有进度输出，要在进度条上说明什么，由脚本自己在调用前后 `set_progress()`。
 
+## 服务
+
+| 原语 | 说明 |
+| --- | --- |
+| `service_install(name, display_name, binary, args)` | 装上本产品自己的服务，设为随机器启动 |
+| `service_exists(name)` | 机器上有没有这个名字的服务 |
+| `service_running(name)` | 这个服务此刻在不在跑 |
+| `service_start(name)` | 启动它，等它报出已在运行 |
+| `service_stop(name)` | 停下它，等它报出已经停下 |
+| `service_set_start_type(name, kind)` | 改启动方式：`auto`、`delayed`、`manual` 或 `disabled` |
+| `service_delete(name)` | 删掉它，先停后删 |
+
+服务不是安装目录里的文件，而是机器自己的一条记录，指向安装目录里的某个程序。因此装、改、启、停、删
+都要求提权：普通权限运行时 Windows 会拒绝，拒绝的原话报回来，调用返回 `false`。`service_install`
+只装不启——要不要让它现在就跑，由脚本自己调 `service_start` 决定；`binary` 不带目录时按安装目录解析，
+例如 `"MyGameService.exe"`。同名服务已经存在、而且跑的正是同一条命令行，视为自己（升级重放这一步会
+成功）；跑的是别的程序的则拒绝，并把两条命令行都写进日志——那个服务属于别的产品，接管它等于在卸载时
+把它删掉。脚本装上的服务记进 manifest，卸载先停后删，而且排在删文件之前，因为服务的程序就在安装目录
+里；脚本自己 `service_delete` 掉的会从记录里划掉，卸载不会再去删一次。
+
 ## 系统
 
 | 原语 | 说明 |

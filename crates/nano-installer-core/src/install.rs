@@ -529,6 +529,7 @@ fn install_setup(
         artifacts: &artifacts,
         registry_values: &[],
         registry_keys: &[],
+        services: &[],
         task,
     }
     .run(|| {
@@ -864,6 +865,8 @@ struct Deployment<'a> {
     /// Registry entries a project script wrote, replayed by the uninstaller.
     registry_values: &'a [(String, String)],
     registry_keys: &'a [String],
+    /// Services a project script installed, deleted by the uninstaller.
+    services: &'a [String],
     /// The task asking for this deployment, so it can stop between two files.
     task: &'a Cancellation,
 }
@@ -921,6 +924,7 @@ impl Deployment<'_> {
                     .map(|(path, name)| (path.clone(), name.clone()))
                     .collect(),
                 registry_keys: self.registry_keys.to_vec(),
+                services: self.services.to_vec(),
             },
         )?;
         register()
@@ -936,6 +940,9 @@ pub(super) struct ManifestArtifacts {
     pub(super) registry_values: Vec<(String, String)>,
     /// Registry keys a project script created, including their subkeys.
     pub(super) registry_keys: Vec<String>,
+    /// Services a project script installed, by the name the machine knows each
+    /// one by.
+    pub(super) services: Vec<String>,
 }
 
 /// Writes the manifest the uninstaller replays.
@@ -964,6 +971,7 @@ pub(super) fn write_manifest(
             .map(|(path, name)| json!({"path": path, "name": name}))
             .collect::<Vec<_>>(),
         "registry_keys": artifacts.registry_keys,
+        "services": artifacts.services,
     });
     let target = destination.join(MANIFEST_NAME);
     journal.track(&target)?;
@@ -2024,10 +2032,28 @@ fn uninstall(uninstaller: &Path, keep_data: bool, task: &Cancellation) -> Result
     Ok(())
 }
 
-/// Removes the shortcut, autostart, and registry entries the manifest records.
+/// Removes the shortcut, autostart, service, and registry entries the manifest
+/// records.
 pub(super) fn remove_recorded_artifacts(manifest: &Value) {
+    // Services go first: each one runs a program inside the installation, and a
+    // service left behind while its program is deleted starts into nothing.
+    remove_recorded_services(manifest);
     InstallArtifacts::remove_recorded(manifest);
     remove_recorded_registry(manifest);
+}
+
+/// Deletes the services a project script installed.
+///
+/// A service the script already deleted, or one an earlier uninstall took away,
+/// is not an error: the manifest records what the installation owned, and the
+/// uninstall deletes whatever of it is still there.
+fn remove_recorded_services(manifest: &Value) {
+    let Some(services) = manifest["services"].as_array() else {
+        return;
+    };
+    for name in services.iter().filter_map(Value::as_str) {
+        let _ = crate::service::delete(name);
+    }
 }
 
 /// Deletes the per-user data directories `uninstall.data_paths` names.
@@ -2309,6 +2335,7 @@ mod tests {
             artifacts: &artifacts,
             registry_values: &[],
             registry_keys: &[],
+            services: &[],
             task: &task,
         }
         .run(register)

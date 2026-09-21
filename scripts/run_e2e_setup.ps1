@@ -175,12 +175,24 @@ function Get-CommitDescription {
     return $head
 }
 
+# Whether this process runs elevated decides which branches the suite takes:
+# a case that installs a service, or writes a key the whole machine shares,
+# holds the refusal of a plain run and the round trip of an elevated one. The
+# report names which it was, because a green run cannot otherwise be read for
+# those cases.
+function Test-Elevated {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
 $requirements = "NANO_INSTALLER_E2E_REQUIRE_STUBS=1"
 $env:NANO_INSTALLER_E2E_REQUIRE_STUBS = "1"
 if ($RequireDesktop) {
     $env:NANO_INSTALLER_E2E_REQUIRE_DESKTOP = "1"
     $requirements = "$requirements NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1"
 }
+$elevated = Get-ReportPhrase -Text $text -Key $(if (Test-Elevated) { "elevated.yes" } else { "elevated.no" })
 
 Write-Output (Get-ReportPhrase -Text $text -Key "console.buildingstubs")
 $stubs = Invoke-NativeStep $stubCommand -DeadlineMinutes $SuiteDeadlineMinutes
@@ -207,6 +219,7 @@ $lines.Add((Get-ReportPhrase -Text $text -Key "text.e2e.title"))
 Add-ReportField -Lines $lines -Label (Get-ReportPhrase -Text $text -Key "text.runat") -Value $runAt
 Add-ReportField -Lines $lines -Label (Get-ReportPhrase -Text $text -Key "text.commit") -Value $commit
 Add-ReportField -Lines $lines -Label (Get-ReportPhrase -Text $text -Key "text.required") -Value $requirements
+Add-ReportField -Lines $lines -Label (Get-ReportPhrase -Text $text -Key "text.elevated") -Value $elevated
 $lines.Add("")
 $lines.Add("$ $stubCommand")
 $lines.AddRange([string[]]$stubs.Output)
@@ -251,6 +264,7 @@ $stats = @(
 $fields = @(
     @{ Label = (Get-ReportPhrase -Text $text -Key "text.commit"); Value = $commit },
     @{ Label = (Get-ReportPhrase -Text $text -Key "text.required"); Value = $requirements },
+    @{ Label = (Get-ReportPhrase -Text $text -Key "text.elevated"); Value = $elevated },
     @{ Label = (Get-ReportPhrase -Text $text -Key "fields.runtimeBuild"); Value = $stubCommand },
     @{ Label = (Get-ReportPhrase -Text $text -Key "fields.suite"); Value = $suiteCommand }
 )

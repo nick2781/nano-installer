@@ -8,6 +8,7 @@ mod install;
 mod manifest;
 mod net;
 mod script;
+mod service;
 mod shell;
 mod version;
 

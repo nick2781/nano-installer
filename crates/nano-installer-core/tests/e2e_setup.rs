@@ -1800,6 +1800,102 @@ fn a_setup_reads_what_a_command_its_script_ran_wrote() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// A project script installs a service, and the uninstall takes it away again.
+///
+/// A service is not a file of the installation but an entry the machine keeps
+/// pointing at one, so this is the seam between a script and the service control
+/// manager: the name the setup installed is the one the machine answers for, and
+/// the name the manifest recorded is the one the uninstaller deletes. Installing
+/// a service needs an elevated process; where the run has none, the Windows
+/// refusal has to come back as a failed call rather than as a service nobody
+/// asked for. Either way the case holds the same thing -- the machine keeps the
+/// service exactly when the script reported installing one, and nothing of it is
+/// left after the uninstall -- and both are asked of the machine directly rather
+/// than of the script's own answer.
+///
+/// That the service then runs is not held: the program a service runs is the
+/// product's own, and no test can ship one.
+#[test]
+fn a_setup_installs_a_service_the_uninstall_takes_away() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    let service = format!("nano-installer-e2e-service-{}", fixture.id);
+    fixture.edit_config(|config| {
+        config["test"]["service_name"] = serde_json::json!(&service);
+    })?;
+    fixture.write_script(
+        "install.rhai",
+        r#"
+            let install_path = get_install_path();
+            if !extract_payload_with_progress(0.0, 60.0) {
+                return;
+            }
+            copy_uninstaller();
+            let name = get_config_value("test.service_name");
+            let installed = service_install(name, "nano-installer e2e service", "E2eProbe.exe", "--serve");
+            let report = "";
+            report += "installed=" + installed.to_string() + "\n";
+            report += "exists=" + service_exists(name).to_string() + "\n";
+            report += "running=" + service_running(name).to_string() + "\n";
+            write_file(path_join(install_path, "service-report.txt"), report);
+        "#,
+    )?;
+    fixture.build()?;
+    fixture.install()?;
+
+    let report = std::fs::read_to_string(fixture.destination.join("service-report.txt"))?;
+    let observed = |key: &str| -> Option<String> {
+        report
+            .lines()
+            .find_map(|line| line.strip_prefix(&format!("{key}=")).map(str::to_string))
+    };
+    let installed = observed("installed").as_deref() == Some("true");
+    // What the script's own two calls said, and what the machine says when
+    // asked from outside the setup, all have to agree.
+    assert_eq!(
+        observed("exists").as_deref(),
+        Some(if installed { "true" } else { "false" }),
+        "the script's install and its lookup disagree: {report}"
+    );
+    assert_eq!(
+        service_exists(&service),
+        installed,
+        "the machine does not hold the service the setup reported: {report}"
+    );
+    // Installing a service does not start it: the script never asked it to run.
+    assert_eq!(
+        observed("running").as_deref(),
+        Some("false"),
+        "the service started on its own: {report}"
+    );
+
+    fixture.uninstall()?;
+    assert!(
+        !service_exists(&service),
+        "the service the manifest recorded outlived the uninstall"
+    );
+    Ok(())
+}
+
+/// Whether the machine keeps a service of this name.
+///
+/// Asked of the service control manager through the tool Windows ships for it,
+/// so the answer comes from the machine rather than from the setup that
+/// installed the service. A name nothing owns is answered with an error, which
+/// is what makes this a yes or no rather than "it depends on the wording".
+fn service_exists(name: &str) -> bool {
+    Command::new("sc.exe")
+        .args(["query", name])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
 /// A project that bundles helper programs has them carried into the setup and
 /// unpacked where its script can run them.
 ///

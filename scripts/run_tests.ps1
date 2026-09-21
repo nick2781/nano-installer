@@ -196,8 +196,20 @@ function Get-CommitDescription {
     return $head
 }
 
+# Whether this process runs elevated decides which branches the suite takes:
+# a case that installs a service, or writes a key the whole machine shares,
+# holds the refusal of a plain run and the round trip of an elevated one. The
+# report names which it was, because a green run cannot otherwise be read for
+# those cases.
+function Test-Elevated {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
 $toolchain = (Invoke-NativeStep "cargo --version" -DeadlineMinutes 2).Output -join "; "
 $rustcVersion = (Invoke-NativeStep "rustc --version" -DeadlineMinutes 2).Output -join "; "
+$elevated = Get-ReportPhrase -Text $text -Key $(if (Test-Elevated) { "elevated.yes" } else { "elevated.no" })
 $commit = Get-CommitDescription
 $runAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 
@@ -227,6 +239,7 @@ Add-ReportField -Lines $lines -Label (Get-ReportPhrase -Text $text -Key "text.ru
 Add-ReportField -Lines $lines -Label (Get-ReportPhrase -Text $text -Key "text.commit") -Value $commit
 Add-ReportField -Lines $lines -Label (Get-ReportPhrase -Text $text -Key "text.toolchain") -Value $toolchain
 Add-ReportField -Lines $lines -Label (Get-ReportPhrase -Text $text -Key "text.rustc") -Value $rustcVersion
+Add-ReportField -Lines $lines -Label (Get-ReportPhrase -Text $text -Key "text.elevated") -Value $elevated
 $lines.Add("")
 $lines.Add("$ $suiteCommand")
 $lines.AddRange([string[]]$printed)
@@ -443,6 +456,7 @@ $fields = @(
     @{ Label = (Get-ReportPhrase -Text $text -Key "text.commit"); Value = $commit },
     @{ Label = (Get-ReportPhrase -Text $text -Key "text.toolchain"); Value = $toolchain },
     @{ Label = (Get-ReportPhrase -Text $text -Key "text.rustc"); Value = $rustcVersion },
+    @{ Label = (Get-ReportPhrase -Text $text -Key "text.elevated"); Value = $elevated },
     @{ Label = (Get-ReportPhrase -Text $text -Key "fields.command"); Value = $suiteCommand }
 )
 $verdict = "passed"

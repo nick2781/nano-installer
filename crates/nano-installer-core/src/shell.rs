@@ -199,6 +199,39 @@ pub(super) fn notify_shell() {
     }
 }
 
+/// Reports whether this process runs with an elevated token.
+///
+/// The machine's own services and the machine-wide part of the registry answer
+/// to this: an install that was started as an ordinary program is refused by
+/// Windows itself, and the refusal is what a project sees.
+pub(super) fn is_elevated() -> bool {
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::Security::{
+        GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY,
+    };
+    use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+    let mut token = HANDLE::default();
+    if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) }.is_err() {
+        return false;
+    }
+    let mut elevation = TOKEN_ELEVATION::default();
+    let mut returned = 0u32;
+    let status = unsafe {
+        GetTokenInformation(
+            token,
+            TokenElevation,
+            Some(&mut elevation as *mut _ as *mut _),
+            std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+            &mut returned,
+        )
+    };
+    unsafe {
+        let _ = CloseHandle(token);
+    }
+    status.is_ok() && elevation.TokenIsElevated != 0
+}
+
 /// A command that never shows a console window of its own.
 ///
 /// A setup runs in the user's own session, so a program it starts must not flash

@@ -67,6 +67,12 @@
 - 脚本跑过的程序，写下的内容能收回来：`run_command_output` 把退出码、标准输出与标准错误一起交回，
   字节先按 UTF-8 解、解不开就按这台机器的 ANSI 代码页解，中文 Windows 上的 `ipconfig` 因此读成中文
   而不是替换字符；用户停掉任务时，连这个程序已经写下的内容一起结束。
+- 项目脚本可以装上自己的服务（`service_install`、`service_exists`、`service_running`、
+  `service_start`、`service_stop`、`service_set_start_type`、`service_delete`）。服务不是安装目录
+  里的文件，而是机器自己的一条记录，所以卸载按 manifest 先停后删，而且排在删文件之前——服务的程序
+  就在安装目录里。同名却跑着别的程序的服务会被拒绝，卸载不会把别人的服务带走。这些都要求提权，
+  没有权限时调用返回 `false` 并把 Windows 的原话写进日志；`service_install` 只装不启，
+  什么时候让它跑由脚本自己决定。
 
 ### 改进
 
@@ -208,22 +214,36 @@
   `run_command_output` 返回 `#{code, stdout, stderr}`，起不来时 `code` 为 `-1`、`stderr` 里放着原因。
 - 依赖检测：`dependency::detect` 改用 `parse_registry_key`，`dependencies.items[].detect.registry.key`
   因此可以带视图后缀，按位宽分开装的运行库可以用同一条规则来问。
+- 服务：新增 `crates/nano-installer-core/src/service.rs`，`service::install` 用 `CreateServiceW` 装、
+  `DeleteService` 删（先 `ControlService(SERVICE_CONTROL_STOP)` 再删，状态最多等 10 秒）、
+  `QueryServiceStatus` 读状态、`ChangeServiceConfigW` 与 `ChangeServiceConfig2W` 改启动方式与延迟
+  自启；命令行由 `command_line` 拼出，程序路径始终加引号。同名服务已经存在时先读回它的
+  `lpBinaryPathName`，与这次要写的命令行逐字比较：一样就当自己（升级重放这一步），不一样则拒绝，
+  并把两条命令行都写进错误。`script/api_service.rs` 把七个原语接到这套实现上：装成功后
+  `ScriptState.services` 记名，`service_delete` 成功后划掉。manifest 新增 `services` 数组，
+  `install::remove_recorded_artifacts` 从 `remove_recorded_services` 起手，排在删快捷方式与注册表
+  之前。装、改、停、删都要求提权，`is_elevated` 的实现挪到 `shell.rs` 由两个模块共用。顺带让两份
+  测试报告写明本次是否提权运行（`Test-Elevated`），因为从这一版起有几条用例的答案取决于它。
 
 ### 已验证
 
-- `cargo test --locked --workspace`：共 282 条用例，279 通过、0 失败、1 忽略，退出码 0（核心库 205、
-  安装包级 41、工程检查 5、可视化构建器 29，另加两个解压运行时用例；被忽略的
+- `cargo test --locked --workspace`：共 289 条用例，286 通过、0 失败、1 忽略，退出码 0（核心库 211、
+  安装包级 42、工程检查 5、可视化构建器 29，另加两个解压运行时用例；被忽略的
   `install::tests::registers_and_cleans_up_scoped_uninstall_key` 要在隔离环境里写 HKCU；两条指针
   用例按下面的理由过滤掉）。报告在 `target/test-report.txt` 与 `target/test-report.html`。
-- 安装包级的 41 条里有 39 条跑通，其中 13 条会打开真实的向导窗口；
+- 安装包级的 42 条里有 40 条跑通，其中 13 条会打开真实的向导窗口；
   `run_e2e_setup.ps1 -RequireDesktop` 那次把跳过当成失败，报告在 `target/e2e-report.txt` 与
   `target/e2e-report.html`，同一个脚本加 `-Language en` 会另留一份英文版。
-- 注册表类型与命令输出这两条安装包级用例的答案是从机器上读回来的，不是从写下它的原语手里：
+- 注册表类型、命令输出与服务这三条安装包级用例的答案是从机器上读回来的，不是从写下它的原语手里：
   六个值的类型由 `reg query` 报出（`REG_SZ`、`REG_EXPAND_SZ`、`REG_MULTI_SZ`、`REG_DWORD`、
   `REG_QWORD`、`REG_BINARY`），带视图后缀的键建得出、读得到、删得掉，命令留下的是退出码 5 与
   两个输出流的逐字节内容。本机装的那份 `EdgeUpdate` 只在 32 位视图里登记，因此 `HKLM32` 读得到、
   `HKLM64` 读不到，两个视图名在真机上分了岔；换成没有这种软件的机器时这条不做断言，
   用例会先向 `reg query` 问一次哪个视图有它。
+- 服务这条路径在本机只跑到了没有权限的那一半：本机不是提权进程，装服务、改服务、删服务都返回
+  `false`，机器上也没有留下任何服务（`sc query` 问过），两次报告因此都写着「提权运行 否」。
+  装上再删掉的往返要有提权环境才跑得到，CI 的 runner 是管理员账户时就会跑到它。装上以后服务是否
+  正常运行谁也跑不到：服务程序是产品自己的。
 - 依赖用例跑的是真程序：随安装包带上的依赖真被装上，而且按它自己留下的文件判断机器上有没有；按 URL
   下载的依赖先过一遍独立算出的摘要（`certutil` 算的，不是运行时自己算给自己看的那份）才跑，摘要对不
   上时那个程序一次都没有被启动，目标文件也没留下。

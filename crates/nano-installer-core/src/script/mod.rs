@@ -15,6 +15,7 @@ mod api_download;
 mod api_file;
 mod api_process;
 mod api_registry;
+mod api_service;
 mod api_shortcut;
 mod api_system;
 mod api_ui;
@@ -279,6 +280,7 @@ fn finish_install(context: &ScriptContext, exe_name: &str, prep: &InstallPrep) -
         autostart: serde_json::Value::Null,
         registry_values: state.registry_values.clone(),
         registry_keys: state.registry_keys.clone(),
+        services: state.services.clone(),
     };
     let context_config = context.config().clone();
     drop(state);
@@ -319,6 +321,7 @@ fn run(context: &ScriptContext, source: &str) -> Result<()> {
     api_download::register(&mut engine, context.clone());
     api_file::register(&mut engine, context.clone());
     api_registry::register(&mut engine, context.clone());
+    api_service::register(&mut engine, context.clone());
     api_process::register(&mut engine, context.clone());
     api_shortcut::register(&mut engine, context.clone());
     api_system::register(&mut engine, context.clone());
@@ -2174,6 +2177,115 @@ mod tests {
         // replacing a product while it is running.
         assert_eq!(report.text()?, "running=true\nabsent=false\n");
         Ok(())
+    }
+
+    /// The service primitives ask the machine what it has, and install what the
+    /// run may install.
+    ///
+    /// A service the machine keeps is reachable without an elevated process, so
+    /// the questions answer wherever the case runs: the Windows Event Log is
+    /// installed and running whatever else is. Installing one is not, and a
+    /// plain run holds the refusal rather than a service nobody asked for. Where
+    /// the run may install, what it installed is recorded in the manifest and
+    /// gone again when that manifest is replayed, which is what an uninstall
+    /// does.
+    ///
+    /// What is not held is that an installed service then runs: the program a
+    /// service runs is the product's own, and no test can ship one.
+    #[test]
+    fn service_primitives_ask_the_machine_and_install_where_the_run_may() -> Result<()> {
+        let report = Observation::new("script-service");
+        let name = unique_name("nano-installer-service");
+        let elevated = crate::shell::is_elevated();
+        // Starting and stopping a service is only asked of a run that may act
+        // on the machine at all: a service pointed at a file that is not a
+        // service program holds the service manager for its whole timeout
+        // before it gives up, which no case should wait for.
+        let controls = if elevated {
+            ""
+        } else {
+            r#"
+            report += "start=" + service_start(absent).to_string() + "\n";
+            report += "stop=" + service_stop(absent).to_string() + "\n";
+            "#
+        };
+        let fixture = fixture(
+            &deploying_script(&format!(
+                r#"
+                let absent = {name};
+                let report = "";
+                report += "known=" + service_exists("EventLog").to_string() + "\n";
+                report += "running=" + service_running("EventLog").to_string() + "\n";
+                report += "absent=" + service_exists(absent).to_string() + "\n";
+                report += "absent_running=" + service_running(absent).to_string() + "\n";
+                report += "kind=" + service_set_start_type(absent, "whenever").to_string() + "\n";
+                report += "delete_absent=" + service_delete(absent).to_string() + "\n";
+                report += "install=" + service_install(absent, "nano-installer service", "App.exe", "--serve").to_string() + "\n";
+                {controls}
+                report += "exists_now=" + service_exists(absent).to_string() + "\n";
+                write_file({report_path}, report);
+                "#,
+                name = literal(&name),
+                controls = controls,
+                report_path = report.script_path(),
+            )),
+            "",
+        )?;
+        fixture.install()?;
+
+        let observed = observations(&report.text()?);
+        // The questions are answered wherever the case runs.
+        assert_eq!(observed["known"], "true");
+        assert_eq!(observed["running"], "true");
+        assert_eq!(observed["absent"], "false");
+        assert_eq!(observed["absent_running"], "false");
+        // A word that names no start kind is refused before anything is done
+        // to the machine, and deleting what is not there is what a second
+        // uninstall does.
+        assert_eq!(observed["kind"], "false");
+        assert_eq!(observed["delete_absent"], "true");
+
+        if !elevated {
+            assert_eq!(observed["install"], "false");
+            assert_eq!(observed["start"], "false");
+            assert_eq!(observed["stop"], "false");
+            assert_eq!(observed["exists_now"], "false");
+            assert!(
+                !crate::service::exists(&name)?,
+                "a refused install left a service behind"
+            );
+            // A refused install records nothing, so the uninstall has no
+            // service to replay.
+            assert_eq!(manifest(&fixture)?["services"], serde_json::json!([]));
+            return Ok(());
+        }
+
+        let _guard = ServiceGuard(name.clone());
+        assert_eq!(observed["install"], "true");
+        assert_eq!(observed["exists_now"], "true");
+        assert!(
+            crate::service::exists(&name)?,
+            "the service was not installed"
+        );
+        // The installation owns the service, so the uninstall replays it.
+        let recorded = manifest(&fixture)?;
+        assert_eq!(recorded["services"], serde_json::json!([name]));
+        install::remove_recorded_artifacts(&recorded);
+        assert!(
+            !crate::service::exists(&name)?,
+            "the service the manifest recorded survived the uninstall"
+        );
+        Ok(())
+    }
+
+    /// Removes the service a case installed, even when an assertion failed
+    /// first.
+    struct ServiceGuard(String);
+
+    impl Drop for ServiceGuard {
+        fn drop(&mut self) {
+            let _ = crate::service::delete(&self.0);
+        }
     }
 
     #[test]

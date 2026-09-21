@@ -77,6 +77,8 @@ pub(super) struct ScriptState {
     pub(super) shortcut_dirs: Vec<PathBuf>,
     pub(super) registry_values: Vec<(String, String)>,
     pub(super) registry_keys: Vec<String>,
+    /// Services a script installed, by the name the machine knows them by.
+    pub(super) services: Vec<String>,
     /// Set once the script replayed the manifest removal itself.
     pub(super) tracked_uninstall: bool,
     /// The directory the bundled tools were unpacked into, once a script asked.
@@ -171,6 +173,7 @@ impl ScriptContext {
                 shortcut_dirs: Vec::new(),
                 registry_values: Vec::new(),
                 registry_keys: Vec::new(),
+                services: Vec::new(),
                 tracked_uninstall: false,
                 tools: None,
             })),
@@ -355,6 +358,28 @@ impl ScriptContext {
             .registry_values
             .retain(|(recorded, _)| recorded.as_str() != key);
     }
+
+    /// Records a service the installation now owns, so the uninstall takes it
+    /// away again.
+    ///
+    /// A script that installs the same service twice -- which is what an
+    /// upgrade does -- records one entry for it.
+    pub(super) fn record_service(&self, name: &str) {
+        let name = name.trim();
+        let mut state = self.state();
+        if !state.services.iter().any(|recorded| recorded == name) {
+            state.services.push(name.to_string());
+        }
+    }
+
+    /// Forgets a service the script deleted, so the uninstall does not replay
+    /// a deletion of something that is already gone.
+    pub(super) fn forget_service(&self, name: &str) {
+        let name = name.trim();
+        self.state()
+            .services
+            .retain(|recorded| recorded.as_str() != name);
+    }
 }
 
 fn push_unique(keys: &mut Vec<String>, key: &str) {
@@ -396,6 +421,11 @@ pub(super) fn undo(context: &ScriptContext) {
     let install_path = context.install_path();
     let state = context.state();
     state.journal.rollback();
+    // A service runs a program inside the installation, so it goes before the
+    // files it would otherwise start from.
+    for service in &state.services {
+        let _ = crate::service::delete(service);
+    }
     for link in &state.shortcuts {
         let _ = std::fs::remove_file(link);
     }

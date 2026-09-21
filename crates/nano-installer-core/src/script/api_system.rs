@@ -92,7 +92,7 @@ pub(super) fn register(engine: &mut Engine, context: ScriptContext) {
     let c = context.clone();
     engine.register_fn("is_elevated", move || -> bool {
         let _ = &c;
-        is_elevated()
+        crate::shell::is_elevated()
     });
 
     engine.register_fn("show_message", |title: &str, message: &str| {
@@ -267,33 +267,4 @@ fn message_box(
             windows::Win32::UI::WindowsAndMessaging::MB_OK | icon,
         );
     }
-}
-
-/// Reports whether the current process runs with an elevated token.
-fn is_elevated() -> bool {
-    use windows::Win32::Foundation::HANDLE;
-    use windows::Win32::Security::{
-        GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY,
-    };
-    use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
-
-    let mut token = HANDLE::default();
-    if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) }.is_err() {
-        return false;
-    }
-    let mut elevation = TOKEN_ELEVATION::default();
-    let mut returned = 0u32;
-    let status = unsafe {
-        GetTokenInformation(
-            token,
-            TokenElevation,
-            Some(&mut elevation as *mut _ as *mut _),
-            std::mem::size_of::<TOKEN_ELEVATION>() as u32,
-            &mut returned,
-        )
-    };
-    unsafe {
-        let _ = windows::Win32::Foundation::CloseHandle(token);
-    }
-    status.is_ok() && elevation.TokenIsElevated != 0
 }

@@ -3,7 +3,7 @@
 文档承诺的每一条行为，以及守住它的那条自动化用例。表格里的每一行都列出了该行为失效时会失败的
 用例；没有出现在任何一行里的行为，就是没人看住的行为。
 
-`cargo test --locked --workspace` 会跑 282 条用例：核心库 205 条，真构建并运行安装包的 41 条，
+`cargo test --locked --workspace` 会跑 289 条用例：核心库 211 条，真构建并运行安装包的 42 条，
 按构建器的方式读工程的 5 条，可视化构建器 29 条，解压运行时 2 条。安装包级用例需要真实的运行时
 可执行文件，`.\scripts\run_e2e_setup.ps1` 会先把它们构建出来再跑，并把整次运行写进
 `target/e2e-report.txt`。
@@ -12,9 +12,9 @@
 
 | 层 | 用例数 | 能证明 | 不能证明 |
 | --- | --- | --- | --- |
-| 核心库 | 205 | 一页会变成什么——图层、坐标、命中区域、文字；捆绑数据里装了什么；安装往磁盘和注册表写了什么；每个脚本原语做什么；脚本从页面上取回什么、脚本读到的组件选择；工程声明的依赖怎么被查出来、下载下来、校验并装上，以及哪些情形会被拒绝 | 打包出来的安装包能走到这些代码 |
-| 安装包级 | 41 | 构建好的安装包在这台机器上装了一遍，它的窗口也是真的被驱动起来的：payload 字节、manifest、卸载项、快捷方式、自启动、项目脚本、脚本要跑的辅助程序、向导窗口、它自己页面上那些要等点击的行为、在列表上滚动滚轮、脚本的提示与提问所画的那张由点击作答的卡片、页面上的取值交到脚本手里、勾选决定这次装哪些组件、脚本按类型写下的每个注册表值以及视图名选中的是哪一份拷贝、
-  脚本跑过的命令留下的退出码与两个输出流，工程声明的依赖真的被问了一遍——缺的装上、已经有的不再装一遍、装不上的让整次安装停下、下载来的程序对不上哈希就一次都不跑——以及只有指针与键盘真的动起来才会发生的事——悬停与按下换上的状态位图、三种标准光标形状、语言菜单的上下键与 Enter/Escape、选目录对话框 | 输入法自己画出来的那两个窗口；在外壳的选目录对话框里选定一个目录之后会写进哪个输入框；以及不显示指针的会话上光标长什么样——那里这条用例打印自己的跳过理由 |
+| 核心库 | 211 | 一页会变成什么——图层、坐标、命中区域、文字；捆绑数据里装了什么；安装往磁盘和注册表写了什么；每个脚本原语做什么、一个服务怎么装上和怎么删掉；脚本从页面上取回什么、脚本读到的组件选择；工程声明的依赖怎么被查出来、下载下来、校验并装上，以及哪些情形会被拒绝 | 打包出来的安装包能走到这些代码；服务装上之后真的跑起来——服务程序是产品自己的，用例带不了 |
+| 安装包级 | 42 | 构建好的安装包在这台机器上装了一遍，它的窗口也是真的被驱动起来的：payload 字节、manifest、卸载项、快捷方式、自启动、项目脚本、脚本要跑的辅助程序、向导窗口、它自己页面上那些要等点击的行为、在列表上滚动滚轮、脚本的提示与提问所画的那张由点击作答的卡片、页面上的取值交到脚本手里、勾选决定这次装哪些组件、脚本按类型写下的每个注册表值以及视图名选中的是哪一份拷贝、
+  脚本跑过的命令留下的退出码与两个输出流，工程声明的依赖真的被问了一遍——缺的装上、已经有的不再装一遍、装不上的让整次安装停下、下载来的程序对不上哈希就一次都不跑——以及只有指针与键盘真的动起来才会发生的事——悬停与按下换上的状态位图、三种标准光标形状、语言菜单的上下键与 Enter/Escape、选目录对话框、脚本装上的服务在机器上确实存在并随卸载消失 | 输入法自己画出来的那两个窗口；在外壳的选目录对话框里选定一个目录之后会写进哪个输入框；以及不显示指针的会话上光标长什么样——那里这条用例打印自己的跳过理由 |
 | 工程检查 | 5 | 构建之前窗口会显示的那份摘要与告警列表 | |
 | 可视化构建器 | 29 | 窗口自己的状态、参数、日志与告警 | 真的去点界面上的控件 |
 | 解压运行时 | 2 | 坏归档、以及归档里不安全的路径会被拒绝 | 解压一个完好的归档——安装包级用例会用真实运行时解真实 payload |
@@ -119,6 +119,7 @@
 | 工程打包进来的工具 | `a_script_reads_the_tools_the_project_bundled`、`a_script_that_asks_for_tools_a_project_did_not_bundle_gets_nothing`、`a_setup_unpacks_the_tools_its_project_bundles` |
 | 依赖与下载：脚本问机器装没装工程声明的依赖、可以让它装上，也可以自己按地址取回一个文件、校验它并报出它的哈希 | `a_script_asks_the_machine_about_the_dependencies_the_project_declares`、`a_script_downloads_a_file_and_checks_what_arrived` |
 | 进程：一个进程在不在跑、脚本跑的命令留下什么退出码，以及那条命令写下的内容 | `a_script_runs_a_command_and_sees_its_exit_code`、`a_script_recognises_a_running_process_by_its_image_name`、`a_script_reads_what_the_command_it_ran_wrote`、`runs_a_program_and_collects_what_it_wrote`、`reads_utf8_from_a_program_that_wrote_it`、`reads_a_programs_output_in_its_own_code_page`、`a_setup_reads_what_a_command_its_script_ran_wrote` |
+| 服务：装一个自己的服务、问机器它在不在和在不在跑、改它的启动方式、删掉它；同名却跑着别的程序的服务会被拒绝 | `service_primitives_ask_the_machine_and_install_where_the_run_may`、`a_service_is_installed_and_removed_where_the_run_may`、`a_service_start_kind_is_read_from_its_word`、`a_service_command_line_quotes_the_program`、`a_service_is_found_and_told_apart_from_one_that_is_not_there`、`a_service_that_runs_another_program_is_not_taken_over` |
 | 保留还是删除用户数据 | `uninstalling_below_appdata_removes_the_data_only_when_the_box_is_cleared` |
 | `scripts` 目录进入构建好的安装包 | `a_setup_runs_the_projects_own_install_and_uninstall_scripts` |
 | 脚本发出的提示、报错与提问画在向导里、由点击作答 | `a_question_a_script_asks_is_drawn_with_both_of_its_answers`、`a_script_dialog_is_drawn_in_the_wizard` |
@@ -137,6 +138,7 @@
 | 取消：任务在检查点停下并撤回已经写下的内容 | `a_cancel_request_stops_the_checkpoints_that_follow_it`、`a_cancelled_deployment_writes_nothing` |
 | 卸载清掉产品、注册项与目录 | `uninstalling_removes_the_product_the_registration_and_the_directory` |
 | 目录里还有用户文件时保留目录 | `uninstall_keeps_a_directory_that_still_holds_user_files` |
+| 服务的记账：脚本装上的服务进 manifest，卸载排在删文件之前先停后删 | `a_setup_installs_a_service_the_uninstall_takes_away` |
 | 快捷方式与自启动的记账 | `a_silent_install_writes_the_shortcuts_and_the_autostart_entry`、`removes_recorded_shortcuts_and_only_their_empty_folder`、`drops_the_shortcut_folder_once_it_is_empty` |
 | 无窗口运行，以及允许它的开关 | `silent_arguments_read_the_directory_and_reject_anything_else`、`an_unknown_silent_option_is_refused`、`a_project_that_did_not_opt_in_refuses_a_windowless_run` |
 | 安装包带的捆绑数据，以及追加在它之后的签名 | `project_bundle_roundtrips_layout_assets_and_locales`、`bundle_index_streams_entries_without_loading_the_payload`、`bundle_index_ignores_images_without_a_footer`、`bundle_index_reads_a_bundle_that_a_signature_follows`、`a_setup_with_a_signature_appended_still_installs` |
@@ -168,5 +170,9 @@
 - **输入法自己画的那两个窗口，以及系统选目录对话框里的选择动作。** 用例能证明运行时交给输入法的
   组字点与候选点就落在插入符上，证明不了输入法是否照着它画了出来；能证明 `pick_directory` 的
   按钮开出了外壳的选目录对话框，证明不了在里面选定一个目录之后会写进页面上的哪个输入框。
+- **要提权才做得到的那一半。** 装服务、改服务、停服务和删服务都要求管理员权限：没有权限的运行里，
+  用例守住的是「Windows 拒绝、而且机器上没有留下任何服务」；整套装上再删掉的往返只能在提权环境里跑到。
+  两条报告（`run_tests.ps1` 与 `run_e2e_setup.ps1`）都会写明本次是不是提权运行，所以这种运行的结果不会被
+  当成人人都跑过的结果。至于服务装上以后是否正常运行，这条路谁也走不到：服务程序是产品自己的。
 - **测试无法收场的脚本原语：** `run_detached` 有意活得比这次运行长；`kill_process` 会结束一个
   不是测试启动的进程；`sleep_ms` 只能拿墙上时间做断言；`is_elevated` 的期望值只能照抄实现。

@@ -3,7 +3,7 @@
 Every behaviour the documentation promises, and the automated case that holds it. A row names the
 cases that fail when that behaviour breaks; a behaviour with no row is one nobody is checking.
 
-`cargo test --locked --workspace` runs 282 cases: 205 in the core library, 41 that build a real
+`cargo test --locked --workspace` runs 289 cases: 211 in the core library, 42 that build a real
 setup and run it, 5 that read a project the way the builder does, 29 in the visual builder, and 2
 in the extraction runtimes. The setup-level cases need real runtime executables built first, which
 is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `target/e2e-report.txt`.
@@ -12,10 +12,10 @@ is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `targe
 
 | Layer | Cases | Proves | Cannot prove |
 | --- | --- | --- | --- |
-| Core library | 205 | what a page becomes — layers, coordinates, hit regions, text — what the bundle carries, what an install writes to disk and the registry, what each script primitive does, what a script reads back off the page and off the run, and how the dependencies a project declares are found, fetched, checked and installed | that a packaged setup reaches any of it |
-| Setup end to end | 41 | a built setup installed on the machine, its own window driven: payload bytes, manifest, uninstall entry, shortcuts, autostart, project scripts, the helpers a script runs, the wizard window, the clicks its own pages wait for, a wheel over a list, the card a script's messages and questions are answered on, the page's values reaching the script, which components a page and a project put in, every registry type a script names and the copy of a key
+| Core library | 211 | what a page becomes — layers, coordinates, hit regions, text — what the bundle carries, what an install writes to disk and the registry, what each script primitive does and how a service is installed and deleted, what a script reads back off the page and off the run, and how the dependencies a project declares are found, fetched, checked and installed | that a packaged setup reaches any of it, and that an installed service then runs -- the program a service runs is the product's own, and no case can ship one |
+| Setup end to end | 42 | a built setup installed on the machine, its own window driven: payload bytes, manifest, uninstall entry, shortcuts, autostart, project scripts, the helpers a script runs, the wizard window, the clicks its own pages wait for, a wheel over a list, the card a script's messages and questions are answered on, the page's values reaching the script, which components a page and a project put in, every registry type a script names and the copy of a key
   a view name selects, what a command a script ran wrote, and what only a moving pointer and a real
-  keyboard bring about -- the bitmaps hover and press swap in, the three standard cursor shapes, the language menu's arrow keys with Enter and Escape, the folder picker, and the dependencies a project declares -- one the machine is missing installed, one it already has left alone, one that cannot be installed stopping the run, and a download checked against the digest the project recorded | the two windows an input method draws itself; which field a directory chosen in the shell's folder dialog is written to; and the cursor shape on a session that is showing no pointer, where that case prints its own skip |
+  keyboard bring about -- the bitmaps hover and press swap in, the three standard cursor shapes, the language menu's arrow keys with Enter and Escape, the folder picker, and the dependencies a project declares -- one the machine is missing installed, one it already has left alone, one that cannot be installed stopping the run, and a download checked against the digest the project recorded, and the service a script installed really on the machine and gone again with the uninstall | the two windows an input method draws itself; which field a directory chosen in the shell's folder dialog is written to; and the cursor shape on a session that is showing no pointer, where that case prints its own skip |
 | Project inspection | 5 | the summary and the warning list the builder shows before a build | |
 | Visual builder | 29 | the window's own state, parameters, log and warnings | clicking the real controls |
 | Extraction runtimes | 2 | a broken archive, and an unsafe path inside one, are refused | extracting an archive that is sound -- the setup-level cases run a real runtime over a real payload |
@@ -120,6 +120,7 @@ setup-level cases prove the `scripts` directory and the tools directory survive 
 | the tools a project bundles | `a_script_reads_the_tools_the_project_bundled`, `a_script_that_asks_for_tools_a_project_did_not_bundle_gets_nothing`, `a_setup_unpacks_the_tools_its_project_bundles` |
 | dependencies and downloads: a script asks the machine about a dependency the project declares, can have it installed, and can fetch a file of its own, check it and report its digest | `a_script_asks_the_machine_about_the_dependencies_the_project_declares`, `a_script_downloads_a_file_and_checks_what_arrived` |
 | processes: whether one is running, the exit code of a command a script runs, and what that command wrote | `a_script_runs_a_command_and_sees_its_exit_code`, `a_script_recognises_a_running_process_by_its_image_name`, `a_script_reads_what_the_command_it_ran_wrote`, `runs_a_program_and_collects_what_it_wrote`, `reads_utf8_from_a_program_that_wrote_it`, `reads_a_programs_output_in_its_own_code_page`, `a_setup_reads_what_a_command_its_script_ran_wrote` |
+| services: installing one of the product's own, asking the machine whether it is there and whether it runs, changing how it starts, and deleting it; a name that already belongs to another program is refused | `service_primitives_ask_the_machine_and_install_where_the_run_may`, `a_service_is_installed_and_removed_where_the_run_may`, `a_service_start_kind_is_read_from_its_word`, `a_service_command_line_quotes_the_program`, `a_service_is_found_and_told_apart_from_one_that_is_not_there`, `a_service_that_runs_another_program_is_not_taken_over` |
 | keeping or deleting user data | `uninstalling_below_appdata_removes_the_data_only_when_the_box_is_cleared` |
 | the `scripts` directory reaching a built setup | `a_setup_runs_the_projects_own_install_and_uninstall_scripts` |
 | a message, an error and a question a script raises, drawn in the wizard and answered by a click | `a_question_a_script_asks_is_drawn_with_both_of_its_answers`, `a_script_dialog_is_drawn_in_the_wizard` |
@@ -138,6 +139,7 @@ setup-level cases prove the `scripts` directory and the tools directory survive 
 | cancellation: the task gives up at a checkpoint and undoes what it wrote | `a_cancel_request_stops_the_checkpoints_that_follow_it`, `a_cancelled_deployment_writes_nothing` |
 | uninstall removes the product, the registration and the directory | `uninstalling_removes_the_product_the_registration_and_the_directory` |
 | uninstall keeps a directory holding user files | `uninstall_keeps_a_directory_that_still_holds_user_files` |
+| service bookkeeping: what a script installed goes into the manifest, and the uninstall stops and deletes it before the files it runs from | `a_setup_installs_a_service_the_uninstall_takes_away` |
 | shortcut and autostart bookkeeping | `a_silent_install_writes_the_shortcuts_and_the_autostart_entry`, `removes_recorded_shortcuts_and_only_their_empty_folder`, `drops_the_shortcut_folder_once_it_is_empty` |
 | windowless runs and the switches that allow them | `silent_arguments_read_the_directory_and_reject_anything_else`, `an_unknown_silent_option_is_refused`, `a_project_that_did_not_opt_in_refuses_a_windowless_run` |
 | the bundle the setup carries, and a signature appended behind it | `project_bundle_roundtrips_layout_assets_and_locales`, `bundle_index_streams_entries_without_loading_the_payload`, `bundle_index_ignores_images_without_a_footer`, `bundle_index_reads_a_bundle_that_a_signature_follows`, `a_setup_with_a_signature_appended_still_installs` |
@@ -172,6 +174,12 @@ setup-level cases prove the `scripts` directory and the tools directory survive 
   sit on the caret; it cannot prove the input method drew them there. It proves that a
   `pick_directory` button opened the shell's folder dialog; it cannot prove which field a directory
   chosen there is written to.
+- **The half that needs an elevated process.** Installing, changing, stopping and deleting a service all
+  need administrator rights: without them a case holds the refusal -- Windows says no, and no service is left on
+  the machine -- and the round trip of installing and deleting one only runs in an elevated environment. Both
+  reports (`run_tests.ps1` and `run_e2e_setup.ps1`) name whether the run was elevated, so such a run is never
+  read as one everybody has made. Whether an installed service then runs is out of reach either way: the
+  program a service runs is the product's own.
 - **Script primitives that cannot be undone by a test:** `run_detached` deliberately outlives the
   run; `kill_process` ends a process the test did not start; `sleep_ms` has only elapsed time to
   assert on; `is_elevated` would only mirror the implementation.
