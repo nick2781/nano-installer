@@ -52,17 +52,31 @@ $suiteCommand = "cargo test --locked -p nano-installer-core --test e2e_setup"
 
 # A native tool that reports progress on standard error would otherwise trip
 # $ErrorActionPreference = "Stop" on a message that is not a failure.
+# The command's output goes into a file the operating system opens for it, and
+# not through a pipe this script reads. A pipe stays open for as long as any
+# process that inherited its writing end is alive, and the linker leaves a
+# telemetry process behind that can outlive the build by hours: read through a
+# pipe, a suite that has already finished never returns, no report is written,
+# and neither a step timeout nor a cancel ends the step it runs in. cmd.exe sets
+# the file handle itself, so what this script reads is not held by the build's
+# own children.
 function Invoke-NativeStep {
-    param([scriptblock]$Command)
+    param([string]$Command)
 
+    $log = Join-Path ([System.IO.Path]::GetTempPath()) ("nano-step-{0}.log" -f [guid]::NewGuid().ToString("n"))
     $previous = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     try {
-        $output = & $Command 2>&1
+        & cmd.exe /c "$Command > `"$log`" 2>&1"
         $code = $LASTEXITCODE
     }
     finally {
         $ErrorActionPreference = $previous
+    }
+    $output = @()
+    if (Test-Path -LiteralPath $log) {
+        $output = [System.IO.File]::ReadAllLines($log)
+        Remove-Item -LiteralPath $log -Force -ErrorAction SilentlyContinue
     }
     return @{ Output = @($output | ForEach-Object { ConvertTo-ReportLine "$_" }); ExitCode = $code }
 }
@@ -73,11 +87,11 @@ function Get-CommitDescription {
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
         return "unknown, git is not on the path"
     }
-    $head = (Invoke-NativeStep { git rev-parse --short HEAD }).Output
+    $head = (Invoke-NativeStep "git rev-parse --short HEAD").Output
     if (-not $head) {
         return "unknown, not a git checkout"
     }
-    $changes = (Invoke-NativeStep { git status --porcelain }).Output
+    $changes = (Invoke-NativeStep "git status --porcelain").Output
     if ($changes) {
         return "$head with uncommitted changes"
     }
@@ -92,12 +106,12 @@ if ($RequireDesktop) {
 }
 
 Write-Output (Get-ReportPhrase -Text $text -Key "console.buildingstubs")
-$stubs = Invoke-NativeStep { cargo build --locked -p nano-installer-stub-lzma -p nano-installer-stub-zlib -p nano-installer-uninstaller }
+$stubs = Invoke-NativeStep $stubCommand
 
 $suite = $null
 if ($stubs.ExitCode -eq 0) {
     Write-Output (Get-ReportPhrase -Text $text -Key "console.runninge2e")
-    $suite = Invoke-NativeStep { cargo test --locked -p nano-installer-core --test e2e_setup }
+    $suite = Invoke-NativeStep $suiteCommand
 }
 else {
     Write-Output (Get-ReportPhrase -Text $text -Key "console.stubsfailed")

@@ -74,17 +74,31 @@ function Write-Phase {
     Write-Output "::notice title=suite phase::$stamp $Message"
 }
 
+# The command's output goes into a file the operating system opens for it, and
+# not through a pipe this script reads. A pipe stays open for as long as any
+# process that inherited its writing end is alive, and the linker leaves a
+# telemetry process behind that can outlive the build by hours: read through a
+# pipe, a suite that has already finished never returns, no report is written,
+# and neither a step timeout nor a cancel ends the step it runs in. cmd.exe sets
+# the file handle itself, so what this script reads is not held by the build's
+# own children.
 function Invoke-NativeStep {
-    param([scriptblock]$Command)
+    param([string]$Command)
 
+    $log = Join-Path ([System.IO.Path]::GetTempPath()) ("nano-step-{0}.log" -f [guid]::NewGuid().ToString("n"))
     $previous = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     try {
-        $output = & $Command 2>&1
+        & cmd.exe /c "$Command > `"$log`" 2>&1"
         $code = $LASTEXITCODE
     }
     finally {
         $ErrorActionPreference = $previous
+    }
+    $output = @()
+    if (Test-Path -LiteralPath $log) {
+        $output = [System.IO.File]::ReadAllLines($log)
+        Remove-Item -LiteralPath $log -Force -ErrorAction SilentlyContinue
     }
     return @{ Output = @($output | ForEach-Object { ConvertTo-ReportLine "$_" }); ExitCode = $code }
 }
@@ -95,25 +109,25 @@ function Get-CommitDescription {
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
         return "unknown, git is not on the path"
     }
-    $head = (Invoke-NativeStep { git rev-parse --short HEAD }).Output
+    $head = (Invoke-NativeStep "git rev-parse --short HEAD").Output
     if (-not $head) {
         return "unknown, not a git checkout"
     }
-    $changes = (Invoke-NativeStep { git status --porcelain }).Output
+    $changes = (Invoke-NativeStep "git status --porcelain").Output
     if ($changes) {
         return "$head with uncommitted changes"
     }
     return $head
 }
 
-$toolchain = (Invoke-NativeStep { cargo --version }).Output -join "; "
-$rustcVersion = (Invoke-NativeStep { rustc --version }).Output -join "; "
+$toolchain = (Invoke-NativeStep "cargo --version").Output -join "; "
+$rustcVersion = (Invoke-NativeStep "rustc --version").Output -join "; "
 $commit = Get-CommitDescription
 $runAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 
 Write-Phase "script started"
 Write-Output (Get-ReportPhrase -Text $text -Key "console.runningsuite" -Values @($suiteCommand))
-$suite = Invoke-NativeStep { cargo test --locked --workspace }
+$suite = Invoke-NativeStep $suiteCommand
 
 Write-Phase "suite finished with exit code $($suite.ExitCode) and $(@($suite.Output).Count) output line(s)"
 $printed = @($suite.Output)
