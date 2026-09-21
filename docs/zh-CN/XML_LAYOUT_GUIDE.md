@@ -122,6 +122,30 @@ Image/Icon，用来组合文字与图标。
 `Spacer` 吸收；只有达到可用宽度上限才换行。复选框可点击切换；链接可以点击打开，所以 `linkcolor`
 就是把文字变成链接的开关，详见[链接](#链接)。
 
+## 可滚动容器
+
+绝对定位的 `HBox`、`VBox` 或 `Content` 声明 `scrollable="true"` 并给出 `id` 之后，容器保住自己拿到
+的尺寸，子元素按各自声明的尺寸排开，而不是被压进这块地方。放不下的部分沿容器边缘整体裁掉：被滚过去
+的那一行既不画出来，也不再登记点击，列表下方的按钮因此能接到原本会被这一行吃掉的点击。折行优先于
+滚动，声明了 `flex-wrap` 的容器仍然是普通的折行容器；只写了 `scrollable` 而没有 `id` 的容器也保持
+原样，因为没有名字就没有地方记住它的位置。
+
+位置记在容器的 `id` 下，重绘和翻回这一页时都还在原地。在容器上滚动滚轮，每格移动 48 像素（随显示
+缩放）；运行时为它画出的滚动条做的是同一件事：贴着尾部一条 8 像素宽的轨道，滑块长度是列表露出来的
+那部分所占的比例，点轨道上滑块之外的两段就把视图挪动一页。`scrollbar-background` 与
+`scrollbar-thumb-background` 可以改这两处的颜色，默认是一层半透明白。
+
+```xml
+<VBox id="components" scrollable="true" position="absolute" left="32" top="96"
+      width="320" height="120" item-spacing="8">
+  <Checkbox id="core" text="@component_core" width="100%" height="24" />
+  <Checkbox id="shell" text="@component_shell" width="100%" height="24" />
+  <Checkbox id="tools" text="@component_tools" width="100%" height="24" />
+  <Checkbox id="docs" text="@component_docs" width="100%" height="24" />
+  <Checkbox id="samples" text="@component_samples" width="100%" height="24" />
+</VBox>
+```
+
 ## Label、Select 与 RadioButton
 
 - 绝对定位 Label：支持 `text`/`value`、font-size、font-weight、color 与 `textalign=center`。

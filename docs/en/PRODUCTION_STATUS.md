@@ -61,6 +61,12 @@ files and registry entries, so validate them in a disposable virtual machine onl
   placed element from `right`/`bottom` or the `inset` shorthand.
 - A container that declares `flex-wrap` moves items onto the next line when a row is full; without
   it, an overflowing row still compresses its shrinkable items.
+- A flow container that declares `scrollable="true"` and an `id` keeps the size it was given and
+  lays its children out at the size they ask for, cutting off whatever does not fit: a row the list
+  has scrolled past is neither drawn nor clickable, so a button below the list answers the click it
+  would otherwise have taken. The wheel moves it, 48 pixels a notch, and the scrollbar along the
+  trailing edge says which part of the list is in view; a click on either side of its thumb pages
+  the view by one of its own extents.
 - A setup carries an application manifest: `install.require_admin` makes Windows raise the consent
   prompt before the process starts, and `ui.dpi_aware` tells the shell whether the window scales
   itself. A project that sets neither keeps the ordinary invoker behaviour.
@@ -77,12 +83,13 @@ files and registry entries, so validate them in a disposable virtual machine onl
   project it writes itself and runs it against a real installation: files land on disk byte for
   byte, the manifest and the uninstall entry are written, an upgrade drops stale files and keeps
   files it does not own, and an uninstall removes the product, the registration, and the directory.
-  Five of its twenty-two cases open the wizard window and drive it: one measures the client area it
+  Six of its twenty-three cases open the wizard window and drive it: one measures the client area it
   drew, one walks the page actions a project declares, one stops a running task from a cancel
-  button, one types a directory into the field a page asks for and starts the install with it, and
-  one clicks the row a radio group's install button waits for. They need an interactive desktop
-  session, so they skip where there is none and `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` makes the skip
-  a failure. The other seventeen pass on Windows 11 and in CI.
+  button, one types a directory into the field a page asks for and starts the install with it, one
+  clicks the row a radio group's install button waits for, and one rolls the wheel over a list and
+  clicks the row it brings into view. They need an interactive desktop session, so they skip where
+  there is none and `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` makes the skip a failure. The other
+  seventeen pass on Windows 11 and in CI.
 - A setup stays a setup after signing: a certificate table appended behind the bundle, which is what
   Authenticode writes into the file, no longer hides the footer the runtime reads its resources from.
 - The builder refuses a configuration key it does not read. A setting that once parsed and then

@@ -3,17 +3,17 @@
 Every behaviour the documentation promises, and the automated case that holds it. A row names the
 cases that fail when that behaviour breaks; a behaviour with no row is one nobody is checking.
 
-`cargo test --locked --workspace` runs 221 cases: 163 in the core library, 22 that build a real setup
-and run it, 5 that read a project the way the builder does, 29 in the visual builder, and 2 in the
-extraction runtimes. The setup-level cases need real runtime executables built first, which is what
-`.\scripts\run_e2e_setup.ps1` does before it runs them and writes `target/e2e-report.txt`.
+`cargo test --locked --workspace` runs 224 cases: 165 in the core library, 23 that build a real
+setup and run it, 5 that read a project the way the builder does, 29 in the visual builder, and 2
+in the extraction runtimes. The setup-level cases need real runtime executables built first, which
+is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `target/e2e-report.txt`.
 
 ## What each layer can prove
 
 | Layer | Cases | Proves | Cannot prove |
 | --- | --- | --- | --- |
-| Core library | 163 | what a page becomes — layers, coordinates, hit regions, text — what the bundle carries, what an install writes to disk and the registry, and what each script primitive does | that a packaged setup reaches any of it |
-| Setup end to end | 22 | a built setup installed on the machine: payload bytes, manifest, uninstall entry, shortcuts, autostart, project scripts, the wizard window, and the clicks its own pages wait for | what needs a person at the machine: the hover and pressed bitmaps, the caret, IME composition, the folder picker, and the modal dialogs |
+| Core library | 165 | what a page becomes — layers, coordinates, hit regions, text — what the bundle carries, what an install writes to disk and the registry, and what each script primitive does | that a packaged setup reaches any of it |
+| Setup end to end | 23 | a built setup installed on the machine: payload bytes, manifest, uninstall entry, shortcuts, autostart, project scripts, the wizard window, the clicks its own pages wait for, and a wheel over a list | what needs a person at the machine: the hover and pressed bitmaps, the caret, IME composition, the folder picker, and the modal dialogs |
 | Project inspection | 5 | the summary and the warning list the builder shows before a build | |
 | Visual builder | 29 | the window's own state, parameters, log and warnings | clicking the real controls |
 | Extraction runtimes | 2 | a broken archive, and an unsafe path inside one, are refused | extracting an archive that is sound -- the setup-level cases run a real runtime over a real payload |
@@ -70,6 +70,7 @@ extraction runtimes. The setup-level cases need real runtime executables built f
 | padding, margin, and the single-side forms | `padding_and_margin_take_one_to_four_values_and_their_single_side_forms`, `control_padding_insets_what_the_control_draws` |
 | percentages and pixel sizes | `percentage_and_pixel_extents_scale_with_the_layout` |
 | wrapping rows | `a_wrapping_row_starts_a_new_line_when_the_next_item_does_not_fit`, `a_wrapping_row_gives_each_line_the_height_of_its_tallest_item`, `flex_wrap_is_opt_in_per_container` |
+| a container that scrolls: what it holds, the view it shows, the bar, and the wheel that moves it | `a_scrollable_container_shows_the_part_it_is_scrolled_to`, `a_scrollbar_says_where_the_list_stands`, `a_wheel_over_a_list_brings_the_rows_below_into_reach` |
 | `Spacer` | `a_spacer_takes_what_the_fixed_items_leave` |
 | pinning by `right`, `bottom`, `inset` and the single-side forms | `an_element_is_pinned_by_the_edge_attribute_it_carries` |
 | `Label` text, font, alignment and colour | `a_label_takes_its_text_font_and_alignment_from_the_layout`, `text_colors_read_as_rgb_with_or_without_an_alpha_channel`, `a_bound_label_shows_its_own_text_beside_the_value_it_reads` |

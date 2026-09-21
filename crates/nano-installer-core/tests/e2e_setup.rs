@@ -19,14 +19,15 @@ use std::time::{Duration, Instant};
 use nano_installer_core::{
     build_project, build_project_with_progress, BuildRequest, PayloadFormat,
 };
-use windows::Win32::Foundation::{BOOL, HANDLE, HWND, LPARAM, RECT, WPARAM};
+use windows::Win32::Foundation::{BOOL, HANDLE, HWND, LPARAM, POINT, RECT, WPARAM};
+use windows::Win32::Graphics::Gdi::ClientToScreen;
 use windows::Win32::System::Com::CoTaskMemFree;
 use windows::Win32::UI::Shell::{
     FOLDERID_Desktop, FOLDERID_Programs, SHGetKnownFolderPath, KF_FLAG_DEFAULT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetClassNameW, GetClientRect, GetWindowThreadProcessId, PostMessageW,
-    SetProcessDPIAware, WM_CHAR, WM_LBUTTONDOWN, WM_LBUTTONUP,
+    EnumWindows, GetClassNameW, GetClientRect, GetWindowThreadProcessId, IsWindow, PostMessageW,
+    SetProcessDPIAware, WM_CHAR, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEWHEEL,
 };
 
 /// The key Windows starts a program from at sign-in.
@@ -411,6 +412,43 @@ impl Fixture {
                 {"id": "config", "title": "Options", "layout": "layouts/configpage.xml"},
                 {"id": "tasks", "layout": "layouts/taskspage.xml", "role": "progress"},
                 {"id": "done", "layout": "layouts/donepage.xml", "role": "finish"}
+            ]);
+        })
+    }
+
+    /// Declares a wizard whose first page holds a list longer than the room it
+    /// has, with the page's own button below the part the list cuts off.
+    ///
+    /// The rows are fifty pixels tall inside a hundred-and-twenty pixel view, so
+    /// the last one starts past the bottom edge and would sit over the button
+    /// beneath it. The rows above that one walk to the second page and the last
+    /// one closes the wizard, which is what makes a click say which row took it.
+    fn scrolling_project(&self) -> anyhow::Result<()> {
+        std::fs::write(
+            self.project.join("layouts/configpage.xml"),
+            r##"<Page width="720" height="450" background="#FF101010">
+  <Button id="below" action="next" text="Next"
+          position="absolute" left="20" top="180" width="120" height="30" />
+  <VBox id="list" scrollable="true" position="absolute" left="20" top="40"
+        width="400" height="120">
+    <Button id="row0" action="next" text="Row 0" width="400" height="50" />
+    <Button id="row1" action="next" text="Row 1" width="400" height="50" />
+    <Button id="row2" action="next" text="Row 2" width="400" height="50" />
+    <Button id="row3" action="close" text="Row 3" width="400" height="50" />
+  </VBox>
+</Page>"##,
+        )?;
+        std::fs::write(
+            self.project.join("layouts/secondpage.xml"),
+            r##"<Page width="500" height="300" background="#FF202020">
+  <Button id="back" action="back" text="Back"
+          position="absolute" left="20" top="240" width="120" height="36" />
+</Page>"##,
+        )?;
+        self.edit_config(|config| {
+            config["wizard"]["pages"] = serde_json::json!([
+                {"id": "config", "title": "First", "layout": "layouts/configpage.xml"},
+                {"id": "second", "title": "Second", "layout": "layouts/secondpage.xml"}
             ]);
         })
     }
@@ -1895,6 +1933,88 @@ fn a_click_on_a_radio_is_the_value_the_install_waits_for() -> anyhow::Result<()>
     Ok(())
 }
 
+/// A wheel over a list is what brings the rows it does not show into reach.
+///
+/// The layout cases prove a scrollable container cuts what it does not show;
+/// this one proves the window drives it, in the direction a user drives it. A
+/// click in the slice below the list reaches the page's own button rather than
+/// the row the list cut off, and one notch of the wheel moves that row up under
+/// the button -- so the click that walked to the next page now lands on the row
+/// the wheel brought in.
+#[test]
+fn a_wheel_over_a_list_brings_the_rows_below_into_reach() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.scrolling_project()?;
+    fixture.build()?;
+
+    let _ = unsafe { SetProcessDPIAware() };
+    let mut setup = Command::new(&fixture.setup)
+        .env("NANO_INSTALLER_TEST_DPI", "96")
+        .spawn()?;
+    let waited = wait_for_runtime_window(&mut setup, Instant::now() + Duration::from_secs(30));
+    let found = match &waited {
+        WindowWait::Found(window) => Some(*window),
+        WindowWait::Exited(_) | WindowWait::Timeout => None,
+    };
+    let Some(window) = found else {
+        let reason = match waited {
+            WindowWait::Exited(status) => format!("the setup {status} instead of opening a window"),
+            WindowWait::Timeout => "no window appeared within 30 seconds".to_string(),
+            WindowWait::Found(_) => "the window could not be measured".to_string(),
+        };
+        let _ = setup.kill();
+        let _ = setup.wait();
+        return skip_missing_desktop(&reason);
+    };
+
+    let opened = client_size(window);
+    // The point is below the list, where the fourth row would have been drawn
+    // and where the page put a button of its own: the row is cut off, so the
+    // button is the one that answers.
+    click_client_point(window, 60, 195);
+    let below = wait_for_client_size(window, (500, 300), Instant::now() + Duration::from_secs(10));
+    // The second page carries the button that walks back to the list.
+    let returned = match below {
+        Some(_) => {
+            click_client_point(window, 80, 258);
+            wait_for_client_size(window, opened, Instant::now() + Duration::from_secs(10))
+        }
+        None => None,
+    };
+    // One notch of the wheel towards the user, over the list, then a click on
+    // the point that is over the third row until the wheel moves and over the
+    // fourth one after.
+    wheel_client_point(window, 200, 100, -1);
+    click_client_point(window, 200, 150);
+    let closed = wait_for_exit(&mut setup, Duration::from_secs(10));
+    let _ = setup.kill();
+    let _ = setup.wait();
+
+    assert_eq!(
+        opened,
+        (720, 450),
+        "the wizard opened on {opened:?} rather than the 720x450 page the project declares"
+    );
+    assert_eq!(
+        below,
+        Some((500, 300)),
+        "a row the list had cut off took the click meant for the button below it"
+    );
+    assert_eq!(
+        returned,
+        Some(opened),
+        "the button below the list did not walk to the second page"
+    );
+    assert!(
+        closed,
+        "the wheel did not bring the row below the list under the pointer"
+    );
+    Ok(())
+}
+
 /// Clicks a point inside the runtime window, the way a user's click arrives.
 ///
 /// The runtime answers a button-up with whatever action the layout placed under
@@ -1903,6 +2023,23 @@ fn click_client_point(window: HWND, x: i32, y: i32) {
     let lparam = LPARAM(((y << 16) | (x & 0xFFFF)) as isize);
     unsafe { PostMessageW(window, WM_LBUTTONUP, WPARAM(0), lparam) }
         .expect("the runtime window accepts a click");
+}
+
+/// Rolls the wheel over a point inside the runtime window.
+///
+/// A wheel message carries screen coordinates while every mouse message beside
+/// it carries client ones, so the point is converted on the way out: the runtime
+/// converts it back, exactly as it does for a wheel the system delivered. A
+/// notch rolled away from the user is the positive one and scrolls a list up,
+/// so moving a list down takes a negative count.
+fn wheel_client_point(window: HWND, x: i32, y: i32, notches: i32) {
+    let mut point = POINT { x, y };
+    unsafe { ClientToScreen(window, &mut point) }.expect("the window has a screen position");
+    let delta = notches * 120;
+    let wparam = WPARAM(((delta as u32) << 16) as usize);
+    let lparam = LPARAM(((point.y << 16) | (point.x & 0xFFFF)) as isize);
+    unsafe { PostMessageW(window, WM_MOUSEWHEEL, wparam, lparam) }
+        .expect("the runtime window accepts a wheel message");
 }
 
 /// Presses and releases a point inside the runtime window.
@@ -1941,12 +2078,18 @@ fn wait_for_directory(path: &Path, deadline: Instant) -> bool {
 }
 
 /// Waits for the window's client area to become `expected`.
+///
+/// A wizard that answered by closing itself has no client area left to measure
+/// and reports the same way a window that never changed does.
 fn wait_for_client_size(
     window: HWND,
     expected: (i32, i32),
     deadline: Instant,
 ) -> Option<(i32, i32)> {
     while Instant::now() < deadline {
+        if !unsafe { IsWindow(window).as_bool() } {
+            return None;
+        }
         let size = client_size(window);
         if size == expected {
             return Some(size);

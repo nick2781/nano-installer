@@ -136,6 +136,34 @@ and a `Spacer` absorbs the remaining space in an `HBox`; wrapping only happens a
 width limit. Clicking toggles the checkbox, and clicking a link opens its target, so `linkcolor` is
 what opts a label into clickable links. See [Links](#links).
 
+## Scrolling containers
+
+An absolutely positioned `HBox`, `VBox` or `Content` that declares `scrollable="true"` and an `id`
+keeps the size it was given and lays its children out at the size they ask for, instead of
+compressing them into the room it has. What does not fit is cut off at the container's edge: a row
+the list has scrolled past is neither drawn nor clickable, so a button below the list answers the
+click that row would otherwise have taken. Wrapping wins over scrolling, so a container that
+declares `flex-wrap` stays a plain wrapping container, and one that asks to scroll without an `id`
+stays plain too, because there would be no name to keep its position under.
+
+The position is kept under the container's `id`, so a redraw and a return to the page both find it
+where it was. A wheel over the container moves it 48 pixels a notch, scaled with the display, and
+the scrollbar the runtime draws for it does the same job: an 8 pixel strip along the trailing edge,
+its thumb as long as the share of the list in view, and a click on the track outside the thumb pages
+the view by one of its own extents. `scrollbar-background` and `scrollbar-thumb-background` set the
+two colours, which default to a translucent white.
+
+```xml
+<VBox id="components" scrollable="true" position="absolute" left="32" top="96"
+      width="320" height="120" item-spacing="8">
+  <Checkbox id="core" text="@component_core" width="100%" height="24" />
+  <Checkbox id="shell" text="@component_shell" width="100%" height="24" />
+  <Checkbox id="tools" text="@component_tools" width="100%" height="24" />
+  <Checkbox id="docs" text="@component_docs" width="100%" height="24" />
+  <Checkbox id="samples" text="@component_samples" width="100%" height="24" />
+</VBox>
+```
+
 ## Label, Select and RadioButton
 
 - Absolutely positioned Label: supports `text`/`value`, font-size, font-weight, color, and

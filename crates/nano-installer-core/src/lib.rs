@@ -25,12 +25,12 @@ use windows::Win32::Graphics::Gdi::{
     BeginPaint, BitBlt, ClientToScreen, CreateCompatibleBitmap, CreateCompatibleDC,
     CreateDIBSection, CreateFontW, CreateRectRgn, CreateRoundRectRgn, DeleteDC, DeleteObject,
     DrawTextW, EndPaint, GdiAlphaBlend, GetDC, GetDeviceCaps, GetMonitorInfoW,
-    GetTextExtentPoint32W, InvalidateRect, MonitorFromWindow, ReleaseDC, ScreenToClient,
-    SelectObject, SetBkMode, SetTextColor, SetWindowRgn, UpdateWindow, AC_SRC_ALPHA, AC_SRC_OVER,
-    BITMAPINFO, BITMAPINFOHEADER, BI_RGB, BLENDFUNCTION, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS,
-    DEFAULT_CHARSET, DEFAULT_PITCH, DIB_RGB_COLORS, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE,
-    DT_VCENTER, FW_BOLD, FW_NORMAL, HDC, HFONT, LOGPIXELSX, MONITORINFO, MONITOR_DEFAULTTONEAREST,
-    OUT_DEFAULT_PRECIS, PAINTSTRUCT, SRCCOPY, TRANSPARENT,
+    GetTextExtentPoint32W, IntersectClipRect, InvalidateRect, MonitorFromWindow, ReleaseDC,
+    RestoreDC, SaveDC, ScreenToClient, SelectObject, SetBkMode, SetTextColor, SetWindowRgn,
+    UpdateWindow, AC_SRC_ALPHA, AC_SRC_OVER, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, BLENDFUNCTION,
+    CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, DEFAULT_CHARSET, DEFAULT_PITCH, DIB_RGB_COLORS,
+    DT_LEFT, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, FW_BOLD, FW_NORMAL, HDC, HFONT, LOGPIXELSX,
+    MONITORINFO, MONITOR_DEFAULTTONEAREST, OUT_DEFAULT_PRECIS, PAINTSTRUCT, SRCCOPY, TRANSPARENT,
 };
 use windows::Win32::Graphics::Imaging::{
     CLSID_WICImagingFactory, GUID_WICPixelFormat32bppPBGRA, IWICImagingFactory, IWICPalette,
@@ -66,8 +66,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     TranslateMessage, CS_HREDRAW, CS_VREDRAW, HTCAPTION, HTCLIENT, HWND_TOP, ICON_BIG, ICON_SMALL,
     IDC_ARROW, IDC_HAND, MB_ICONERROR, MB_OK, MSG, SWP_NOACTIVATE, SWP_NOZORDER, SW_MINIMIZE,
     SW_SHOW, SW_SHOWNORMAL, WM_CHAR, WM_CLOSE, WM_DESTROY, WM_DPICHANGED, WM_ERASEBKGND,
-    WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_NCLBUTTONDOWN, WM_PAINT,
-    WM_SETCURSOR, WM_SETICON, WM_TIMER, WNDCLASSEXW, WS_EX_APPWINDOW, WS_POPUP,
+    WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_NCLBUTTONDOWN,
+    WM_PAINT, WM_SETCURSOR, WM_SETICON, WM_TIMER, WNDCLASSEXW, WS_EX_APPWINDOW, WS_POPUP,
 };
 use windows::Win32::UI::WindowsAndMessaging::{SetCursor, IDC_IBEAM};
 
@@ -106,14 +106,47 @@ struct ImageLayer {
     /// fills by shrinking this region.
     source: Option<LayerRect>,
     alpha: u8,
+    /// View the layer is cut to, for content inside a scrollable container.
+    /// `None` draws the layer wherever it was placed.
+    clip: Option<LayerRect>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct LayerRect {
     left: i32,
     top: i32,
     width: i32,
     height: i32,
+}
+
+impl LayerRect {
+    fn right(self) -> i32 {
+        self.left + self.width
+    }
+
+    fn bottom(self) -> i32 {
+        self.top + self.height
+    }
+
+    /// Whether a point falls inside, with the trailing edges excluded the way a
+    /// hit region is.
+    fn contains(self, x: i32, y: i32) -> bool {
+        x >= self.left && x < self.right() && y >= self.top && y < self.bottom()
+    }
+
+    /// The part two rectangles share, or `None` when they do not meet.
+    fn intersect(self, other: LayerRect) -> Option<LayerRect> {
+        let left = self.left.max(other.left);
+        let top = self.top.max(other.top);
+        let right = self.right().min(other.right());
+        let bottom = self.bottom().min(other.bottom());
+        (right > left && bottom > top).then(|| LayerRect {
+            left,
+            top,
+            width: right - left,
+            height: bottom - top,
+        })
+    }
 }
 
 struct RuntimeUi {
@@ -128,6 +161,9 @@ struct RuntimeUi {
     actions: Vec<ActionRegion>,
     text_hits: Vec<TextHit>,
     hover_regions: Vec<HoverRegion>,
+    /// Containers the page lets the user scroll, with what the window needs to
+    /// move them.
+    scroll_views: Vec<ScrollView>,
     /// Editable text fields, so a click can focus one and place its caret.
     text_inputs: Vec<TextInputRegion>,
     /// Caret for the focused text field, positioned with the layout.
@@ -160,6 +196,34 @@ struct RuntimeUi {
 /// Rows are values rather than nodes: keyboard navigation walks this list,
 /// and confirming a row needs the value it stands for without parsing the
 /// layout again.
+/// One scrollable container the page drew.
+///
+/// The layout keeps this rather than the window working it out again: only the
+/// layout knows how far a container's children reach past its own edge, and the
+/// offset the user left behind has to be clamped against exactly that.
+struct ScrollView {
+    /// Id the container declares, which is the name its position is kept under.
+    id: String,
+    /// Axis the container stacks its children along, and therefore scrolls.
+    axis: FlowAxis,
+    /// The container's own rectangle, which is where a wheel reaches it.
+    area: LayerRect,
+    /// Rectangle the children are laid out in, inside its padding, which is what
+    /// they are cut to.
+    viewport: LayerRect,
+    /// Extent the children reach along that axis.
+    content: i32,
+    /// How far the container is scrolled, after clamping.
+    offset: i32,
+}
+
+impl ScrollView {
+    /// How far this container can be scrolled before its end comes into view.
+    fn max_offset(&self) -> i32 {
+        (self.content - self.axis.main(self.viewport)).max(0)
+    }
+}
+
 struct MenuUi {
     /// Id of the control that opened the menu.
     select: String,
@@ -208,6 +272,8 @@ struct InteractionState {
     /// of the control that owns the choice: a select's own id, or the group a
     /// radio button belongs to.
     choices: HashMap<String, String>,
+    /// How far each scrollable container is scrolled, under the id it declares.
+    scroll_offsets: HashMap<String, i32>,
     panel_visibility: HashMap<String, bool>,
     hovered_control: Option<String>,
     pressed_control: Option<String>,
@@ -409,6 +475,8 @@ struct TextLayer {
     bold: bool,
     alignment: TextAlignment,
     wrap: bool,
+    /// View the text is cut to, for content inside a scrollable container.
+    clip: Option<LayerRect>,
 }
 
 struct TextRun {
@@ -477,6 +545,12 @@ enum WindowAction {
     ChooseOption {
         id: String,
         value: String,
+    },
+    /// Moves a scrollable container by one of its own pages, from a click on the
+    /// track of its scrollbar.
+    ScrollPage {
+        id: String,
+        forward: bool,
     },
     /// Moves to the next page the project declares.
     NextPage,
@@ -562,6 +636,8 @@ struct LayoutOutput {
     overlay_texts: Vec<TextLayer>,
     actions: Vec<ActionRegion>,
     hover_regions: Vec<HoverRegion>,
+    /// Containers this render found scrollable, with the view each one shows.
+    scroll_views: Vec<ScrollView>,
     /// Menu a `Select` drew open while this layout was rendered.
     menu: Option<MenuUi>,
 }
@@ -578,6 +654,12 @@ struct TextInputRegion {
     top: i32,
     width: i32,
     height: i32,
+    /// Part of the field a scrollable container leaves in view. The field keeps
+    /// the rectangle it was laid out with, because its caret and its selection
+    /// are measured against that; the visible part is what a click has to land
+    /// inside, so a field scrolled out of sight is not editable where it is
+    /// hidden.
+    clip: Option<LayerRect>,
 }
 
 struct LayoutContext<'a> {
@@ -2396,6 +2478,7 @@ fn load_layout(
         actions: output.actions,
         text_hits: output.text_hits,
         hover_regions: output.hover_regions,
+        scroll_views: output.scroll_views,
         text_inputs: output.text_inputs,
         caret,
         caret_rect,
@@ -3499,6 +3582,7 @@ fn render_select(
             bold: false,
             alignment: TextAlignment::Left,
             wrap: false,
+            clip: None,
         });
         let action = if language {
             WindowAction::SelectLanguage(value.to_string())
@@ -3557,6 +3641,7 @@ fn push_node_text(
         wrap: node.has_tag_name("Checkbox")
             || node.has_tag_name("RadioButton")
             || node.attribute("wrap") == Some("true"),
+        clip: None,
     });
     // Link markup only becomes clickable when the layout asks for a link colour,
     // which is how a project opts a label into clickable text.
@@ -3599,6 +3684,7 @@ fn push_text_input(
         top: rect.top,
         width: rect.width,
         height: rect.height,
+        clip: None,
     });
 }
 
@@ -3841,6 +3927,300 @@ fn flow_axis(node: roxmltree::Node<'_, '_>) -> Option<FlowAxis> {
 
 /// Lays out a flow container: padding inset, then children in order along the
 /// main axis with flex sizing, gaps, `justify-content` and `align-items`.
+/// Width of the scrollbar a scrollable container draws, at 96 DPI.
+const SCROLLBAR_WIDTH: i32 = 8;
+/// Shortest a scrollbar thumb may get, at 96 DPI, so it stays usable in a list
+/// that holds far more than it shows.
+const SCROLLBAR_MIN_THUMB: i32 = 24;
+/// Colours of a scrollbar's track and of the thumb inside it, which a container
+/// may override with `scrollbar-background` and `scrollbar-thumb-background`.
+const SCROLLBAR_TRACK_COLOR: &str = "#40FFFFFF";
+const SCROLLBAR_THUMB_COLOR: &str = "#A8FFFFFF";
+/// How far one wheel notch moves a scrollable container, at 96 DPI.
+const SCROLL_STEP: i32 = 48;
+/// Wheel delta Windows counts as one notch.
+const WHEEL_DELTA: i32 = 120;
+
+/// The id a container scrolls under, when the layout asks it to.
+///
+/// A container that asks to scroll without an id has no name to keep a position
+/// under, so it stays a plain container rather than quietly sharing one
+/// position with every other nameless list on the page.
+fn scrollable_id(node: roxmltree::Node<'_, '_>) -> Option<String> {
+    if !matches!(node.attribute("scrollable"), Some("true" | "yes" | "1")) {
+        return None;
+    }
+    node.attribute("id").map(str::to_string)
+}
+
+/// How long each list of drawn output was, so a container can cut what its own
+/// children added without touching what was there before them.
+#[derive(Clone, Copy)]
+struct OutputMarks {
+    layers: usize,
+    texts: usize,
+    overlay_layers: usize,
+    overlay_texts: usize,
+    actions: usize,
+    text_hits: usize,
+    text_inputs: usize,
+    hover_regions: usize,
+}
+
+impl LayoutOutput {
+    fn marks(&self) -> OutputMarks {
+        OutputMarks {
+            layers: self.layers.len(),
+            texts: self.texts.len(),
+            overlay_layers: self.overlay_layers.len(),
+            overlay_texts: self.overlay_texts.len(),
+            actions: self.actions.len(),
+            text_hits: self.text_hits.len(),
+            text_inputs: self.text_inputs.len(),
+            hover_regions: self.hover_regions.len(),
+        }
+    }
+
+    /// Cuts everything drawn since `marks` to `viewport`.
+    ///
+    /// A container that scrolls shows one window onto its children, so a row it
+    /// has moved past its own edge is neither drawn nor clicked: this cut is
+    /// what keeps a button scrolled out of sight from answering a click aimed
+    /// at the page behind it.
+    fn clip_since(&mut self, marks: OutputMarks, viewport: LayerRect) {
+        clip_layers(&mut self.layers, marks.layers, viewport);
+        clip_layers(&mut self.overlay_layers, marks.overlay_layers, viewport);
+        clip_texts(&mut self.texts, marks.texts, viewport);
+        clip_texts(&mut self.overlay_texts, marks.overlay_texts, viewport);
+        clip_actions(&mut self.actions, marks.actions, viewport);
+        clip_hover_regions(&mut self.hover_regions, marks.hover_regions, viewport);
+        clip_text_hits(&mut self.text_hits, marks.text_hits, viewport);
+        clip_text_inputs(&mut self.text_inputs, marks.text_inputs, viewport);
+    }
+}
+
+fn clip_layers(layers: &mut Vec<ImageLayer>, from: usize, viewport: LayerRect) {
+    let mut kept = Vec::with_capacity(layers.len() - from);
+    for mut layer in layers.drain(from..) {
+        let rect = LayerRect {
+            left: layer.left,
+            top: layer.top,
+            width: layer.width,
+            height: layer.height,
+        };
+        let Some(cut) = layer.clip.unwrap_or(rect).intersect(viewport) else {
+            continue;
+        };
+        layer.clip = Some(cut);
+        kept.push(layer);
+    }
+    layers.extend(kept);
+}
+
+fn clip_texts(texts: &mut Vec<TextLayer>, from: usize, viewport: LayerRect) {
+    let mut kept = Vec::with_capacity(texts.len() - from);
+    for mut text in texts.drain(from..) {
+        let rect = LayerRect {
+            left: text.left,
+            top: text.top,
+            width: text.width,
+            height: text.height,
+        };
+        let Some(cut) = text.clip.unwrap_or(rect).intersect(viewport) else {
+            continue;
+        };
+        text.clip = Some(cut);
+        kept.push(text);
+    }
+    texts.extend(kept);
+}
+
+fn clip_actions(actions: &mut Vec<ActionRegion>, from: usize, viewport: LayerRect) {
+    let mut kept = Vec::with_capacity(actions.len() - from);
+    for region in actions.drain(from..) {
+        let rect = LayerRect {
+            left: region.left,
+            top: region.top,
+            width: region.right - region.left,
+            height: region.bottom - region.top,
+        };
+        let Some(cut) = rect.intersect(viewport) else {
+            continue;
+        };
+        kept.push(ActionRegion {
+            action: region.action,
+            left: cut.left,
+            top: cut.top,
+            right: cut.right(),
+            bottom: cut.bottom(),
+        });
+    }
+    actions.extend(kept);
+}
+
+fn clip_hover_regions(regions: &mut Vec<HoverRegion>, from: usize, viewport: LayerRect) {
+    let mut kept = Vec::with_capacity(regions.len() - from);
+    for region in regions.drain(from..) {
+        let rect = LayerRect {
+            left: region.left,
+            top: region.top,
+            width: region.right - region.left,
+            height: region.bottom - region.top,
+        };
+        let Some(cut) = rect.intersect(viewport) else {
+            continue;
+        };
+        kept.push(HoverRegion {
+            id: region.id,
+            left: cut.left,
+            top: cut.top,
+            right: cut.right(),
+            bottom: cut.bottom(),
+        });
+    }
+    regions.extend(kept);
+}
+
+fn clip_text_hits(hits: &mut Vec<TextHit>, from: usize, viewport: LayerRect) {
+    let mut kept = Vec::with_capacity(hits.len() - from);
+    for hit in hits.drain(from..) {
+        let rect = LayerRect {
+            left: hit.left,
+            top: hit.top,
+            width: hit.right - hit.left,
+            height: hit.bottom - hit.top,
+        };
+        let Some(cut) = rect.intersect(viewport) else {
+            continue;
+        };
+        kept.push(TextHit {
+            action: hit.action,
+            left: cut.left,
+            top: cut.top,
+            right: cut.right(),
+            bottom: cut.bottom(),
+        });
+    }
+    hits.extend(kept);
+}
+
+fn clip_text_inputs(fields: &mut Vec<TextInputRegion>, from: usize, viewport: LayerRect) {
+    let mut kept = Vec::with_capacity(fields.len() - from);
+    for mut field in fields.drain(from..) {
+        let rect = LayerRect {
+            left: field.left,
+            top: field.top,
+            width: field.width,
+            height: field.height,
+        };
+        let Some(cut) = field.clip.unwrap_or(rect).intersect(viewport) else {
+            continue;
+        };
+        field.clip = Some(cut);
+        kept.push(field);
+    }
+    fields.extend(kept);
+}
+
+/// The strip a scrollable container draws its scrollbar in, at the trailing
+/// edge of the view the container shows.
+fn scrollbar_track(axis: FlowAxis, viewport: LayerRect, scale: f32) -> LayerRect {
+    let width = scale_value(SCROLLBAR_WIDTH, scale);
+    match axis {
+        FlowAxis::Vertical => LayerRect {
+            left: viewport.right() - width,
+            top: viewport.top,
+            width,
+            height: viewport.height,
+        },
+        FlowAxis::Horizontal => LayerRect {
+            left: viewport.left,
+            top: viewport.bottom() - width,
+            width: viewport.width,
+            height: width,
+        },
+    }
+}
+
+/// Where the thumb stands inside its track for a given offset.
+///
+/// The thumb is as long as the share of the list the view shows, and it travels
+/// the rest of the track as the offset covers the rest of the list, so the bar
+/// says where the window is rather than how much there is.
+fn scrollbar_thumb(
+    axis: FlowAxis,
+    track: LayerRect,
+    viewport_main: i32,
+    content: i32,
+    offset: i32,
+    scale: f32,
+) -> LayerRect {
+    let track_main = axis.main(track);
+    let shortest = scale_value(SCROLLBAR_MIN_THUMB, scale).min(track_main);
+    let share = if content > 0 {
+        (viewport_main as f32 / content as f32) * track_main as f32
+    } else {
+        track_main as f32
+    };
+    let thumb_main = (share.round() as i32).clamp(shortest, track_main);
+    let travel = track_main - thumb_main;
+    let overflow = (content - viewport_main).max(0);
+    let travelled = if overflow > 0 {
+        (travel as f32 * offset as f32 / overflow as f32).round() as i32
+    } else {
+        0
+    }
+    .clamp(0, travel);
+    match axis {
+        FlowAxis::Vertical => LayerRect {
+            left: track.left,
+            top: track.top + travelled,
+            width: track.width,
+            height: thumb_main,
+        },
+        FlowAxis::Horizontal => LayerRect {
+            left: track.left + travelled,
+            top: track.top,
+            width: thumb_main,
+            height: track.height,
+        },
+    }
+}
+
+/// The two parts of a track a click pages the view through: the part before the
+/// thumb moves back, the part after it moves on. Either is absent when the thumb
+/// reaches that end.
+fn scrollbar_pages(
+    axis: FlowAxis,
+    track: LayerRect,
+    thumb: LayerRect,
+) -> (Option<LayerRect>, Option<LayerRect>) {
+    let part = |start: i32, end: i32| {
+        (end > start).then(|| match axis {
+            FlowAxis::Vertical => LayerRect {
+                top: start,
+                height: end - start,
+                ..track
+            },
+            FlowAxis::Horizontal => LayerRect {
+                left: start,
+                width: end - start,
+                ..track
+            },
+        })
+    };
+    match axis {
+        FlowAxis::Vertical => (
+            part(track.top, thumb.top),
+            part(thumb.bottom(), track.bottom()),
+        ),
+        FlowAxis::Horizontal => (
+            part(track.left, thumb.left),
+            part(thumb.right(), track.right()),
+        ),
+    }
+}
+
 fn render_flow(
     node: roxmltree::Node<'_, '_>,
     rect: LayerRect,
@@ -3868,10 +4248,13 @@ fn render_flow(
             .unwrap_or(0),
         context.dpi.scale,
     );
-    let available_main = axis.main(content);
+    // The room the container itself has. A container that scrolls lays its
+    // children out beside that room rather than inside it, so the two are told
+    // apart from here on.
+    let room = axis.main(content);
     let items: Vec<_> = children
         .iter()
-        .map(|child| flow_item_for_node(*child, axis, available_main, context))
+        .map(|child| flow_item_for_node(*child, axis, room, context))
         .collect();
     let cross_sizes: Vec<i32> = children
         .iter()
@@ -3880,15 +4263,55 @@ fn render_flow(
     // A container that does not wrap keeps every item on one line, which is what
     // free space is shared across.
     let lines = if wraps(node) {
-        wrap_lines(&items, available_main, gap)
+        wrap_lines(&items, room, gap)
     } else {
         vec![(0..items.len()).collect()]
     };
     let single_line = lines.len() == 1 && !wraps(node);
+    // A container that scrolls shows one window onto its children: it lays them
+    // out at the size each one claims on its own and lets the run grow past the
+    // room it has, which is what there is to scroll through. A wrapping
+    // container keeps deciding its own line breaks, so it stays a plain one.
+    let scrolling = scrollable_id(node).filter(|_| single_line);
+    let available_main = match scrolling {
+        Some(_) => {
+            items.iter().map(|item| item.basis_size()).sum::<i32>()
+                + gap * i32::try_from(items.len().saturating_sub(1)).unwrap_or(0)
+        }
+        None => room,
+    };
+    // What each line holds is worked out before anything is drawn, because a
+    // container that scrolls has to know how much it holds before it can say how
+    // far it is scrolled.
+    let planned: Vec<(Vec<usize>, Vec<i32>)> = lines
+        .into_iter()
+        .map(|line| {
+            let line_items: Vec<FlowItem> = line.iter().map(|index| items[*index]).collect();
+            let sizes = flow_widths(&line_items, available_main, gap);
+            (line, sizes)
+        })
+        .collect();
+    let held = planned
+        .iter()
+        .map(|(line, sizes)| {
+            sizes.iter().sum::<i32>()
+                + gap * i32::try_from(line.len().saturating_sub(1)).unwrap_or(0)
+        })
+        .sum::<i32>();
+    // How far down its run the container is scrolled, never past the end of it.
+    let scroll = scrolling.map(|id| {
+        let offset = context
+            .interaction
+            .scroll_offsets
+            .get(&id)
+            .copied()
+            .unwrap_or(0)
+            .clamp(0, (held - room).max(0));
+        (id, offset)
+    });
+    let marks = output.marks();
     let mut cross_cursor = 0;
-    for line in lines {
-        let line_items: Vec<FlowItem> = line.iter().map(|index| items[*index]).collect();
-        let sizes = flow_widths(&line_items, available_main, gap);
+    for (line, sizes) in planned {
         let used: i32 = sizes.iter().sum::<i32>()
             + gap * i32::try_from(line.len().saturating_sub(1)).unwrap_or(0);
         // `justify-content` places the whole run inside the leftover space; HBox
@@ -3930,11 +4353,64 @@ fn render_flow(
                 cross_cursor + cross_offset.max(0) + margin_cross_start(margin, axis),
             );
             if main > 0 && cross > 0 {
+                let placed = match &scroll {
+                    Some((_, offset)) => axis.shift(placed, -offset),
+                    None => placed,
+                };
                 render_flow_item(child, placed, context, output)?;
             }
             cursor += outer_main + gap;
         }
         cross_cursor += line_cross + gap;
+    }
+    if let Some((id, offset)) = scroll {
+        // Everything the children drew is cut to the view the container shows,
+        // so a row the user scrolled past is neither drawn nor clicked.
+        output.clip_since(marks, content);
+        let track = (held > room).then(|| scrollbar_track(axis, content, context.dpi.scale));
+        let thumb =
+            track.map(|track| scrollbar_thumb(axis, track, room, held, offset, context.dpi.scale));
+        if let (Some(track), Some(thumb)) = (track, thumb) {
+            push_solid_layer(
+                &mut output.overlay_layers,
+                track,
+                node.attribute("scrollbar-background")
+                    .unwrap_or(SCROLLBAR_TRACK_COLOR),
+                scale_value(3, context.dpi.scale),
+            )?;
+            push_solid_layer(
+                &mut output.overlay_layers,
+                thumb,
+                node.attribute("scrollbar-thumb-background")
+                    .unwrap_or(SCROLLBAR_THUMB_COLOR),
+                scale_value(3, context.dpi.scale),
+            )?;
+            // A click on the track outside the thumb moves the view by one of
+            // its own pages, which is what makes the bar usable without dragging
+            // the thumb.
+            let (before, after) = scrollbar_pages(axis, track, thumb);
+            for (forward, page) in [(false, before), (true, after)] {
+                let Some(page) = page else { continue };
+                output.actions.push(ActionRegion {
+                    action: WindowAction::ScrollPage {
+                        id: id.clone(),
+                        forward,
+                    },
+                    left: page.left,
+                    top: page.top,
+                    right: page.right(),
+                    bottom: page.bottom(),
+                });
+            }
+        }
+        output.scroll_views.push(ScrollView {
+            id,
+            axis,
+            area: rect,
+            viewport: content,
+            content: held,
+            offset,
+        });
     }
     Ok(())
 }
@@ -4942,6 +5418,7 @@ fn selection_layers(field: &TextInputRegion, start: usize, end: usize) -> Vec<Im
         height,
         source: None,
         alpha: 255,
+        clip: field.clip,
     }]
 }
 
@@ -4982,6 +5459,7 @@ fn caret_layer(field: &TextInputRegion, caret_index: usize) -> ImageLayer {
         height: caret_height,
         source: None,
         alpha: 255,
+        clip: field.clip,
     }
 }
 
@@ -5149,6 +5627,7 @@ fn push_solid_layer(
         height: rect.height,
         source: None,
         alpha: 255,
+        clip: None,
     });
     Ok(())
 }
@@ -5249,6 +5728,7 @@ fn push_border_layer(
         height: rect.height,
         source: None,
         alpha: 255,
+        clip: None,
     });
     Ok(())
 }
@@ -5303,6 +5783,7 @@ fn render_progress_bar(
             height: source_height,
         }),
         alpha: 255,
+        clip: None,
     });
     Ok(())
 }
@@ -5349,6 +5830,7 @@ fn push_layer(
         height: rect.height,
         source: None,
         alpha,
+        clip: None,
     });
     Ok(())
 }
@@ -5740,6 +6222,20 @@ unsafe extern "system" fn window_proc(
             }
             LRESULT(0)
         }
+        WM_MOUSEWHEEL => {
+            // A wheel message carries screen coordinates even though the mouse
+            // messages beside it carry client ones, so the container the pointer
+            // is over is the one its point lands in once it is converted.
+            let (x, y) = client_point(lparam);
+            let mut point = POINT { x, y };
+            if ScreenToClient(window, &mut point).as_bool() {
+                let delta = (wparam.0 >> 16) as u16 as i16;
+                if let Err(error) = scroll_container_at(window, point.x, point.y, delta) {
+                    show_runtime_error(&error);
+                }
+            }
+            LRESULT(0)
+        }
         WM_MOUSEMOVE => {
             let (x, y) = client_point(lparam);
             if extend_text_selection_drag(x) {
@@ -5868,26 +6364,54 @@ unsafe fn paint_ui_frame(destination: HDC, client: &RECT, ui: &RuntimeUi) {
     let _ = DeleteDC(backbuffer);
 }
 
+/// Runs `draw` with the device context cut to `clip`.
+///
+/// A scrollable container shows one window onto its children, and that window is
+/// drawn rather than approximated: this cut is what keeps the part a user
+/// scrolled past out of the frame.
+unsafe fn with_clip(destination: HDC, clip: LayerRect, draw: impl FnOnce()) {
+    let saved = SaveDC(destination);
+    let _ = IntersectClipRect(
+        destination,
+        clip.left,
+        clip.top,
+        clip.right(),
+        clip.bottom(),
+    );
+    draw();
+    if saved != 0 {
+        let _ = RestoreDC(destination, saved);
+    }
+}
+
+unsafe fn draw_layers(destination: HDC, layers: &[ImageLayer]) {
+    for layer in layers {
+        match layer.clip {
+            Some(clip) => with_clip(destination, clip, || draw_layer(destination, layer)),
+            None => draw_layer(destination, layer),
+        }
+    }
+}
+
+unsafe fn draw_texts(destination: HDC, texts: &[TextLayer]) {
+    for text in texts {
+        match text.clip {
+            Some(clip) => with_clip(destination, clip, || draw_text(destination, text)),
+            None => draw_text(destination, text),
+        }
+    }
+}
+
 unsafe fn draw_ui_frame(destination: HDC, ui: &RuntimeUi) {
-    for layer in &ui.layers {
-        draw_layer(destination, layer);
-    }
+    draw_layers(destination, &ui.layers);
     // Selection bands sit above the page art but under the glyphs they cover.
-    for layer in &ui.selection {
-        draw_layer(destination, layer);
-    }
-    for text in &ui.texts {
-        draw_text(destination, text);
-    }
-    for layer in &ui.overlay_layers {
-        draw_layer(destination, layer);
-    }
-    for text in &ui.overlay_texts {
-        draw_text(destination, text);
-    }
+    draw_layers(destination, &ui.selection);
+    draw_texts(destination, &ui.texts);
+    draw_layers(destination, &ui.overlay_layers);
+    draw_texts(destination, &ui.overlay_texts);
     if ui.caret_drawn {
         if let Some(caret) = &ui.caret {
-            draw_layer(destination, caret);
+            draw_layers(destination, std::slice::from_ref(caret));
         }
     }
 }
@@ -6099,10 +6623,13 @@ fn text_input_at(x: i32, y: i32) -> Option<(String, usize)> {
         return None;
     }
     let field = state.ui.text_inputs.iter().rev().find(|field| {
-        x >= field.left
-            && x < field.left + field.width
-            && y >= field.top
-            && y < field.top + field.height
+        let rect = LayerRect {
+            left: field.left,
+            top: field.top,
+            width: field.width,
+            height: field.height,
+        };
+        field.clip.unwrap_or(rect).contains(x, y)
     })?;
     let visible: String = visible_text(&field.text);
     let index = unsafe { caret_index_for_x(field, &visible, x) };
@@ -6838,6 +7365,11 @@ unsafe fn handle_window_action(window: HWND, action: WindowAction) {
                 show_runtime_error(&error);
             }
         }
+        WindowAction::ScrollPage { id, forward } => {
+            if let Err(error) = scroll_container_page(window, &id, forward) {
+                show_runtime_error(&error);
+            }
+        }
         WindowAction::NextPage => {
             if let Err(error) = show_adjacent_page(1) {
                 show_runtime_error(&error);
@@ -7060,6 +7592,96 @@ unsafe fn set_choice(window: HWND, id: String, value: String) -> Result<()> {
     let _ = InvalidateRect(window, None, false);
     let _ = UpdateWindow(window);
     Ok(())
+}
+
+/// Scrolls a container to the offset a wheel or a click on its scrollbar asked
+/// for.
+///
+/// The offset is stored rather than the movement, so a page that is redrawn for
+/// a new display scale, a language change or a dialog keeps showing the part of
+/// the list the user left it at.
+unsafe fn set_scroll_offset(window: HWND, id: String, offset: i32) -> Result<()> {
+    let runtime = UI.get().context("native UI state is missing")?;
+    let mut state = runtime
+        .lock()
+        .map_err(|_| anyhow::anyhow!("native UI state lock was poisoned"))?;
+    if state.interaction.scroll_offsets.get(&id).copied() == Some(offset) {
+        return Ok(());
+    }
+    state.interaction.scroll_offsets.insert(id, offset);
+    rebuild_runtime_ui(&mut state)?;
+    drop(state);
+    let _ = InvalidateRect(window, None, false);
+    let _ = UpdateWindow(window);
+    Ok(())
+}
+
+/// Where the container under a wheel message should end up, and which one it is.
+///
+/// The pointer decides: a page may hold several scrollable containers, and the
+/// one the wheel is over is the one the user aimed at.
+unsafe fn scroll_container_at(window: HWND, x: i32, y: i32, delta: i16) -> Result<()> {
+    let target = {
+        let runtime = UI.get().context("native UI state is missing")?;
+        let state = runtime
+            .lock()
+            .map_err(|_| anyhow::anyhow!("native UI state lock was poisoned"))?;
+        // A dialog owns the window while it is open, so the page behind it does
+        // not move under the pointer.
+        if state.interaction.dialog.is_some() {
+            return Ok(());
+        }
+        let Some(view) = state
+            .ui
+            .scroll_views
+            .iter()
+            .find(|view| view.area.contains(x, y))
+        else {
+            return Ok(());
+        };
+        let step = scale_value(SCROLL_STEP, state.dpi.scale);
+        let offset = (view.offset - wheel_notches(delta) * step).clamp(0, view.max_offset());
+        (view.id.clone(), offset)
+    };
+    set_scroll_offset(window, target.0, target.1)
+}
+
+/// Moves a container by one of its own pages, from a click on its scrollbar.
+///
+/// A page is the view's own extent, so the row that was at the edge stays in
+/// sight at the other one instead of being stepped over.
+unsafe fn scroll_container_page(window: HWND, id: &str, forward: bool) -> Result<()> {
+    let target = {
+        let runtime = UI.get().context("native UI state is missing")?;
+        let state = runtime
+            .lock()
+            .map_err(|_| anyhow::anyhow!("native UI state lock was poisoned"))?;
+        let Some(view) = state.ui.scroll_views.iter().find(|view| view.id == id) else {
+            return Ok(());
+        };
+        let page = view.axis.main(view.viewport);
+        let moved = if forward {
+            view.offset + page
+        } else {
+            view.offset - page
+        };
+        (view.id.clone(), moved.clamp(0, view.max_offset()))
+    };
+    set_scroll_offset(window, target.0, target.1)
+}
+
+/// How many steps one wheel message asks for.
+///
+/// A wheel that reports part of a notch still moves the list one step: a
+/// high-resolution wheel sends small deltas, and a list that ignored them would
+/// not move at all under such a mouse.
+fn wheel_notches(delta: i16) -> i32 {
+    let notches = i32::from(delta) / WHEEL_DELTA;
+    if notches == 0 {
+        i32::from(delta).signum()
+    } else {
+        notches
+    }
 }
 
 unsafe fn set_checkbox_state(window: HWND, id: String, checked: bool) -> Result<()> {
@@ -9618,6 +10240,7 @@ mod tests {
             top: 50,
             width: 200,
             height: 20,
+            clip: None,
         };
         // A collapsed range draws nothing, so a plain click leaves no band.
         assert!(selection_layers(&field, 3, 3).is_empty());
@@ -9689,6 +10312,7 @@ mod tests {
             top: 50,
             width: 200,
             height: 20,
+            clip: None,
         };
         let at_start = caret_layer(&field, 0);
         let at_end = caret_layer(&field, 7);
@@ -11163,6 +11787,240 @@ mod tests {
         assert!(
             !started(&flipped),
             "a button stayed live after the group moved off its value"
+        );
+        Ok(())
+    }
+
+    /// A rectangle to compare a hit region or a layer against.
+    fn area(left: i32, top: i32, width: i32, height: i32) -> LayerRect {
+        LayerRect {
+            left,
+            top,
+            width,
+            height,
+        }
+    }
+
+    /// A page holding one scrollable list, with a button that is not part of it.
+    ///
+    /// Every row is tall enough that six of them need more room than the list
+    /// has, which is what makes it scrollable at all.
+    fn scrollable_project(rows: usize) -> HashMap<String, Vec<u8>> {
+        let mut layout = String::from(
+            r##"<Page width="400" height="300">
+                 <VBox id="list" scrollable="true" position="absolute" left="10" top="10"
+                       width="200" height="100">"##,
+        );
+        for index in 0..rows {
+            layout.push_str(&format!(
+                r#"<Button id="row{index}" action="install" text="Row {index}"
+                           width="200" height="30" />"#
+            ));
+        }
+        layout.push_str(
+            r##"</VBox>
+                 <Button id="outside" action="close" text="Outside"
+                         position="absolute" left="10" top="200" width="100" height="20" />
+               </Page>"##,
+        );
+        one_page_project(&layout, "{}")
+    }
+
+    /// The same page, with the list declared without an id.
+    fn nameless_list_project() -> HashMap<String, Vec<u8>> {
+        one_page_project(
+            r##"<Page width="400" height="300">
+                 <VBox scrollable="true" position="absolute" left="10" top="10"
+                       width="200" height="100">
+                   <Button id="row0" action="install" text="Row 0" width="200" height="30" />
+                   <Button id="row1" action="install" text="Row 1" width="200" height="30" />
+                   <Button id="row2" action="install" text="Row 2" width="200" height="30" />
+                   <Button id="row3" action="install" text="Row 3" width="200" height="30" />
+                 </VBox>
+               </Page>"##,
+            "{}",
+        )
+    }
+
+    /// A page whose list is scrolled to one offset, which is the state a wheel
+    /// or a click on the scrollbar leaves behind.
+    fn scrolled(offset: i32) -> InteractionState {
+        let mut interaction = InteractionState::default();
+        interaction
+            .scroll_offsets
+            .insert("list".to_string(), offset);
+        interaction
+    }
+
+    /// Every click region that starts an install, in the order they were laid
+    /// out.
+    fn install_regions(ui: &RuntimeUi) -> Vec<LayerRect> {
+        ui.actions
+            .iter()
+            .filter(|region| matches!(region.action, WindowAction::Install))
+            .map(|region| {
+                area(
+                    region.left,
+                    region.top,
+                    region.right - region.left,
+                    region.bottom - region.top,
+                )
+            })
+            .collect()
+    }
+
+    /// Every region that pages the list through its scrollbar, tagged with the
+    /// direction it moves in.
+    fn page_regions(ui: &RuntimeUi) -> Vec<(bool, LayerRect)> {
+        ui.actions
+            .iter()
+            .filter_map(|region| match region.action {
+                WindowAction::ScrollPage { ref id, forward } if id == "list" => Some((
+                    forward,
+                    area(
+                        region.left,
+                        region.top,
+                        region.right - region.left,
+                        region.bottom - region.top,
+                    ),
+                )),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Whether the page drew a layer exactly filling `rect`.
+    fn drew_layer(ui: &RuntimeUi, rect: LayerRect) -> bool {
+        ui.layers
+            .iter()
+            .chain(ui.overlay_layers.iter())
+            .any(|layer| {
+                layer.left == rect.left
+                    && layer.top == rect.top
+                    && layer.width == rect.width
+                    && layer.height == rect.height
+            })
+    }
+
+    /// The words every text layer on the page draws, in the order they were laid
+    /// out.
+    fn drawn_words(ui: &RuntimeUi) -> Vec<String> {
+        ui.texts.iter().map(visible_text).collect()
+    }
+
+    #[test]
+    fn a_scrollable_container_shows_the_part_it_is_scrolled_to() -> anyhow::Result<()> {
+        // A list taller than the room it has shows one window onto its rows: the
+        // offset moves them, a row that moved past the container's edge is
+        // neither drawn nor clicked, and an offset past the end of the list
+        // stops there instead of showing blank space.
+        let files = scrollable_project(6);
+
+        let top = drawn_at_96(&files, &InteractionState::default())?;
+        assert_eq!(top.scroll_views.len(), 1, "the page kept no scroll view");
+        let view = &top.scroll_views[0];
+        assert_eq!(view.id, "list");
+        assert_eq!(view.area, area(10, 10, 200, 100));
+        assert_eq!(view.viewport, area(10, 10, 200, 100));
+        assert_eq!(view.content, 180, "the list did not say what it holds");
+        assert_eq!(view.offset, 0);
+        assert_eq!(view.max_offset(), 80);
+        // Rows four and five lie past the edge, and the row that only half fits
+        // is drawn and clicked only in the part that shows.
+        assert_eq!(
+            install_regions(&top),
+            [
+                area(10, 10, 200, 30),
+                area(10, 40, 200, 30),
+                area(10, 70, 200, 30),
+                area(10, 100, 200, 10),
+            ],
+            "the rows past the edge stayed clickable"
+        );
+        assert_eq!(
+            drawn_words(&top),
+            ["Row 0", "Row 1", "Row 2", "Row 3", "Outside"]
+        );
+
+        // Scrolled by sixty pixels the rows move up together, and what left the
+        // view through the top is gone the same way.
+        let middle = drawn_at_96(&files, &scrolled(60))?;
+        assert_eq!(middle.scroll_views[0].offset, 60);
+        assert_eq!(
+            install_regions(&middle),
+            [
+                area(10, 10, 200, 30),
+                area(10, 40, 200, 30),
+                area(10, 70, 200, 30),
+                area(10, 100, 200, 10),
+            ],
+        );
+        assert_eq!(
+            drawn_words(&middle),
+            ["Row 2", "Row 3", "Row 4", "Row 5", "Outside"]
+        );
+
+        // An offset past the end of the list is clamped to the end, so the last
+        // row comes to rest against the container's bottom edge.
+        let end = drawn_at_96(&files, &scrolled(1000))?;
+        assert_eq!(end.scroll_views[0].offset, 80);
+        let end_rows = install_regions(&end);
+        assert_eq!(end_rows.first(), Some(&area(10, 10, 200, 10)));
+        assert_eq!(
+            end_rows.last(),
+            Some(&area(10, 80, 200, 30)),
+            "the last row did not come to rest at the edge"
+        );
+        assert_eq!(end_rows.last().map(|row| row.bottom()), Some(110));
+        Ok(())
+    }
+
+    #[test]
+    fn a_scrollbar_says_where_the_list_stands() -> anyhow::Result<()> {
+        // The bar is drawn where the view ends and as long as the share of the
+        // list the view shows, and a click on either part of the track moves the
+        // view by one of its own pages -- which is what makes the bar usable
+        // without dragging the thumb.
+        let files = scrollable_project(6);
+
+        let top = drawn_at_96(&files, &InteractionState::default())?;
+        // A hundred of the list's hundred and eighty pixels fit the view, so the
+        // thumb covers a little over half the track and starts at its top.
+        assert!(
+            drew_layer(&top, area(202, 10, 8, 100)),
+            "no track was drawn"
+        );
+        assert!(
+            drew_layer(&top, area(202, 10, 8, 56)),
+            "the thumb did not say how much of the list is in view"
+        );
+        assert_eq!(page_regions(&top), [(true, area(202, 66, 8, 44))]);
+
+        // At the end of the list the thumb reaches the other end of the track,
+        // and the part that pages back is the one that is left.
+        let end = drawn_at_96(&files, &scrolled(80))?;
+        assert!(drew_layer(&end, area(202, 54, 8, 56)));
+        assert_eq!(page_regions(&end), [(false, area(202, 10, 8, 44))]);
+
+        // A list whose rows fit its view gets no bar at all, and nothing to page
+        // through: there is nowhere to scroll to.
+        let short = drawn_at_96(&scrollable_project(2), &InteractionState::default())?;
+        assert_eq!(short.scroll_views[0].max_offset(), 0);
+        assert!(
+            page_regions(&short).is_empty(),
+            "a short list offered a bar"
+        );
+        assert!(!drew_layer(&short, area(202, 10, 8, 100)));
+
+        // A container that asks to scroll without an id has no name to keep a
+        // position under, so it stays a plain container rather than sharing one
+        // with every other nameless list on the page.
+        let nameless = drawn_at_96(&nameless_list_project(), &InteractionState::default())?;
+        assert!(nameless.scroll_views.is_empty());
+        assert_eq!(
+            install_regions(&nameless).len(),
+            4,
+            "a nameless container hid rows it should have shown"
         );
         Ok(())
     }

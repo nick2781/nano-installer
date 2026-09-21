@@ -65,6 +65,8 @@ Rust doc comment，再退回用例名。
 | `a_script_recognises_a_running_process_by_its_image_name` | `is_process_running` 按映像名判断进程：正在跑的那个测试可执行文件返回 true，编出来的不存在名字返回 false。这条检查就是安装时不肯覆盖正在运行的产品的原因。 |
 | `a_script_runs_a_command_and_sees_its_exit_code` | `run_command` 返回命令的退出码，用 `ComSpec` 跑 `exit 3` 和 `exit 0` 分别拿到 3 和 0；起不来的命令返回 -1，脚本因此分得清跑了但失败和根本没跑。 |
 | `a_script_step_text_wins_over_the_locale_key` | 脚本发布的字面状态文字会留在屏幕上，即使更早步骤记下的 locale 键还在。 |
+| `a_scrollable_container_shows_the_part_it_is_scrolled_to` | 装不下容器的那部分内容只从窗口里露出一块：偏移量把各行整体推上去，推出容器边缘的那一行既不画出来也不再登记点击，偏移量超出列表末尾时停在末尾，不会露出底下的空白。列表有多长由各行自己声明的高度决定，跟容器拿到多少地方无关，这正是「能滚」与「被压扁」的分界。 |
+| `a_scrollbar_says_where_the_list_stands` | 滚动条画在视口尾部那条 8 像素宽的轨道上，滑块的长度是列表露出来的那部分所占的比例，位置跟着偏移量走；点轨道上滑块之外的两段各把视图挪动一页（一页就是视口本身的大小），所以不拖滑块也能翻。列表装得下时不画轨道、也不登记翻页区域；声明了 `scrollable` 却没有 `id` 的容器不开滚动，免得页面上的无名列表共用一个位置。 |
 | `a_select_offers_the_options_the_page_declares` | 下拉框是页面提供的一种选择，不只是语言控件：关闭时显示当前选项的文字（没人点过时是第一个），点击它要的是自己的菜单而不是语言列表，展开的选项按版面顺序排列、各用各的文字，隐藏的选项不出现；被选中的值决定旁边按钮是否可点。 |
 | `a_selection_band_covers_the_characters_it_selects` | 选中区域画出一条色带盖住选中的字符：没选中的范围什么都不画，色带始终停在输入框内，纵向也留出与文字高度匹配的位置。 |
 | `a_selection_is_ordered_from_whichever_end_the_caret_is_at` | 选区按两端排好序，从哪头拖都得到同一段区间；光标和锚点重合不算选区，清空后也没有选区。 |
@@ -78,6 +80,7 @@ Rust doc comment，再退回用例名。
 | `a_translation_missing_page_text_is_reported` | 默认语言能回答的页面文案键，凡是某个语言漏掉的都要报出来，没漏的不报。 |
 | `a_typed_value_wins_over_the_bound_default` | 绑定到工程文件的输入框先显示配置里的路径，但用户输入或选择过的值要一直留在屏幕上，`disk-free:` 绑定读的也是同一个输入框。 |
 | `a_validation_message_the_page_asks_for_is_reported` | 字段不合格时显示的文案也是页面文案，构建期和别的键一样逐语言比对：默认语言里有、某个语言文件里漏掉的那条会被报出来，而不是等用户看到一句没翻译好的提示。 |
+| `a_wheel_over_a_list_brings_the_rows_below_into_reach` | 在真实窗口里滚滚轮：先点列表下方那片本该被后面一行盖住的位置，接住点击的是页面自己放在那儿的按钮，说明被裁掉的行确实收不到点击；在列表上滚一格滚轮之后，点同一个位置落在刚滚进来的那一行上，改由它接管。滚轮消息带的是屏幕坐标，这条用例走的就是系统把消息交给窗口时的那条路。 |
 | `a_window_is_centred_and_clamped_to_its_work_area` | 窗口在工作区里居中，工作区不从原点开始时保留它自己的偏移；比桌面还大的版面被夹到桌面范围内而不是挂在边缘外，只有一个方向超出时另一个方向照常居中。 |
 | `a_wrapping_row_gives_each_line_the_height_of_its_tallest_item` | 窗口变窄时换行行重新排布，下一行从上一行最高那个项的下方开始，再加上间距，高度不同的卡片因此不会互相压住。 |
 | `a_wrapping_row_starts_a_new_line_when_the_next_item_does_not_fit` | 放不下下一个项时换行行另起一行；整行放得下就不换；比行还宽的项自己占一行而不是被丢掉；空容器没有行。 |

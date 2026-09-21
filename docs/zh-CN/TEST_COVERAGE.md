@@ -3,7 +3,7 @@
 文档承诺的每一条行为，以及守住它的那条自动化用例。表格里的每一行都列出了该行为失效时会失败的
 用例；没有出现在任何一行里的行为，就是没人看住的行为。
 
-`cargo test --locked --workspace` 会跑 221 条用例：核心库 163 条，真构建并运行安装包的 22 条，
+`cargo test --locked --workspace` 会跑 224 条用例：核心库 165 条，真构建并运行安装包的 23 条，
 按构建器的方式读工程的 5 条，可视化构建器 29 条，解压运行时 2 条。安装包级用例需要真实的运行时
 可执行文件，`.\scripts\run_e2e_setup.ps1` 会先把它们构建出来再跑，并把整次运行写进
 `target/e2e-report.txt`。
@@ -12,8 +12,8 @@
 
 | 层 | 用例数 | 能证明 | 不能证明 |
 | --- | --- | --- | --- |
-| 核心库 | 163 | 一页会变成什么——图层、坐标、命中区域、文字；捆绑数据里装了什么；安装往磁盘和注册表写了什么；每个脚本原语做什么 | 打包出来的安装包能走到这些代码 |
-| 安装包级 | 22 | 构建好的安装包在这台机器上装了一遍：payload 字节、manifest、卸载项、快捷方式、自启动、项目脚本、向导窗口，以及它自己页面上那些要等点击的行为 | 需要人在机器前才发生的事：悬停与按下状态位图、光标、输入法组字、选目录对话框、模态对话框 |
+| 核心库 | 165 | 一页会变成什么——图层、坐标、命中区域、文字；捆绑数据里装了什么；安装往磁盘和注册表写了什么；每个脚本原语做什么 | 打包出来的安装包能走到这些代码 |
+| 安装包级 | 23 | 构建好的安装包在这台机器上装了一遍：payload 字节、manifest、卸载项、快捷方式、自启动、项目脚本、向导窗口、它自己页面上那些要等点击的行为，以及在列表上滚动滚轮 | 需要人在机器前才发生的事：悬停与按下状态位图、光标、输入法组字、选目录对话框、模态对话框 |
 | 工程检查 | 5 | 构建之前窗口会显示的那份摘要与告警列表 | |
 | 可视化构建器 | 29 | 窗口自己的状态、参数、日志与告警 | 真的去点界面上的控件 |
 | 解压运行时 | 2 | 坏归档、以及归档里不安全的路径会被拒绝 | 解压一个完好的归档——安装包级用例会用真实运行时解真实 payload |
@@ -70,6 +70,7 @@
 | padding、margin 及单边写法 | `padding_and_margin_take_one_to_four_values_and_their_single_side_forms`、`control_padding_insets_what_the_control_draws` |
 | 百分比与像素尺寸 | `percentage_and_pixel_extents_scale_with_the_layout` |
 | 换行行 | `a_wrapping_row_starts_a_new_line_when_the_next_item_does_not_fit`、`a_wrapping_row_gives_each_line_the_height_of_its_tallest_item`、`flex_wrap_is_opt_in_per_container` |
+| 可滚动容器：装得下多少、露出来的是哪一块、滚动条说的位置，以及推动它的滚轮 | `a_scrollable_container_shows_the_part_it_is_scrolled_to`、`a_scrollbar_says_where_the_list_stands`、`a_wheel_over_a_list_brings_the_rows_below_into_reach` |
 | `Spacer` | `a_spacer_takes_what_the_fixed_items_leave` |
 | 用 `right`、`bottom`、`inset` 及单边写法贴边 | `an_element_is_pinned_by_the_edge_attribute_it_carries` |
 | `Label` 的文字、字体、对齐与颜色 | `a_label_takes_its_text_font_and_alignment_from_the_layout`、`text_colors_read_as_rgb_with_or_without_an_alpha_channel`、`a_bound_label_shows_its_own_text_beside_the_value_it_reads` |
