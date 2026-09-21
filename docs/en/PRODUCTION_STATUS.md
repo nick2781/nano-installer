@@ -50,6 +50,12 @@ files and registry entries, so validate them in a disposable virtual machine onl
   value breaks, looked up in the project's own language, and draws nothing while the value is
   acceptable. An empty field still takes the caret, which is what lets a page ask for a directory
   and wait for it before the install starts.
+- A `Select` is a choice the page offers, not only the language control: it lists its `<Option>`
+  children, shows the words of the option in use, and records the `value` of the row a person clicks.
+  A `RadioButton` belongs to a `group`, stands for one `value` in it, and marks the row its group
+  starts on with `checked="true"`, so a click on any row replaces the value for the whole group.
+  `enabled-when="<id>:<value>"` reads either of them, with the select's own id or the group's name,
+  and the menu takes Up/Down/Enter/Escape the way the language list already did.
 - Flow layout resolves `flex-basis` by sharing free space from that basis, honours `align-self` per
   item, lets a nested container size itself from its own children, and positions an absolutely
   placed element from `right`/`bottom` or the `inset` shorthand.
@@ -71,11 +77,12 @@ files and registry entries, so validate them in a disposable virtual machine onl
   project it writes itself and runs it against a real installation: files land on disk byte for
   byte, the manifest and the uninstall entry are written, an upgrade drops stale files and keeps
   files it does not own, and an uninstall removes the product, the registration, and the directory.
-  Four of its twenty-one cases open the wizard window and drive it: one measures the client area it
+  Five of its twenty-two cases open the wizard window and drive it: one measures the client area it
   drew, one walks the page actions a project declares, one stops a running task from a cancel
-  button, and one types a directory into the field a page asks for and starts the install with it. They need an interactive desktop session, so they skip where there is none and
-  `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` makes the skip a failure. The other seventeen pass on
-  Windows 11 and in CI.
+  button, one types a directory into the field a page asks for and starts the install with it, and
+  one clicks the row a radio group's install button waits for. They need an interactive desktop
+  session, so they skip where there is none and `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` makes the skip
+  a failure. The other seventeen pass on Windows 11 and in CI.
 - A setup stays a setup after signing: a certificate table appended behind the bundle, which is what
   Authenticode writes into the file, no longer hides the footer the runtime reads its resources from.
 - The builder refuses a configuration key it does not read. A setting that once parsed and then

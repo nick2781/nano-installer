@@ -78,11 +78,12 @@ A button can depend on another control:
 ```
 
 Supported states are `checked`, `unchecked`, `visible`, and `hidden`, plus `valid` and `invalid`
-for a text field. One condition may list several `id:state` pairs separated by commas, and the button
-waits until every one of them holds. While a condition is unmet the button uses `disabled-image` and
-registers no click or hover handling; it returns to its normal states once the condition holds. A
-button without `enabled-when` is enabled by default, and the runtime contains no rules tied to
-specific control names.
+for a text field, and the value a radio group or a select holds, written as that value itself
+(`enabled-when="mode:custom"`). One condition may list several `id:state` pairs separated by commas,
+and the button waits until every one of them holds. While a condition is unmet the button uses
+`disabled-image` and registers no click or hover handling; it returns to its normal states once the
+condition holds. A button without `enabled-when` is enabled by default, and the runtime contains no
+rules tied to specific control names.
 
 ## Flow containers
 
@@ -135,17 +136,42 @@ and a `Spacer` absorbs the remaining space in an `HBox`; wrapping only happens a
 width limit. Clicking toggles the checkbox, and clicking a link opens its target, so `linkcolor` is
 what opts a label into clickable links. See [Links](#links).
 
-## Label and Select
+## Label, Select and RadioButton
 
 - Absolutely positioned Label: supports `text`/`value`, font-size, font-weight, color, and
   `textalign=center`.
-- A Select with `action="switch_language"`: selects the option matching the current locale, draws a
-  DPI-aware arrow over its `background` fill and `border-color` outline, and expands the options
-  declared in XML. Selecting one reloads the locale JSON and redraws the page text.
-- While the menu is open the keyboard takes over: Up and Down move the highlight (wrapping at both
-  ends), Enter switches to the highlighted language, and Escape closes the menu without leaving the
-  page. Opening the menu highlights the language in use. The highlight uses
-  `popup-highlight-background`, falling back to `popup-selected-background`.
+- A Select states the options it offers, draws a DPI-aware arrow over its `background` fill and
+  `border-color` outline, and shows the words of the option in use. Clicking the control opens its
+  rows, and clicking a row records that row's `value` and closes the menu; an option the layout marks
+  `visible="false"` is not offered. A Select whose `action` is `switch_language` lists the languages
+  the project ships and switches the locale when one is picked, reloading the locale JSON and
+  redrawing the page text.
+- A RadioButton belongs to the group named by `group` and stands for the `value` it carries. It picks
+  `checked-image`/`unchecked-image` and draws its text the way a checkbox does, and `checked="true"`
+  marks the row its group starts on. A click records the clicked row for the whole group, so one
+  group holds one value at a time; a group the layout starts with nothing checked holds none until a
+  row is clicked.
+- What the click recorded is what the rest of the page reads: a select answers to its own `id`, a
+  radio button to its group, and `enabled-when="<id>:<value>"` waits for one of those values.
+- While a select's menu is open the keyboard takes over: Up and Down move the highlight (wrapping at
+  both ends), Enter records the highlighted row -- the language it stands for, or the value -- and
+  Escape closes the menu without leaving the page or recording anything. Opening the menu marks the
+  entry in use, which is the locale for the language control and the option the user picked for a
+  project's own select, falling back to its first option until a row is picked. The highlight uses
+  `popup-highlight-background`, falling back to `popup-selected-background`, and the entry in use
+  uses `popup-selected-background`.
+
+Two controls that record a value, and a button that waits for both of them:
+
+```xml
+<RadioButton id="quick" group="mode" value="quick" text="@mode_quick" checked="true" />
+<RadioButton id="custom" group="mode" value="custom" text="@mode_custom" />
+<Select id="edition" background="#FF1E1E1E" border-color="#FF3A3A3A">
+  <Option value="standard" text="@edition_standard" />
+  <Option value="portable" text="@edition_portable" />
+</Select>
+<Button action="install" enabled-when="mode:custom, edition:portable" />
+```
 
 ## ProgressBar
 
@@ -334,9 +360,10 @@ table, or `action="open_url:https://..."` with the URL written out in full.
 
 ## Click targets and the pointer
 
-Buttons, selects, and any element that declares an `action` respond to clicks and turn the pointer
-into a hand while it is over them. A control with no `action` is inert even when it is positioned
-over a clickable area, which is how you promote an icon or a label into a link.
+Buttons, selects, checkboxes and radio buttons, and any element that declares an `action` respond to
+clicks and turn the pointer into a hand while it is over them. A control with no `action` is inert
+even when it is positioned over a clickable area, which is how you promote an icon or a label into a
+link.
 
 ## Folder picker
 

@@ -330,6 +330,41 @@ impl Fixture {
         })
     }
 
+    /// Declares a wizard whose install button waits for a radio group.
+    ///
+    /// The layout marks the first row as the default, so the button starts
+    /// inert even though the group always holds a value: what it waits for is
+    /// the row a click picks. The page the task reports on declares a
+    /// different client area, so the window's own size says whether the
+    /// install started.
+    fn choice_project(&self) -> anyhow::Result<()> {
+        std::fs::write(
+            self.project.join("layouts/configpage.xml"),
+            r##"<Page width="720" height="450" background="#FF101010">
+  <RadioButton id="quick" group="mode" value="quick" text="Quick" checked="true"
+               position="absolute" left="20" top="40" width="200" height="20" />
+  <RadioButton id="custom" group="mode" value="custom" text="Custom"
+               position="absolute" left="20" top="70" width="200" height="20" />
+  <Button id="install" action="install" text="Install" enabled-when="mode:custom"
+          position="absolute" left="20" top="130" width="140" height="36" />
+</Page>"##,
+        )?;
+        std::fs::write(
+            self.project.join("layouts/taskspage.xml"),
+            r##"<Page width="500" height="300" background="#FF202020" />"##,
+        )?;
+        self.edit_config(|config| {
+            // The page asks for no directory of its own, so the install runs
+            // against the one the project configures.
+            config["install"]["default_path"] =
+                serde_json::json!(self.destination.to_string_lossy());
+            config["wizard"]["pages"] = serde_json::json!([
+                {"id": "config", "title": "Options", "layout": "layouts/configpage.xml"},
+                {"id": "tasks", "title": "Installing", "layout": "layouts/taskspage.xml", "role": "progress"}
+            ]);
+        })
+    }
+
     /// Declares a wizard whose task can be stopped from the page it runs on.
     ///
     /// The first page starts the install, the page the task reports on carries
@@ -1767,6 +1802,95 @@ fn a_field_the_user_fills_in_is_what_lets_the_install_start() -> anyhow::Result<
     assert!(
         installed && typed.join("E2eProbe.exe").is_file(),
         "the install did not write the product into the directory the field held"
+    );
+    Ok(())
+}
+
+/// The row a click lands on is what the button beside it waits for.
+///
+/// The layout cases prove a choice turns into a click region and back into a
+/// page; this one proves the window itself records the row that was clicked,
+/// in a real window, by watching the install start on the value the click
+/// handed over and the product land in the configured directory.
+#[test]
+fn a_click_on_a_radio_is_the_value_the_install_waits_for() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.choice_project()?;
+    fixture.build()?;
+
+    let _ = unsafe { SetProcessDPIAware() };
+    let mut setup = Command::new(&fixture.setup)
+        .env("NANO_INSTALLER_TEST_DPI", "96")
+        .spawn()?;
+    let waited = wait_for_runtime_window(&mut setup, Instant::now() + Duration::from_secs(30));
+    let Some(window) = (match &waited {
+        WindowWait::Found(window) => Some(*window),
+        WindowWait::Exited(_) | WindowWait::Timeout => None,
+    }) else {
+        let reason = match waited {
+            WindowWait::Exited(status) => format!("the setup {status} instead of opening a window"),
+            WindowWait::Timeout => "no window appeared within 30 seconds".to_string(),
+            WindowWait::Found(_) => "the window could not be measured".to_string(),
+        };
+        let _ = setup.kill();
+        let _ = setup.wait();
+        return skip_missing_desktop(&reason);
+    };
+
+    let opened = client_size(window);
+    // The install button, with the row the layout defaults to still on: the
+    // group holds a value, and it is not the one the button names.
+    click_client_point(window, 90, 148);
+    let defaulted = wait_for_client_size(
+        window,
+        (500, 300),
+        Instant::now() + Duration::from_millis(1500),
+    );
+    // Clicking that row again changes nothing: a radio keeps the value it has.
+    click_client_point(window, 60, 50);
+    click_client_point(window, 90, 148);
+    let same = wait_for_client_size(
+        window,
+        (500, 300),
+        Instant::now() + Duration::from_millis(1500),
+    );
+    // The other row is the value the condition names, and picking it is what
+    // hands the button its click.
+    click_client_point(window, 60, 80);
+    click_client_point(window, 90, 148);
+    let started =
+        wait_for_client_size(window, (500, 300), Instant::now() + Duration::from_secs(20));
+    let installed = wait_for_directory(
+        &fixture.destination,
+        Instant::now() + Duration::from_secs(20),
+    );
+    let _ = setup.kill();
+    let _ = setup.wait();
+
+    assert_eq!(
+        opened,
+        (720, 450),
+        "the wizard opened on {opened:?} rather than the 720x450 page the project declares"
+    );
+    assert_eq!(
+        defaulted, None,
+        "the install started on the row the layout defaults to"
+    );
+    assert_eq!(
+        same, None,
+        "clicking the row that was already on let the install start"
+    );
+    assert_eq!(
+        started,
+        Some((500, 300)),
+        "the row the user clicked did not let the install start"
+    );
+    assert!(
+        installed && fixture.destination.join("E2eProbe.exe").is_file(),
+        "the install did not write the product into the configured directory"
     );
     Ok(())
 }

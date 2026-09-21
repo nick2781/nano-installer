@@ -3,7 +3,7 @@
 文档承诺的每一条行为，以及守住它的那条自动化用例。表格里的每一行都列出了该行为失效时会失败的
 用例；没有出现在任何一行里的行为，就是没人看住的行为。
 
-`cargo test --locked --workspace` 会跑 219 条用例：核心库 162 条，真构建并运行安装包的 21 条，
+`cargo test --locked --workspace` 会跑 221 条用例：核心库 163 条，真构建并运行安装包的 22 条，
 按构建器的方式读工程的 5 条，可视化构建器 29 条，解压运行时 2 条。安装包级用例需要真实的运行时
 可执行文件，`.\scripts\run_e2e_setup.ps1` 会先把它们构建出来再跑，并把整次运行写进
 `target/e2e-report.txt`。
@@ -12,8 +12,8 @@
 
 | 层 | 用例数 | 能证明 | 不能证明 |
 | --- | --- | --- | --- |
-| 核心库 | 162 | 一页会变成什么——图层、坐标、命中区域、文字；捆绑数据里装了什么；安装往磁盘和注册表写了什么；每个脚本原语做什么 | 打包出来的安装包能走到这些代码 |
-| 安装包级 | 21 | 构建好的安装包在这台机器上装了一遍：payload 字节、manifest、卸载项、快捷方式、自启动、项目脚本、向导窗口 | 任何需要点击才能发生的事 |
+| 核心库 | 163 | 一页会变成什么——图层、坐标、命中区域、文字；捆绑数据里装了什么；安装往磁盘和注册表写了什么；每个脚本原语做什么 | 打包出来的安装包能走到这些代码 |
+| 安装包级 | 22 | 构建好的安装包在这台机器上装了一遍：payload 字节、manifest、卸载项、快捷方式、自启动、项目脚本、向导窗口，以及它自己页面上那些要等点击的行为 | 需要人在机器前才发生的事：悬停与按下状态位图、光标、输入法组字、选目录对话框、模态对话框 |
 | 工程检查 | 5 | 构建之前窗口会显示的那份摘要与告警列表 | |
 | 可视化构建器 | 29 | 窗口自己的状态、参数、日志与告警 | 真的去点界面上的控件 |
 | 解压运行时 | 2 | 坏归档、以及归档里不安全的路径会被拒绝 | 解压一个完好的归档——安装包级用例会用真实运行时解真实 payload |
@@ -61,7 +61,7 @@
 | `file`/`dest`/`fade` 图片写法 | `a_styled_image_draws_into_a_sub_rectangle_at_the_opacity_it_declares`、`image_style_supports_plain_path_destination_and_fade` |
 | 按显示 DPI 选密度，以及两个方向上的回退 | `a_layout_picks_the_image_density_the_display_asks_for`、`dpi_asset_resolution_prefers_requested_density_and_falls_back` |
 | `Button` 各状态图及其回退 | `a_button_state_image_falls_back_to_the_normal_one`、`install_button_uses_xml_images_for_interaction_state` |
-| `enabled-when` 支持的每种状态、它点名的输入框，以及一串条件 | `a_button_waits_for_each_state_its_condition_can_name`、`a_button_waits_for_the_field_its_condition_names` |
+| `enabled-when` 支持的每种状态、它点名的输入框、记下的取值，以及一串条件 | `a_button_waits_for_each_state_its_condition_can_name`、`a_button_waits_for_the_field_its_condition_names`、`a_radio_group_holds_one_value_at_a_time` |
 | 输入框自己的规矩决定哪些值算合格（`required`、`min-length`、`max-length`、`pattern`） | `a_field_checks_the_value_the_project_asks_it_to` |
 | 值最先破坏的那条规矩，由页面上的提示说出来 | `a_hint_shows_the_rule_the_value_breaks` |
 | 安装按钮等的是用户真的把那个字段填上 | `a_field_the_user_fills_in_is_what_lets_the_install_start` |
@@ -74,7 +74,8 @@
 | 用 `right`、`bottom`、`inset` 及单边写法贴边 | `an_element_is_pinned_by_the_edge_attribute_it_carries` |
 | `Label` 的文字、字体、对齐与颜色 | `a_label_takes_its_text_font_and_alignment_from_the_layout`、`text_colors_read_as_rgb_with_or_without_an_alpha_channel`、`a_bound_label_shows_its_own_text_beside_the_value_it_reads` |
 | `Checkbox` 的状态图、文字、链接与切换 | `an_absolutely_placed_checkbox_draws_its_state_image_and_toggles` |
-| `Select` 与 `switch_language` | `a_language_menu_lists_its_options_and_marks_the_one_in_use`、`a_closed_language_select_draws_its_arrow_over_its_fill_and_outline` |
+| `RadioButton`：一组一个取值、版面给的默认行，以及点掉它的那一次点击 | `a_radio_group_holds_one_value_at_a_time`、`a_click_on_a_radio_is_the_value_the_install_waits_for` |
+| `Select`：语言列表，以及工程自己声明的选项 | `a_language_menu_lists_its_options_and_marks_the_one_in_use`、`a_closed_language_select_draws_its_arrow_over_its_fill_and_outline`、`a_select_offers_the_options_the_page_declares` |
 | `ProgressBar` 的轨道、裁剪与实时值 | `a_progress_bar_paints_a_rounded_track_and_follows_the_live_value`、`progress_bar_clips_its_sprite_to_the_completed_share` |
 | 每一种 `value-source` 与 `value-format` | `value_sources_read_the_config_the_disk_and_the_running_step`、`formats_bound_disk_sizes`、`resolves_and_queries_windows_disk_root`、`status_source_replaces_placeholder_text_with_the_published_step` |
 | 文本框编辑：光标、选区、撤销、按词按键 | `a_caret_sits_after_the_characters_before_it`、`a_double_click_selects_the_word_under_the_pointer`、`a_selection_band_covers_the_characters_it_selects`、`a_selection_is_ordered_from_whichever_end_the_caret_is_at`、`removing_a_selection_keeps_the_text_around_it`、`typing_coalesces_into_one_undo_step`、`undo_remembers_the_caret_that_belongs_to_the_value`、`word_keys_stop_at_the_boundaries_they_delete`、`byte_index_walks_characters_not_bytes`、`editable_text_fields_are_recorded_and_readonly_ones_are_not`、`a_typed_value_wins_over_the_bound_default`、`a_readonly_field_shows_its_value_without_taking_edits`、`an_empty_field_is_one_a_user_can_click_into` |

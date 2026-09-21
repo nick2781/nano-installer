@@ -20,6 +20,7 @@ Rust doc comment，再退回用例名。
 | `a_cancel_request_stops_the_checkpoints_that_follow_it` | 收到取消请求的检查点报出 `cancelled by the user`，而且带的是它自己的错误类型，向导据此说"已取消"而不是"失败"；取消只作用于这一个任务，下一个任务拿到的是全新的句柄。 |
 | `a_cancelled_deployment_writes_nothing` | 部署一开始就已经被要求取消时，一个文件都不会复制；回滚随后把这次新建的安装目录整个删掉。 |
 | `a_cancelled_install_gives_up_after_the_script_and_undoes_what_it_wrote` | 脚本自己注意到取消、结束长步骤并正常返回后，运行时在脚本之后的检查点停下，报 `cancelled by the user`，脚本写下的目录一并撤回。 |
+| `a_click_on_a_radio_is_the_value_the_install_waits_for` | 在真实窗口里点单选按钮：安装键等的是被点中那一行的取值。先点安装键没反应；点亮版面默认选中的那一行再点安装，仍然没反应；改点另一行再点安装，窗口切到任务页，产品装进配置指定的目录。版面级用例只证明点击会变成一个动作，这条证明窗口真的记下了被点的是哪一行。 |
 | `a_closed_language_select_draws_its_arrow_over_its_fill_and_outline` | 收起的 `Select` 由底色、描边和箭头三层组成，箭头从远端边向内缩一段并垂直居中，跟着显示缩放一起变大；收起时画向下的那张，展开时画向上的那张。 |
 | `a_configured_percent_path_is_expanded_and_used` | 配置里带 `%LOCALAPPDATA%` 的路径必须先展开再用，没展开的路径不是绝对路径，安装会拒绝相对目录。这条用例完全不带 `--dir` 运行，等同于静默运行里没有指定目录的情况。 |
 | `a_container_measures_the_edge_its_children_are_asked_for` | 问 `HBox` 要竖直方向的尺寸时，报的是最高的那个子项加上自己的上下内边距；问水平方向时报子项沿宽度要的总和。内嵌的百分比宽度容器透过它自己的子项来量，不会把外层的行撑大或压塌。 |
@@ -54,6 +55,7 @@ Rust doc comment，再退回用例名。
 | `a_project_without_a_dialog_layout_still_opens` | 没带对话框版面的工程照样能用：页面自己画出来，调用方退回成不问直接关闭。 |
 | `a_project_without_silent_support_refuses_a_windowless_install` | 从没声明支持静默安装的工程必须拒绝无窗口运行，而不是照样无人值守地装下去。 |
 | `a_project_without_silent_support_refuses_a_windowless_uninstall` | 卸载一个从没声明支持静默的工程会被拒绝，产品不能靠作者没同意过的开关被无人值守地删掉。 |
+| `a_radio_group_holds_one_value_at_a_time` | 单选按钮按组记值：版面用 `checked="true"` 标出起始选中的一行，点任意一行就为整组记下那一行的值，选中图和旁边按钮的可用状态跟着换，一组任何时刻只有一行是选中的。 |
 | `a_readonly_field_shows_its_value_without_taking_edits` | `readonly="true"` 的输入框仍然把值画出来，但不接受键入，也不会被记成可编辑字段；`readonly="false"` 则照常可编辑。 |
 | `a_run_without_any_install_path_is_refused` | 命令行和配置都没有给出目录可供退而求其次，这次运行会停下，并在提示里点明提供安装路径的两条途径。 |
 | `a_running_build_refuses_a_second_one` | 正在跑的构建会拒绝第二个打包任务。有任务在跑时按钮是禁用的，这条用例就是按钮背后那道检查：同时开两个会把同一个输出文件写坏。 |
@@ -63,6 +65,7 @@ Rust doc comment，再退回用例名。
 | `a_script_recognises_a_running_process_by_its_image_name` | `is_process_running` 按映像名判断进程：正在跑的那个测试可执行文件返回 true，编出来的不存在名字返回 false。这条检查就是安装时不肯覆盖正在运行的产品的原因。 |
 | `a_script_runs_a_command_and_sees_its_exit_code` | `run_command` 返回命令的退出码，用 `ComSpec` 跑 `exit 3` 和 `exit 0` 分别拿到 3 和 0；起不来的命令返回 -1，脚本因此分得清跑了但失败和根本没跑。 |
 | `a_script_step_text_wins_over_the_locale_key` | 脚本发布的字面状态文字会留在屏幕上，即使更早步骤记下的 locale 键还在。 |
+| `a_select_offers_the_options_the_page_declares` | 下拉框是页面提供的一种选择，不只是语言控件：关闭时显示当前选项的文字（没人点过时是第一个），点击它要的是自己的菜单而不是语言列表，展开的选项按版面顺序排列、各用各的文字，隐藏的选项不出现；被选中的值决定旁边按钮是否可点。 |
 | `a_selection_band_covers_the_characters_it_selects` | 选中区域画出一条色带盖住选中的字符：没选中的范围什么都不画，色带始终停在输入框内，纵向也留出与文字高度匹配的位置。 |
 | `a_selection_is_ordered_from_whichever_end_the_caret_is_at` | 选区按两端排好序，从哪头拖都得到同一段区间；光标和锚点重合不算选区，清空后也没有选区。 |
 | `a_setup_runs_the_projects_own_install_and_uninstall_scripts` | 自带步骤的工程会把这些步骤带进安装包，由真实运行时执行；进程内的脚本用例直接驱动脚本驱动层，而它和工程目录之间还隔着把 `scripts/` 打进捆绑数据、再由 stub 找回来这两件事。少了其中任何一件的安装包，仍然能让那批进程内用例全部通过。 |

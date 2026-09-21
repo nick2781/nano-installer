@@ -3,7 +3,7 @@
 Every behaviour the documentation promises, and the automated case that holds it. A row names the
 cases that fail when that behaviour breaks; a behaviour with no row is one nobody is checking.
 
-`cargo test --locked --workspace` runs 219 cases: 162 in the core library, 21 that build a real setup
+`cargo test --locked --workspace` runs 221 cases: 163 in the core library, 22 that build a real setup
 and run it, 5 that read a project the way the builder does, 29 in the visual builder, and 2 in the
 extraction runtimes. The setup-level cases need real runtime executables built first, which is what
 `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `target/e2e-report.txt`.
@@ -12,8 +12,8 @@ extraction runtimes. The setup-level cases need real runtime executables built f
 
 | Layer | Cases | Proves | Cannot prove |
 | --- | --- | --- | --- |
-| Core library | 162 | what a page becomes — layers, coordinates, hit regions, text — what the bundle carries, what an install writes to disk and the registry, and what each script primitive does | that a packaged setup reaches any of it |
-| Setup end to end | 21 | a built setup installed on the machine: payload bytes, manifest, uninstall entry, shortcuts, autostart, project scripts, the wizard window | anything that needs a click |
+| Core library | 163 | what a page becomes — layers, coordinates, hit regions, text — what the bundle carries, what an install writes to disk and the registry, and what each script primitive does | that a packaged setup reaches any of it |
+| Setup end to end | 22 | a built setup installed on the machine: payload bytes, manifest, uninstall entry, shortcuts, autostart, project scripts, the wizard window, and the clicks its own pages wait for | what needs a person at the machine: the hover and pressed bitmaps, the caret, IME composition, the folder picker, and the modal dialogs |
 | Project inspection | 5 | the summary and the warning list the builder shows before a build | |
 | Visual builder | 29 | the window's own state, parameters, log and warnings | clicking the real controls |
 | Extraction runtimes | 2 | a broken archive, and an unsafe path inside one, are refused | extracting an archive that is sound -- the setup-level cases run a real runtime over a real payload |
@@ -61,7 +61,7 @@ extraction runtimes. The setup-level cases need real runtime executables built f
 | the `file`/`dest`/`fade` image form | `a_styled_image_draws_into_a_sub_rectangle_at_the_opacity_it_declares`, `image_style_supports_plain_path_destination_and_fade` |
 | density choice at the display's DPI, both fallbacks | `a_layout_picks_the_image_density_the_display_asks_for`, `dpi_asset_resolution_prefers_requested_density_and_falls_back` |
 | `Button` state images and their fallback | `a_button_state_image_falls_back_to_the_normal_one`, `install_button_uses_xml_images_for_interaction_state` |
-| `enabled-when` for every state it can name, a field among them, and a list of conditions | `a_button_waits_for_each_state_its_condition_can_name`, `a_button_waits_for_the_field_its_condition_names` |
+| `enabled-when` for every state it can name, a field, a recorded choice, and a list of conditions | `a_button_waits_for_each_state_its_condition_can_name`, `a_button_waits_for_the_field_its_condition_names`, `a_radio_group_holds_one_value_at_a_time` |
 | a field's own rules decide which values it accepts (`required`, `min-length`, `max-length`, `pattern`) | `a_field_checks_the_value_the_project_asks_it_to` |
 | the hint a field shows for the first rule its value breaks | `a_hint_shows_the_rule_the_value_breaks` |
 | the install button waits for the field a person fills in | `a_field_the_user_fills_in_is_what_lets_the_install_start` |
@@ -74,7 +74,8 @@ extraction runtimes. The setup-level cases need real runtime executables built f
 | pinning by `right`, `bottom`, `inset` and the single-side forms | `an_element_is_pinned_by_the_edge_attribute_it_carries` |
 | `Label` text, font, alignment and colour | `a_label_takes_its_text_font_and_alignment_from_the_layout`, `text_colors_read_as_rgb_with_or_without_an_alpha_channel`, `a_bound_label_shows_its_own_text_beside_the_value_it_reads` |
 | `Checkbox` state images, text, links, toggling | `an_absolutely_placed_checkbox_draws_its_state_image_and_toggles` |
-| `Select` with `switch_language` | `a_language_menu_lists_its_options_and_marks_the_one_in_use`, `a_closed_language_select_draws_its_arrow_over_its_fill_and_outline` |
+| `RadioButton`: one value per group, the layout's default, and the click that replaces it | `a_radio_group_holds_one_value_at_a_time`, `a_click_on_a_radio_is_the_value_the_install_waits_for` |
+| `Select`: the language list, and the options a project declares | `a_language_menu_lists_its_options_and_marks_the_one_in_use`, `a_closed_language_select_draws_its_arrow_over_its_fill_and_outline`, `a_select_offers_the_options_the_page_declares` |
 | `ProgressBar` track, clipping and live value | `a_progress_bar_paints_a_rounded_track_and_follows_the_live_value`, `progress_bar_clips_its_sprite_to_the_completed_share` |
 | every `value-source` form and `value-format` | `value_sources_read_the_config_the_disk_and_the_running_step`, `formats_bound_disk_sizes`, `resolves_and_queries_windows_disk_root`, `status_source_replaces_placeholder_text_with_the_published_step` |
 | text field editing: caret, selection, undo, word keys | `a_caret_sits_after_the_characters_before_it`, `a_double_click_selects_the_word_under_the_pointer`, `a_selection_band_covers_the_characters_it_selects`, `a_selection_is_ordered_from_whichever_end_the_caret_is_at`, `removing_a_selection_keeps_the_text_around_it`, `typing_coalesces_into_one_undo_step`, `undo_remembers_the_caret_that_belongs_to_the_value`, `word_keys_stop_at_the_boundaries_they_delete`, `byte_index_walks_characters_not_bytes`, `editable_text_fields_are_recorded_and_readonly_ones_are_not`, `a_typed_value_wins_over_the_bound_default`, `a_readonly_field_shows_its_value_without_taking_edits`, `an_empty_field_is_one_a_user_can_click_into` |

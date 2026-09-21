@@ -72,7 +72,8 @@ assets/logo@2x.png
 ```
 
 支持的 state 为 `checked`、`unchecked`、`visible`、`hidden`，文本输入框另有 `valid` 与
-`invalid`。一条条件可以用逗号列出多个 `id:state`，全部成立按钮才可用。条件不满足时按钮使用
+`invalid`；单选组与下拉框则用它当前持着的值来写，值本身就是 state（`enabled-when="mode:custom"`）。
+一条条件可以用逗号列出多个 `id:state`，全部成立按钮才可用。条件不满足时按钮使用
 `disabled-image`，且不响应点击与悬停；条件满足后恢复正常状态。未声明 `enabled-when` 的按钮默认
 可用，运行时不含针对特定控件名的规则。
 
@@ -121,15 +122,36 @@ Image/Icon，用来组合文字与图标。
 `Spacer` 吸收；只有达到可用宽度上限才换行。复选框可点击切换；链接可以点击打开，所以 `linkcolor`
 就是把文字变成链接的开关，详见[链接](#链接)。
 
-## Label 与 Select
+## Label、Select 与 RadioButton
 
 - 绝对定位 Label：支持 `text`/`value`、font-size、font-weight、color 与 `textalign=center`。
-- `action="switch_language"` 的 Select：按当前 locale 选中对应 Option，在 `background` 填充与
-  `border-color` 描边之上绘制随 DPI 缩放的箭头，并展开 XML 中声明的选项。选择后重新加载对应
-  语言文件并重绘页面文字。
-- 菜单展开后键盘接管：上下键移动高亮（首尾循环），回车切换到高亮的语言，Esc 只关闭菜单、
-  不离开页面。打开菜单时高亮停在当前语言。高亮使用 `popup-highlight-background`，缺省回退到
+- Select 声明自己提供的选项，在 `background` 填充与 `border-color` 描边之上绘制随 DPI 缩放的
+  箭头，并显示当前选项的文字。点击控件展开选项，点中某一行就记下该行的 `value` 并收起菜单；
+  声明 `visible="false"` 的选项不会出现。`action="switch_language"` 的 Select 列的是工程提供的
+  语言，选中后重新加载对应语言文件并重绘页面文字。
+- RadioButton 用 `group` 归属一组，用 `value` 代表组内的一个取值：`checked-image`/
+  `unchecked-image` 与文字的画法和复选框一致，`checked="true"` 标出这一组起始选中的行。点击
+  任意一行就把整组记为那一行的值，所以一组任何时刻只持有一个值；版面一行都没标成选中的组，
+  在用户点击之前不持有任何值。
+- 点中所记下的值就是页面其他部分读到的值：下拉框用自己的 `id` 作名字，单选按钮用所属 `group`
+  的名字，`enabled-when="<id>:<值>"` 等的就是其中之一。
+- 下拉框菜单展开后键盘接管：上下键移动高亮（首尾循环），回车记下高亮那一行——它代表的语言或
+  取值——Esc 只关闭菜单，既不离开页面也不记下任何值。打开菜单时高亮停在该控件当前的值上：语言
+  控件是当前语言，项目自己的选择框是用户点过的那个选项，还没点过则停在第一个选项。高亮使用
+  `popup-highlight-background`，缺省回退到 `popup-selected-background`，当前值那一行用
   `popup-selected-background`。
+
+两个记录取值的控件，以及一个要等这两者的按钮：
+
+```xml
+<RadioButton id="quick" group="mode" value="quick" text="@mode_quick" checked="true" />
+<RadioButton id="custom" group="mode" value="custom" text="@mode_custom" />
+<Select id="edition" background="#FF1E1E1E" border-color="#FF3A3A3A">
+  <Option value="standard" text="@edition_standard" />
+  <Option value="portable" text="@edition_portable" />
+</Select>
+<Button action="install" enabled-when="mode:custom, edition:portable" />
+```
 
 ## ProgressBar
 
@@ -296,8 +318,8 @@ MiB 值转成可读大小，`size` 按 1024 进位格式化为 B/KB/MB/GB/TB。
 
 ## 点击目标与光标
 
-Button、Select，以及任何声明了 `action` 的元素都响应点击，鼠标悬停时变成手型。没有 `action` 的
-控件即使压在可点击区域上也不响应，图标或文字正是靠这一点变成链接的。
+Button、Select、复选框与单选按钮，以及任何声明了 `action` 的元素都响应点击，鼠标悬停时变成
+手型。没有 `action` 的控件即使压在可点击区域上也不响应，图标或文字正是靠这一点变成链接的。
 
 ## 目录选择
 

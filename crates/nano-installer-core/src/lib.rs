@@ -139,10 +139,9 @@ struct RuntimeUi {
     selection: Vec<ImageLayer>,
     /// Whether the caret is in the visible half of its blink cycle.
     caret_drawn: bool,
-    /// Locale code of every option the language menu offers, in layout order.
-    /// Keyboard navigation walks this list, which is why it is kept even while
-    /// the menu is closed.
-    language_options: Vec<String>,
+    /// Menu a `Select` has open, if any: the rows it draws, and the row the
+    /// keyboard and the current choice point at.
+    menu: Option<MenuUi>,
     /// Localized question a `close_confirm` button asks before closing.
     close_confirm_message: String,
     /// Localized label for a dialog's confirm button.
@@ -156,6 +155,22 @@ struct RuntimeUi {
     product_name: String,
 }
 
+/// The option list a `Select` draws while its menu is open.
+///
+/// Rows are values rather than nodes: keyboard navigation walks this list,
+/// and confirming a row needs the value it stands for without parsing the
+/// layout again.
+struct MenuUi {
+    /// Id of the control that opened the menu.
+    select: String,
+    /// Whether the rows are locales, which is what confirming one does.
+    language: bool,
+    /// Value of every row, in the order the layout declares them.
+    values: Vec<String>,
+    /// Row the current choice marks, when the menu has one.
+    chosen: Option<usize>,
+}
+
 struct RuntimeState {
     files: HashMap<String, Vec<u8>>,
     /// Scale the current page was measured at. Replaced when the window moves
@@ -164,7 +179,9 @@ struct RuntimeState {
     /// The scaling a project asked for, kept so a new context can be derived.
     dpi_settings: DpiSettings,
     locale: String,
-    language_menu_open: bool,
+    /// `Select` whose menu is open, if any. A page shows one menu at a time,
+    /// and the id names the control that drew it.
+    open_select: Option<String>,
     interaction: InteractionState,
     mode: RuntimeMode,
     ui: RuntimeUi,
@@ -187,6 +204,10 @@ enum RuntimeMode {
 #[derive(Default, Clone)]
 struct InteractionState {
     checkbox_states: HashMap<String, bool>,
+    /// Value the user picked from a `Select` or a radio group, kept by the id
+    /// of the control that owns the choice: a select's own id, or the group a
+    /// radio button belongs to.
+    choices: HashMap<String, String>,
     panel_visibility: HashMap<String, bool>,
     hovered_control: Option<String>,
     pressed_control: Option<String>,
@@ -447,8 +468,16 @@ enum WindowAction {
     /// Stops the task that is running, or leaves the wizard when none is.
     Cancel,
     Minimize,
-    ToggleLanguageMenu,
+    /// Opens or closes the menu of a `Select`.
+    ToggleSelectMenu {
+        id: String,
+    },
     SelectLanguage(String),
+    /// Records the value the user picked from a `Select` or a radio group.
+    ChooseOption {
+        id: String,
+        value: String,
+    },
     /// Moves to the next page the project declares.
     NextPage,
     /// Moves back to the previous page the project declares.
@@ -533,6 +562,8 @@ struct LayoutOutput {
     overlay_texts: Vec<TextLayer>,
     actions: Vec<ActionRegion>,
     hover_regions: Vec<HoverRegion>,
+    /// Menu a `Select` drew open while this layout was rendered.
+    menu: Option<MenuUi>,
 }
 
 /// An editable text field placed on the page.
@@ -558,7 +589,8 @@ struct LayoutContext<'a> {
     interaction: &'a InteractionState,
     /// What each text field on the page accepts, read once for this render.
     fields: HashMap<String, FieldState>,
-    language_menu_open: bool,
+    /// `Select` whose menu this render draws open, if any.
+    open_select: Option<&'a str>,
 }
 
 #[derive(Clone, Copy)]
@@ -2069,14 +2101,14 @@ fn run_embedded(bundle: BundleIndex, mode: RuntimeMode) -> Result<()> {
     let (dpi_settings, dpi) = configure_dpi(&files)?;
     let locale = initial_locale(&files)?;
     let interaction = initial_interaction(&files, mode)?;
-    let ui = load_layout(&files, dpi, &locale, false, &interaction, mode)?;
+    let ui = load_layout(&files, dpi, &locale, None, &interaction, mode)?;
     let (width, height) = (ui.width, ui.height);
     UI.set(Mutex::new(RuntimeState {
         files,
         dpi,
         dpi_settings,
         locale,
-        language_menu_open: false,
+        open_select: None,
         interaction,
         mode,
         ui,
@@ -2256,7 +2288,7 @@ fn load_layout(
     files: &HashMap<String, Vec<u8>>,
     dpi: DpiContext,
     locale: &str,
-    language_menu_open: bool,
+    open_select: Option<&str>,
     interaction: &InteractionState,
     mode: RuntimeMode,
 ) -> Result<RuntimeUi> {
@@ -2297,19 +2329,8 @@ fn load_layout(
         translations: &translations,
         interaction,
         fields: collect_field_states(page, interaction, &config),
-        language_menu_open,
+        open_select,
     };
-    // The language menu is drawn only on the page that declares the Select, so
-    // its option list is read from this layout.
-    let language_options: Vec<String> = page
-        .descendants()
-        .filter(|node| {
-            node.has_tag_name("Select") && node.attribute("action") == Some("switch_language")
-        })
-        .flat_map(|select| select.children())
-        .filter(|option| option.has_tag_name("Option") && !is_hidden(*option, interaction))
-        .map(|option| option.attribute("value").unwrap_or_default().to_string())
-        .collect();
     let active_panel = interaction
         .panel_visibility
         .iter()
@@ -2380,7 +2401,7 @@ fn load_layout(
         caret_rect,
         selection,
         caret_drawn: interaction.caret_visible,
-        language_options,
+        menu: output.menu,
         close_confirm_message: translations
             .get("close_confirm_message")
             .cloned()
@@ -2500,12 +2521,12 @@ fn render_layout_content(
         let has_layer = layer_width > 0 && layer_height > 0;
         // A checkbox draws its state image, its click region, and text placed
         // beside that image, so it is not part of the plain text pass.
-        if has_layer && !node.has_tag_name("Checkbox") {
+        if has_layer && !node.has_tag_name("Checkbox") && !node.has_tag_name("RadioButton") {
             push_node_text(node, rect, context, output);
             push_text_input(node, rect, context, output);
         }
         if node.has_tag_name("Select") && has_layer {
-            render_language_select(node, rect, context, output)?;
+            render_select(node, rect, context, output)?;
         }
         match node.tag_name().name() {
             "Image" | "Icon" if has_layer => {
@@ -2529,7 +2550,9 @@ fn render_layout_content(
                     push_node_border(node, rect, context, &mut output.layers)?;
                 }
             }
-            "Checkbox" if has_layer => render_checkbox(node, rect, context, output)?,
+            "Checkbox" | "RadioButton" if has_layer => {
+                render_toggle(node, rect, context, output)?;
+            }
             "Box" | "Divider" if has_layer => {
                 render_box_contents(node, rect, context, output)?;
             }
@@ -2593,7 +2616,7 @@ fn render_dialog_overlay(
         translations,
         interaction,
         fields: HashMap::new(),
-        language_menu_open: false,
+        open_select: None,
     };
     // The declared height is a minimum: the question comes from the product's
     // own translations, so a longer sentence needs a taller card rather than a
@@ -2996,6 +3019,15 @@ fn push_action(
             id: id.to_string(),
             checked: checkbox_checked(node, interaction),
         })
+    } else if node.has_tag_name("RadioButton") {
+        // A radio answers for its group: `group` names the choice, and
+        // `value` is the row this button stands for.
+        node.attribute("group")
+            .zip(node.attribute("value"))
+            .map(|(group, value)| WindowAction::ChooseOption {
+                id: group.to_string(),
+                value: value.to_string(),
+            })
     } else if let Some((id, visible)) = node.attribute("action").and_then(parse_panel_action) {
         Some(WindowAction::SetPanelVisibility {
             id: id.to_string(),
@@ -3015,7 +3047,9 @@ fn push_action(
                 let target = action.trim_start_matches("open_url:");
                 resolve_link_target(target, context).map(WindowAction::OpenLink)
             }
-            Some("switch_language") => Some(WindowAction::ToggleLanguageMenu),
+            Some("switch_language") => Some(WindowAction::ToggleSelectMenu {
+                id: select_id(node),
+            }),
             // A project that declares more than one page walks them with
             // these, so a licence page or an options page needs no script.
             Some("next") => Some(WindowAction::NextPage),
@@ -3030,6 +3064,11 @@ fn push_action(
             // The finish page closes the wizard; `finish` is that same action
             // under the name the example layouts use.
             Some("finish") => Some(WindowAction::Close),
+            // A select that declares no action is still a select: the options
+            // it lists are a choice the page offers.
+            None if node.has_tag_name("Select") => Some(WindowAction::ToggleSelectMenu {
+                id: select_id(node),
+            }),
             _ => None,
         }
     };
@@ -3189,6 +3228,17 @@ fn condition_holds(
     // button back instead of letting a click through, as it does for the other
     // states above.
     let field_valid = fields.get(id).is_some_and(|field| field.valid);
+    // A select and a radio group are named by the value that has to hold,
+    // which is read before the fixed states below: those name what a checkbox
+    // or a panel answers, and a choice that matches none of them falls through
+    // to them as it always has.
+    if interaction
+        .choices
+        .get(id)
+        .is_some_and(|chosen| chosen == expected)
+    {
+        return true;
+    }
     match expected {
         "checked" => interaction
             .checkbox_states
@@ -3267,13 +3317,62 @@ fn checkbox_checked(node: roxmltree::Node<'_, '_>, interaction: &InteractionStat
         .unwrap_or_else(|| node.attribute("checked") == Some("true"))
 }
 
-fn render_language_select(
+/// Whether a radio button is the one its group holds.
+///
+/// A radio answers for its group rather than for itself: the layout may mark
+/// one `checked="true"` as the default, and the first click replaces that for
+/// the whole group.
+fn radio_checked(node: roxmltree::Node<'_, '_>, interaction: &InteractionState) -> bool {
+    let (Some(group), Some(value)) = (node.attribute("group"), node.attribute("value")) else {
+        return false;
+    };
+    match interaction.choices.get(group) {
+        Some(chosen) => chosen == value,
+        None => node.attribute("checked") == Some("true"),
+    }
+}
+
+/// Whether a toggle control is on: a checkbox answers for itself, a radio
+/// button for the value its group holds.
+fn toggle_checked(node: roxmltree::Node<'_, '_>, interaction: &InteractionState) -> bool {
+    if node.has_tag_name("RadioButton") {
+        radio_checked(node, interaction)
+    } else {
+        checkbox_checked(node, interaction)
+    }
+}
+
+/// Name of the control whose menu is open.
+///
+/// A `switch_language` select may be written without an id, and its menu still
+/// has to be told apart from a project's own, so the language control has a
+/// name of its own.
+const LANGUAGE_SELECT: &str = "@language";
+
+fn select_id(node: roxmltree::Node<'_, '_>) -> String {
+    node.attribute("id").unwrap_or(LANGUAGE_SELECT).to_string()
+}
+
+/// Whether a select's rows are the languages the project ships.
+fn select_language_menu(node: roxmltree::Node<'_, '_>) -> bool {
+    node.attribute("action") == Some("switch_language")
+}
+
+/// Draws a select: its own background, outline and arrow, and the menu of
+/// options it offers while that menu is open.
+///
+/// The language control and a project's own select share this code and differ
+/// in two places: what a row is worth -- a locale to switch to, or a value to
+/// record -- and which row counts as the one in use.
+fn render_select(
     node: roxmltree::Node<'_, '_>,
     rect: LayerRect,
     context: &LayoutContext<'_>,
     output: &mut LayoutOutput,
 ) -> Result<()> {
-    let menu_open = context.language_menu_open;
+    let id = select_id(node);
+    let language = select_language_menu(node);
+    let menu_open = context.open_select == Some(id.as_str());
     // Background first, then the outline, so the ring sits on top of the fill
     // and grows inwards from the control edge.
     let radius = scale_value(
@@ -3315,6 +3414,17 @@ fn render_language_select(
         .children()
         .filter(|child| child.has_tag_name("Option") && !is_hidden(*child, context.interaction))
         .collect();
+    let values: Vec<String> = options
+        .iter()
+        .map(|option| option.attribute("value").unwrap_or_default().to_string())
+        .collect();
+    // The row the menu marks as in use: the locale the runtime is reading for
+    // the language control, and the value the user picked for a project's own.
+    let chosen = if language {
+        Some(context.locale.to_string())
+    } else {
+        context.interaction.choices.get(&id).cloned()
+    };
     let popup_width = scale_value(
         int_attribute(node, "popup-width")
             .unwrap_or_else(|| (rect.width as f32 / context.dpi.scale).round() as i32),
@@ -3347,14 +3457,14 @@ fn render_language_select(
             width: popup.width - padding * 2,
             height: row_height,
         };
-        let option_locale = option.attribute("value").unwrap_or_default();
-        // A keyboard highlight wins over the current locale, so arrow keys stay
+        let value = option.attribute("value").unwrap_or_default();
+        // A keyboard highlight wins over the current choice, so arrow keys stay
         // visible while they walk past the selected entry.
         let background = if context.interaction.highlighted_option == Some(index) {
             node.attribute("popup-highlight-background")
                 .or_else(|| node.attribute("popup-selected-background"))
                 .unwrap_or("#FF495A68")
-        } else if option_locale == context.locale {
+        } else if chosen.as_deref() == Some(value) {
             node.attribute("popup-selected-background")
                 .unwrap_or("#FF42515E")
         } else {
@@ -3372,8 +3482,8 @@ fn render_language_select(
             runs: vec![TextRun {
                 text: option
                     .attribute("text")
-                    .unwrap_or(option_locale)
-                    .to_string(),
+                    .map(|text| resolve_text(text, context.translations))
+                    .unwrap_or_else(|| value.to_string()),
                 color: parse_color(node.attribute("color").unwrap_or("#FFFFFFFF")),
                 link: None,
             }],
@@ -3390,14 +3500,33 @@ fn render_language_select(
             alignment: TextAlignment::Left,
             wrap: false,
         });
+        let action = if language {
+            WindowAction::SelectLanguage(value.to_string())
+        } else {
+            WindowAction::ChooseOption {
+                id: id.clone(),
+                value: value.to_string(),
+            }
+        };
         output.actions.push(ActionRegion {
-            action: WindowAction::SelectLanguage(option_locale.to_string()),
+            action,
             left: row.left,
             top: row.top,
             right: row.left + row.width,
             bottom: row.top + row.height,
         });
     }
+    // What the window needs to walk these rows with the keyboard, kept beside
+    // the pixels the menu just drew.
+    let chosen_row = chosen
+        .as_deref()
+        .and_then(|chosen| values.iter().position(|value| value == chosen));
+    output.menu = Some(MenuUi {
+        select: id,
+        language,
+        values,
+        chosen: chosen_row,
+    });
     Ok(())
 }
 
@@ -3425,7 +3554,9 @@ fn push_node_text(
         .max(1),
         bold: node.attribute("font-weight") == Some("bold"),
         alignment,
-        wrap: node.has_tag_name("Checkbox") || node.attribute("wrap") == Some("true"),
+        wrap: node.has_tag_name("Checkbox")
+            || node.has_tag_name("RadioButton")
+            || node.attribute("wrap") == Some("true"),
     });
     // Link markup only becomes clickable when the layout asks for a link colour,
     // which is how a project opts a label into clickable text.
@@ -3477,6 +3608,38 @@ fn is_readonly_text_input(node: roxmltree::Node<'_, '_>) -> bool {
         .is_some_and(|value| value != "false")
 }
 
+/// The text a `Select` shows while its menu is closed.
+///
+/// The language control shows the locale in use; a project's own select shows
+/// the value the user picked, or the first option it declares while nobody has
+/// picked one. An option the layout gives no `text` reads as its value, which
+/// is how a language list written without one still shows.
+fn select_text(node: roxmltree::Node<'_, '_>, context: &LayoutContext<'_>) -> Option<String> {
+    let id = select_id(node);
+    let wanted = if select_language_menu(node) {
+        Some(context.locale.to_string())
+    } else {
+        context.interaction.choices.get(&id).cloned()
+    };
+    let options: Vec<_> = node
+        .children()
+        .filter(|child| child.has_tag_name("Option") && !is_hidden(*child, context.interaction))
+        .collect();
+    let option = wanted
+        .as_deref()
+        .and_then(|value| {
+            options
+                .iter()
+                .find(|option| option.attribute("value") == Some(value))
+                .copied()
+        })
+        .or_else(|| options.first().copied())?;
+    Some(match option.attribute("text") {
+        Some(text) => resolve_text(text, context.translations),
+        None => option.attribute("value").unwrap_or_default().to_string(),
+    })
+}
+
 fn resolved_text_for_node(
     node: roxmltree::Node<'_, '_>,
     context: &LayoutContext<'_>,
@@ -3484,6 +3647,9 @@ fn resolved_text_for_node(
     if node.has_tag_name("TextInput") {
         return text_input_value(node, context.interaction, context.config)
             .map(|value| (value, TextAlignment::Left));
+    }
+    if node.has_tag_name("Select") {
+        return select_text(node, context).map(|text| (text, declared_text_alignment(node)));
     }
     // A hint names the field it explains and draws the words of the rule the
     // value breaks first -- nothing at all while the value is acceptable.
@@ -3502,7 +3668,7 @@ fn resolved_text_for_node(
             .unwrap_or(key);
         return Some((message, declared_text_alignment(node)));
     }
-    let (mut text, alignment) = text_for_node(node, context.locale, context.translations)?;
+    let (mut text, alignment) = text_for_node(node, context.translations)?;
     if let Some(source) = node.attribute("value-source") {
         // `dialog:...` comes from the dialog that is open. A dialog layout is
         // authored once and used for every question, so its text comes from the
@@ -3940,7 +4106,8 @@ fn intrinsic_size(
                 font_size,
                 node.attribute("font-weight") == Some("bold"),
             );
-            let image_and_gap = if node.has_tag_name("Checkbox") {
+            let image_and_gap = if node.has_tag_name("Checkbox") || node.has_tag_name("RadioButton")
+            {
                 node.attribute("checked-image")
                     .or_else(|| node.attribute("unchecked-image"))
                     .map(parse_image_style)
@@ -4147,6 +4314,7 @@ fn dialog_intrinsic_height(
 
 fn has_intrinsic_text(node: roxmltree::Node<'_, '_>) -> bool {
     node.tag_name().name() == "Checkbox"
+        || node.tag_name().name() == "RadioButton"
         || node.tag_name().name() == "Label"
         || node.tag_name().name() == "Button"
 }
@@ -4323,20 +4491,21 @@ fn measure_layout_text_width(text: &str, font_size: i32, bold: bool) -> i32 {
     }
 }
 
-/// Draws a checkbox: its checked or unchecked image, its click region, and the
-/// text that sits beside that image.
+/// Draws a checkbox or a radio button: its state image, its click region, and
+/// the text the layout places beside that image.
 ///
 /// The flow and the absolute path both need this. A checkbox that was given
 /// coordinates used to reach neither the image nor the click region, so it drew
 /// as a caption that could not be toggled, which is what the shipped uninstall
-/// page's keep-data box had become.
-fn render_checkbox(
+/// page's keep-data box had become. A radio button shares the path and differs
+/// only in which image its state picks.
+fn render_toggle(
     node: roxmltree::Node<'_, '_>,
     rect: LayerRect,
     context: &LayoutContext<'_>,
     output: &mut LayoutOutput,
 ) -> Result<()> {
-    let checked = checkbox_checked(node, context.interaction);
+    let checked = toggle_checked(node, context.interaction);
     let image = if checked {
         node.attribute("checked-image")
     } else {
@@ -4391,7 +4560,7 @@ fn render_flow_item(
         rect
     };
     match node.tag_name().name() {
-        "Checkbox" => render_checkbox(node, rect, context, output)?,
+        "Checkbox" | "RadioButton" => render_toggle(node, rect, context, output)?,
         "Button" => {
             push_action(node, rect, &mut output.actions, context);
             push_hover_region(node, rect, context, &mut output.hover_regions);
@@ -4411,10 +4580,16 @@ fn render_flow_item(
                 render_flow(content, rect, FlowAxis::Horizontal, context, output)?;
             }
         }
-        "Label" | "Select" => {
+        "Label" => {
             push_action(node, rect, &mut output.actions, context);
             push_hover_region(node, rect, context, &mut output.hover_regions);
             push_node_text(node, rect, context, output);
+        }
+        "Select" => {
+            push_action(node, rect, &mut output.actions, context);
+            push_hover_region(node, rect, context, &mut output.hover_regions);
+            push_node_text(node, rect, context, output);
+            render_select(node, rect, context, output)?;
         }
         "TextInput" => {
             push_node_text(node, rect, context, output);
@@ -4595,30 +4770,35 @@ fn flow_widths(items: &[FlowItem], available_width: i32, gap: i32) -> Vec<i32> {
         .collect()
 }
 
+/// Text a node draws from the layout itself.
+///
+/// A select is not read here: it shows one of its options, and which one
+/// depends on what the user has picked, so `select_text` answers for it.
 fn text_for_node(
     node: roxmltree::Node<'_, '_>,
-    locale: &str,
     translations: &HashMap<String, String>,
 ) -> Option<(String, TextAlignment)> {
     let raw = match node.tag_name().name() {
-        "Button" | "Checkbox" | "Label" => {
+        "Button" | "Checkbox" | "RadioButton" | "Label" => {
             node.attribute("text").or_else(|| node.attribute("value"))?
         }
-        "Select" => node
-            .children()
-            .find(|option| {
-                option.has_tag_name("Option") && option.attribute("value") == Some(locale)
-            })
-            .or_else(|| node.children().find(|option| option.has_tag_name("Option")))?
-            .attribute("text")?,
         _ => return None,
     };
-    let text = raw
-        .strip_prefix('@')
+    Some((
+        resolve_text(raw, translations),
+        declared_text_alignment(node),
+    ))
+}
+
+/// Text a layout writes, with an `@key` looked up in the locale table.
+///
+/// A key no language file holds stays as it was written, which is what makes a
+/// missing translation visible instead of blank.
+fn resolve_text(raw: &str, translations: &HashMap<String, String>) -> String {
+    raw.strip_prefix('@')
         .and_then(|key| translations.get(key))
         .cloned()
-        .unwrap_or_else(|| raw.to_string());
-    Some((text, declared_text_alignment(node)))
+        .unwrap_or_else(|| raw.to_string())
 }
 
 /// The alignment a text element asks for: `textalign` (or `text-align`), with a
@@ -5517,7 +5697,7 @@ unsafe extern "system" fn window_proc(
             } else if let Some(action) = window_action_at(x, y) {
                 handle_window_action(window, action);
             } else {
-                let _ = set_language_menu_open(window, false);
+                let _ = set_open_select(window, None);
                 // A click outside every field takes the keyboard focus away,
                 // which is what hides the caret again.
                 let _ = focus_text_input(window, None, 0);
@@ -5616,8 +5796,8 @@ unsafe extern "system" fn window_proc(
             let _ = toggle_caret_blink();
             LRESULT(0)
         }
-        WM_KEYDOWN if language_menu_is_open() => {
-            handle_language_menu_key(window, wparam.0 as u32);
+        WM_KEYDOWN if menu_is_open() => {
+            handle_menu_key(window, wparam.0 as u32);
             LRESULT(0)
         }
         // A dialog answers to the keyboard the way a message box does, and it
@@ -6638,17 +6818,23 @@ unsafe fn handle_window_action(window: HWND, action: WindowAction) {
         WindowAction::Minimize => {
             let _ = ShowWindow(window, SW_MINIMIZE);
         }
-        WindowAction::ToggleLanguageMenu => {
+        WindowAction::ToggleSelectMenu { id } => {
+            // Clicking the control whose menu is open closes it again.
             let open = UI
                 .get()
                 .and_then(|state| state.lock().ok())
-                .is_some_and(|state| !state.language_menu_open);
-            if let Err(error) = set_language_menu_open(window, open) {
+                .is_some_and(|state| state.open_select.as_deref() != Some(id.as_str()));
+            if let Err(error) = set_open_select(window, open.then_some(id)) {
                 show_runtime_error(&error);
             }
         }
         WindowAction::SelectLanguage(locale) => {
             if let Err(error) = select_language(window, locale) {
+                show_runtime_error(&error);
+            }
+        }
+        WindowAction::ChooseOption { id, value } => {
+            if let Err(error) = set_choice(window, id, value) {
                 show_runtime_error(&error);
             }
         }
@@ -6728,14 +6914,15 @@ unsafe fn set_pressed_control(window: HWND, id: Option<String>) -> Result<()> {
     Ok(())
 }
 
-fn language_menu_is_open() -> bool {
+/// Whether any select has its menu open.
+fn menu_is_open() -> bool {
     UI.get()
         .and_then(|state| state.lock().ok())
-        .is_some_and(|state| state.language_menu_open)
+        .is_some_and(|state| state.open_select.is_some())
 }
 
-/// Moves the highlight, confirms a choice, or dismisses the open language menu.
-unsafe fn handle_language_menu_key(window: HWND, key: u32) {
+/// Moves the highlight, confirms a row, or dismisses the open menu.
+unsafe fn handle_menu_key(window: HWND, key: u32) {
     // Virtual-key codes, spelled here so the message handler stays free of
     // another namespace-wide import.
     const VK_RETURN: u32 = 0x0D;
@@ -6745,38 +6932,62 @@ unsafe fn handle_language_menu_key(window: HWND, key: u32) {
 
     match key {
         VK_ESCAPE => {
-            let _ = set_language_menu_open(window, false);
+            let _ = set_open_select(window, None);
         }
         VK_UP | VK_DOWN => {
-            let _ = move_language_highlight(window, key == VK_DOWN);
+            let _ = move_menu_highlight(window, key == VK_DOWN);
         }
         VK_RETURN => {
-            let locale = highlighted_language();
-            if let Some(locale) = locale {
-                let _ = select_language(window, locale);
+            let Some((select, language, value)) = highlighted_row() else {
+                return;
+            };
+            let result = if language {
+                select_language(window, value)
+            } else {
+                set_choice(window, select, value)
+            };
+            if let Err(error) = result {
+                show_runtime_error(&error);
             }
         }
         _ => {}
     }
 }
 
-fn highlighted_language() -> Option<String> {
+/// The row the keyboard rests on: the control it belongs to, whether that
+/// control lists locales, and the value the row stands for.
+fn highlighted_row() -> Option<(String, bool, String)> {
     let state = UI.get()?.lock().ok()?;
+    let menu = state.ui.menu.as_ref()?;
     let index = state.interaction.highlighted_option?;
-    state.ui.language_options.get(index).cloned()
+    Some((
+        menu.select.clone(),
+        menu.language,
+        menu.values.get(index)?.clone(),
+    ))
 }
 
-/// Walks the highlight one row, wrapping at both ends.
-unsafe fn move_language_highlight(window: HWND, forward: bool) -> Result<()> {
+/// Walks the highlight one row of the open menu, wrapping at both ends.
+///
+/// The first arrow key starts where the current choice sits, so a menu opens
+/// on the value in use and the keyboard moves away from it.
+unsafe fn move_menu_highlight(window: HWND, forward: bool) -> Result<()> {
     let runtime = UI.get().context("native UI state is missing")?;
     let mut state = runtime
         .lock()
         .map_err(|_| anyhow::anyhow!("native UI state lock was poisoned"))?;
-    let count = state.ui.language_options.len();
+    let (count, selected) = match state.ui.menu.as_ref() {
+        Some(menu) => (menu.values.len(), menu.chosen),
+        None => (0, None),
+    };
     if count == 0 {
         return Ok(());
     }
-    let current = state.interaction.highlighted_option.unwrap_or(0);
+    let current = state
+        .interaction
+        .highlighted_option
+        .or(selected)
+        .unwrap_or(0);
     let next = if forward {
         (current + 1) % count
     } else {
@@ -6790,27 +7001,23 @@ unsafe fn move_language_highlight(window: HWND, forward: bool) -> Result<()> {
     Ok(())
 }
 
-unsafe fn set_language_menu_open(window: HWND, open: bool) -> Result<()> {
+/// Opens the menu of one select, or closes whatever menu is open.
+///
+/// The keyboard highlight starts empty, which leaves the row the current
+/// choice marks standing until an arrow key moves: a menu opens on the value
+/// in use rather than on its first row.
+unsafe fn set_open_select(window: HWND, select: Option<String>) -> Result<()> {
     let Some(runtime) = UI.get() else {
         return Ok(());
     };
     let mut state = runtime
         .lock()
         .map_err(|_| anyhow::anyhow!("native UI state lock was poisoned"))?;
-    if state.language_menu_open == open {
+    if state.open_select == select {
         return Ok(());
     }
-    state.language_menu_open = open;
-    // Opening starts on the language in use, so the first arrow key moves one
-    // step from what the user is reading.
-    state.interaction.highlighted_option = open.then(|| {
-        state
-            .ui
-            .language_options
-            .iter()
-            .position(|option| *option == state.locale)
-            .unwrap_or(0)
-    });
+    state.open_select = select;
+    state.interaction.highlighted_option = None;
     rebuild_runtime_ui(&mut state)?;
     drop(state);
     let _ = InvalidateRect(window, None, false);
@@ -6824,7 +7031,29 @@ unsafe fn select_language(window: HWND, locale: String) -> Result<()> {
         .lock()
         .map_err(|_| anyhow::anyhow!("native UI state lock was poisoned"))?;
     state.locale = locale;
-    state.language_menu_open = false;
+    state.open_select = None;
+    state.interaction.highlighted_option = None;
+    rebuild_runtime_ui(&mut state)?;
+    drop(state);
+    let _ = InvalidateRect(window, None, false);
+    let _ = UpdateWindow(window);
+    Ok(())
+}
+
+/// Records the value the user picked.
+///
+/// A select's row and a radio button both come here: the id names the choice
+/// -- a select of its own, or the group a radio belongs to -- and the value is
+/// what that row stands for. Picking a row is also what closes the menu it came
+/// from; a radio button has none open, and closing a closed menu changes
+/// nothing.
+unsafe fn set_choice(window: HWND, id: String, value: String) -> Result<()> {
+    let runtime = UI.get().context("native UI state is missing")?;
+    let mut state = runtime
+        .lock()
+        .map_err(|_| anyhow::anyhow!("native UI state lock was poisoned"))?;
+    state.interaction.choices.insert(id, value);
+    state.open_select = None;
     state.interaction.highlighted_option = None;
     rebuild_runtime_ui(&mut state)?;
     drop(state);
@@ -6865,7 +7094,7 @@ unsafe fn set_panel_visibility(window: HWND, id: String, visible: bool) -> Resul
         .lock()
         .map_err(|_| anyhow::anyhow!("native UI state lock was poisoned"))?;
     state.interaction.panel_visibility.insert(id, visible);
-    state.language_menu_open = false;
+    state.open_select = None;
     rebuild_runtime_ui(&mut state)?;
     drop(state);
     let _ = InvalidateRect(window, None, false);
@@ -6878,7 +7107,7 @@ fn rebuild_runtime_ui(state: &mut RuntimeState) -> Result<()> {
         &state.files,
         state.dpi,
         &state.locale,
-        state.language_menu_open,
+        state.open_select.as_deref(),
         &state.interaction,
         state.mode,
     )?;
@@ -7849,7 +8078,7 @@ mod tests {
             translations: &translations,
             interaction: &interaction,
             fields: HashMap::new(),
-            language_menu_open: false,
+            open_select: None,
         };
         let mut layers = Vec::new();
         push_node_border(
@@ -7939,7 +8168,7 @@ mod tests {
                 use_2x: false,
             },
             "zh-CN",
-            false,
+            None,
             &interaction_with_dialog(close_question()),
             RuntimeMode::Installer,
         )?;
@@ -7979,7 +8208,7 @@ mod tests {
                 use_2x: false,
             },
             "zh-CN",
-            false,
+            None,
             &interaction_with_dialog(close_question()),
             RuntimeMode::Installer,
         )?;
@@ -8008,7 +8237,7 @@ mod tests {
                 use_2x: false,
             },
             "zh-CN",
-            false,
+            None,
             &interaction_with_dialog(notice()),
             RuntimeMode::Installer,
         )?;
@@ -8030,7 +8259,7 @@ mod tests {
                 use_2x: false,
             },
             "zh-CN",
-            false,
+            None,
             &interaction_with_dialog(close_question()),
             RuntimeMode::Installer,
         )?;
@@ -8052,7 +8281,7 @@ mod tests {
                 use_2x: false,
             },
             "zh-CN",
-            false,
+            None,
             &InteractionState::default(),
             RuntimeMode::Installer,
         )?;
@@ -8075,7 +8304,7 @@ mod tests {
                 use_2x: false,
             },
             "zh-CN",
-            false,
+            None,
             &interaction_with_dialog(close_question()),
             RuntimeMode::Installer,
         )?;
@@ -8128,7 +8357,7 @@ mod tests {
                 use_2x: false,
             },
             "zh-CN",
-            false,
+            None,
             &interaction_with_dialog(dialog),
             RuntimeMode::Installer,
         )?;
@@ -8233,7 +8462,7 @@ mod tests {
                     use_2x: false,
                 },
                 &locale_name,
-                false,
+                None,
                 &interaction_with_dialog(dialog),
                 RuntimeMode::Installer,
             )?;
@@ -8428,7 +8657,7 @@ mod tests {
             translations: &translations,
             interaction: &interaction,
             fields: HashMap::new(),
-            language_menu_open: false,
+            open_select: None,
         };
         let action_for = |id: &str| {
             let node = document
@@ -8489,7 +8718,7 @@ mod tests {
             translations: &translations,
             interaction: &interaction,
             fields: HashMap::new(),
-            language_menu_open: false,
+            open_select: None,
         };
         // The example locales name their links `agreement` and `policy`, so both
         // spellings must reach the configured URLs.
@@ -8586,7 +8815,7 @@ mod tests {
             translations: &translations,
             interaction: &interaction,
             fields: HashMap::new(),
-            language_menu_open: false,
+            open_select: None,
         };
         let document = roxmltree::Document::parse(
             r##"<Page width="400" height="200">
@@ -8730,7 +8959,7 @@ mod tests {
                 use_2x: true,
             },
             "zh-CN",
-            false,
+            None,
             &default_interaction,
             RuntimeMode::Installer,
         )?;
@@ -8844,11 +9073,16 @@ mod tests {
                 use_2x: true,
             },
             "zh-CN",
-            true,
+            Some("langSelect"),
             &default_interaction,
             RuntimeMode::Installer,
         )?;
         assert_eq!(open_menu.overlay_layers.len(), 2);
+        // The rows the keyboard walks are the layout's own option order.
+        let menu = open_menu.menu.as_ref().expect("the menu was open");
+        assert_eq!(menu.values, ["zh-CN", "en-US", "ru"]);
+        assert!(menu.language);
+        assert_eq!(menu.chosen, Some(0));
         assert_eq!(open_menu.overlay_texts.len(), 3);
         assert_eq!(visible_text(&open_menu.overlay_texts[0]), "简体中文");
         assert_eq!(visible_text(&open_menu.overlay_texts[1]), "English");
@@ -8861,7 +9095,7 @@ mod tests {
                 use_2x: true,
             },
             "en-US",
-            false,
+            None,
             &default_interaction,
             RuntimeMode::Installer,
         )?;
@@ -8883,7 +9117,7 @@ mod tests {
                 use_2x: true,
             },
             "zh-CN",
-            false,
+            None,
             &interaction,
             RuntimeMode::Installer,
         )?;
@@ -8938,7 +9172,7 @@ mod tests {
                 use_2x: true,
             },
             "ru",
-            false,
+            None,
             &interaction,
             RuntimeMode::Installer,
         )?;
@@ -9165,7 +9399,7 @@ mod tests {
                 use_2x: false,
             },
             "zh-CN",
-            false,
+            None,
             &interaction,
             RuntimeMode::Uninstaller,
         )?;
@@ -9201,7 +9435,7 @@ mod tests {
                 use_2x: false,
             },
             "zh-CN",
-            false,
+            None,
             &interaction,
             mode,
         )
@@ -9232,7 +9466,7 @@ mod tests {
             translations: &HashMap::new(),
             interaction: &InteractionState::default(),
             fields: HashMap::new(),
-            language_menu_open: false,
+            open_select: None,
         };
         let mut output = LayoutOutput::default();
         for node in page.children().filter(|node| node.is_element()) {
@@ -9558,7 +9792,7 @@ mod tests {
             translations: &HashMap::new(),
             interaction: &InteractionState::default(),
             fields: HashMap::new(),
-            language_menu_open: false,
+            open_select: None,
         };
         let mut output = LayoutOutput::default();
         for node in page.children().filter(|node| node.is_element()) {
@@ -9649,7 +9883,7 @@ mod tests {
             translations: &HashMap::new(),
             interaction: &InteractionState::default(),
             fields: HashMap::new(),
-            language_menu_open: false,
+            open_select: None,
         };
         let mut output = LayoutOutput::default();
         render_flow(
@@ -9715,7 +9949,7 @@ mod tests {
             translations: &HashMap::new(),
             interaction: &InteractionState::default(),
             fields: HashMap::new(),
-            language_menu_open: false,
+            open_select: None,
         };
         let mut output = LayoutOutput::default();
         render_flow_item(
@@ -9760,7 +9994,7 @@ mod tests {
             translations: &HashMap::new(),
             interaction: &InteractionState::default(),
             fields: HashMap::new(),
-            language_menu_open: false,
+            open_select: None,
         };
         let node = page
             .descendants()
@@ -9822,7 +10056,7 @@ mod tests {
             translations: &HashMap::new(),
             interaction: &interaction,
             fields: HashMap::new(),
-            language_menu_open: false,
+            open_select: None,
         };
         let mut output = LayoutOutput::default();
         // The track paints first, then the clipped sprite on top of it.
@@ -9959,7 +10193,7 @@ mod tests {
             translations: &translations,
             interaction: &interaction,
             fields: HashMap::new(),
-            language_menu_open: false,
+            open_select: None,
         };
         let (text, _) = resolved_text_for_node(node, &context).context("label text missing")?;
         assert_eq!(text, "正在解压文件...");
@@ -10015,7 +10249,7 @@ mod tests {
             translations: &translations,
             interaction: &interaction,
             fields: HashMap::new(),
-            language_menu_open: false,
+            open_select: None,
         };
         let (text, _) = resolved_text_for_node(node, &context).context("label text missing")?;
         assert_eq!(text, "Extracting archive files");
@@ -10152,7 +10386,7 @@ mod tests {
             files,
             DpiContext { scale, use_2x },
             "zh-CN",
-            false,
+            None,
             interaction,
             RuntimeMode::Installer,
         )
@@ -10164,6 +10398,26 @@ mod tests {
         interaction: &InteractionState,
     ) -> anyhow::Result<RuntimeUi> {
         drawn_for_display(files, interaction, 1.0, false)
+    }
+
+    /// Draws a project with one select's menu open, which is how a click on
+    /// that control reaches the runtime.
+    fn drawn_with_menu(
+        files: &HashMap<String, Vec<u8>>,
+        interaction: &InteractionState,
+        select: &str,
+    ) -> anyhow::Result<RuntimeUi> {
+        load_layout(
+            files,
+            DpiContext {
+                scale: 1.0,
+                use_2x: false,
+            },
+            "zh-CN",
+            Some(select),
+            interaction,
+            RuntimeMode::Installer,
+        )
     }
 
     /// A layout context over an in-memory project, for the measuring helpers
@@ -10185,7 +10439,7 @@ mod tests {
             translations,
             interaction,
             fields: HashMap::new(),
-            language_menu_open: false,
+            open_select: None,
         }
     }
 
@@ -10740,6 +10994,176 @@ mod tests {
 
         let complete = drawn_at_96(&files, &holding("C:\\Program Files\\Demo"))?;
         assert_eq!(hint(&complete), None);
+        Ok(())
+    }
+
+    #[test]
+    fn a_select_offers_the_options_the_page_declares() -> anyhow::Result<()> {
+        // A select is a choice the page offers, not only the language control:
+        // its rows are the `<Option>` children the layout declares, the closed
+        // control reads the value in use, and a click records the row the user
+        // picks. An option the layout hides is not offered.
+        let files = one_page_project(
+            r##"<Page width="400" height="200">
+                 <Select id="mode" position="absolute" left="10" top="10" width="140" height="24">
+                   <Option value="quick" text="@mode_quick" />
+                   <Option value="full" text="@mode_full" />
+                   <Option value="secret" text="Hidden" visible="false" />
+                 </Select>
+                 <Button id="go" action="install" enabled-when="mode:full" text="Go"
+                         position="absolute" left="10" top="60" width="80" height="24" />
+               </Page>"##,
+            r#"{"mode_quick": "快速安装", "mode_full": "完整安装"}"#,
+        );
+        let holding = |value: &str| {
+            let mut interaction = InteractionState::default();
+            interaction
+                .choices
+                .insert("mode".to_string(), value.to_string());
+            interaction
+        };
+        let started = |ui: &RuntimeUi| {
+            ui.actions
+                .iter()
+                .any(|region| matches!(region.action, WindowAction::Install))
+        };
+
+        // Closed, the control reads the option in use: the first one until the
+        // user picks another, the picked one afterwards. Clicking it asks the
+        // runtime for its own menu rather than the language list.
+        let closed = drawn_at_96(&files, &InteractionState::default())?;
+        assert_eq!(visible_text(&closed.texts[0]), "快速安装");
+        assert!(closed.menu.is_none(), "a closed select recorded a menu");
+        assert!(closed.actions.iter().any(|region| matches!(
+            region.action,
+            WindowAction::ToggleSelectMenu { ref id } if id == "mode"
+        )));
+
+        // The value the button beside it waits for is the one the user picked,
+        // which is what makes a select worth more than its own text.
+        assert!(!started(&closed), "the install started on the first option");
+        let picked = drawn_at_96(&files, &holding("full"))?;
+        assert_eq!(visible_text(&picked.texts[0]), "完整安装");
+        assert!(
+            started(&picked),
+            "the picked value never reached the button"
+        );
+
+        // Open, it lists the options in the order the layout declares them,
+        // each in its own words, with the row in use marked.
+        let open = drawn_with_menu(&files, &holding("full"), "mode")?;
+        let rows = open.menu.as_ref().expect("the menu was open");
+        assert_eq!(
+            rows.values,
+            ["quick", "full"],
+            "a hidden option was offered"
+        );
+        assert!(!rows.language, "a project's own select listed locales");
+        assert_eq!(rows.chosen, Some(1));
+        assert_eq!(
+            open.overlay_texts
+                .iter()
+                .map(visible_text)
+                .collect::<Vec<_>>(),
+            ["快速安装", "完整安装"]
+        );
+        assert!(open.actions.iter().any(|region| matches!(
+            region.action,
+            WindowAction::ChooseOption { ref id, ref value } if id == "mode" && value == "quick"
+        )));
+        Ok(())
+    }
+
+    #[test]
+    fn a_radio_group_holds_one_value_at_a_time() -> anyhow::Result<()> {
+        // A radio button answers for its group rather than for itself: the
+        // layout may mark one as the default, a click on either names the group
+        // and the value it picks, and the rest of the page reads that choice the
+        // way it reads a select's.
+        let project = |checked: &str| {
+            let mut files = one_page_project(
+                &format!(
+                    r##"<Page width="400" height="200">
+                          <RadioButton id="quick" group="mode" value="quick" text="@mode_quick"
+                                       checked="{checked}"
+                                       position="absolute" left="10" top="10" width="140" height="20"
+                                       unchecked-image="file='assets/checkbox-0.png' dest='0,1,16,17'"
+                                       checked-image="file='assets/checkbox-2.png' dest='0,1,16,17'" />
+                          <RadioButton id="full" group="mode" value="full" text="@mode_full"
+                                       position="absolute" left="10" top="40" width="140" height="20"
+                                       unchecked-image="file='assets/checkbox-0.png' dest='0,1,16,17'"
+                                       checked-image="file='assets/checkbox-2.png' dest='0,1,16,17'" />
+                          <Button id="go" action="install" enabled-when="mode:full" text="Go"
+                                  position="absolute" left="10" top="80" width="80" height="24" />
+                        </Page>"##
+                ),
+                r#"{"mode_quick": "快速安装", "mode_full": "完整安装"}"#,
+            );
+            for name in ["checkbox-0.png", "checkbox-2.png"] {
+                files.insert(format!("assets/{name}"), example_asset(name));
+            }
+            files
+        };
+        let picked = |value: &str| {
+            let mut interaction = InteractionState::default();
+            interaction
+                .choices
+                .insert("mode".to_string(), value.to_string());
+            interaction
+        };
+        let artwork = |ui: &RuntimeUi| {
+            ui.layers
+                .iter()
+                .map(|layer| layer.image.pixels.clone())
+                .collect::<Vec<_>>()
+        };
+        let on = super::decode_image(&example_asset("checkbox-2.png"))?.pixels;
+        let off = super::decode_image(&example_asset("checkbox-0.png"))?.pixels;
+        let started = |ui: &RuntimeUi| {
+            ui.actions
+                .iter()
+                .any(|region| matches!(region.action, WindowAction::Install))
+        };
+
+        // The layout's own default stands until the user picks another row,
+        // and only one radio of the group is on at a time.
+        let fresh = drawn_at_96(&project("true"), &InteractionState::default())?;
+        assert_eq!(visible_text(&fresh.texts[0]), "快速安装");
+        assert_eq!(visible_text(&fresh.texts[1]), "完整安装");
+        assert_eq!(artwork(&fresh), [on.clone(), off.clone()]);
+        assert!(
+            !started(&fresh),
+            "the install started on the row the layout defaults to"
+        );
+        // A click on either radio names the group and the value it stands for.
+        assert!(fresh.actions.iter().any(|region| matches!(
+            region.action,
+            WindowAction::ChooseOption { ref id, ref value } if id == "mode" && value == "full"
+        )));
+
+        // A group the layout marks nowhere holds no value at all: no row of it
+        // carries a mark, and a condition naming one of its values stays unmet.
+        let unmarked = drawn_at_96(&project("false"), &InteractionState::default())?;
+        assert_eq!(artwork(&unmarked), [off.clone(), off.clone()]);
+        assert!(!started(&unmarked), "an unset group let the install start");
+
+        // The choice replaces the layout's default for the whole group, which
+        // is what hands the button beside them the value it waits for.
+        let chosen = drawn_at_96(&project("true"), &picked("full"))?;
+        assert_eq!(artwork(&chosen), [off.clone(), on.clone()]);
+        assert!(
+            started(&chosen),
+            "the picked value never reached the button"
+        );
+
+        // Picking the other row moves the mark back and takes the click away
+        // again, so the group always holds exactly one value.
+        let flipped = drawn_at_96(&project("false"), &picked("quick"))?;
+        assert_eq!(artwork(&flipped), [on.clone(), off.clone()]);
+        assert!(
+            !started(&flipped),
+            "a button stayed live after the group moved off its value"
+        );
         Ok(())
     }
 
@@ -11777,7 +12201,7 @@ mod tests {
         assert!(matches!(action("finish"), Some(WindowAction::Close)));
         assert!(matches!(
             action("switch_language"),
-            Some(WindowAction::ToggleLanguageMenu)
+            Some(WindowAction::ToggleSelectMenu { ref id }) if id == "switch_language"
         ));
         assert!(matches!(action("next"), Some(WindowAction::NextPage)));
         assert!(matches!(action("back"), Some(WindowAction::PreviousPage)));
@@ -11857,12 +12281,13 @@ mod tests {
             "{}",
         );
         let ui = drawn_at_96(&files, &InteractionState::default())?;
-        assert!(ui
-            .actions
-            .iter()
-            .any(|region| matches!(region.action, WindowAction::ToggleLanguageMenu)));
-        // The list the arrow keys walk is the layout's own option order.
-        assert_eq!(ui.language_options, ["zh-CN", "en-US"]);
+        assert!(ui.actions.iter().any(|region| matches!(
+            region.action,
+            WindowAction::ToggleSelectMenu { ref id } if id == "lang"
+        )));
+        // A page draws no menu until one is opened, so there is nothing to
+        // walk yet.
+        assert!(ui.menu.is_none());
         Ok(())
     }
 
@@ -11992,7 +12417,7 @@ mod tests {
                 use_2x: false,
             },
             "zh-CN",
-            true,
+            Some("lang"),
             &InteractionState::default(),
             RuntimeMode::Installer,
         )?;
@@ -12018,7 +12443,7 @@ mod tests {
                 use_2x: false,
             },
             "en-US",
-            false,
+            None,
             &InteractionState::default(),
             RuntimeMode::Installer,
         )
@@ -12072,7 +12497,7 @@ mod tests {
                     use_2x: false,
                 },
                 "zh-CN",
-                true,
+                Some("lang"),
                 interaction,
                 RuntimeMode::Installer,
             )
@@ -12080,7 +12505,9 @@ mod tests {
 
         let ui = menu(&plain, &InteractionState::default())?;
         // Two options are offered, and the one hidden in the layout is not.
-        assert_eq!(ui.language_options, ["zh-CN", "en-US"]);
+        let rows = ui.menu.as_ref().expect("the menu was open");
+        assert_eq!(rows.values, ["zh-CN", "en-US"]);
+        assert!(rows.language);
         assert_eq!(ui.overlay_texts.len(), 2);
         assert_eq!(visible_text(&ui.overlay_texts[0]), "简体中文");
         assert_eq!(visible_text(&ui.overlay_texts[1]), "English");
@@ -12167,7 +12594,7 @@ mod tests {
                 use_2x: false,
             },
             "zh-CN",
-            false,
+            None,
             &interaction_with_dialog(question),
             RuntimeMode::Installer,
         )?;
