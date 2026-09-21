@@ -2407,8 +2407,28 @@ impl LocalServer {
                     std::thread::sleep(Duration::from_millis(20));
                     continue;
                 };
-                let mut request = [0u8; 4096];
-                let _ = std::io::Read::read(&mut stream, &mut request);
+                // The whole request is read before the answer is written. A
+                // connection closed with bytes still unread is reset rather
+                // than ended, and a client that has already received the answer
+                // reports that reset instead of the answer: WinHTTP calls it
+                // error 12030. An accepted socket inherits the listener's
+                // non-blocking mode, so a request that has not arrived yet is
+                // waited for rather than mistaken for one that has ended.
+                let mut request: Vec<u8> = Vec::new();
+                let mut chunk = [0u8; 1024];
+                while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+                    match std::io::Read::read(&mut stream, &mut chunk) {
+                        Ok(0) => break,
+                        Ok(read) => request.extend_from_slice(&chunk[..read]),
+                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                            if Instant::now() >= deadline {
+                                break;
+                            }
+                            std::thread::sleep(Duration::from_millis(5));
+                        }
+                        Err(_) => break,
+                    }
+                }
                 let mut response = format!(
                     "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: application/octet-stream\r\nConnection: close\r\n\r\n",
                     body.len()
