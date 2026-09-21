@@ -48,6 +48,9 @@
 - 流式布局拿 `flex-basis` 当起点来分配剩余空间；每个元素都可以设 `align-self`；
   嵌套容器按里面的内容参与外层测量；
   绝对定位的元素可以用 `right`/`bottom` 或 `inset` 简写从另一侧定位。
+- 工程可以把脚本要跑的辅助程序一起打包：`resources.tools_dir` 指到的目录按原样进安装包，子目录
+  也在内，脚本用 `get_tools_dir()` 把它摊到磁盘上并拿到路径。没打包工具的工程，以及向一个没带工具的
+  安装包要工具的脚本，拿到的是空字符串和一条日志告警，安装照常继续。
 - 项目脚本可以写入当前用户的环境变量（`set_env`、`remove_env`），也可以登记文件类型
   （`register_file_association`、`unregister_file_association`）。两者都经过 manifest：
   安装记下写过的值和建过的键，卸载只按记录收回这些——`Environment` 记的是值而不是键，

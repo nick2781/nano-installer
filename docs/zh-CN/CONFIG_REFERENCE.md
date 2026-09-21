@@ -66,6 +66,7 @@
 | `resources.assets_dir` | string | 要打包的图片目录，默认 `assets` |
 | `resources.locales_dir` | string | 语言 JSON 目录，默认 `locales` |
 | `resources.payload_file` | string | 必需；ZIP 或 7z payload 路径 |
+| `resources.tools_dir` | string | 可选；要打包的辅助程序目录，脚本用 `get_tools_dir()` 取回 |
 | `localization.default_locale` | string | 启动时使用的语言，默认 `zh-CN` |
 | `localization.supported_locales` | array | 计划提供的语言列表；构建时会对没有对应 JSON 文件的条目告警 |
 | `wizard.pages[].layout` | string | 安装页列表，用 `action="next"` 与 `action="back"` 逐页走 |

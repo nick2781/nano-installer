@@ -55,10 +55,16 @@
 | `list_dir(path)` | 目录项名称数组 |
 | `path_join(base, child)`、`path_parent(path)`、`path_filename(path)` | 路径拼接与拆分 |
 | `get_temp_path()` | 临时目录 |
+| `get_tools_dir()` | 把 `resources.tools_dir` 打包进来的目录摊到磁盘上，返回它的路径 |
 | `sleep_ms(milliseconds)` | 等待 |
 
 `extract_payload*` 走的是内置流程那一套解压：payload 先落盘，交给对应的运行时展开，同时校验归档
 里没有卸载程序、manifest 和符号链接。
+
+`get_tools_dir()` 把 `resources.tools_dir` 指到的目录摊进安装包自己的暂存目录，保留原来的相对路径，
+再把目录路径返回给脚本，可以直接交给 `run_command`。一次运行只摊一次，再问一次拿到同一个路径。
+没有打包工具的工程，以及向一个没带工具的安装包要工具的脚本，拿到的都是空字符串和一条日志告警，
+安装照常继续，由脚本自己决定没有那个程序时怎么办。
 
 ## 注册表
 

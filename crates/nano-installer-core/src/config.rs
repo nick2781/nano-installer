@@ -66,6 +66,7 @@ const SECTIONS: &[(&str, &[&str])] = &[
             "locales_dir",
             "payload_file",
             "uninstaller_icon",
+            "tools_dir",
         ],
     ),
     ("localization", &["default_locale", "supported_locales"]),

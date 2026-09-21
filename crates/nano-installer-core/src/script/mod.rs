@@ -408,20 +408,60 @@ mod tests {
     /// A bundle image that ships both scripts, the uninstaller `copy_uninstaller`
     /// embeds, and the project configuration, all under one throwaway key.
     fn fixture(install_script: &str, uninstall_script: &str) -> Result<Fixture> {
+        build_fixture(install_script, uninstall_script, None)
+    }
+
+    /// The same image with `entries` stored under `directory`, which its
+    /// configuration declares as `resources.tools_dir`, the way a project ships
+    /// the programs its script runs.
+    fn fixture_with_tools(
+        install_script: &str,
+        directory: &str,
+        entries: &[(&str, &str)],
+    ) -> Result<Fixture> {
+        build_fixture(install_script, "", Some((directory, entries)))
+    }
+
+    fn build_fixture(
+        install_script: &str,
+        uninstall_script: &str,
+        tools: Option<(&str, &[(&str, &str)])>,
+    ) -> Result<Fixture> {
         let registry_key = unique_registry_key();
-        let config = config(&registry_key);
+        let mut config = config(&registry_key);
+        if let Some((directory, _)) = tools {
+            // The fixture's configuration has no resources section of its own.
+            config
+                .as_object_mut()
+                .expect("the test configuration is an object")
+                .insert(
+                    "resources".to_string(),
+                    serde_json::json!({ "tools_dir": directory }),
+                );
+        }
         let config_text = config.to_string();
         let temp = tempfile::tempdir()?;
         let setup = temp.path().join("setup.exe");
-        bundle_image(
-            &setup,
-            &[
-                ("installer_config.json", &config_text),
-                ("scripts/install.rhai", install_script),
-                ("scripts/uninstall.rhai", uninstall_script),
-                ("runtime/uninst.exe", "uninstaller"),
-            ],
-        )?;
+        let mut entries: Vec<(&str, &str)> = vec![
+            ("installer_config.json", &config_text),
+            ("scripts/install.rhai", install_script),
+            ("scripts/uninstall.rhai", uninstall_script),
+            ("runtime/uninst.exe", "uninstaller"),
+        ];
+        let tool_paths: Vec<(String, &str)> = tools
+            .map(|(directory, entries)| {
+                entries
+                    .iter()
+                    .map(|(name, contents)| (format!("{directory}/{name}"), *contents))
+                    .collect()
+            })
+            .unwrap_or_default();
+        entries.extend(
+            tool_paths
+                .iter()
+                .map(|(name, contents)| (name.as_str(), *contents)),
+        );
+        bundle_image(&setup, &entries)?;
         Ok(Fixture {
             destination: temp.path().join("installed"),
             _temp: temp,
@@ -1839,6 +1879,68 @@ mod tests {
         assert!(!desktop_link.exists());
         assert!(!menu_link.exists());
         assert!(!folder.exists());
+        Ok(())
+    }
+
+    /// `get_tools_dir()` unpacks the bundled tools and returns the directory
+    /// holding them, nested paths intact, without unpacking twice.
+    #[test]
+    fn a_script_reads_the_tools_the_project_bundled() -> Result<()> {
+        let report = Observation::new("script-tools-dir");
+        let fixture = fixture_with_tools(
+            &deploying_script(&format!(
+                r#"
+                let tools = get_tools_dir();
+                let report = "";
+                report += "empty=" + (tools == "").to_string() + "\n";
+                report += "exe=" + read_text_file(path_join(tools, "7za.exe")) + "\n";
+                report += "nested=" + read_text_file(path_join(path_join(tools, "bin"), "helper.dll")) + "\n";
+                report += "same=" + (get_tools_dir() == tools).to_string() + "\n";
+                write_file({report}, report);
+                "#,
+                report = report.script_path()
+            )),
+            "tools",
+            &[("7za.exe", "seven zip"), ("bin/helper.dll", "helper")],
+        )?;
+        fixture.install()?;
+
+        // A real directory the script can hand to run_command, holding the tools
+        // as the project stored them: nested paths included, and asking twice
+        // unpacks nothing a second time.
+        assert_eq!(
+            report.text()?,
+            "empty=false\nexe=seven zip\nnested=helper\nsame=true\n"
+        );
+        Ok(())
+    }
+
+    /// A script that asks for tools its setup does not carry gets an empty
+    /// string and a warning in the log, and the install finishes.
+    #[test]
+    fn a_script_that_asks_for_tools_a_project_did_not_bundle_gets_nothing() -> Result<()> {
+        let script = |report: &Observation| {
+            deploying_script(&format!(
+                r#"
+                let report = "";
+                report += "empty=" + (get_tools_dir() == "").to_string() + "\n";
+                write_file({report}, report);
+                "#,
+                report = report.script_path()
+            ))
+        };
+
+        // A project that names no tools directory at all.
+        let unnamed = Observation::new("script-tools-unnamed");
+        fixture(&script(&unnamed), "")?.install()?;
+        assert_eq!(unnamed.text()?, "empty=true\n");
+
+        // And one that names a directory its bundle carries nothing under: an
+        // older setup, or a build made without the tools. Both come back empty
+        // and leave a warning in the log rather than failing the install.
+        let missing = Observation::new("script-tools-missing");
+        fixture_with_tools(&script(&missing), "tools", &[])?.install()?;
+        assert_eq!(missing.text()?, "empty=true\n");
         Ok(())
     }
 }

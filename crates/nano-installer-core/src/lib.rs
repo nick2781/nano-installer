@@ -1842,6 +1842,18 @@ fn pack_project_with_progress(
             );
         }
     }
+    // Tools are opt-in: a project that names a directory ships it whole, and a
+    // project that names none bundles nothing, however its tree looks on disk.
+    if let Some(directory) = config["resources"]["tools_dir"].as_str() {
+        let file_count_before = files.len();
+        let size_before = collected_size(&files);
+        collect_directory(project, &project.join(directory), &mut files)?;
+        progress(format!(
+            "Collected {directory}/: {} files ({})",
+            files.len() - file_count_before,
+            format_build_size(collected_size(&files) - size_before)
+        ));
+    }
     let scripts = project.join("scripts");
     if scripts.is_dir() {
         let file_count_before = files.len();
@@ -1990,6 +2002,25 @@ impl BundleIndex {
         let mut contents = vec![0u8; entry.size as usize];
         file.read_exact(&mut contents)?;
         Ok(contents)
+    }
+
+    /// Every entry stored under `directory`, in path order.
+    ///
+    /// A project ships its tools as a tree rather than a list, so a script gets
+    /// them the same way: it names the directory once instead of every file
+    /// inside it, which would break the moment the tools change.
+    fn read_directory(&self, directory: &str) -> Result<Vec<(String, Vec<u8>)>> {
+        let prefix = format!("{}/", directory.trim_end_matches(['/', '\\']));
+        let mut names: Vec<&String> = self
+            .files
+            .keys()
+            .filter(|name| name.starts_with(&prefix))
+            .collect();
+        names.sort();
+        names
+            .into_iter()
+            .map(|name| Ok((name.clone(), self.read_file(name)?)))
+            .collect()
     }
 
     /// Streams one bundle entry to `destination` in fixed-size chunks.
@@ -8384,6 +8415,63 @@ mod tests {
         assert!(files.contains_key("assets/background.png"));
         assert!(files.contains_key("locales/zh-CN.json"));
         assert_eq!(files.get("payload/app.7z").unwrap(), b"payload");
+        Ok(())
+    }
+
+    /// A project that names a tools directory ships the whole tree inside its
+    /// setup, subdirectories and their relative paths included.
+    #[test]
+    fn a_project_bundles_the_tools_directory_it_names() -> anyhow::Result<()> {
+        let temp = tempfile::tempdir()?;
+        let project = temp.path();
+        for directory in ["layouts", "assets", "locales", "payload", "tools/bin"] {
+            std::fs::create_dir_all(project.join(directory))?;
+        }
+        std::fs::write(
+            project.join("installer_config.json"),
+            br#"{"resources":{"payload_file":"payload/app.7z","tools_dir":"tools"}}"#,
+        )?;
+        std::fs::write(project.join("tools/7za.exe"), b"seven zip")?;
+        std::fs::write(project.join("tools/bin/helper.dll"), b"helper")?;
+        std::fs::write(project.join("payload/app.7z"), b"payload")?;
+
+        let packed = pack_project(project, None)?;
+        let files = parse_bundle(&packed)?;
+
+        // The whole tree travels, subdirectories included, under the paths the
+        // project's own directory gives it: that is what a script unpacks and
+        // runs.
+        assert_eq!(files.get("tools/7za.exe").unwrap(), b"seven zip");
+        assert_eq!(files.get("tools/bin/helper.dll").unwrap(), b"helper");
+        Ok(())
+    }
+
+    /// A project that names no tools directory bundles none, however that
+    /// directory looks in its own tree: a setup carries what the project asks
+    /// for, not what happens to sit beside it.
+    #[test]
+    fn a_project_that_names_no_tools_bundles_none() -> anyhow::Result<()> {
+        let temp = tempfile::tempdir()?;
+        let project = temp.path();
+        for directory in ["layouts", "assets", "locales", "payload", "tools"] {
+            std::fs::create_dir_all(project.join(directory))?;
+        }
+        std::fs::write(
+            project.join("installer_config.json"),
+            br#"{"resources":{"payload_file":"payload/app.7z"}}"#,
+        )?;
+        // The directory sits in the project whatever the configuration says;
+        // only the setting puts it in the bundle.
+        std::fs::write(project.join("tools/7za.exe"), b"seven zip")?;
+        std::fs::write(project.join("payload/app.7z"), b"payload")?;
+
+        let packed = pack_project(project, None)?;
+        let files = parse_bundle(&packed)?;
+
+        assert!(
+            !files.keys().any(|name| name.starts_with("tools/")),
+            "a tools directory the project never named ended up in the bundle"
+        );
         Ok(())
     }
 

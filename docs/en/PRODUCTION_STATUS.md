@@ -59,6 +59,10 @@ files and registry entries, so validate them in a disposable virtual machine onl
 - Flow layout resolves `flex-basis` by sharing free space from that basis, honours `align-self` per
   item, lets a nested container size itself from its own children, and positions an absolutely
   placed element from `right`/`bottom` or the `inset` shorthand.
+- A project can bundle the helper programs its script runs: `resources.tools_dir` puts that
+  directory into the setup as it stands, subdirectories included, and `get_tools_dir()` unpacks it
+  beside the script and returns the path. A project that bundles none, and a script asking a setup
+  built without them, get an empty string and a log warning rather than a failed install.
 - A project script can write one of the user's environment variables (`set_env`, `remove_env`) and
   claim a file type (`register_file_association`, `unregister_file_association`). Both go through
   the manifest: the install records the value it wrote or the keys it created, and the uninstall

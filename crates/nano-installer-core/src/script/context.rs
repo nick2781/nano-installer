@@ -82,6 +82,8 @@ pub(super) struct ScriptState {
     pub(super) registry_keys: Vec<String>,
     /// Set once the script replayed the manifest removal itself.
     pub(super) tracked_uninstall: bool,
+    /// The directory the bundled tools were unpacked into, once a script asked.
+    pub(super) tools: Option<PathBuf>,
 }
 
 struct Inner {
@@ -157,6 +159,7 @@ impl ScriptContext {
                 registry_values: Vec::new(),
                 registry_keys: Vec::new(),
                 tracked_uninstall: false,
+                tools: None,
             })),
         }
     }
@@ -184,6 +187,16 @@ impl ScriptContext {
 
     pub(super) fn bundle(&self) -> &BundleIndex {
         &self.inner.bundle
+    }
+
+    /// Where the bundled tools were unpacked, once a script asked for them.
+    /// Unpacking again would only repeat the writes to the same place.
+    pub(super) fn tools_directory(&self) -> Option<PathBuf> {
+        self.state().tools.clone()
+    }
+
+    pub(super) fn set_tools_directory(&self, directory: PathBuf) {
+        self.state().tools = Some(directory);
     }
 
     /// The task this script is part of, so `is_cancelled` can ask it.

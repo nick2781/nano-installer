@@ -180,9 +180,63 @@ pub(super) fn register(engine: &mut Engine, context: ScriptContext) {
         std::env::temp_dir().to_string_lossy().to_string()
     });
 
+    let c = context.clone();
+    engine.register_fn("get_tools_dir", move || -> String { tools(&c) });
+
     engine.register_fn("sleep_ms", |milliseconds: i64| {
         std::thread::sleep(std::time::Duration::from_millis(milliseconds.max(0) as u64));
     });
+}
+
+/// Unpacks the tools a project bundled and returns the directory holding them.
+///
+/// A project that bundles none, or asks for tools it left out, gets an empty
+/// string and a warning in the log instead of a failure: the script decides what
+/// to do without the program it hoped for.
+fn tools(context: &ScriptContext) -> String {
+    if let Some(directory) = context.tools_directory() {
+        return directory.to_string_lossy().to_string();
+    }
+    let Some(stored) = context.config()["resources"]["tools_dir"].as_str() else {
+        log(
+            "warn",
+            "get_tools_dir: the project bundles no resources.tools_dir",
+        );
+        return String::new();
+    };
+    let entries = match context.bundle().read_directory(stored) {
+        Ok(entries) => entries,
+        Err(error) => {
+            log("error", &format!("get_tools_dir failed: {error:#}"));
+            return String::new();
+        }
+    };
+    if entries.is_empty() {
+        log(
+            "warn",
+            &format!("get_tools_dir: the bundle carries nothing under {stored}"),
+        );
+        return String::new();
+    }
+    let directory = context.stage().join("tools");
+    let prefix = format!("{}/", stored.trim_end_matches(['/', '\\']));
+    for (name, contents) in &entries {
+        let target = directory.join(name.strip_prefix(&prefix).unwrap_or(name));
+        let Some(parent) = target.parent() else {
+            continue;
+        };
+        if let Err(error) =
+            std::fs::create_dir_all(parent).and_then(|()| std::fs::write(&target, contents))
+        {
+            log(
+                "error",
+                &format!("get_tools_dir cannot write {}: {error}", target.display()),
+            );
+            return String::new();
+        }
+    }
+    context.set_tools_directory(directory.clone());
+    directory.to_string_lossy().to_string()
 }
 
 /// Expands the payload into the installation directory.

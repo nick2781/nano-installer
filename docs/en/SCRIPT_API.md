@@ -62,10 +62,18 @@ wizard shows.
 | `list_dir(path)` | Array of entry names |
 | `path_join(base, child)`, `path_parent(path)`, `path_filename(path)` | Path manipulation |
 | `get_temp_path()` | Temporary directory |
+| `get_tools_dir()` | Unpacks the directory `resources.tools_dir` bundled, returns its path |
 | `sleep_ms(milliseconds)` | Waits |
 
 `extract_payload*` reuses the built-in extraction: it stages the payload to disk, unpacks it with
 the matching runtime, and verifies it holds no uninstaller, no manifest, and no symbolic links.
+
+`get_tools_dir()` unpacks the directory `resources.tools_dir` names into the setup's own scratch
+directory, keeping the relative paths, and returns that directory, which a script hands to
+`run_command`. A run unpacks the tools once: a second call answers with the same path. A project
+that bundles no tools, and a script that asks a setup built without them, both get an empty string
+and a warning in the log, so the install carries on and the script decides what to do without the
+program it hoped for.
 
 ## Registry
 

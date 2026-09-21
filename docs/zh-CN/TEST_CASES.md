@@ -52,7 +52,9 @@ Rust doc comment，再退回用例名。
 | `a_payload_without_the_declared_executable_is_refused` | `install.exe_name` 指明 payload 里必须有的那个可执行文件。部署一份不含它的 payload，装出来的产品启动不了，所以这次运行在写任何东西之前就停下来。 |
 | `a_placed_window_is_pulled_back_inside_its_work_area` | 建议位置已经放得下就不动它；探出工作区右边或下边的窗口被拉回来；来自左侧副显示器的负坐标不会把它顶出去；比工作区还大的窗口缩到工作区大小。 |
 | `a_progress_bar_paints_a_rounded_track_and_follows_the_live_value` | 进度条先画轨道，`border-radius` 把它修成胶囊形；版面里写的 `progress` 是空闲时的样子，任务上报的进度会盖住它，任务还没开始时只画轨道，没有任务时又回到版面写的值。 |
+| `a_project_bundles_the_tools_directory_it_names` | 工程把 `resources.tools_dir` 指到的目录整个打进安装包，子目录和它们的相对路径都在内：脚本拿到的是工程自己那份目录的布局，而不是一堆压平的文件名。 |
 | `a_project_that_did_not_opt_in_refuses_a_windowless_run` | 无窗口运行是工程自己的决定，从没声明过它的工程既不能被无人值守地安装，也不能被无人值守地卸载。 |
+| `a_project_that_names_no_tools_bundles_none` | 没写 `resources.tools_dir` 的工程，目录就算摆在自己的树里也不进包：安装包只带工程点名要的东西，不带碰巧放在旁边的东西。 |
 | `a_project_without_a_dialog_layout_still_opens` | 没带对话框版面的工程照样能用：页面自己画出来，调用方退回成不问直接关闭。 |
 | `a_project_without_silent_support_refuses_a_windowless_install` | 从没声明支持静默安装的工程必须拒绝无窗口运行，而不是照样无人值守地装下去。 |
 | `a_project_without_silent_support_refuses_a_windowless_uninstall` | 卸载一个从没声明支持静默的工程会被拒绝，产品不能靠作者没同意过的开关被无人值守地删掉。 |
@@ -63,10 +65,12 @@ Rust doc comment，再退回用例名。
 | `a_running_script_sees_the_cancel_request` | 任务运行中脚本里的 `is_cancelled()` 会变成 `true`：用例像窗口那样从另一个线程在 50 毫秒后提出取消，脚本的等待循环随即退出，并报出自己等了多久。 |
 | `a_script_deletes_the_desktop_shortcut_and_the_start_menu_folder_it_created` | 卸载脚本用 `delete_desktop_shortcut` 和 `delete_start_menu_folder` 删掉安装时建的桌面快捷方式和开始菜单文件夹，两个原语各自报告自己删掉了东西，事后链接和文件夹都不在了。 |
 | `a_script_failure_reports_the_messages_it_logged` | 脚本失败时，它之前用 `log_warn` 之类写下的日志跟着错误一起报出来，作者能看到最后那几行。 |
+| `a_script_reads_the_tools_the_project_bundled` | `get_tools_dir()` 把打包进来的工具摊到磁盘上并返回目录路径，嵌套文件按原相对路径读得到、内容一致；再问一次返回同一个目录，不会重复摊一遍。 |
 | `a_script_recognises_a_running_process_by_its_image_name` | `is_process_running` 按映像名判断进程：正在跑的那个测试可执行文件返回 true，编出来的不存在名字返回 false。这条检查就是安装时不肯覆盖正在运行的产品的原因。 |
 | `a_script_registers_a_file_type_where_windows_reads_it` | 脚本登记的文件类型落在 Windows 真正读取的四个位置：扩展名指向程序 id，程序 id 上挂着资源管理器显示的类型名、图标，以及带 `"%1"` 的文件命令行。安装把它们全部记入 manifest，卸载时这个文件类型连同程序 id 一起从注册表里消失。 |
 | `a_script_runs_a_command_and_sees_its_exit_code` | `run_command` 返回命令的退出码，用 `ComSpec` 跑 `exit 3` 和 `exit 0` 分别拿到 3 和 0；起不来的命令返回 -1，脚本因此分得清跑了但失败和根本没跑。 |
 | `a_script_step_text_wins_over_the_locale_key` | 脚本发布的字面状态文字会留在屏幕上，即使更早步骤记下的 locale 键还在。 |
+| `a_script_that_asks_for_tools_a_project_did_not_bundle_gets_nothing` | 没写 `resources.tools_dir` 的工程，以及写了这项设置但包里没有对应条目的安装包，`get_tools_dir()` 都返回空字符串并在日志里留一条告警，安装照常完成——没有那个程序时怎么办，由脚本自己决定。 |
 | `a_scrollable_container_shows_the_part_it_is_scrolled_to` | 装不下容器的那部分内容只从窗口里露出一块：偏移量把各行整体推上去，推出容器边缘的那一行既不画出来也不再登记点击，偏移量超出列表末尾时停在末尾，不会露出底下的空白。列表有多长由各行自己声明的高度决定，跟容器拿到多少地方无关，这正是「能滚」与「被压扁」的分界。 |
 | `a_scrollbar_says_where_the_list_stands` | 滚动条画在视口尾部那条 8 像素宽的轨道上，滑块的长度是列表露出来的那部分所占的比例，位置跟着偏移量走；点轨道上滑块之外的两段各把视图挪动一页（一页就是视口本身的大小），所以不拖滑块也能翻。列表装得下时不画轨道、也不登记翻页区域；声明了 `scrollable` 却没有 `id` 的容器不开滚动，免得页面上的无名列表共用一个位置。 |
 | `a_select_offers_the_options_the_page_declares` | 下拉框是页面提供的一种选择，不只是语言控件：关闭时显示当前选项的文字（没人点过时是第一个），点击它要的是自己的菜单而不是语言列表，展开的选项按版面顺序排列、各用各的文字，隐藏的选项不出现；被选中的值决定旁边按钮是否可点。 |
