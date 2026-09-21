@@ -1769,9 +1769,7 @@ fn the_setup_opens_its_wizard_window() -> anyhow::Result<()> {
     // pinned to the same scale: on a scaled display a window measured through
     // the scaling answers with the display rather than with the layout.
     let _ = unsafe { SetProcessDPIAware() };
-    let mut setup = Command::new(&fixture.setup)
-        .env("NANO_INSTALLER_TEST_DPI", "96")
-        .spawn()?;
+    let mut setup = SetupGuard::spawn(&fixture.setup)?;
 
     let waited = wait_for_runtime_window(&mut setup, Instant::now() + Duration::from_secs(30));
 
@@ -1823,9 +1821,7 @@ fn a_next_button_walks_to_the_page_the_project_declares() -> anyhow::Result<()> 
     fixture.build()?;
 
     let _ = unsafe { SetProcessDPIAware() };
-    let mut setup = Command::new(&fixture.setup)
-        .env("NANO_INSTALLER_TEST_DPI", "96")
-        .spawn()?;
+    let mut setup = SetupGuard::spawn(&fixture.setup)?;
 
     let waited = wait_for_runtime_window(&mut setup, Instant::now() + Duration::from_secs(30));
     let found = match &waited {
@@ -1893,9 +1889,7 @@ fn a_cancel_button_stops_the_project_script_and_leaves_nothing_installed() -> an
     fixture.build()?;
 
     let _ = unsafe { SetProcessDPIAware() };
-    let mut setup = Command::new(&fixture.setup)
-        .env("NANO_INSTALLER_TEST_DPI", "96")
-        .spawn()?;
+    let mut setup = SetupGuard::spawn(&fixture.setup)?;
 
     let waited = wait_for_runtime_window(&mut setup, Instant::now() + Duration::from_secs(30));
     let found = match &waited {
@@ -1962,9 +1956,7 @@ fn a_field_the_user_fills_in_is_what_lets_the_install_start() -> anyhow::Result<
 
     let typed = fixture.destination.with_file_name("typed");
     let _ = unsafe { SetProcessDPIAware() };
-    let mut setup = Command::new(&fixture.setup)
-        .env("NANO_INSTALLER_TEST_DPI", "96")
-        .spawn()?;
+    let mut setup = SetupGuard::spawn(&fixture.setup)?;
 
     let waited = wait_for_runtime_window(&mut setup, Instant::now() + Duration::from_secs(30));
     let found = match &waited {
@@ -2051,9 +2043,7 @@ fn a_click_on_a_radio_is_the_value_the_install_waits_for() -> anyhow::Result<()>
     fixture.build()?;
 
     let _ = unsafe { SetProcessDPIAware() };
-    let mut setup = Command::new(&fixture.setup)
-        .env("NANO_INSTALLER_TEST_DPI", "96")
-        .spawn()?;
+    let mut setup = SetupGuard::spawn(&fixture.setup)?;
     let waited = wait_for_runtime_window(&mut setup, Instant::now() + Duration::from_secs(30));
     let Some(window) = (match &waited {
         WindowWait::Found(window) => Some(*window),
@@ -2142,9 +2132,7 @@ fn a_wheel_over_a_list_brings_the_rows_below_into_reach() -> anyhow::Result<()> 
     fixture.build()?;
 
     let _ = unsafe { SetProcessDPIAware() };
-    let mut setup = Command::new(&fixture.setup)
-        .env("NANO_INSTALLER_TEST_DPI", "96")
-        .spawn()?;
+    let mut setup = SetupGuard::spawn(&fixture.setup)?;
     let waited = wait_for_runtime_window(&mut setup, Instant::now() + Duration::from_secs(30));
     let found = match &waited {
         WindowWait::Found(window) => Some(*window),
@@ -2263,9 +2251,7 @@ fn a_script_dialog_is_drawn_in_the_wizard() -> anyhow::Result<()> {
     fixture.build()?;
 
     let _ = unsafe { SetProcessDPIAware() };
-    let mut setup = Command::new(&fixture.setup)
-        .env("NANO_INSTALLER_TEST_DPI", "96")
-        .spawn()?;
+    let mut setup = SetupGuard::spawn(&fixture.setup)?;
     let waited = wait_for_runtime_window(&mut setup, Instant::now() + Duration::from_secs(30));
     let found = match &waited {
         WindowWait::Found(window) => Some(*window),
