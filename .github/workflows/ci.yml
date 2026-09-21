@@ -90,13 +90,16 @@ jobs:
       # laid out for a reader: one row per case with what it holds, every
       # failure first, and a target linked to the cases that ran in it.
       #
-      # The script also keeps the suite off the step's console. A step is
-      # finished when its output has closed, and the linker leaves a telemetry
-      # process behind that inherits whatever the build wrote to and outlives it:
-      # held open that way, the step never ends, archives no log, and neither a
-      # step timeout nor a cancel can finish it. The script has the operating
-      # system open a file for the suite, so no process it waits on can be held
-      # open behind the build's own children.
+      # The script also keeps the suite off the step's console, in two places. A
+      # step is finished when its output has closed, and the linker leaves a
+      # telemetry process behind that inherits whatever the build wrote to and
+      # outlives it: held open that way, the step never ends, archives no log, and
+      # neither a step timeout nor a cancel can finish it. The script has the
+      # operating system open a file for the suite, so nothing it waits on is held
+      # open behind the build's own children; and everything the script starts
+      # joins a job that ends with it, so a process it leaves behind -- a wizard a
+      # failing case did not close, that same telemetry process -- cannot hold the
+      # step's own console open either.
       - name: Test workspace
         shell: powershell
         run: .\scripts\run_tests.ps1
@@ -118,10 +121,12 @@ jobs:
       # This build links, so it gets the same treatment as the suite above: its
       # output goes into a file the step prints when the build is done, because
       # a build that writes onto this step's console can leave the step waiting
-      # on a process the linker started.
+      # on a process the linker started, and the step joins the job that ends
+      # with it for the same reason.
       - name: Build Win7+ toolchain
         shell: powershell
         run: |
+          . .\scripts\step_job.ps1
           New-Item -ItemType Directory -Force -Path target | Out-Null
           cmd /c "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build.ps1 > target\build.log 2>&1"
           $code = $LASTEXITCODE

@@ -22,6 +22,10 @@
     NANO_INSTALLER_E2E_REQUIRE_DESKTOP, which turns the skipped window case into
     a failure, and belongs on a machine that has a desktop session.
 
+    Everything this script starts joins a job that ends with it, so a process the
+    suite leaves behind cannot hold the step's own output open. scripts/step_job.ps1
+    says why that matters and what a host that refuses the job does instead.
+
     The exit code is the suite's own, so a caller can gate on it.
 #>
 param(
@@ -44,6 +48,9 @@ $reportName = Split-Path -Leaf $reportPath
 . (Join-Path $PSScriptRoot "report_text.ps1")
 . (Join-Path $PSScriptRoot "report_html.ps1")
 . (Join-Path $PSScriptRoot "report_data.ps1")
+# Everything this script starts ends when it does, so a process the suite leaves
+# behind cannot hold this step's own output open and keep the step from ending.
+. (Join-Path $PSScriptRoot "step_job.ps1")
 
 $text = Get-ReportText -Language $Language
 

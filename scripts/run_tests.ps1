@@ -30,7 +30,11 @@
     telemetry process that inherits whatever the build writes to and outlives
     the linker that started it. On a console that process holds the step's pipe
     open after every case has passed, so the step never ends, leaves no log, and
-    cannot be cancelled; a pipe this script reads ends with the command.
+    cannot be cancelled; a pipe this script reads ends with the command. What the
+    step's own output holds is whatever the step leaves behind -- a wizard a case
+    did not close, that same telemetry process -- and the redirect does not cover
+    that, so everything this script starts joins a job that ends with it, which
+    scripts/step_job.ps1 sets up.
 
     The exit code is cargo's own, so a caller can gate on it. Every phase sends
     the build agent a notice with the time it was reached, so a step that never
@@ -56,6 +60,9 @@ $reportName = Split-Path -Leaf $reportPath
 . (Join-Path $PSScriptRoot "report_text.ps1")
 . (Join-Path $PSScriptRoot "report_html.ps1")
 . (Join-Path $PSScriptRoot "report_data.ps1")
+# Everything this script starts ends when it does, so a process the suite leaves
+# behind cannot hold this step's own output open and keep the step from ending.
+. (Join-Path $PSScriptRoot "step_job.ps1")
 
 $text = Get-ReportText -Language $Language
 
