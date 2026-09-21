@@ -10,7 +10,9 @@
 
 - Win32 Unicode API：窗口、控件与文字
 - WIC 解码 PNG，GDI 做透明混合绘制
-- Windows 7 SP1 就已存在的注册表、shell 与进程 API
+- Windows 7 SP1 就已存在的注册表、shell 与进程 API：注册表键的 32/64 位视图用
+  `KEY_WOW64_32KEY` 与 `KEY_WOW64_64KEY` 读，命令输出按 ANSI 代码页解开用 `MultiByteToWideChar`，
+  两者都自 Windows XP 起就有
 - IMM32：管文本框的输入法组合窗与候选窗，Windows 7 自带
 - WinHTTP 取回工程声明要下载的依赖，https 时打开 TLS 1.1/1.2（Windows 7 SP1 上还需要机器自己的
   schannel 支持 TLS 1.2，即 KB3140245 及后续更新；缺了就报错，不会退回明文）

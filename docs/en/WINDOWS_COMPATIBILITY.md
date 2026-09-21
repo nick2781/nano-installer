@@ -10,7 +10,10 @@ eframe/egui. It only creates installers; the setup it produces still runs on Win
 
 - Win32 Unicode APIs for windows, controls, and text
 - WIC for PNG decoding and GDI for alpha-blended drawing
-- Registry, shell, and process APIs that exist on Windows 7 SP1
+- Registry, shell, and process APIs that exist on Windows 7 SP1: the 32- and 64-bit views of a
+  key are read with `KEY_WOW64_32KEY` and `KEY_WOW64_64KEY`, and what a command wrote is decoded in
+  the machine's ANSI code page with `MultiByteToWideChar`, both of which have been there since
+  Windows XP
 - IMM32 for the IME composition and candidate windows of a text field, which Windows 7 has shipped
   since release
 - WinHTTP to fetch a dependency a project declares for download, with TLS 1.1/1.2 turned on for

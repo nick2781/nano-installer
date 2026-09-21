@@ -72,6 +72,16 @@ files and registry entries, so validate them in a disposable virtual machine onl
   the manifest: the install records the value it wrote or the keys it created, and the uninstall
   takes those keys and values back. `Environment` is recorded as a value, so PATH survives an
   uninstall.
+- A project script reads and writes every type the registry keeps: text, an expandable string, a
+  multi-string, a DWORD, a QWORD and binary data, and it can ask whether a value is there and what
+  type the machine stored. A key may end its hive with `32` or `64`, as in `HKLM32\...` or
+  `HKCU64\...`, naming the copy a 32-bit or a 64-bit program reads; the view travels in the
+  recorded key, so an uninstall takes back the copy the script wrote to.
+- A script that runs a program can have what it wrote: `run_command_output` answers with the exit
+  code, standard output and standard error, decoded as UTF-8 where those bytes are valid and in the
+  machine's own ANSI code page otherwise, so `ipconfig` on a Chinese Windows reads as Chinese
+  instead of as replacement characters. `run_command` waits the same way, and both end the program,
+  with what it has written so far, when the user stops the task.
 - A container that declares `flex-wrap` moves items onto the next line when a row is full; without
   it, an overflowing row still compresses its shrinkable items.
 - A flow container that declares `scrollable="true"` and an `id` keeps the size it was given and
@@ -118,7 +128,7 @@ files and registry entries, so validate them in a disposable virtual machine onl
   files it does not own, and an uninstall removes the product, the registration, and the directory; a
   dependency the machine is missing is really installed, and a downloaded one is checked before it
   runs.
-  Thirteen of its thirty-nine cases open the wizard window and drive it: one measures the client
+  Thirteen of its forty-one cases open the wizard window and drive it: one measures the client
   area it drew, one walks the page actions a project declares, one stops a running task from a cancel
   button, one types a directory into the field a page asks for and starts the install with it, one
   clicks the row a radio group's install button waits for, one rolls the wheel over a list and
@@ -132,8 +142,10 @@ files and registry entries, so validate them in a disposable virtual machine onl
   browse button and closes the shell's folder dialog again. They need an interactive desktop
   session, so they skip where there is none and `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` makes the
   skip a failure; the cursor case asks that the session be showing a pointer as well, which a
-  hosted runner is not, and it prints its skip there. The other twenty-six pass on Windows 11 and in
-  CI.
+  hosted runner is not, and it prints its skip there. Of the other twenty-eight, two read their
+  answer back out of the machine rather than out of the primitive that wrote it: one checks every
+  registry type a script named, and the copy of a key a view name selects, and one checks the exit
+  code and both streams of a command a script ran. The rest pass on Windows 11 and in CI.
 - A setup stays a setup after signing: a certificate table appended behind the bundle, which is what
   Authenticode writes into the file, no longer hides the footer the runtime reads its resources from.
 - The builder refuses a configuration key it does not read. A setting that once parsed and then

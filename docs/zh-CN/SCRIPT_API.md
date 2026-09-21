@@ -87,14 +87,39 @@
 | 原语 | 说明 |
 | --- | --- |
 | `reg_write_string(key, name, value)` | 写 `REG_SZ` |
+| `reg_write_expand_string(key, name, value)` | 写 `REG_EXPAND_SZ`，引用按原样存入 |
+| `reg_write_multi_string(key, name, values)` | 用字符串数组写 `REG_MULTI_SZ` |
 | `reg_write_dword(key, name, value)` | 写 `REG_DWORD` |
+| `reg_write_qword(key, name, value)` | 写 `REG_QWORD` |
+| `reg_write_binary(key, name, bytes)` | 用 0–255 的数字数组写 `REG_BINARY` |
 | `reg_read(key, name)` | 读 `REG_SZ`，缺失返回空串 |
+| `reg_read_expand_string(key, name)` | 读 `REG_EXPAND_SZ`，把其中的引用展开 |
+| `reg_read_multi_string(key, name)` | 读 `REG_MULTI_SZ`，返回字符串数组 |
+| `reg_read_dword(key, name)`、`reg_read_qword(key, name)` | 读 32 位或 64 位数字，缺失返回 `-1` |
+| `reg_read_binary(key, name)` | 读 `REG_BINARY`，返回数字数组 |
+| `reg_read_type(key, name)` | 机器实际存的类型，比如 `REG_MULTI_SZ`；缺失返回空串 |
+| `reg_value_exists(key, name)` | 值在不在，不看类型 |
 | `reg_key_exists(key)` | 键是否存在 |
 | `reg_delete_value(key, name)` | 删除单个值 |
 | `reg_delete_key(key)` | 删除键及其子键，并从待删记录中移除 |
 
+每个读原语只认一种类型：对 `REG_DWORD` 调 `reg_read` 得到空串，对 `REG_SZ` 调 `reg_read_dword`
+得到 `-1`，不知道机器存的是什么时先问 `reg_read_type`。交给 `reg_write_multi_string` 的数组里，
+空串会被丢掉而不是写进去——它会就地结束整个列表。`reg_write_binary` 遇到 0–255 之外的数字、
+`reg_write_dword` 遇到超出 32 位的数字，都拒绝写入并记一条日志，而不是写下一半。
+`reg_read_expand_string` 展开值里的引用，工程写成 `%ProgramFiles%\MyApp` 的路径取回来就是这台机器
+上的实际目录。`reg_read_qword` 返回带符号的 64 位整数，最高位为 1 的值读出来是负数。
+
+键可以指明自己在哪个视图里读写。64 位 Windows 为 `HKLM` 和 `HKCU` 各留了两份，把 `32` 或 `64`
+写在根键后面即可：`HKLM64\SOFTWARE\MyApp` 是 64 位程序读到的那份，`HKLM32\SOFTWARE\MyApp`
+是 32 位程序看到的那份，不写后缀就用当前进程所属的那份，`HKEY_CURRENT_USER32` 这样的长名一样
+有效。视图跟着键名一起记进 manifest，卸载收回的正是脚本写的那一份。卸载注册键和自启动项固定用
+原生视图：它们的路径要以字符串交给独立进程的卸载程序，`registry.uninstall_key` 与
+`autostart.registry_key` 不接视图后缀。
+
 写入 Windows 或其他产品共用的容器键（比如 `...\CurrentVersion\Run`）时，只记录这一个值；卸载也
-只删这个值，不会删掉整个键。
+只删这个值，不会删掉整个键。`reg_delete_key` 拒绝以根键本身为目标的删除，脚本因此没法写一个
+`HKCU\Software` 就带走整棵软件树。
 
 ## 快捷方式
 
@@ -127,6 +152,13 @@
 | `kill_process(name)` | 结束该进程 |
 | `run_detached(command)` | 后台启动 |
 | `run_command(command, args)` | 等待结束，返回退出码，失败返回 `-1` |
+| `run_command_output(command, args)` | 等待结束，返回 `#{code, stdout, stderr}` |
+
+命令都在没有控制台窗口的情况下运行，`args` 是字符串数组。`run_command` 与 `run_command_output`
+等程序结束，用户中途停下任务时把它们连同已经写下的内容一起结束，并把 `-1` 交给脚本；
+`is_cancelled()` 用来把「用户停下」和「程序根本没启动起来」分开。`run_command_output` 收下的字节
+先按 UTF-8 解，解不开就按这台机器的 ANSI 代码页解，中文 Windows 上的 `ipconfig` 因此读出的是中文，
+而不是两个流上的替换字符。
 
 ## 依赖与下载
 

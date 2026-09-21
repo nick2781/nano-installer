@@ -169,10 +169,10 @@ fn set_user_environment(context: &ScriptContext, name: &str, value: &str) -> boo
         log("error", "set_env needs the name of a variable");
         return false;
     }
-    let Some((root, path)) = super::api_registry::split(USER_ENVIRONMENT_KEY) else {
+    let Some(key) = super::api_registry::split(USER_ENVIRONMENT_KEY) else {
         return false;
     };
-    if let Err(error) = install::write_registry_string(root, &path, name, value) {
+    if let Err(error) = key.write_string(name, value) {
         log("error", &format!("set_env {name} failed: {error:#}"));
         return false;
     }
@@ -189,10 +189,10 @@ fn set_user_environment(context: &ScriptContext, name: &str, value: &str) -> boo
 /// something the script already took away.
 fn clear_user_environment(context: &ScriptContext, name: &str) -> bool {
     let name = name.trim();
-    let Some((root, path)) = super::api_registry::split(USER_ENVIRONMENT_KEY) else {
+    let Some(key) = super::api_registry::split(USER_ENVIRONMENT_KEY) else {
         return false;
     };
-    if let Err(error) = install::delete_registry_value(root, &path, name) {
+    if let Err(error) = key.delete_value(name) {
         log("error", &format!("remove_env {name} failed: {error:#}"));
         return false;
     }

@@ -11,8 +11,9 @@ use windows::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_DELAY_UNTIL_REBO
 use windows::Win32::System::Registry::{
     RegCloseKey, RegCreateKeyExW, RegDeleteKeyW, RegDeleteTreeW, RegDeleteValueW, RegOpenKeyExW,
     RegQueryValueExW, RegSetValueExW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_QUERY_VALUE,
-    KEY_READ, KEY_SET_VALUE, KEY_WRITE, REG_CREATED_NEW_KEY, REG_CREATE_KEY_DISPOSITION, REG_DWORD,
-    REG_EXPAND_SZ, REG_OPTION_NON_VOLATILE, REG_SZ, REG_VALUE_TYPE,
+    KEY_READ, KEY_SET_VALUE, KEY_WOW64_32KEY, KEY_WOW64_64KEY, KEY_WRITE, REG_CREATED_NEW_KEY,
+    REG_CREATE_KEY_DISPOSITION, REG_DWORD, REG_EXPAND_SZ, REG_OPTION_NON_VOLATILE, REG_QWORD,
+    REG_SAM_FLAGS, REG_SZ, REG_VALUE_TYPE,
 };
 
 use super::{dependency, script, shell, BundleIndex, RuntimeMode, UI};
@@ -613,10 +614,10 @@ fn prepare_install(
         .to_string();
     super::validate_output_filename(&uninstaller_name, "output.uninstaller_name")?;
     let uninstaller = bundle.read_file(&format!("runtime/{uninstaller_name}"))?;
-    let (root, registry_path) = uninstall_registry_key(config)?;
+    let key = uninstall_registry_key(config)?;
     let previous = previous_install(destination, config)?;
     let upgrade = previous.is_some();
-    if !upgrade && registry_key_exists(root, &registry_path)? {
+    if !upgrade && key.exists()? {
         bail!("uninstall registry key already exists; refusing to overwrite another installation");
     }
     if let Some(required_mb) = config["install"]["required_space_mb"].as_u64() {
@@ -625,8 +626,8 @@ fn prepare_install(
     Ok(InstallPrep {
         uninstaller_name,
         uninstaller,
-        root,
-        registry_path,
+        root: key.root,
+        registry_path: key.path,
         previous,
         upgrade,
     })
@@ -800,10 +801,10 @@ fn previous_install(destination: &Path, config: &Value) -> Result<Option<Previou
     if manifest["version"].as_u64() != Some(1) {
         bail!("unsupported installation manifest version")
     }
-    let (root, expected_path) = uninstall_registry_key(config)?;
-    let root_name = registry_root_name(root);
+    let expected = uninstall_registry_key(config)?;
+    let root_name = registry_root_name(expected.root);
     if manifest["registry_root"].as_str() != Some(root_name)
-        || manifest["registry_path"].as_str() != Some(expected_path.as_str())
+        || manifest["registry_path"].as_str() != Some(expected.path.as_str())
     {
         bail!(
             "installation directory belongs to a different project: {}",
@@ -1456,153 +1457,280 @@ pub(super) fn preserved_data_paths(config: &Value) -> Result<Vec<PathBuf>> {
     Ok(resolved)
 }
 
-/// Reads a single `REG_SZ` value, returning `None` when it is absent.
-pub(super) fn read_registry_string(root: HKEY, path: &str, name: &str) -> Result<Option<String>> {
-    let mut key = Default::default();
-    let opened = unsafe {
-        RegOpenKeyExW(
-            root,
-            PCWSTR(wide(path).as_ptr()),
-            0,
-            KEY_QUERY_VALUE,
-            &mut key,
-        )
-    };
-    if opened == ERROR_FILE_NOT_FOUND || opened == ERROR_PATH_NOT_FOUND {
-        return Ok(None);
-    }
-    opened.ok()?;
-    let mut kind = REG_VALUE_TYPE::default();
-    let mut size = 0u32;
-    let status = unsafe {
-        RegQueryValueExW(
-            key,
-            PCWSTR(wide(name).as_ptr()),
-            None,
-            Some(&mut kind),
-            None,
-            Some(&mut size),
-        )
-    };
-    if status == ERROR_FILE_NOT_FOUND || status == ERROR_PATH_NOT_FOUND {
-        unsafe {
-            let _ = RegCloseKey(key);
-        }
-        return Ok(None);
-    }
-    if status.is_err() || kind != REG_SZ || size < 2 {
-        unsafe {
-            let _ = RegCloseKey(key);
-        }
-        status.ok()?;
-        return Ok(None);
-    }
-    let mut buffer = vec![0u8; size as usize];
-    let status = unsafe {
-        RegQueryValueExW(
-            key,
-            PCWSTR(wide(name).as_ptr()),
-            None,
-            Some(&mut kind),
-            Some(buffer.as_mut_ptr()),
-            Some(&mut size),
-        )
-    };
-    unsafe {
-        let _ = RegCloseKey(key);
-    }
-    status.ok()?;
-    buffer.truncate(size as usize);
-    let units = buffer
-        .chunks_exact(2)
-        .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
-        .take_while(|unit| *unit != 0)
-        .collect::<Vec<_>>();
-    Ok(Some(String::from_utf16(&units)?))
+/// Which view of the registry a key belongs to.
+///
+/// A 64-bit Windows keeps a second copy of `HKLM\SOFTWARE` for 32-bit programs
+/// and shows each process the copy it was built for. A project that has to reach
+/// the other one names the view on the hive, the way an Inno Setup script does:
+/// `HKLM32\SOFTWARE\...` is the copy a 32-bit program reads, `HKLM64\...` the one
+/// a 64-bit program reads, and a bare `HKLM` is whichever this process is
+/// subject to.
+#[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
+pub(super) enum RegistryView {
+    /// The view this process itself is subject to.
+    #[default]
+    Native,
+    /// The 32-bit view, `WOW6432Node` under a 64-bit Windows.
+    Wow6432,
+    /// The 64-bit view.
+    Wow64,
 }
 
-/// Reads a single value as text, whatever type the machine stored it as.
-///
-/// A dependency's detection rule names the value a product writes when it is
-/// installed, and vendors disagree about the type: the VC++ runtimes write a
-/// `REG_DWORD` of 1, the WebView2 runtime writes its version as `REG_SZ`, and
-/// .NET Framework records a release number as a `REG_DWORD`. All three read as
-/// text here, which is what a comparison needs.
-///
-/// A value stored as neither text nor a dword reads as absent rather than
-/// guessed at. `REG_EXPAND_SZ` is text with `%VAR%` references in it, and the
-/// caller compares it as written.
-pub(super) fn read_registry_value_text(
-    root: HKEY,
-    path: &str,
-    name: &str,
-) -> Result<Option<String>> {
-    let mut key = Default::default();
-    let opened = unsafe {
-        RegOpenKeyExW(
-            root,
-            PCWSTR(wide(path).as_ptr()),
-            0,
-            KEY_QUERY_VALUE,
-            &mut key,
-        )
-    };
-    if opened == ERROR_FILE_NOT_FOUND || opened == ERROR_PATH_NOT_FOUND {
-        return Ok(None);
-    }
-    opened.ok()?;
-    let mut kind = REG_VALUE_TYPE::default();
-    let mut size = 0u32;
-    let status = unsafe {
-        RegQueryValueExW(
-            key,
-            PCWSTR(wide(name).as_ptr()),
-            None,
-            Some(&mut kind),
-            None,
-            Some(&mut size),
-        )
-    };
-    if status == ERROR_FILE_NOT_FOUND || status == ERROR_PATH_NOT_FOUND {
-        unsafe {
-            let _ = RegCloseKey(key);
+impl RegistryView {
+    /// What the registry calls take to reach this view: the native view is the
+    /// absence of a flag rather than a third flag.
+    fn flags(self) -> REG_SAM_FLAGS {
+        match self {
+            Self::Native => REG_SAM_FLAGS(0),
+            Self::Wow6432 => KEY_WOW64_32KEY,
+            Self::Wow64 => KEY_WOW64_64KEY,
         }
-        return Ok(None);
     }
-    if status.is_err() {
+
+    fn is_native(self) -> bool {
+        self == Self::Native
+    }
+}
+
+/// A registry key a project names: the hive it hangs from, the subkey below it,
+/// and the view it is read and written in.
+#[derive(Clone, Debug)]
+pub(super) struct RegistryKey {
+    pub(super) root: HKEY,
+    pub(super) path: String,
+    pub(super) view: RegistryView,
+}
+
+impl RegistryKey {
+    /// A key in the view this process is subject to, which is where the built-in
+    /// flow writes and what a project that names no view means.
+    pub(super) fn new(root: HKEY, path: impl Into<String>) -> Self {
+        Self {
+            root,
+            path: path.into(),
+            view: RegistryView::Native,
+        }
+    }
+
+    /// Opens the key for the access asked for, `None` when it is not there.
+    fn open(&self, access: REG_SAM_FLAGS) -> Result<Option<HKEY>> {
+        let mut key = Default::default();
+        let opened = unsafe {
+            RegOpenKeyExW(
+                self.root,
+                PCWSTR(wide(&self.path).as_ptr()),
+                0,
+                access | self.view.flags(),
+                &mut key,
+            )
+        };
+        if opened == ERROR_FILE_NOT_FOUND || opened == ERROR_PATH_NOT_FOUND {
+            return Ok(None);
+        }
+        opened.ok()?;
+        Ok(Some(key))
+    }
+
+    /// Opens the key for writing, creating it and its parents when needed.
+    fn create(&self, access: REG_SAM_FLAGS) -> Result<HKEY> {
+        let mut key = Default::default();
+        unsafe {
+            RegCreateKeyExW(
+                self.root,
+                PCWSTR(wide(&self.path).as_ptr()),
+                0,
+                PCWSTR::null(),
+                REG_OPTION_NON_VOLATILE,
+                access | self.view.flags(),
+                None,
+                &mut key,
+                None,
+            )
+            .ok()?;
+        }
+        Ok(key)
+    }
+
+    /// Whether the key is there.
+    pub(super) fn exists(&self) -> Result<bool> {
+        let Some(key) = self.open(KEY_READ)? else {
+            return Ok(false);
+        };
+        unsafe {
+            RegCloseKey(key).ok()?;
+        }
+        Ok(true)
+    }
+
+    /// The value as the machine stores it: its type and its bytes.
+    pub(super) fn read_raw(&self, name: &str) -> Result<Option<(REG_VALUE_TYPE, Vec<u8>)>> {
+        let Some(key) = self.open(KEY_QUERY_VALUE)? else {
+            return Ok(None);
+        };
+        let mut kind = REG_VALUE_TYPE::default();
+        let mut size = 0u32;
+        let status = unsafe {
+            RegQueryValueExW(
+                key,
+                PCWSTR(wide(name).as_ptr()),
+                None,
+                Some(&mut kind),
+                None,
+                Some(&mut size),
+            )
+        };
+        if status == ERROR_FILE_NOT_FOUND || status == ERROR_PATH_NOT_FOUND {
+            unsafe {
+                let _ = RegCloseKey(key);
+            }
+            return Ok(None);
+        }
+        if status.is_err() {
+            unsafe {
+                let _ = RegCloseKey(key);
+            }
+            status.ok()?;
+            return Ok(None);
+        }
+        let mut buffer = vec![0u8; size as usize];
+        let status = unsafe {
+            RegQueryValueExW(
+                key,
+                PCWSTR(wide(name).as_ptr()),
+                None,
+                Some(&mut kind),
+                Some(buffer.as_mut_ptr()),
+                Some(&mut size),
+            )
+        };
         unsafe {
             let _ = RegCloseKey(key);
         }
         status.ok()?;
-        return Ok(None);
+        buffer.truncate(size as usize);
+        Ok(Some((kind, buffer)))
     }
-    let mut buffer = vec![0u8; size as usize];
-    let status = unsafe {
-        RegQueryValueExW(
-            key,
-            PCWSTR(wide(name).as_ptr()),
-            None,
-            Some(&mut kind),
-            Some(buffer.as_mut_ptr()),
-            Some(&mut size),
-        )
-    };
-    unsafe {
-        let _ = RegCloseKey(key);
+
+    /// Reads a single `REG_SZ` value: `None` when the value is absent or is of
+    /// another type.
+    pub(super) fn read_string(&self, name: &str) -> Result<Option<String>> {
+        match self.read_raw(name)? {
+            Some((kind, buffer)) if kind == REG_SZ => Ok(Some(utf16_text(&buffer))),
+            _ => Ok(None),
+        }
     }
-    status.ok()?;
-    buffer.truncate(size as usize);
-    match kind {
-        REG_DWORD if buffer.len() >= 4 => Ok(Some(
-            u32::from_le_bytes([buffer[0], buffer[1], buffer[2], buffer[3]]).to_string(),
-        )),
-        REG_SZ | REG_EXPAND_SZ => Ok(Some(utf16_text(&buffer))),
-        _ => Ok(None),
+
+    /// Reads a single value as text, whatever scalar type the machine stored it
+    /// as.
+    ///
+    /// A dependency's detection rule names the value a product writes when it is
+    /// installed, and vendors disagree about the type: the VC++ runtimes write a
+    /// `REG_DWORD` of 1, the WebView2 runtime writes its version as `REG_SZ`,
+    /// .NET Framework records a release number as a `REG_DWORD`, and a version
+    /// has been seen as a `REG_QWORD`. All of them read as text here, which is
+    /// what a comparison needs; a value of another type reads as absent rather
+    /// than guessed at. `REG_EXPAND_SZ` is text with `%VAR%` references in it,
+    /// and the caller compares it as written.
+    pub(super) fn read_text(&self, name: &str) -> Result<Option<String>> {
+        let Some((kind, buffer)) = self.read_raw(name)? else {
+            return Ok(None);
+        };
+        if kind == REG_DWORD && buffer.len() >= 4 {
+            return Ok(Some(
+                u32::from_le_bytes([buffer[0], buffer[1], buffer[2], buffer[3]]).to_string(),
+            ));
+        }
+        if kind == REG_QWORD && buffer.len() >= 8 {
+            let mut number = [0u8; 8];
+            number.copy_from_slice(&buffer[..8]);
+            return Ok(Some(u64::from_le_bytes(number).to_string()));
+        }
+        if kind == REG_SZ || kind == REG_EXPAND_SZ {
+            return Ok(Some(utf16_text(&buffer)));
+        }
+        Ok(None)
     }
+
+    /// Writes a single value of the given type, creating the key when needed.
+    pub(super) fn write(&self, name: &str, kind: REG_VALUE_TYPE, bytes: &[u8]) -> Result<()> {
+        let key = self.create(KEY_SET_VALUE)?;
+        let status =
+            unsafe { RegSetValueExW(key, PCWSTR(wide(name).as_ptr()), 0, kind, Some(bytes)) };
+        unsafe {
+            let _ = RegCloseKey(key);
+        }
+        status.ok()?;
+        Ok(())
+    }
+
+    /// Writes a single `REG_SZ` value.
+    pub(super) fn write_string(&self, name: &str, value: &str) -> Result<()> {
+        let encoded = wide(value);
+        let bytes =
+            unsafe { std::slice::from_raw_parts(encoded.as_ptr().cast::<u8>(), encoded.len() * 2) };
+        self.write(name, REG_SZ, bytes)
+    }
+
+    /// Writes a single `REG_DWORD` value.
+    pub(super) fn write_dword(&self, name: &str, value: u32) -> Result<()> {
+        self.write(name, REG_DWORD, &value.to_le_bytes())
+    }
+
+    /// Deletes a single value; a missing key or value is not an error.
+    pub(super) fn delete_value(&self, name: &str) -> Result<()> {
+        let Some(key) = self.open(KEY_SET_VALUE)? else {
+            return Ok(());
+        };
+        let status = unsafe { RegDeleteValueW(key, PCWSTR(wide(name).as_ptr())) };
+        unsafe {
+            let _ = RegCloseKey(key);
+        }
+        if status != ERROR_FILE_NOT_FOUND && status != ERROR_PATH_NOT_FOUND {
+            status.ok()?;
+        }
+        Ok(())
+    }
+
+    /// Deletes the key and everything below it; a key that is not there is not an
+    /// error.
+    ///
+    /// The view belongs to a handle rather than to a call, so the tree comes down
+    /// through a handle on the branch above it, opened in this key's view. A key
+    /// with no branch above it is refused: `HKCU\Software` and its like belong to
+    /// Windows and to every product on the machine.
+    pub(super) fn delete_key(&self) -> Result<()> {
+        let (parent, name) = self.path.rsplit_once('\\').with_context(|| {
+            format!(
+                "refusing to delete {} itself: name a subkey below it",
+                self.path
+            )
+        })?;
+        let parent = Self {
+            root: self.root,
+            path: parent.to_string(),
+            view: self.view,
+        };
+        let Some(key) = parent.open(KEY_READ | KEY_WRITE)? else {
+            return Ok(());
+        };
+        let status = unsafe { RegDeleteTreeW(key, PCWSTR(wide(name).as_ptr())) };
+        unsafe {
+            let _ = RegCloseKey(key);
+        }
+        if status != ERROR_FILE_NOT_FOUND && status != ERROR_PATH_NOT_FOUND {
+            status.ok()?;
+        }
+        Ok(())
+    }
+}
+
+/// Reads a single `REG_SZ` value, returning `None` when it is absent.
+pub(super) fn read_registry_string(root: HKEY, path: &str, name: &str) -> Result<Option<String>> {
+    RegistryKey::new(root, path).read_string(name)
 }
 
 /// Decodes a `REG_SZ` payload, which runs to the first NUL.
-fn utf16_text(buffer: &[u8]) -> String {
+pub(super) fn utf16_text(buffer: &[u8]) -> String {
     let units = buffer
         .chunks_exact(2)
         .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
@@ -1613,67 +1741,12 @@ fn utf16_text(buffer: &[u8]) -> String {
 
 /// Writes a single `REG_SZ` value, creating the key when needed.
 pub(super) fn write_registry_string(root: HKEY, path: &str, name: &str, value: &str) -> Result<()> {
-    let mut key = Default::default();
-    unsafe {
-        RegCreateKeyExW(
-            root,
-            PCWSTR(wide(path).as_ptr()),
-            0,
-            PCWSTR::null(),
-            REG_OPTION_NON_VOLATILE,
-            KEY_SET_VALUE,
-            None,
-            &mut key,
-            None,
-        )
-        .ok()?;
-    }
-    let encoded = wide(value);
-    let bytes =
-        unsafe { std::slice::from_raw_parts(encoded.as_ptr().cast::<u8>(), encoded.len() * 2) };
-    let status =
-        unsafe { RegSetValueExW(key, PCWSTR(wide(name).as_ptr()), 0, REG_SZ, Some(bytes)) };
-    unsafe {
-        let _ = RegCloseKey(key);
-    }
-    status.ok()?;
-    Ok(())
-}
-
-/// Writes a single `REG_DWORD` value, creating the key when needed.
-pub(super) fn write_registry_dword(root: HKEY, path: &str, name: &str, value: u32) -> Result<()> {
-    let mut key = Default::default();
-    unsafe {
-        RegCreateKeyExW(
-            root,
-            PCWSTR(wide(path).as_ptr()),
-            0,
-            PCWSTR::null(),
-            REG_OPTION_NON_VOLATILE,
-            KEY_SET_VALUE,
-            None,
-            &mut key,
-            None,
-        )
-        .ok()?;
-    }
-    let bytes = value.to_le_bytes();
-    let status =
-        unsafe { RegSetValueExW(key, PCWSTR(wide(name).as_ptr()), 0, REG_DWORD, Some(&bytes)) };
-    unsafe {
-        let _ = RegCloseKey(key);
-    }
-    status.ok()?;
-    Ok(())
+    RegistryKey::new(root, path).write_string(name, value)
 }
 
 /// Deletes a whole key and its subkeys; a missing key is not an error.
 pub(super) fn delete_registry_key(root: HKEY, path: &str) -> Result<()> {
-    let status = unsafe { RegDeleteTreeW(root, PCWSTR(wide(path).as_ptr())) };
-    if status != ERROR_FILE_NOT_FOUND && status != ERROR_PATH_NOT_FOUND {
-        status.ok()?;
-    }
-    Ok(())
+    RegistryKey::new(root, path).delete_key()
 }
 
 /// Removes the registry entries a project script recorded in the manifest.
@@ -1687,15 +1760,15 @@ fn remove_recorded_registry(manifest: &Value) {
             let (Some(path), Some(name)) = (value["path"].as_str(), value["name"].as_str()) else {
                 continue;
             };
-            if let Ok((root, path)) = registry_path(path) {
-                let _ = delete_registry_value(root, &path, name);
+            if let Ok(key) = parse_registry_key(path) {
+                let _ = key.delete_value(name);
             }
         }
     }
     if let Some(keys) = manifest["registry_keys"].as_array() {
         for key in keys.iter().filter_map(Value::as_str) {
-            if let Ok((root, path)) = registry_path(key) {
-                let _ = delete_registry_key(root, &path);
+            if let Ok(key) = parse_registry_key(key) {
+                let _ = key.delete_key();
             }
         }
     }
@@ -1703,33 +1776,10 @@ fn remove_recorded_registry(manifest: &Value) {
 
 /// Deletes a single value; a missing key or value is not an error.
 pub(super) fn delete_registry_value(root: HKEY, path: &str, name: &str) -> Result<()> {
-    let mut key = Default::default();
-    let opened = unsafe {
-        RegOpenKeyExW(
-            root,
-            PCWSTR(wide(path).as_ptr()),
-            0,
-            KEY_SET_VALUE,
-            &mut key,
-        )
-    };
-    if opened == ERROR_FILE_NOT_FOUND || opened == ERROR_PATH_NOT_FOUND {
-        return Ok(());
-    }
-    opened.ok()?;
-    let status = unsafe { RegDeleteValueW(key, PCWSTR(wide(name).as_ptr())) };
-    unsafe {
-        let _ = RegCloseKey(key);
-    }
-    if status != ERROR_FILE_NOT_FOUND && status != ERROR_PATH_NOT_FOUND {
-        status.ok()?;
-    }
-    Ok(())
+    RegistryKey::new(root, path).delete_value(name)
 }
 
-pub(super) fn uninstall_registry_key(
-    config: &Value,
-) -> Result<(windows::Win32::System::Registry::HKEY, String)> {
+pub(super) fn uninstall_registry_key(config: &Value) -> Result<RegistryKey> {
     let configured = config["registry"]["uninstall_key"]
         .as_str()
         .map(str::to_string)
@@ -1741,46 +1791,50 @@ pub(super) fn uninstall_registry_key(
                     .unwrap_or("nano-installer")
             )
         });
-    registry_path(&configured)
+    parse_registry_key(&configured)
 }
 
-pub(super) fn registry_path(raw: &str) -> Result<(windows::Win32::System::Registry::HKEY, String)> {
+/// Parses a key a project names, hive first.
+///
+/// The hive may carry the view to read it in: `HKLM32\SOFTWARE\...` is the copy
+/// a 32-bit program sees, `HKLM64\...` the one a 64-bit program sees. A hive
+/// without a suffix means the view this process itself is subject to.
+pub(super) fn parse_registry_key(raw: &str) -> Result<RegistryKey> {
     let mut parts = raw.split('\\').filter(|part| !part.is_empty());
-    let root = match parts
-        .next()
-        .unwrap_or_default()
-        .to_ascii_uppercase()
-        .as_str()
-    {
-        "HKCU" | "HKEY_CURRENT_USER" => HKEY_CURRENT_USER,
-        "HKLM" | "HKEY_LOCAL_MACHINE" => HKEY_LOCAL_MACHINE,
-        _ => bail!("uninstall registry key must use HKCU or HKLM"),
+    let hive = parts.next().unwrap_or_default().to_ascii_uppercase();
+    let (root, view) = match hive.as_str() {
+        "HKCU" | "HKEY_CURRENT_USER" => (HKEY_CURRENT_USER, RegistryView::Native),
+        "HKLM" | "HKEY_LOCAL_MACHINE" => (HKEY_LOCAL_MACHINE, RegistryView::Native),
+        "HKCU32" | "HKEY_CURRENT_USER32" => (HKEY_CURRENT_USER, RegistryView::Wow6432),
+        "HKLM32" | "HKEY_LOCAL_MACHINE32" => (HKEY_LOCAL_MACHINE, RegistryView::Wow6432),
+        "HKCU64" | "HKEY_CURRENT_USER64" => (HKEY_CURRENT_USER, RegistryView::Wow64),
+        "HKLM64" | "HKEY_LOCAL_MACHINE64" => (HKEY_LOCAL_MACHINE, RegistryView::Wow64),
+        _ => bail!("registry key must start with HKCU or HKLM, optionally with a 32 or 64 suffix"),
     };
     let path = parts.collect::<Vec<_>>().join("\\");
     if path.is_empty() || path.contains("..") {
-        bail!("invalid uninstall registry key")
+        bail!("invalid registry key: {raw}")
     }
-    Ok((root, path))
+    Ok(RegistryKey { root, path, view })
+}
+
+/// Splits a key that cannot name a view.
+///
+/// The uninstall registration and the autostart entry are written by one process
+/// and removed by another, and what travels between them is the hive and the
+/// subkey alone, so a view here would be recorded and then forgotten.
+pub(super) fn registry_path(raw: &str) -> Result<(HKEY, String)> {
+    let key = parse_registry_key(raw)?;
+    if !key.view.is_native() {
+        bail!(
+            "{raw} names a registry view, which only a project script's own key and a dependency's detection rule can use"
+        );
+    }
+    Ok((key.root, key.path))
 }
 
 pub(super) fn wide(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(std::iter::once(0)).collect()
-}
-
-pub(super) fn registry_key_exists(
-    root: windows::Win32::System::Registry::HKEY,
-    path: &str,
-) -> Result<bool> {
-    let mut key = Default::default();
-    let result = unsafe { RegOpenKeyExW(root, PCWSTR(wide(path).as_ptr()), 0, KEY_READ, &mut key) };
-    if result == ERROR_FILE_NOT_FOUND || result == ERROR_PATH_NOT_FOUND {
-        return Ok(false);
-    }
-    result.ok()?;
-    unsafe {
-        RegCloseKey(key).ok()?;
-    }
-    Ok(true)
 }
 
 pub(super) fn register_uninstaller(
@@ -1922,8 +1976,8 @@ fn uninstall(uninstaller: &Path, keep_data: bool, task: &Cancellation) -> Result
     let manifest_path = manifest["registry_path"]
         .as_str()
         .context("registry path missing")?;
-    let (root, expected_path) = uninstall_registry_key(&config)?;
-    if manifest_root != registry_root_name(root) || manifest_path != expected_path {
+    let expected = uninstall_registry_key(&config)?;
+    if manifest_root != registry_root_name(expected.root) || manifest_path != expected.path {
         bail!("installation manifest registry target does not match the project")
     }
     let exe_name = config["install"]["exe_name"]
@@ -1943,8 +1997,8 @@ fn uninstall(uninstaller: &Path, keep_data: bool, task: &Cancellation) -> Result
             manifest,
             keep_data,
             stage: stage.0.clone(),
-            root,
-            registry_path: expected_path,
+            root: expected.root,
+            registry_path: expected.path.clone(),
             cancel: task.clone(),
         });
     }
@@ -1964,7 +2018,7 @@ fn uninstall(uninstaller: &Path, keep_data: bool, task: &Cancellation) -> Result
     super::report_progress(75, "uninstall.status.removing_files")?;
     remove_installed_files(destination, &manifest)?;
     super::report_progress(90, "uninstall.status.finishing")?;
-    finish_uninstall(destination, uninstaller, root, &expected_path)?;
+    finish_uninstall(destination, uninstaller, expected.root, &expected.path)?;
     shell::notify_shell();
     super::report_progress(100, "uninstall.status.complete")?;
     Ok(())
@@ -2113,16 +2167,16 @@ fn schedule_removal_at_reboot(path: &Path) {
 #[cfg(test)]
 mod tests {
     use super::{
-        begin_deployment, check_cancelled, deploy_files, parse_silent_arguments,
-        preserved_data_paths, previous_install, register_uninstaller, registry_key_exists,
+        begin_deployment, check_cancelled, deploy_files, parse_registry_key,
+        parse_silent_arguments, preserved_data_paths, previous_install, register_uninstaller,
         registry_path, require_free_space, require_silent_support, resolve_install_destination,
         selected_components, validate_destination, wide, Cancellation, Cancelled, Deployment,
-        InstallArtifacts, PreviousInstall, MANIFEST_NAME,
+        InstallArtifacts, PreviousInstall, RegistryKey, RegistryView, MANIFEST_NAME,
     };
     use anyhow::Result;
     use std::path::{Path, PathBuf};
     use windows::core::PCWSTR;
-    use windows::Win32::System::Registry::{RegDeleteKeyW, HKEY_CURRENT_USER};
+    use windows::Win32::System::Registry::{RegDeleteKeyW, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
 
     struct TestRegistryKey(String);
 
@@ -2132,6 +2186,85 @@ mod tests {
                 let _ = RegDeleteKeyW(HKEY_CURRENT_USER, PCWSTR(wide(&self.0).as_ptr()));
             }
         }
+    }
+
+    /// A key may name the view it is read in, and that view is what reaches the
+    /// registry call.
+    ///
+    /// The proof is the one name whose two copies differ: a 64-bit Windows keeps
+    /// the 32-bit view of `HKLM\SOFTWARE` under `WOW6432Node`, so the name is
+    /// there in the 64-bit view and nowhere in the 32-bit one. A 32-bit Windows
+    /// has one view of the registry, and this case asks it for nothing.
+    #[test]
+    fn a_registry_key_names_the_view_it_is_read_in() -> Result<()> {
+        let key = parse_registry_key(r"HKLM64\SOFTWARE\Microsoft")?;
+        assert_eq!(key.root, HKEY_LOCAL_MACHINE);
+        assert_eq!(key.path, r"SOFTWARE\Microsoft");
+        assert_eq!(key.view, RegistryView::Wow64);
+
+        let key = parse_registry_key(r"HKCU32\Software\Classes")?;
+        assert_eq!(key.root, HKEY_CURRENT_USER);
+        assert_eq!(key.view, RegistryView::Wow6432);
+
+        let plain = parse_registry_key(r"HKCU\Software")?;
+        assert_eq!(plain.view, RegistryView::Native);
+        // A suffix that is neither view is not a hive, and a key that travels
+        // between two processes as a hive and a subkey cannot carry one at all.
+        assert!(parse_registry_key(r"HKLM65\SOFTWARE").is_err());
+        assert!(registry_path(r"HKLM64\SOFTWARE").is_err());
+
+        // Where the machine keeps a branch only a 32-bit product registered,
+        // the two views are told apart by it: the name is in the copy a 32-bit
+        // program reads and in no other. A machine that keeps no such product,
+        // or a 32-bit Windows, has one view and nothing to tell apart.
+        if let Some(marker) = a_key_only_the_32_bit_view_has() {
+            let thirty_two = parse_registry_key(&format!(r"HKLM32\{marker}"))?;
+            let sixty_four = parse_registry_key(&format!(r"HKLM64\{marker}"))?;
+            assert!(thirty_two.exists()?, "the 32-bit view was not reached");
+            assert!(
+                !sixty_four.exists()?,
+                "the 32-bit view read the 64-bit copy of {marker}"
+            );
+        }
+
+        // A key written in a named view reads back through the same name. Both
+        // views of `HKCU\Software` are the same place -- Windows redirects only
+        // some of the branch -- so this holds the write and the read together
+        // rather than telling the two copies apart.
+        let name = format!("nano-installer-view-test-{}", std::process::id());
+        let _guard = TestRegistryKey(format!(r"Software\{name}"));
+        let key = parse_registry_key(&format!(r"HKCU64\Software\{name}"))?;
+        key.write_string("View", "64")?;
+        assert_eq!(key.read_string("View")?, Some("64".to_string()));
+        key.delete_key()?;
+        assert!(!key.exists()?);
+        Ok(())
+    }
+
+    /// A branch below `HKLM\SOFTWARE` that only the 32-bit view of it has,
+    /// where the machine keeps one.
+    ///
+    /// A 64-bit Windows keeps the whole branch a 32-bit program reads as a copy
+    /// of `HKLM\SOFTWARE`, and what is in one copy and not the other is what a
+    /// 32-bit product left there. Which product that is depends on the machine,
+    /// so the names are tried rather than assumed.
+    fn a_key_only_the_32_bit_view_has() -> Option<&'static str> {
+        const CANDIDATES: [&str; 4] = [
+            r"SOFTWARE\Microsoft\EdgeUpdate",
+            r"SOFTWARE\Microsoft\EdgeWebView",
+            r"SOFTWARE\Google\Update",
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths",
+        ];
+        CANDIDATES.into_iter().find(|marker| {
+            let thirty_two = parse_registry_key(&format!(r"HKLM32\{marker}"));
+            let sixty_four = parse_registry_key(&format!(r"HKLM64\{marker}"));
+            match (thirty_two, sixty_four) {
+                (Ok(thirty_two), Ok(sixty_four)) => {
+                    thirty_two.exists().unwrap_or(false) && !sixty_four.exists().unwrap_or(true)
+                }
+                _ => false,
+            }
+        })
     }
 
     /// Config that points at the throwaway registry key the tests use.
@@ -2505,7 +2638,7 @@ mod tests {
         let config = serde_json::json!({
             "project": {"name": "Temporary Test App", "version": "1.0", "publisher": "Test"}
         });
-        assert!(!registry_key_exists(HKEY_CURRENT_USER, &key.0)?);
+        assert!(!RegistryKey::new(HKEY_CURRENT_USER, &key.0).exists()?);
         register_uninstaller(
             HKEY_CURRENT_USER,
             &key.0,
@@ -2514,7 +2647,7 @@ mod tests {
             &config,
             false,
         )?;
-        assert!(registry_key_exists(HKEY_CURRENT_USER, &key.0)?);
+        assert!(RegistryKey::new(HKEY_CURRENT_USER, &key.0).exists()?);
         assert!(register_uninstaller(
             HKEY_CURRENT_USER,
             &key.0,

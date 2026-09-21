@@ -981,11 +981,13 @@ fn delete_registry_value(key: &str, name: &str) {
         .output();
 }
 
-/// One value of a registry key, or `None` when the key or the value is absent.
+/// One value of a registry key with the type the machine stored it as, or
+/// `None` when the key or the value is absent.
 ///
-/// The value may itself hold spaces, so each line is split into its columns
-/// rather than on whitespace.
-fn read_registry_string(key: &str, name: &str) -> anyhow::Result<Option<String>> {
+/// The type is what a case asks about when it wants the machine's own reading
+/// rather than what a primitive handed back. The value may itself hold spaces,
+/// so each line is split into its columns rather than on whitespace.
+fn read_registry_value(key: &str, name: &str) -> anyhow::Result<Option<(String, String)>> {
     let output = Command::new("reg")
         .arg("query")
         .arg(key)
@@ -1005,10 +1007,15 @@ fn read_registry_string(key: &str, name: &str) -> anyhow::Result<Option<String>>
             continue;
         };
         if kind.trim().starts_with("REG_") && found.trim().eq_ignore_ascii_case(name) {
-            return Ok(Some(value.trim().to_string()));
+            return Ok(Some((kind.trim().to_string(), value.trim().to_string())));
         }
     }
     Ok(None)
+}
+
+/// The text of one value, whatever type the machine stored it as.
+fn read_registry_string(key: &str, name: &str) -> anyhow::Result<Option<String>> {
+    Ok(read_registry_value(key, name)?.map(|(_, value)| value))
 }
 
 /// Whether a key exists, which is how a case tells "the value is gone" apart
@@ -1017,6 +1024,20 @@ fn registry_key_exists(key: &str) -> bool {
     Command::new("reg")
         .arg("query")
         .arg(key)
+        .output()
+        .is_ok_and(|output| output.status.success())
+}
+
+/// Whether the machine finds a key when it is told which view to read.
+///
+/// `reg` takes the copy as a flag, so what it reports is the reading a name like
+/// `HKLM32\...` is supposed to reach, arrived at without going through the
+/// primitives a case is checking.
+fn registry_key_exists_in_view(key: &str, view: u32) -> bool {
+    Command::new("reg")
+        .arg("query")
+        .arg(key)
+        .arg(format!("/reg:{view}"))
         .output()
         .is_ok_and(|output| output.status.success())
 }
@@ -1595,6 +1616,186 @@ fn a_setup_runs_the_projects_own_install_and_uninstall_scripts() -> anyhow::Resu
     assert!(
         read_registry_string(&fixture.test_key, "InstallPath")?.is_none(),
         "uninstall left the value the script wrote behind"
+    );
+    Ok(())
+}
+
+/// A setup's script stores every type the machine keeps and reads back what it
+/// stored.
+///
+/// The in-process cases drive the same primitives. What sits between them and a
+/// real setup is packaging: the script travels through the bundle and runs inside
+/// the stub, and the type it wrote is read here through `reg query`, which is the
+/// machine's own reading rather than the primitive's.
+#[test]
+fn a_setup_stores_every_registry_type_its_script_names() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.write_script(
+        "install.rhai",
+        r#"
+            let install_path = get_install_path();
+            if !extract_payload_with_progress(0.0, 50.0) {
+                return;
+            }
+            copy_uninstaller();
+            let key = get_config_value("test.registry_key");
+            let report = "";
+            report += "string=" + reg_write_string(key, "Text", "plain").to_string() + "\n";
+            report += "expand=" + reg_write_expand_string(key, "Home", "%TEMP%\\nano-installer").to_string() + "\n";
+            report += "multi=" + reg_write_multi_string(key, "List", ["alpha", "beta"]).to_string() + "\n";
+            report += "dword=" + reg_write_dword(key, "Count", 12).to_string() + "\n";
+            report += "qword=" + reg_write_qword(key, "Big", 4294967297).to_string() + "\n";
+            report += "binary=" + reg_write_binary(key, "Blob", [222, 173, 190, 239]).to_string() + "\n";
+            report += "read_text=" + reg_read(key, "Text") + "\n";
+            report += "read_home=" + reg_read_expand_string(key, "Home") + "\n";
+            report += "read_list=" + (reg_read_multi_string(key, "List") == ["alpha", "beta"]).to_string() + "\n";
+            report += "read_count=" + reg_read_dword(key, "Count").to_string() + "\n";
+            report += "read_big=" + reg_read_qword(key, "Big").to_string() + "\n";
+            report += "read_blob=" + (reg_read_binary(key, "Blob") == [222, 173, 190, 239]).to_string() + "\n";
+            report += "type_list=" + reg_read_type(key, "List") + "\n";
+            // The case's own key reached through the name of a view: what a project
+            // writes below `HKCU64\` is what that name reads back and takes away.
+            let viewed = "HKCU64\\" + key.sub_string(5) + "\\viewed";
+            report += "view_written=" + reg_write_string(viewed, "View", "64").to_string() + "\n";
+            report += "view_read=" + reg_read(viewed, "View") + "\n";
+            report += "view_deleted=" + reg_delete_key(viewed).to_string() + "\n";
+            report += "view_gone=" + reg_key_exists(viewed).to_string() + "\n";
+            // Where the machine keeps a branch in one view only, the two names part
+            // company: the branch a 32-bit product left is in the copy a 32-bit
+            // program reads and in no other.
+            report += "marker32=" + reg_key_exists("HKLM32\\SOFTWARE\\Microsoft\\EdgeUpdate").to_string() + "\n";
+            report += "marker64=" + reg_key_exists("HKLM64\\SOFTWARE\\Microsoft\\EdgeUpdate").to_string() + "\n";
+            write_file(path_join(install_path, "registry-report.txt"), report);
+        "#,
+    )?;
+    fixture.build()?;
+    fixture.install()?;
+
+    let report = std::fs::read_to_string(fixture.destination.join("registry-report.txt"))?;
+    let value = |name: &str| -> String {
+        report
+            .lines()
+            .find_map(|line| {
+                line.split_once('=')
+                    .filter(|(field, _)| *field == name)
+                    .map(|(_, value)| value)
+            })
+            .unwrap_or_default()
+            .to_string()
+    };
+    for name in ["string", "expand", "multi", "dword", "qword", "binary"] {
+        assert_eq!(value(name), "true", "{name} was not written");
+    }
+    assert_eq!(value("read_text"), "plain");
+    let expanded = value("read_home");
+    assert!(
+        !expanded.contains('%'),
+        "the reference was handed back unexpanded: {expanded}"
+    );
+    assert_eq!(
+        std::path::PathBuf::from(&expanded),
+        std::env::temp_dir().join("nano-installer"),
+        "`%TEMP%` was not expanded on the way out of the registry"
+    );
+    assert_eq!(value("read_list"), "true");
+    assert_eq!(value("read_count"), "12");
+    assert_eq!(value("read_big"), "4294967297");
+    assert_eq!(value("read_blob"), "true");
+    assert_eq!(value("type_list"), "REG_MULTI_SZ");
+    assert_eq!(value("view_written"), "true");
+    assert_eq!(value("view_read"), "64");
+    assert_eq!(value("view_deleted"), "true");
+    assert_eq!(value("view_gone"), "false");
+    // The machine's own answer about the branch, taken with the view as a flag,
+    // decides what the two names had to report. A machine that keeps the branch
+    // in both views, or a 32-bit Windows, has one copy and nothing to tell apart.
+    let marker = r"HKLM\SOFTWARE\Microsoft\EdgeUpdate";
+    let thirty_two = registry_key_exists_in_view(marker, 32);
+    let sixty_four = registry_key_exists_in_view(marker, 64);
+    if thirty_two != sixty_four {
+        assert_eq!(value("marker32"), thirty_two.to_string());
+        assert_eq!(value("marker64"), sixty_four.to_string());
+    }
+
+    // What the machine holds, rather than only what the script read back.
+    assert_eq!(
+        read_registry_value(&fixture.test_key, "Text")?,
+        Some(("REG_SZ".to_string(), "plain".to_string()))
+    );
+    assert_eq!(
+        read_registry_value(&fixture.test_key, "Home")?,
+        Some((
+            "REG_EXPAND_SZ".to_string(),
+            r"%TEMP%\nano-installer".to_string()
+        )),
+        "an expandable value is stored as it was written, references and all"
+    );
+    assert_eq!(
+        read_registry_value(&fixture.test_key, "List")?,
+        Some(("REG_MULTI_SZ".to_string(), r"alpha\0beta".to_string()))
+    );
+    assert_eq!(
+        read_registry_value(&fixture.test_key, "Count")?,
+        Some(("REG_DWORD".to_string(), "0xc".to_string()))
+    );
+    assert_eq!(
+        read_registry_value(&fixture.test_key, "Big")?,
+        Some(("REG_QWORD".to_string(), "0x100000001".to_string()))
+    );
+    assert_eq!(
+        read_registry_value(&fixture.test_key, "Blob")?,
+        Some(("REG_BINARY".to_string(), "DEADBEEF".to_string()))
+    );
+
+    // Every one of them is in the manifest, so removing the product takes them
+    // away without the project saying anything about them.
+    fixture.uninstall()?;
+    wait_for_removal(&fixture.destination);
+    for name in ["Text", "Home", "List", "Count", "Big", "Blob"] {
+        assert!(
+            read_registry_value(&fixture.test_key, name)?.is_none(),
+            "the uninstall left {name} behind"
+        );
+    }
+    Ok(())
+}
+
+/// A setup's script reads what a program it ran wrote.
+///
+/// The words a tool prints are the only answer a project can get from one, and
+/// the exit code alone does not say which of two failures it was.
+#[test]
+fn a_setup_reads_what_a_command_its_script_ran_wrote() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.write_script(
+        "install.rhai",
+        r#"
+            let install_path = get_install_path();
+            if !extract_payload_with_progress(0.0, 50.0) {
+                return;
+            }
+            copy_uninstaller();
+            let ran = run_command_output(get_env("ComSpec"), ["/C", "echo captured& echo failed 1>&2& exit 5"]);
+            let report = "";
+            report += "code=" + ran.code.to_string() + "\n";
+            report += "stdout=" + ran.stdout + "|";
+            report += "stderr=" + ran.stderr + "|";
+            write_file(path_join(install_path, "command-report.txt"), report);
+        "#,
+    )?;
+    fixture.build()?;
+    fixture.install()?;
+
+    assert_eq!(
+        std::fs::read_to_string(fixture.destination.join("command-report.txt"))?,
+        "code=5\nstdout=captured\r\n|stderr=failed \r\n|",
+        "the setup did not read what the command it ran wrote"
     );
     Ok(())
 }

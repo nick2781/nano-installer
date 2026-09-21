@@ -229,8 +229,10 @@ them -- how to tell whether the machine has one, and which program puts it there
 - `{ "file": "%ProgramFiles(x86)%\\...\\msedgewebview2.exe" }`: the machine has it when this file
   is there. Environment variables in the path are expanded first.
 - `{ "registry": { ... } }`: read the registry. `key` is the key to open, under `HKCU` or `HKLM`;
-  `name` is the value to read, and a rule without one only asks whether the key exists. With a
-  `name`, the value can also be compared: `equals` is an exact match, `at_least` compares the
+  `name` is the value to read, and a rule without one only asks whether the key exists. A key may
+  also name a view, `HKLM32` for the copy of `HKLM` a 32-bit program sees and `HKLM64` for the copy
+  a 64-bit program reads, which is how a rule asks after a runtime installed for the other width.
+  With a `name`, the value can also be compared: `equals` is an exact match, `at_least` compares the
   dot-separated numbers. The value is read as text whether the machine stored text or a dword, so
   the `1` the VC++ runtimes write, the version the WebView2 runtime writes, and the number .NET
   Framework records are all comparable. A missing part in `at_least` counts as zero, which makes

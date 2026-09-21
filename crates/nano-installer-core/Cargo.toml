@@ -34,6 +34,9 @@ features = [
     "Win32_UI_Shell",
     "Win32_UI_Shell_Common",
     "Win32_System_Environment",
+    # What a program a script runs wrote is in the code page the machine runs
+    # in, which is the one Windows decodes it with here.
+    "Win32_Globalization",
     # A dependency the project cannot ship is fetched over the machine's own
     # HTTP stack, and what arrives is checked with the machine's own SHA-256.
     "Win32_Networking_WinHttp",

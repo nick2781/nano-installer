@@ -13,10 +13,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use super::Mode;
-use crate::install::{
-    delete_registry_key, delete_registry_value, registry_path, Cancellation, PreviousInstall,
-    RollbackJournal,
-};
+use crate::install::{parse_registry_key, Cancellation, PreviousInstall, RollbackJournal};
 use crate::BundleIndex;
 
 /// The paths below one root, kept relative so an installation stays relocatable.
@@ -406,13 +403,13 @@ pub(super) fn undo(context: &ScriptContext) {
         let _ = std::fs::remove_dir(directory);
     }
     for (key, name) in &state.registry_values {
-        if let Ok((root, path)) = registry_path(key) {
-            let _ = delete_registry_value(root, &path, name);
+        if let Ok(key) = parse_registry_key(key) {
+            let _ = key.delete_value(name);
         }
     }
     for key in &state.registry_keys {
-        if let Ok((root, path)) = registry_path(key) {
-            let _ = delete_registry_key(root, &path);
+        if let Ok(key) = parse_registry_key(key) {
+            let _ = key.delete_key();
         }
     }
     let after = Snapshot::take(&install_path);

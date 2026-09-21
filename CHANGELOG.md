@@ -59,6 +59,14 @@
   装进机器的是依赖本身，它不在卸载清单里——产品卸掉之后，机器上原本缺的东西仍然留着。脚本要自己挑时机
   时，`dependency_installed`、`install_dependency`、`download_file`、`download_file_with_hash` 和
   `sha256_of_file` 问的是同一份声明、走的是同一条取文件的路径。
+- 脚本能读写注册表里的每一种类型：文本、可展开的文本、多行文本、DWORD、QWORD 与二进制，也能只问
+  一个值在不在、机器把它存成了什么类型；用错类型的读法返回空值而不是硬把值转一次。键名可以在根键
+  后面带上 `32` 或 `64`，指名 64 位 Windows 里的哪一份拷贝，视图跟着键名一起记进 manifest，卸载
+  收回的正是脚本写过的那一份。删除键不再接受以根键本身为目标，脚本没法写一个 `HKCU\Software`
+  就带走整棵软件树。
+- 脚本跑过的程序，写下的内容能收回来：`run_command_output` 把退出码、标准输出与标准错误一起交回，
+  字节先按 UTF-8 解、解不开就按这台机器的 ANSI 代码页解，中文 Windows 上的 `ipconfig` 因此读成中文
+  而不是替换字符；用户停掉任务时，连这个程序已经写下的内容一起结束。
 
 ### 改进
 
@@ -186,16 +194,36 @@
   `dependency_installed`、`install_dependency`、`download_file`、`download_file_with_hash` 与
   `sha256_of_file`：前两个读同一份声明，卸载模式下 `install_dependency` 一律返回 false。构建时依赖的
   载荷一并收进捆绑数据，`inspect_project` 校验这些文件确实存在。
+- 注册表：核心库新增 `RegistryView`（`Native`、`Wow6432`、`Wow64`，分别对应不带标志、
+  `KEY_WOW64_32KEY` 与 `KEY_WOW64_64KEY`）与 `RegistryKey { root, path, view }`，读、写、删都经过它；
+  视图写在键名里，由 `parse_registry_key` 解析（`HKLM32`/`HKCU64`，`HKEY_LOCAL_MACHINE32` 这样的长名
+  也认）。`registry_path` 因为要把根键与子键分开交给独立进程的卸载器，遇到带视图的键直接报错，
+  卸载注册键与自启动项因此只能落在原生视图。删除键改成先按视图打开父键、再
+  `RegDeleteTreeW(parent, leaf)`，单段路径（如 `HKCU\Software`）因此被拒绝，而不是删掉整棵软件树。
+  `api_registry` 的十七个原语共用一条写入路径，写成功才把键与值记进 manifest。
+- 命令输出：`shell::run_captured` 用 `CREATE_NO_WINDOW` 起子进程，两个输出管道各由一个线程读到底，
+  主线程每 50 毫秒查一次取消并与 `try_wait` 一起等；收到取消就结束子进程、退出码记 `-1`。读回来的
+  字节先按 UTF-8 解，解不开按这台机器的 ANSI 代码页解（`MultiByteToWideChar(CP_ACP)`，为此在核心库
+  开了 `Win32_Globalization`）。`run_detached`、`run_command` 与 `run_command_output` 都走这条路径，
+  `run_command_output` 返回 `#{code, stdout, stderr}`，起不来时 `code` 为 `-1`、`stderr` 里放着原因。
+- 依赖检测：`dependency::detect` 改用 `parse_registry_key`，`dependencies.items[].detect.registry.key`
+  因此可以带视图后缀，按位宽分开装的运行库可以用同一条规则来问。
 
 ### 已验证
 
-- `cargo test --locked --workspace`：共 274 条用例，271 通过、0 失败、1 忽略，退出码 0（核心库 199、
-  安装包级 39、工程检查 5、可视化构建器 29，另加两个解压运行时用例；被忽略的
-  `install::tests::registers_and_cleans_up_scoped_uninstall_key` 要在隔离环境里写 HKCU）。
-  报告在 `target/test-report.txt` 与 `target/test-report.html`。
-- 安装包级的 39 条里有 37 条跑通，其中 13 条会打开真实的向导窗口；
+- `cargo test --locked --workspace`：共 282 条用例，279 通过、0 失败、1 忽略，退出码 0（核心库 205、
+  安装包级 41、工程检查 5、可视化构建器 29，另加两个解压运行时用例；被忽略的
+  `install::tests::registers_and_cleans_up_scoped_uninstall_key` 要在隔离环境里写 HKCU；两条指针
+  用例按下面的理由过滤掉）。报告在 `target/test-report.txt` 与 `target/test-report.html`。
+- 安装包级的 41 条里有 39 条跑通，其中 13 条会打开真实的向导窗口；
   `run_e2e_setup.ps1 -RequireDesktop` 那次把跳过当成失败，报告在 `target/e2e-report.txt` 与
   `target/e2e-report.html`，同一个脚本加 `-Language en` 会另留一份英文版。
+- 注册表类型与命令输出这两条安装包级用例的答案是从机器上读回来的，不是从写下它的原语手里：
+  六个值的类型由 `reg query` 报出（`REG_SZ`、`REG_EXPAND_SZ`、`REG_MULTI_SZ`、`REG_DWORD`、
+  `REG_QWORD`、`REG_BINARY`），带视图后缀的键建得出、读得到、删得掉，命令留下的是退出码 5 与
+  两个输出流的逐字节内容。本机装的那份 `EdgeUpdate` 只在 32 位视图里登记，因此 `HKLM32` 读得到、
+  `HKLM64` 读不到，两个视图名在真机上分了岔；换成没有这种软件的机器时这条不做断言，
+  用例会先向 `reg query` 问一次哪个视图有它。
 - 依赖用例跑的是真程序：随安装包带上的依赖真被装上，而且按它自己留下的文件判断机器上有没有；按 URL
   下载的依赖先过一遍独立算出的摘要（`certutil` 算的，不是运行时自己算给自己看的那份）才跑，摘要对不
   上时那个程序一次都没有被启动，目标文件也没留下。

@@ -319,7 +319,7 @@ fn run(context: &ScriptContext, source: &str) -> Result<()> {
     api_download::register(&mut engine, context.clone());
     api_file::register(&mut engine, context.clone());
     api_registry::register(&mut engine, context.clone());
-    api_process::register(&mut engine);
+    api_process::register(&mut engine, context.clone());
     api_shortcut::register(&mut engine, context.clone());
     api_system::register(&mut engine, context.clone());
     let mut scope = Scope::new();
@@ -344,7 +344,10 @@ mod tests {
     use std::io::Write;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use windows::core::PCWSTR;
-    use windows::Win32::System::Registry::{RegDeleteTreeW, HKEY_CURRENT_USER};
+    use windows::Win32::System::Registry::{
+        RegDeleteTreeW, HKEY_CURRENT_USER, REG_BINARY, REG_DWORD, REG_EXPAND_SZ, REG_MULTI_SZ,
+        REG_QWORD, REG_SZ,
+    };
 
     /// One registry key per test, so tests running in parallel never share one.
     fn unique_registry_key() -> String {
@@ -380,6 +383,11 @@ mod tests {
             // never touches a real product key.
             "test": {"registry_key": registry_key}
         })
+    }
+
+    /// One of the case's own keys, as the registry helpers take it.
+    fn key_of(path: &str) -> install::RegistryKey {
+        install::RegistryKey::new(HKEY_CURRENT_USER, path)
     }
 
     /// The subkey below the hive, as the registry helpers take it.
@@ -544,7 +552,7 @@ mod tests {
             task: install::Cancellation,
         ) -> Result<()> {
             let bundle = self.bundle()?;
-            let (root, registry_path) = install::uninstall_registry_key(&self.config)?;
+            let key = install::uninstall_registry_key(&self.config)?;
             // The same rule the wizard applies before it runs any step.
             let components = install::selected_components(&self.config, |id, default| {
                 selection.checked(id, default)
@@ -560,8 +568,8 @@ mod tests {
                 prep: InstallPrep {
                     uninstaller_name: "uninst.exe".to_string(),
                     uninstaller: b"uninstaller".to_vec(),
-                    root,
-                    registry_path,
+                    root: key.root,
+                    registry_path: key.path,
                     previous: None,
                     upgrade: false,
                 },
@@ -571,7 +579,7 @@ mod tests {
 
         fn uninstall(&self, keep_data: bool) -> Result<()> {
             let bundle = self.bundle()?;
-            let (root, registry_path) = install::uninstall_registry_key(&self.config)?;
+            let key = install::uninstall_registry_key(&self.config)?;
             let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(
                 self.destination.join(install::MANIFEST_NAME),
             )?)?;
@@ -583,8 +591,8 @@ mod tests {
                 manifest,
                 keep_data,
                 stage: self.stage()?,
-                root,
-                registry_path,
+                root: key.root,
+                registry_path: key.path,
                 cancel: install::Cancellation::default(),
             });
             remove_cleanup_helpers();
@@ -799,6 +807,21 @@ mod tests {
             {body}
             "#
         )
+    }
+
+    /// The bytes Windows stores a text value as, its terminator included.
+    fn text_bytes(text: &str) -> Vec<u8> {
+        text.encode_utf16()
+            .chain(std::iter::once(0))
+            .flat_map(u16::to_le_bytes)
+            .collect()
+    }
+
+    /// The bytes of a `REG_MULTI_SZ` value, closed by one more terminator.
+    fn multi_string_bytes(parts: &[&str]) -> Vec<u8> {
+        let mut bytes: Vec<u8> = parts.iter().flat_map(|part| text_bytes(part)).collect();
+        bytes.extend([0, 0]);
+        bytes
     }
 
     /// The manifest an install wrote, as the uninstaller reads it.
@@ -1156,10 +1179,7 @@ mod tests {
             Some("value".to_string())
         );
         assert_eq!(read_dword(&key, "Keep")?, 9);
-        assert!(!install::registry_key_exists(
-            HKEY_CURRENT_USER,
-            &subkey(&branch)
-        )?);
+        assert!(!key_of(&subkey(&branch)).exists()?);
         // Deleting the branch dropped it from the tracked list, so what the
         // uninstall replays is the key the script still owns and its two values.
         let recorded = manifest(&fixture)?;
@@ -1171,6 +1191,167 @@ mod tests {
             ])
         );
         assert_eq!(recorded["registry_keys"], serde_json::json!([key]));
+        Ok(())
+    }
+
+    #[test]
+    fn registry_primitives_write_and_read_every_type_a_project_stores() -> Result<()> {
+        let report = Observation::new("script-registry-types");
+        let fixture = fixture(
+            &deploying_script(&format!(
+                r#"
+                let key = get_config_value("test.registry_key");
+                let report = "";
+                report += "string=" + reg_write_string(key, "Text", "plain").to_string() + "\n";
+                report += "expand=" + reg_write_expand_string(key, "Home", "%SystemRoot%\\Temp").to_string() + "\n";
+                report += "multi=" + reg_write_multi_string(key, "List", ["one", "two"]).to_string() + "\n";
+                report += "dword=" + reg_write_dword(key, "Count", 7).to_string() + "\n";
+                report += "qword=" + reg_write_qword(key, "Big", 4294967297).to_string() + "\n";
+                report += "binary=" + reg_write_binary(key, "Blob", [0, 1, 255]).to_string() + "\n";
+                report += "read_text=" + reg_read(key, "Text") + "\n";
+                report += "read_home=" + reg_read_expand_string(key, "Home") + "\n";
+                report += "read_list=" + (reg_read_multi_string(key, "List") == ["one", "two"]).to_string() + "\n";
+                report += "read_count=" + reg_read_dword(key, "Count").to_string() + "\n";
+                report += "read_big=" + reg_read_qword(key, "Big").to_string() + "\n";
+                report += "read_blob=" + (reg_read_binary(key, "Blob") == [0, 1, 255]).to_string() + "\n";
+                report += "type_list=" + reg_read_type(key, "List") + "\n";
+                report += "type_missing=" + reg_read_type(key, "Missing") + "\n";
+                report += "exists=" + reg_value_exists(key, "Blob").to_string() + "\n";
+                report += "absent=" + reg_value_exists(key, "Missing").to_string() + "\n";
+                // A reader of another type says so rather than guessing: the
+                // dword is not text, and the text is not a number.
+                report += "wrong_reader=" + reg_read_dword(key, "Text").to_string() + "\n";
+                report += "wrong_reader_string=" + reg_read(key, "Count") + "\n";
+                // An empty string inside a list would end it where it stands, so
+                // the primitive drops it rather than write a list that reads
+                // back shorter than it was written.
+                report += "short=" + reg_write_multi_string(key, "Short", ["first", "", "last"]).to_string() + "\n";
+                report += "read_short=" + (reg_read_multi_string(key, "Short") == ["first", "last"]).to_string() + "\n";
+                // A number that is not a byte is refused whole.
+                report += "refused=" + reg_write_binary(key, "Bad", [300]).to_string() + "\n";
+                report += "bad_written=" + reg_value_exists(key, "Bad").to_string() + "\n";
+                // The view a key names. A branch a 32-bit product registered
+                // is in the copy a 32-bit program reads and in no other, and
+                // which product that is depends on the machine; `Microsoft\
+                // EdgeUpdate` is one the machine this was written on keeps,
+                // beside a key written in a named view and read back through it.
+                let key32 = get_config_value("test.registry_key") + "-view";
+                report += "write_view=" + reg_write_string("HKCU64\\" + key32, "View", "64").to_string() + "\n";
+                report += "read_view=" + reg_read("HKCU64\\" + key32, "View") + "\n";
+                report += "delete_view=" + reg_delete_key("HKCU64\\" + key32).to_string() + "\n";
+                report += "gone_view=" + reg_key_exists("HKCU64\\" + key32).to_string() + "\n";
+                report += "edge32=" + reg_key_exists("HKLM32\\SOFTWARE\\Microsoft\\EdgeUpdate").to_string() + "\n";
+                report += "edge64=" + reg_key_exists("HKLM64\\SOFTWARE\\Microsoft\\EdgeUpdate").to_string() + "\n";
+                // A hive the machine has no view of is refused, not guessed at.
+                report += "unknown_hive=" + reg_key_exists("HKCR\\Somewhere").to_string() + "\n";
+                write_file({}, report);
+                "#,
+                report.script_path()
+            )),
+            "",
+        )?;
+        fixture.install()?;
+
+        let observed = observations(&report.text()?);
+        let value = |name: &str| observed.get(name).map(String::as_str).unwrap_or_default();
+
+        for name in ["string", "expand", "multi", "dword", "qword", "binary"] {
+            assert_eq!(value(name), "true", "{name} was not written");
+        }
+        assert_eq!(value("read_text"), "plain");
+        assert_eq!(
+            value("read_home"),
+            format!(
+                "{}\\Temp",
+                std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_string())
+            ),
+            "`%SystemRoot%` was not expanded on the way out of the registry"
+        );
+        assert_eq!(value("read_list"), "true");
+        assert_eq!(value("read_count"), "7");
+        assert_eq!(value("read_big"), "4294967297");
+        assert_eq!(value("read_blob"), "true");
+        assert_eq!(value("type_list"), "REG_MULTI_SZ");
+        assert_eq!(value("type_missing"), "");
+        assert_eq!(value("exists"), "true");
+        assert_eq!(value("absent"), "false");
+        assert_eq!(value("wrong_reader"), "-1");
+        assert_eq!(value("wrong_reader_string"), "");
+        assert_eq!(value("short"), "true");
+        assert_eq!(value("read_short"), "true");
+        assert_eq!(value("refused"), "false");
+        assert_eq!(value("bad_written"), "false");
+        assert_eq!(value("unknown_hive"), "false");
+        // A key written in a named view reads back through the same name.
+        assert_eq!(value("write_view"), "true");
+        assert_eq!(value("read_view"), "64");
+        assert_eq!(value("delete_view"), "true");
+        assert_eq!(value("gone_view"), "false");
+        // Where the machine keeps a branch only a 32-bit product registered,
+        // the two views of `HKLM\SOFTWARE` are told apart: the name is in the
+        // copy a 32-bit program reads and in no other. A machine that keeps no
+        // such product, or a 32-bit Windows, has one view and nothing to tell
+        // apart.
+        if value("edge32") == "true" {
+            assert_eq!(
+                value("edge64"),
+                "false",
+                "the 32-bit view read the 64-bit copy"
+            );
+        }
+
+        // What the machine holds, rather than only what the reader hands back.
+        let key = install::parse_registry_key(&fixture.registry_key)?;
+        assert_eq!(key.read_raw("Text")?, Some((REG_SZ, text_bytes("plain"))));
+        assert_eq!(
+            key.read_raw("Home")?,
+            Some((REG_EXPAND_SZ, text_bytes("%SystemRoot%\\Temp"))),
+            "an expandable value is stored as it was written, references and all"
+        );
+        assert_eq!(
+            key.read_raw("List")?,
+            Some((REG_MULTI_SZ, multi_string_bytes(&["one", "two"])))
+        );
+        assert_eq!(
+            key.read_raw("Count")?,
+            Some((REG_DWORD, 7u32.to_le_bytes().to_vec()))
+        );
+        assert_eq!(
+            key.read_raw("Big")?,
+            Some((REG_QWORD, 4294967297u64.to_le_bytes().to_vec()))
+        );
+        assert_eq!(key.read_raw("Blob")?, Some((REG_BINARY, vec![0, 1, 255])));
+        assert_eq!(
+            key.read_raw("Short")?,
+            Some((REG_MULTI_SZ, multi_string_bytes(&["first", "last"])))
+        );
+        assert_eq!(
+            key.read_raw("Bad")?,
+            None,
+            "a refused write wrote something"
+        );
+
+        // Every value travels to the uninstaller, which removes what the script
+        // wrote whether or not its own script says so.
+        let recorded = manifest(&fixture)?;
+        let names = recorded["registry_values"]
+            .as_array()
+            .expect("the manifest records the values a script wrote")
+            .iter()
+            .map(|value| value["name"].as_str().unwrap_or_default().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            vec!["Text", "Home", "List", "Count", "Big", "Blob", "Short"]
+        );
+
+        fixture.uninstall(false)?;
+        for name in ["Text", "Home", "List", "Count", "Big", "Blob", "Short"] {
+            assert!(
+                key.read_raw(name)?.is_none(),
+                "the uninstall left {name} behind"
+            );
+        }
         Ok(())
     }
 
@@ -1214,10 +1395,7 @@ mod tests {
             install::read_registry_string(HKEY_CURRENT_USER, &subkey(SHARED_RUN_KEY), &value_name)?,
             None
         );
-        assert!(install::registry_key_exists(
-            HKEY_CURRENT_USER,
-            &subkey(SHARED_RUN_KEY)
-        )?);
+        assert!(key_of(&subkey(SHARED_RUN_KEY)).exists()?);
         Ok(())
     }
 
@@ -1279,7 +1457,7 @@ mod tests {
             None
         );
         assert!(
-            install::registry_key_exists(HKEY_CURRENT_USER, &key)?,
+            key_of(&key).exists()?,
             "the uninstall removed the key every product on the machine writes into"
         );
         Ok(())
@@ -1378,11 +1556,11 @@ mod tests {
         fixture.uninstall(true)?;
 
         assert!(
-            !install::registry_key_exists(HKEY_CURRENT_USER, &subkey(&extension_key))?,
+            !key_of(&subkey(&extension_key)).exists()?,
             "the uninstall left the extension it claimed behind"
         );
         assert!(
-            !install::registry_key_exists(HKEY_CURRENT_USER, &subkey(&prog_id_key))?,
+            !key_of(&subkey(&prog_id_key)).exists()?,
             "the uninstall left the program id it registered behind"
         );
         Ok(())
@@ -1420,10 +1598,7 @@ mod tests {
             "separator=false\nempty_extension=false\nempty_prog_id=false\nno_command=false\nunregister_separator=false\n"
         );
         assert!(
-            !install::registry_key_exists(
-                HKEY_CURRENT_USER,
-                &subkey(&format!(r"HKCU\Software\Classes\.{extension}"))
-            )?,
+            !key_of(&subkey(&format!(r"HKCU\Software\Classes\.{extension}"))).exists()?,
             "a refused call wrote into the classes tree anyway"
         );
         let recorded = manifest(&fixture)?;
@@ -1669,8 +1844,7 @@ mod tests {
         // The machine has the first dependency and not the second: the rule the
         // project writes is what says so, and the value the test wrote into the
         // fixture's own key is what the first rule reads.
-        let (root, path) = install::registry_path(&fixture.registry_key)?;
-        install::write_registry_dword(root, &path, "Installed", 1)?;
+        install::parse_registry_key(&fixture.registry_key)?.write_dword("Installed", 1)?;
         fixture.config["dependencies"] = serde_json::json!({ "items": [
             {
                 "id": "present",
@@ -1916,6 +2090,57 @@ mod tests {
         // A command that cannot be started reports -1 rather than an exit code,
         // so a script can tell "it ran and failed" from "it never ran".
         assert_eq!(report.text()?, "three=3\nzero=0\nmissing=-1\n");
+        Ok(())
+    }
+
+    #[test]
+    fn a_script_reads_what_the_command_it_ran_wrote() -> Result<()> {
+        let report = Observation::new("script-run-command-output");
+        let missing = unique_name("nano-installer-no-such-command");
+        let fixture = fixture(
+            &deploying_script(&format!(
+                r#"
+                // A program answers with more than its exit code: the words it
+                // wrote are what says why it failed, and a project that has to
+                // read a version out of a tool has nowhere else to get it.
+                let shell = get_env("ComSpec");
+                let ran = run_command_output(shell, ["/C", "echo out& echo err 1>&2& exit 4"]);
+                let report = "";
+                report += "code=" + ran.code.to_string() + "\n";
+                // Exactly the bytes the program wrote, line endings and all.
+                report += "stdout=" + ran.stdout + "|";
+                report += "stderr=" + ran.stderr + "|";
+                let absent = path_join(get_temp_path(), "{missing}.exe");
+                let never = run_command_output(absent, []);
+                report += "missing_code=" + never.code.to_string() + "\n";
+                report += "missing_stdout=" + (never.stdout == "").to_string() + "\n";
+                report += "missing_stderr=" + (never.stderr != "").to_string() + "\n";
+                write_file({report}, report);
+                "#,
+                missing = missing,
+                report = report.script_path()
+            )),
+            "",
+        )?;
+        fixture.install()?;
+
+        assert_eq!(
+            report.text()?,
+            concat!(
+                "code=4\n",
+                // The words the program wrote, as it wrote them: `echo` ends its
+                // line the way the command shell does, and the second command
+                // sends what it was given to the error stream, space and all.
+                "stdout=out\r\n|",
+                "stderr=err \r\n|",
+                // A program that could not be started at all left no exit code
+                // behind, so the run reports -1 and says why where the program's
+                // own words would have gone.
+                "missing_code=-1\n",
+                "missing_stdout=true\n",
+                "missing_stderr=true\n",
+            )
+        );
         Ok(())
     }
 

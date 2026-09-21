@@ -101,15 +101,43 @@ writes, and uninstall removes them.
 | Primitive | Description |
 | --- | --- |
 | `reg_write_string(key, name, value)` | Writes `REG_SZ` |
+| `reg_write_expand_string(key, name, value)` | Writes `REG_EXPAND_SZ`, its references kept as written |
+| `reg_write_multi_string(key, name, values)` | Writes `REG_MULTI_SZ` from an array of strings |
 | `reg_write_dword(key, name, value)` | Writes `REG_DWORD` |
+| `reg_write_qword(key, name, value)` | Writes `REG_QWORD` |
+| `reg_write_binary(key, name, bytes)` | Writes `REG_BINARY` from an array of numbers 0-255 |
 | `reg_read(key, name)` | Reads `REG_SZ`, empty string when absent |
+| `reg_read_expand_string(key, name)` | Reads `REG_EXPAND_SZ`, its references expanded |
+| `reg_read_multi_string(key, name)` | Reads `REG_MULTI_SZ` as an array of strings |
+| `reg_read_dword(key, name)`, `reg_read_qword(key, name)` | Read a 32- or 64-bit number, `-1` when absent |
+| `reg_read_binary(key, name)` | Reads `REG_BINARY` as an array of numbers |
+| `reg_read_type(key, name)` | The type the machine stored, such as `REG_MULTI_SZ`; empty when absent |
+| `reg_value_exists(key, name)` | Whether the value is there, whatever its type |
 | `reg_key_exists(key)` | Whether the key exists |
 | `reg_delete_value(key, name)` | Deletes a single value |
 | `reg_delete_key(key)` | Deletes a key and its subkeys, and drops it from the tracked list |
 
+A read answers for one type: `reg_read` on a `REG_DWORD` is an empty string and `reg_read_dword` on a
+`REG_SZ` is `-1`, so a script that does not know what the machine holds asks `reg_read_type` first.
+An empty string inside an array handed to `reg_write_multi_string` is dropped rather than written,
+because it would end the list where it stands. A number outside 0-255 in `reg_write_binary`, and a
+value outside the 32 bits of a `REG_DWORD`, are refused instead of written in part.
+`reg_read_expand_string` expands what a value refers to, so a path the project wrote as
+`%ProgramFiles%\MyApp` comes back as the directory this machine keeps it in. `reg_read_qword` hands
+back a signed 64-bit number, so a value with its top bit set reads as a negative one.
+
+A key may name the view it is read and written in, which 64-bit Windows keeps two of. Put `32` or
+`64` after the hive: `HKLM64\SOFTWARE\MyApp` is the copy a 64-bit program reads,
+`HKLM32\SOFTWARE\MyApp` the one a 32-bit program sees, and a bare `HKLM` is whichever this setup is
+subject to. The long names work the same way, as in `HKEY_CURRENT_USER32`. The view is part of the
+recorded key, so an uninstall takes back exactly the copy the script wrote to. The uninstall key and
+the autostart entry are fixed to the native view, because their paths travel to the standalone
+uninstaller as plain strings: `registry.uninstall_key` and `autostart.registry_key` take no view.
+
 When you write into a container key shared with Windows or another product (such as
 `...\CurrentVersion\Run`), the manifest records only that value, and uninstall deletes only that
-value rather than the whole key.
+value rather than the whole key. `reg_delete_key` refuses a target that names a hive root itself, so
+a script cannot ask for `HKCU\Software` and take the machine's software tree with it.
 
 ## Shortcuts
 
@@ -145,6 +173,15 @@ anything is written, because it would write outside the classes tree a user's fi
 | `kill_process(name)` | Ends that process |
 | `run_detached(command)` | Starts in the background |
 | `run_command(command, args)` | Waits for exit, returns the exit code or `-1` |
+| `run_command_output(command, args)` | Waits for exit, returns `#{code, stdout, stderr}` |
+
+Every command runs without a console window of its own, and `args` is an array of strings.
+`run_command` and `run_command_output` wait for the program, and end it with what it has written so
+far when the user stops the task, handing `-1` back to the script; `is_cancelled()` is what tells
+that apart from a program that could not be started at all. What `run_command_output` collects is
+decoded as UTF-8 where those bytes are valid and in the machine's own code page otherwise, so
+`ipconfig` on a Chinese Windows reads as Chinese rather than as replacement characters on both
+streams.
 
 ## Dependencies and downloads
 

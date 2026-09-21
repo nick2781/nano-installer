@@ -198,3 +198,155 @@ pub(super) fn notify_shell() {
         SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, None, None);
     }
 }
+
+/// A command that never shows a console window of its own.
+///
+/// A setup runs in the user's own session, so a program it starts must not flash
+/// a console in front of the wizard on its way to doing the work.
+pub(super) fn hidden_command(program: &str) -> std::process::Command {
+    use std::os::windows::process::CommandExt;
+    use windows::Win32::System::Threading::CREATE_NO_WINDOW;
+
+    let mut command = std::process::Command::new(program);
+    command.creation_flags(CREATE_NO_WINDOW.0);
+    command
+}
+
+/// What a program wrote, and the code it left with.
+pub(super) struct CommandOutput {
+    pub(super) code: i64,
+    pub(super) stdout: String,
+    pub(super) stderr: String,
+}
+
+/// Runs a program to completion and collects what it wrote.
+///
+/// `cancelled` is asked while it runs, because a step that cannot be stopped is
+/// a setup the user cannot stop either: a program that never finishes is ended,
+/// and the run reports `-1` with whatever the program wrote before that.
+pub(super) fn run_captured(
+    program: &str,
+    args: &[String],
+    cancelled: &dyn Fn() -> bool,
+) -> Result<CommandOutput> {
+    let mut child = hidden_command(program)
+        .args(args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .with_context(|| format!("cannot run {program}"))?;
+    // A full pipe stops the program writing into it, so both are drained on
+    // their own thread while this one waits for the program to finish.
+    let mut stdout = child.stdout.take().expect("the pipe was asked for");
+    let mut stderr = child.stderr.take().expect("the pipe was asked for");
+    let out = std::thread::spawn(move || read_to_end(&mut stdout));
+    let err = std::thread::spawn(move || read_to_end(&mut stderr));
+    let code = loop {
+        if cancelled() {
+            let _ = child.kill();
+            let _ = child.wait();
+            break -1;
+        }
+        match child.try_wait()? {
+            Some(status) => break status.code().map(i64::from).unwrap_or(-1),
+            None => std::thread::sleep(std::time::Duration::from_millis(50)),
+        }
+    };
+    Ok(CommandOutput {
+        code,
+        stdout: decode(out.join().unwrap_or_default()),
+        stderr: decode(err.join().unwrap_or_default()),
+    })
+}
+
+/// Reads a pipe to its end; what could not be read is what there is.
+fn read_to_end(pipe: &mut impl std::io::Read) -> Vec<u8> {
+    let mut buffer = Vec::new();
+    let _ = pipe.read_to_end(&mut buffer);
+    buffer
+}
+
+/// Decodes what a program wrote.
+///
+/// A console program writes in the code page the machine runs in rather than in
+/// UTF-8 -- `ipconfig` on a Chinese Windows writes GBK -- so UTF-8 is tried
+/// first, because a program that wrote it says so in its own bytes, and the
+/// machine's ANSI code page is what the text becomes otherwise.
+pub(super) fn decode(bytes: Vec<u8>) -> String {
+    match String::from_utf8(bytes) {
+        Ok(text) => text,
+        Err(error) => {
+            let bytes = error.into_bytes();
+            ansi_text(&bytes).unwrap_or_else(|| String::from_utf8_lossy(&bytes).into_owned())
+        }
+    }
+}
+
+/// Decodes bytes with the code page this process runs in, `None` when Windows
+/// will not decode them at all.
+fn ansi_text(bytes: &[u8]) -> Option<String> {
+    use windows::Win32::Globalization::{
+        MultiByteToWideChar, CP_ACP, MULTI_BYTE_TO_WIDE_CHAR_FLAGS,
+    };
+
+    if bytes.is_empty() {
+        return Some(String::new());
+    }
+    let flags = MULTI_BYTE_TO_WIDE_CHAR_FLAGS(0);
+    let needed = unsafe { MultiByteToWideChar(CP_ACP, flags, bytes, None) };
+    if needed <= 0 {
+        return None;
+    }
+    let mut wide = vec![0u16; needed as usize];
+    let written = unsafe { MultiByteToWideChar(CP_ACP, flags, bytes, Some(&mut wide)) };
+    if written <= 0 {
+        return None;
+    }
+    wide.truncate(written as usize);
+    String::from_utf16(&wide).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{decode, run_captured};
+
+    /// What a program wrote comes back beside the code it left with.
+    #[test]
+    fn runs_a_program_and_collects_what_it_wrote() -> anyhow::Result<()> {
+        let output = run_captured(
+            "cmd.exe",
+            &[
+                "/C".to_string(),
+                "echo out& echo err 1>&2& exit 4".to_string(),
+            ],
+            &|| false,
+        )?;
+        assert_eq!(output.code, 4);
+        assert_eq!(output.stdout.trim(), "out");
+        assert_eq!(output.stderr.trim(), "err");
+        Ok(())
+    }
+
+    /// A program that writes UTF-8 says so in its own bytes, and that reading
+    /// needs no help.
+    #[test]
+    fn reads_utf8_from_a_program_that_wrote_it() {
+        assert_eq!(decode("你好".as_bytes().to_vec()), "你好");
+    }
+
+    /// A console program writes in the code page the machine runs in instead, so
+    /// what those bytes say depends on the machine reading them: the case holds
+    /// the reading where the machine runs in that code page, and holds that
+    /// nothing is thrown away where it does not.
+    #[test]
+    fn reads_a_programs_output_in_its_own_code_page() {
+        // What a Chinese console writes for the same two words.
+        let decoded = decode(vec![0xD6, 0xD0, 0xCE, 0xC4]);
+        if unsafe { windows::Win32::Globalization::GetACP() } == 936 {
+            assert_eq!(decoded, "你好");
+        } else {
+            assert!(!decoded.is_empty(), "the bytes were thrown away");
+        }
+    }
+}

@@ -18,9 +18,7 @@ use serde_json::Value;
 use std::cmp::Ordering;
 use std::path::{Path, PathBuf};
 
-use crate::install::{
-    read_registry_value_text, registry_key_exists, registry_path, Cancellation, Cancelled,
-};
+use crate::install::{parse_registry_key, Cancellation, Cancelled};
 use crate::{net, shell, BundleIndex};
 
 /// Exit codes an installer uses to say it worked.
@@ -63,13 +61,13 @@ fn detect(rule: &Value) -> Result<bool> {
     let key = registry["key"]
         .as_str()
         .context("a dependency's detect rule needs a registry key or a file")?;
-    let (root, path) = registry_path(key)?;
+    let key = parse_registry_key(key)?;
     // A rule that names no value asks about the key itself, which is how a
     // product that registers an installation is detected.
     let Some(name) = registry["name"].as_str() else {
-        return registry_key_exists(root, &path);
+        return key.exists();
     };
-    let Some(actual) = read_registry_value_text(root, &path, name)? else {
+    let Some(actual) = key.read_text(name)? else {
         return Ok(false);
     };
     if let Some(expected) = registry["equals"].as_str() {
@@ -349,8 +347,6 @@ mod tests {
     use super::*;
     use serde_json::json;
     use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
-    use windows::core::PCWSTR;
-    use windows::Win32::System::Registry::RegDeleteTreeW;
 
     /// A name unique to one case in one process, for anything a case creates.
     fn unique_name(label: &str) -> String {
@@ -374,12 +370,10 @@ mod tests {
 
     impl Drop for TestKey {
         fn drop(&mut self) {
-            let Ok((root, path)) = registry_path(&self.0) else {
+            let Ok(key) = parse_registry_key(&self.0) else {
                 return;
             };
-            unsafe {
-                let _ = RegDeleteTreeW(root, PCWSTR(crate::install::wide(&path).as_ptr()));
-            }
+            let _ = key.delete_key();
         }
     }
 
@@ -408,9 +402,9 @@ mod tests {
     fn reads_the_value_the_machine_actually_stores() -> Result<()> {
         let key = unique_key();
         let _guard = TestKey(key.clone());
-        let (root, path) = registry_path(&key)?;
-        crate::install::write_registry_dword(root, &path, "Installed", 1)?;
-        crate::install::write_registry_string(root, &path, "pv", "120.0.2210.91")?;
+        let target = parse_registry_key(&key)?;
+        target.write_dword("Installed", 1)?;
+        target.write_string("pv", "120.0.2210.91")?;
 
         // A `REG_DWORD` of 1 and a version written as text: the two types a
         // detection rule has to read, compared as the rule asks.

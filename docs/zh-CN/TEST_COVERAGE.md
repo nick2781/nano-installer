@@ -3,7 +3,7 @@
 文档承诺的每一条行为，以及守住它的那条自动化用例。表格里的每一行都列出了该行为失效时会失败的
 用例；没有出现在任何一行里的行为，就是没人看住的行为。
 
-`cargo test --locked --workspace` 会跑 274 条用例：核心库 199 条，真构建并运行安装包的 39 条，
+`cargo test --locked --workspace` 会跑 282 条用例：核心库 205 条，真构建并运行安装包的 41 条，
 按构建器的方式读工程的 5 条，可视化构建器 29 条，解压运行时 2 条。安装包级用例需要真实的运行时
 可执行文件，`.\scripts\run_e2e_setup.ps1` 会先把它们构建出来再跑，并把整次运行写进
 `target/e2e-report.txt`。
@@ -12,8 +12,9 @@
 
 | 层 | 用例数 | 能证明 | 不能证明 |
 | --- | --- | --- | --- |
-| 核心库 | 199 | 一页会变成什么——图层、坐标、命中区域、文字；捆绑数据里装了什么；安装往磁盘和注册表写了什么；每个脚本原语做什么；脚本从页面上取回什么、脚本读到的组件选择；工程声明的依赖怎么被查出来、下载下来、校验并装上，以及哪些情形会被拒绝 | 打包出来的安装包能走到这些代码 |
-| 安装包级 | 39 | 构建好的安装包在这台机器上装了一遍，它的窗口也是真的被驱动起来的：payload 字节、manifest、卸载项、快捷方式、自启动、项目脚本、脚本要跑的辅助程序、向导窗口、它自己页面上那些要等点击的行为、在列表上滚动滚轮、脚本的提示与提问所画的那张由点击作答的卡片、页面上的取值交到脚本手里、勾选决定这次装哪些组件，工程声明的依赖真的被问了一遍——缺的装上、已经有的不再装一遍、装不上的让整次安装停下、下载来的程序对不上哈希就一次都不跑——以及只有指针与键盘真的动起来才会发生的事——悬停与按下换上的状态位图、三种标准光标形状、语言菜单的上下键与 Enter/Escape、选目录对话框 | 输入法自己画出来的那两个窗口；在外壳的选目录对话框里选定一个目录之后会写进哪个输入框；以及不显示指针的会话上光标长什么样——那里这条用例打印自己的跳过理由 |
+| 核心库 | 205 | 一页会变成什么——图层、坐标、命中区域、文字；捆绑数据里装了什么；安装往磁盘和注册表写了什么；每个脚本原语做什么；脚本从页面上取回什么、脚本读到的组件选择；工程声明的依赖怎么被查出来、下载下来、校验并装上，以及哪些情形会被拒绝 | 打包出来的安装包能走到这些代码 |
+| 安装包级 | 41 | 构建好的安装包在这台机器上装了一遍，它的窗口也是真的被驱动起来的：payload 字节、manifest、卸载项、快捷方式、自启动、项目脚本、脚本要跑的辅助程序、向导窗口、它自己页面上那些要等点击的行为、在列表上滚动滚轮、脚本的提示与提问所画的那张由点击作答的卡片、页面上的取值交到脚本手里、勾选决定这次装哪些组件、脚本按类型写下的每个注册表值以及视图名选中的是哪一份拷贝、
+  脚本跑过的命令留下的退出码与两个输出流，工程声明的依赖真的被问了一遍——缺的装上、已经有的不再装一遍、装不上的让整次安装停下、下载来的程序对不上哈希就一次都不跑——以及只有指针与键盘真的动起来才会发生的事——悬停与按下换上的状态位图、三种标准光标形状、语言菜单的上下键与 Enter/Escape、选目录对话框 | 输入法自己画出来的那两个窗口；在外壳的选目录对话框里选定一个目录之后会写进哪个输入框；以及不显示指针的会话上光标长什么样——那里这条用例打印自己的跳过理由 |
 | 工程检查 | 5 | 构建之前窗口会显示的那份摘要与告警列表 | |
 | 可视化构建器 | 29 | 窗口自己的状态、参数、日志与告警 | 真的去点界面上的控件 |
 | 解压运行时 | 2 | 坏归档、以及归档里不安全的路径会被拒绝 | 解压一个完好的归档——安装包级用例会用真实运行时解真实 payload |
@@ -109,7 +110,7 @@
 | 脚本失败会撤销自己写过的东西，并报告日志 | `a_failing_install_script_removes_what_it_wrote`、`a_script_failure_reports_the_messages_it_logged`、`every_log_level_reaches_the_failure_the_wizard_shows` |
 | `run_tracked_uninstall`，以及脚本跳过它时的库回退 | `an_uninstall_script_replays_the_manifest_it_asks_for`、`an_uninstall_script_that_skips_the_manifest_still_removes_the_product`、`replaying_the_manifest_is_refused_while_installing` |
 | 文件与路径原语 | `file_primitives_create_copy_list_and_remove_files`、`path_primitives_join_split_and_name_paths` |
-| 注册表原语，包括共享键那条规则 | `registry_primitives_round_trip_and_forget_a_key_they_created`、`uninstalling_a_shared_key_removes_only_the_value_the_script_wrote` |
+| 注册表原语：机器存的每种类型、键名指名的视图，以及共享键那条规则 | `registry_primitives_round_trip_and_forget_a_key_they_created`、`registry_primitives_write_and_read_every_type_a_project_stores`、`a_registry_key_names_the_view_it_is_read_in`、`uninstalling_a_shared_key_removes_only_the_value_the_script_wrote`、`a_setup_stores_every_registry_type_its_script_names` |
 | 快捷方式原语 | `an_install_script_creates_shortcuts_the_uninstall_takes_back`、`a_script_deletes_the_desktop_shortcut_and_the_start_menu_folder_it_created` |
 | 进度、状态、模式、复选框与取消 | `out_of_range_progress_and_both_status_forms_do_not_disturb_the_install`、`an_uninstall_script_sees_the_uninstall_mode_and_the_keep_data_checkbox`、`a_script_step_text_wins_over_the_locale_key`、`a_built_in_step_clears_a_script_step_text`、`a_running_script_sees_the_cancel_request`、`a_cancelled_install_gives_up_after_the_script_and_undoes_what_it_wrote` |
 | 脚本读到的组件选择：`is_component_selected` 与 `selected_components` 给出这次运行装的组件 | `a_script_sees_the_components_the_run_installs` |
@@ -117,7 +118,7 @@
 | 环境变量、配置、磁盘与当前映像 | `the_script_reads_the_environment_and_the_project_configuration`、`the_script_reports_the_image_it_runs_from`、`the_script_queries_fixed_disks_and_notifies_the_shell` |
 | 工程打包进来的工具 | `a_script_reads_the_tools_the_project_bundled`、`a_script_that_asks_for_tools_a_project_did_not_bundle_gets_nothing`、`a_setup_unpacks_the_tools_its_project_bundles` |
 | 依赖与下载：脚本问机器装没装工程声明的依赖、可以让它装上，也可以自己按地址取回一个文件、校验它并报出它的哈希 | `a_script_asks_the_machine_about_the_dependencies_the_project_declares`、`a_script_downloads_a_file_and_checks_what_arrived` |
-| 进程 | `a_script_runs_a_command_and_sees_its_exit_code`、`a_script_recognises_a_running_process_by_its_image_name` |
+| 进程：一个进程在不在跑、脚本跑的命令留下什么退出码，以及那条命令写下的内容 | `a_script_runs_a_command_and_sees_its_exit_code`、`a_script_recognises_a_running_process_by_its_image_name`、`a_script_reads_what_the_command_it_ran_wrote`、`runs_a_program_and_collects_what_it_wrote`、`reads_utf8_from_a_program_that_wrote_it`、`reads_a_programs_output_in_its_own_code_page`、`a_setup_reads_what_a_command_its_script_ran_wrote` |
 | 保留还是删除用户数据 | `uninstalling_below_appdata_removes_the_data_only_when_the_box_is_cleared` |
 | `scripts` 目录进入构建好的安装包 | `a_setup_runs_the_projects_own_install_and_uninstall_scripts` |
 | 脚本发出的提示、报错与提问画在向导里、由点击作答 | `a_question_a_script_asks_is_drawn_with_both_of_its_answers`、`a_script_dialog_is_drawn_in_the_wizard` |

@@ -68,6 +68,7 @@ Rust doc comment，再退回用例名。
 | `a_question_a_script_asks_is_drawn_with_both_of_its_answers` | 脚本提出的问题带着两个答案一起画出来：卡片上同时有确认和取消两个按钮各自的位置，问题正文和 `yes`/`no` 两个标签都用传给脚本调用的那几个词。`ask_yes_no` 要等一个答案，只有一个按钮的卡片会让脚本永远拿不到另一种回答。 |
 | `a_radio_group_holds_one_value_at_a_time` | 单选按钮按组记值：版面用 `checked="true"` 标出起始选中的一行，点任意一行就为整组记下那一行的值，选中图和旁边按钮的可用状态跟着换，一组任何时刻只有一行是选中的。 |
 | `a_readonly_field_shows_its_value_without_taking_edits` | `readonly="true"` 的输入框仍然把值画出来，但不接受键入，也不会被记成可编辑字段；`readonly="false"` 则照常可编辑。 |
+| `a_registry_key_names_the_view_it_is_read_in` | 键名能指名 64 位 Windows 里的哪一份拷贝：`HKLM64\SOFTWARE\Microsoft` 换成 `HKLM32` 时视图跟着换，不写后缀就用当前进程所属的那份，`HKLM65` 这种既不是根键也不是视图的名字会被拒绝——要交给独立进程卸载程序的注册表路径正因此不接受视图后缀。本机若装着只在 32 位视图里登记的软件（用例按候选名单一个个去试），它的键就只在那份拷贝里读得到、另一份里读不到；没有这种软件的机器只有一份拷贝，没什么可分。写进带视图后缀那个键的值，用同一个名字读得回来，也删得掉。 |
 | `a_run_without_any_install_path_is_refused` | 命令行和配置都没有给出目录可供退而求其次，这次运行会停下，并在提示里点明提供安装路径的两条途径。 |
 | `a_running_build_refuses_a_second_one` | 正在跑的构建会拒绝第二个打包任务。有任务在跑时按钮是禁用的，这条用例就是按钮背后那道检查：同时开两个会把同一个输出文件写坏。 |
 | `a_running_script_sees_the_cancel_request` | 任务运行中脚本里的 `is_cancelled()` 会变成 `true`：用例像窗口那样从另一个线程在 50 毫秒后提出取消，脚本的等待循环随即退出，并报出自己等了多久。 |
@@ -78,6 +79,7 @@ Rust doc comment，再退回用例名。
 | `a_script_failure_reports_the_messages_it_logged` | 脚本失败时，它之前用 `log_warn` 之类写下的日志跟着错误一起报出来，作者能看到最后那几行。 |
 | `a_script_reads_the_tools_the_project_bundled` | `get_tools_dir()` 把打包进来的工具摊到磁盘上并返回目录路径，嵌套文件按原相对路径读得到、内容一致；再问一次返回同一个目录，不会重复摊一遍。 |
 | `a_script_reads_the_values_the_page_holds` | 脚本读得到页面上的取值：文本框里的字和单选组选中的那一行各按自己的 id 取回，页面从没声明过的 id 读成空串而不是报错。两条规则合在一份由脚本写出的报告里比对，所以取回的确实是用户留在页面上的那几个。 |
+| `a_script_reads_what_the_command_it_ran_wrote` | `run_command_output` 除了退出码还交回程序写下的两个流：`cmd` 写的 `out` 落在标准输出、发给错误流的 `err` 落在标准错误，连行尾和 `err` 后面那个空格都逐字节保留，脚本因此读得出工具报的版本号，也说得清失败是哪一种。启动不起来的命令交回 `-1`，标准输出为空而标准错误里放着原因——这是它与「跑了但失败」唯一的区别。 |
 | `a_script_recognises_a_running_process_by_its_image_name` | `is_process_running` 按映像名判断进程：正在跑的那个测试可执行文件返回 true，编出来的不存在名字返回 false。这条检查就是安装时不肯覆盖正在运行的产品的原因。 |
 | `a_script_registers_a_file_type_where_windows_reads_it` | 脚本登记的文件类型落在 Windows 真正读取的四个位置：扩展名指向程序 id，程序 id 上挂着资源管理器显示的类型名、图标，以及带 `"%1"` 的文件命令行。安装把它们全部记入 manifest，卸载时这个文件类型连同程序 id 一起从注册表里消失。 |
 | `a_script_runs_a_command_and_sees_its_exit_code` | `run_command` 返回命令的退出码，用 `ComSpec` 跑 `exit 3` 和 `exit 0` 分别拿到 3 和 0；起不来的命令返回 -1，脚本因此分得清跑了但失败和根本没跑。 |
@@ -89,6 +91,8 @@ Rust doc comment，再退回用例名。
 | `a_select_offers_the_options_the_page_declares` | 下拉框是页面提供的一种选择，不只是语言控件：关闭时显示当前选项的文字（没人点过时是第一个），点击它要的是自己的菜单而不是语言列表，展开的选项按版面顺序排列、各用各的文字，隐藏的选项不出现；被选中的值决定旁边按钮是否可点。 |
 | `a_selection_band_covers_the_characters_it_selects` | 选中区域画出一条色带盖住选中的字符：没选中的范围什么都不画，色带始终停在输入框内，纵向也留出与文字高度匹配的位置。 |
 | `a_selection_is_ordered_from_whichever_end_the_caret_is_at` | 选区按两端排好序，从哪头拖都得到同一段区间；光标和锚点重合不算选区，清空后也没有选区。 |
+| `a_setup_reads_what_a_command_its_script_ran_wrote` | 这条路径在打包之后仍然成立：脚本写进安装包的 `run_command_output` 调用真的跑起来，读回的退出码与两个输出流逐字节落进报告文件再比对，工程脚本、捆绑数据与运行时之间没有哪一环把输出吃掉。 |
+| `a_setup_stores_every_registry_type_its_script_names` | 安装包写下的每个注册表值都由机器自己认：`reg query` 读回来的类型是 `REG_SZ`、`REG_EXPAND_SZ`（引用按原样存着）、`REG_MULTI_SZ`、`REG_DWORD`、`REG_QWORD` 与 `REG_BINARY` 各一份，可展开的那条按 `%TEMP%` 展开后与这台机器的临时目录一致，带视图后缀的键名建得出、读得到、删得掉，卸载再按 manifest 把这六个值全部收回。脚本会写类型是一回事，用户机器上那个安装包真写下这些类型是另一回事。 |
 | `a_setup_runs_the_projects_own_install_and_uninstall_scripts` | 自带步骤的工程会把这些步骤带进安装包，由真实运行时执行；进程内的脚本用例直接驱动脚本驱动层，而它和工程目录之间还隔着把 `scripts/` 打进捆绑数据、再由 stub 找回来这两件事。少了其中任何一件的安装包，仍然能让那批进程内用例全部通过。 |
 | `a_setup_with_a_signature_appended_still_installs` | 被集成方签过名的安装包还是安装包：签名属于发布流水线而不是构建器，Authenticode 会把证书表追加在构建写下的所有内容之后，页脚也在内。只看自己文件最后几个字节的运行时会把这种包认成没有捆绑数据而拒绝安装，所以签过名的安装包必须扛得住。 |
 | `a_setup_unpacks_the_tools_its_project_bundles` | 工程用 `resources.tools_dir` 打包的辅助程序确实进了安装包：安装时脚本从 `get_tools_dir()` 拿到的目录里，那个批处理文件逐字节和工程里的一致（安装包跑起来的时候，工程目录已经不在旁边了），而且能被 `run_command` 真的跑起来，返回它自己声明的退出码 7。 |
@@ -203,7 +207,9 @@ Rust doc comment，再退回用例名。
 | `project_file_version_overrides_release_version_for_pe` | PE 资源的文件版本取自 `project.file_version`，发布版本号里带的后缀不进版本资源。 |
 | `project_pack_progress_describes_assets_payload_and_uninstaller` | 打包过程按进度报出它做了什么：收集素材的数量、没有中间皮肤包、加入 payload、嵌入卸载运行时，卸载运行时也确实进了捆绑数据。 |
 | `reads_a_file_rule_with_the_variables_the_machine_sets` | 文件规则按机器上的真实路径判断：规则里写的是 `%TEMP%`，判断前先展开成这台机器的临时目录，文件在就算有，文件删掉就算没有。 |
+| `reads_a_programs_output_in_its_own_code_page` | 控制台程序按本机代码页写字节，不是 UTF-8：同一段「你好」的字节在 936 代码页的机器上要读成中文，别的代码页上也不许把它们丢掉——丢掉的字符比读错的更难发现。 |
 | `reads_the_value_the_machine_actually_stores` | 机器怎么写就怎么读：VC++ 运行库那种 DWORD 的 `1`、WebView2 那种文本版本号都能按规则比相等与比大小；只写 `key` 的规则问的是键在不在；键不存在与值不存在给出同一个答案。 |
+| `reads_utf8_from_a_program_that_wrote_it` | 程序写的是合法 UTF-8 时按 UTF-8 解，不经过代码页那一层：字节本身就是它要说的文字。 |
 | `refresh_keeps_a_custom_output_path_for_the_same_project` | 刷新会保留为这个工程选好的输出路径：这个输入框可以指向任何地方，刷新时把它重置，下一次安装包就会在没人打招呼的情况下被放回工程目录树里。 |
 | `refresh_replaces_a_custom_output_path_when_the_project_changes` | 自定义输出路径属于当初为它选定的那个工程。换了工程，这条路径就没意义了，留着它会把新工程的安装包写进新工程从没配置过的文件夹。 |
 | `refuses_a_component_without_an_id_or_a_payload` | 组件必须有 `id` 和 `payload`：缺 `id` 时页面上的复选框无从对应，缺 `payload` 时没有东西可装，两者都在构建期报出来，报错说的是第几个条目、该补什么。 |
@@ -228,6 +234,7 @@ Rust doc comment，再退回用例名。
 | `refuses_two_pages_claiming_one_role` | 两个页面都声明同一个职责会被拒绝，并点出是第几页，免得任务报到哪一页变得看运气。 |
 | `registers_and_cleans_up_scoped_uninstall_key` | 注册卸载项会把键写进去，重复注册同一个键失败，带清理标志再注册一次后键被删掉。 |
 | `registry_path_normalizes_legacy_escaped_separators` | 旧的、带双反斜杠的注册表路径被归一化成单反斜杠，不支持的根键名报错。 |
+| `registry_primitives_write_and_read_every_type_a_project_stores` | 每种类型都写得进、读得回：可展开字符串、多字符串、DWORD、QWORD 与二进制各按自己声明的类型落盘，`reg_read_type` 说出机器实际存的类型、缺失时给空串，`reg_value_exists` 分得清值在不在；用错类型的读法（对文本读 dword、对 dword 读文本）返回空值而不是硬转一次；列表里的空串被丢掉，免得写下去的列表读回来比写的时候短；不是 0–255 的数整个拒绝，不留半个值；`HKCR` 这种没有视图可言的根键返回 false 而不是猜一个。 |
 | `registry_primitives_round_trip_and_forget_a_key_they_created` | 注册表原语逐个核对：写字符串和 dword 后读得回来，读不存在的值得到空，删单个值不影响同键的其它值，删子键后它不在而父键还在；manifest 里也只留下脚本仍然拥有的那个键和它的两个值。 |
 | `rejects_ico_image_outside_file` | ico 里记录的图像数据超出文件范围时报错，错误说明它落在文件之外。 |
 | `rejects_unsafe_7z_paths` | 解压时拒绝带 `..` 的相对路径和带盘符的绝对路径，只允许归档内的相对路径。 |
@@ -238,6 +245,7 @@ Rust doc comment，再退回用例名。
 | `reports_every_problem_at_once` | 一次报出配置里所有的问题，而不是只报第一条，省得改一处跑一趟。 |
 | `reset_output_restores_the_dist_path_named_by_the_project` | 重置输出把工程自己的输出路径放回输入框，恢复的就是摘要里那条 `dist/<output.installer_name>`。这条路径一旦漂掉，就会掩盖一次把下次构建指错文件的重置。 |
 | `resolves_and_queries_windows_disk_root` | 从安装路径取出盘符根目录，再问 Windows 该卷还剩多少空间，得到的字节数是正数。 |
+| `runs_a_program_and_collects_what_it_wrote` | 跑一个程序，把它的退出码和写下的两个流一起交回：命令经 `cmd /C` 同时写标准输出与标准错误、再以 4 退出，读到的退出码是 4，两个流各带自己那句话。 |
 | `retry_repeats_a_failed_build_with_the_parameters_it_stored` | 重试用失败那次存下的参数重跑构建：重试的意义就在于变的只是磁盘上的一个文件，所以用例在失败后改掉屏幕上的字段，要求工作线程收到的是存下的那份请求，而不是表单上的。 |
 | `runtime_modes_select_distinct_layout_lists` | 安装和卸载两种模式各自取自己那份版面列表的第一页，互不混用。 |
 | `sidebar_paths_keep_drive_and_relevant_tail` | 侧栏里的长路径压缩成盘符加末尾几段，路径本身很短时原样显示。 |
