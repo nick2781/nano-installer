@@ -208,6 +208,12 @@ files and registry entries, so validate them in a disposable virtual machine onl
   and sends the user for a fresh copy of the setup instead of installing bytes nobody vouched for. A
   payload streamed out of the setup is hashed as it goes past, and a copy that fails the check is
   removed, so the step that would have unpacked it has nothing to run against.
+- A large payload costs no memory. A setup is made by appending the payload to itself in 1 MiB blocks, and
+  each block goes both into the file and into the SHA-256 the bundle records for it, so the peak working
+  set does not follow the payload: measured here, a payload from 8 MiB to 1024 MiB took from 1.5 s to
+  4.7 s to build while the peak working set stayed at 2.5 MiB in all four sizes.
+  `scripts/measure_build.ps1` reproduces those numbers; see [Build and
+  release](BUILD_AND_RELEASE.md#build-time-and-memory).
 - The builder refuses a configuration key it does not read. A setting that once parsed and then
   changed nothing cannot ship as if it were doing its job; the message names the key and the
   setting that takes its place.

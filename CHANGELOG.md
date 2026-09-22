@@ -384,6 +384,15 @@
   直接调用会立刻返回，`& $setup --silent` 因此在安装还在进行时就断言「什么都没装」。套件里的用例走的是
   `Command::status`，它等进程结束，探针改成 `Start-Process -Wait` 之后与用例的答案一致。
 
+- 构建成本现在自己量得出来：`scripts/measure_build.ps1 -PayloadMiB 8,128,512,1024` 造出 payload 为指定
+  大小的工程（ZIP 里一个 stored 条目，零字节文件由 `fsutil file createnew` 造，所以造多大都不费时间），
+  逐档构建并记下耗时与峰值工作集——工作集每 20 ms 采样一次，因为 `PeakWorkingSet64` 在进程结束后读不到
+  ——写完 `target/build-cost.txt` 再把中间文件与每档的安装包删掉。归档没长到该有的大小就报错退出，所以
+  这个脚本不会自己悄悄写一个越来越大的文件。本机实测：payload 从 8 MiB 到 1024 MiB，安装包 11.9 MiB
+  到 1028.1 MiB，耗时 1.5 s 到 4.7 s，四档的峰值工作集都是 2.5 MiB。内存不跟着 payload 走，正是分块
+  复制（1 MiB 一块，同一块边写进安装包边喂给捆绑数据记下的 SHA-256）换来的；这一节写在
+  `docs/{zh-CN,en}/BUILD_AND_RELEASE.md` 的「构建时间与内存 / Build time and memory」。
+
 ### 已验证
 
 - `cargo test --locked --workspace`：共 316 条用例，315 通过、0 失败、1 忽略，退出码 0（核心库 231、

@@ -99,6 +99,32 @@ nano-installer-native-x64.exe build --project <dir> [--output <exe>] [--stubs <d
 - `--delta-from` 点名上一版的 payload 归档，构建的是更新包而不是完整安装包，见下一节。
 - `NANO_INSTALLER_NATIVE_STUB_DIR` 可以覆盖运行时搜索目录。
 
+## 构建时间与内存
+
+安装包是把 payload 追加到自己后面做出来的：构建器按 1 MiB 分块读它，同一块一边写进安装包，一边喂给
+捆绑数据里记下的那个 SHA-256。所以构建占用的内存不随 payload 增长，耗时大致随 payload 的字节数增长。
+本机（Windows 11，x86_64，构建器与运行时都是 `cargo build --release` 的产物）实测：
+
+| payload | 安装包 | 构建耗时 | 峰值工作集 |
+| --- | --- | --- | --- |
+| 8 MiB | 11.9 MiB | 1.5 s | 2.5 MiB |
+| 128 MiB | 131.9 MiB | 2.0 s | 2.5 MiB |
+| 512 MiB | 516 MiB | 3.1 s | 2.5 MiB |
+| 1024 MiB | 1028.1 MiB | 4.7 s | 2.5 MiB |
+
+安装包比 payload 大出来的那 4 MiB 左右，是三个运行时、工程自己的界面资源与内嵌卸载程序。工作集每
+20 ms 采样一次，上表取整次构建里最高的那次。
+
+```powershell
+# 先构建发布版构建器，再量一次
+cargo build --release -p nano-installer-native-cli
+.\scripts\measure_build.ps1 -PayloadMiB 8,128,512,1024
+```
+
+脚本自己造一个 payload（ZIP 里一个 stored 条目，不压缩）、能构建成功的工程，逐档构建并记下耗时与峰值
+工作集，写完 `target/build-cost.txt` 后把中间文件删掉。具体数值随机器、磁盘与 payload 的可压缩程度
+变化，这里要钉住的是「内存不跟着 payload 走」——那是分块复制换来的。
+
 ## 更新包
 
 ```text
