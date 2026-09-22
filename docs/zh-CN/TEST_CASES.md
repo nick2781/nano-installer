@@ -25,6 +25,7 @@ Rust doc comment，再退回用例名。
 | `a_closed_language_select_draws_its_arrow_over_its_fill_and_outline` | 收起的 `Select` 由底色、描边和箭头三层组成，箭头从远端边向内缩一段并垂直居中，跟着显示缩放一起变大；收起时画向下的那张，展开时画向上的那张。 |
 | `a_configured_percent_path_is_expanded_and_used` | 配置里带 `%LOCALAPPDATA%` 的路径必须先展开再用，没展开的路径不是绝对路径，安装会拒绝相对目录。这条用例完全不带 `--dir` 运行，等同于静默运行里没有指定目录的情况。 |
 | `a_container_measures_the_edge_its_children_are_asked_for` | 问 `HBox` 要竖直方向的尺寸时，报的是最高的那个子项加上自己的上下内边距；问水平方向时报子项沿宽度要的总和。内嵌的百分比宽度容器透过它自己的子项来量，不会把外层的行撑大或压塌。 |
+| `a_default_log_is_named_after_the_image_the_moment_and_the_task` | 没有点名日志文件时，运行把日志写进临时目录下的 `nano-installer` 目录，文件名带上安装程序自己的名字、这一刻的时间和这次在做的事（安装还是卸载）。同一份安装包在两台机器、两个时刻各跑一次，支持人员靠这个文件名分得开，两次也不会互相覆盖。 |
 | `a_dependency_that_cannot_be_installed_stops_the_install` | 装不上的必需依赖会中止安装，而且在产品落盘之前就中止：报错点出依赖名和安装程序返回的退出码（用例那条命令返回 7），目的目录事后根本不存在。机器给不了产品需要的东西时，用户看到的是这句话，而不是一个起不来的产品。 |
 | `a_dependency_the_machine_already_has_is_not_installed_again` | 机器上已经有产品要的东西时不再装一遍：规则认得出它，安装程序就一次都不跑。用例把安装程序的参数写成一个它必然报错的命令，又把这条依赖标成必需，所以真去装了的话安装会当场失败，而不是悄悄放过去。 |
 | `a_dialog_button_answers_with_its_own_action` | 对话框里的按钮按自己声明的动作登记点击区域，确认键给出 `DialogOk`，取消键给出 `DialogCancel`。 |
@@ -37,6 +38,8 @@ Rust doc comment，再退回用例名。
 | `a_downloaded_dependency_is_checked_before_it_runs` | 带不进安装包的依赖在安装时现取：本机回环上开一个服务端，取回来的是真的可执行文件，哈希对得上才放行，然后才跑它、才留下它该留下东西。校验用的是 Windows 自带的 certutil 算出来的摘要，不是运行时自己算给自己看的那份。 |
 | `a_failed_upgrade_restores_the_previous_version` | 升级中途失败（这里让注册表登记报错）会回滚到上个版本：旧文件和旧 manifest 都还原，新 payload 的文件不在，manifest 里也只有旧文件。 |
 | `a_failing_install_script_removes_what_it_wrote` | 安装脚本抛错时，它写过的东西被清掉，错误里带着脚本抛出的那句消息，安装目录也不留残余。 |
+| `a_failing_run_leaves_its_log_behind_and_names_it` | 失败的运行把日志留给用户，并把它的完整路径写进标准错误：脚本抛错时日志里有产品名、失败前脚本自己写下的那行、以及带着原始消息的错误本身，而产品一个文件都没留下——失败的安装会撤掉自己创建的东西，日志不在那个目录里，所以撤掉之后它还在。 |
+| `a_failure_notice_points_at_the_log_of_the_run` | 向导报失败时，除了错误本身还点名这次运行写下的日志文件——用户能交给别人的就是这一行。没有日志可点的时候（比如窗口都还没建立）提示里不提日志，安装成功时也不提。 |
 | `a_field_checks_the_value_the_project_asks_it_to` | 输入框自己的规矩就写在版面上：`required` 管值有没有，`min-length` 与 `max-length` 按字符数算（中文按字算，不按字节），`pattern` 是掩码而不是正则——`*` 是任意长的一段（可以为空），`?` 恰好一个字符，整段值都要对得上，所以安装目录写 `?:*` 就是要一个盘符开头的路径。没写规矩的字段一律合格，可留空的字段空着也合格；值最先破坏的那条规矩留下自己那句文案，没写文案的规矩只让字段不合格、什么也不说。 |
 | `a_field_the_user_fills_in_is_what_lets_the_install_start` | 在真窗口里从头走一遍要填字段的流程：字段空着时点安装键没有反应，只勾同意也不行，往字段里逐字符敲进一个路径之后安装才开始，产品落在敲进去的那个目录里。字段、按钮条件和安装动作三件事里任何一环没接上，它都会停在原地。 |
 | `a_file_type_that_would_write_outside_the_classes_tree_is_refused` | 文件类型的两个名字先查再用：扩展名或程序 id 里带路径分隔符、或其中任何一个为空，调用直接返回 `false`；命令行空着的调用同样被拒绝，因为那样的文件类型打不开任何东西。五种被拒的调用一个字节都没写进注册表，manifest 里也没有记录。 |
@@ -69,6 +72,7 @@ Rust doc comment，再退回用例名。
 | `a_radio_group_holds_one_value_at_a_time` | 单选按钮按组记值：版面用 `checked="true"` 标出起始选中的一行，点任意一行就为整组记下那一行的值，选中图和旁边按钮的可用状态跟着换，一组任何时刻只有一行是选中的。 |
 | `a_readonly_field_shows_its_value_without_taking_edits` | `readonly="true"` 的输入框仍然把值画出来，但不接受键入，也不会被记成可编辑字段；`readonly="false"` 则照常可编辑。 |
 | `a_registry_key_names_the_view_it_is_read_in` | 键名能指名 64 位 Windows 里的哪一份拷贝：`HKLM64\SOFTWARE\Microsoft` 换成 `HKLM32` 时视图跟着换，不写后缀就用当前进程所属的那份，`HKLM65` 这种既不是根键也不是视图的名字会被拒绝——要交给独立进程卸载程序的注册表路径正因此不接受视图后缀。本机若装着只在 32 位视图里登记的软件（用例按候选名单一个个去试），它的键就只在那份拷贝里读得到、另一份里读不到；没有这种软件的机器只有一份拷贝，没什么可分。写进带视图后缀那个键的值，用同一个名字读得回来，也删得掉。 |
+| `a_run_that_fails_leaves_a_log_that_names_it_and_what_happened` | 一次失败的运行会在磁盘上留下日志，而这份日志本身就是交给支持人员的东西：开头写着这台机器是什么（是否提权、Windows 版本、位数、界面语言），接着是这次跑的是哪个产品、哪个版本、装到哪儿，中间是运行过程，结尾跟着带着原始措辞的错误；函数同时把「日志在哪」那一行交回给调用方。运行只报一次结局，再调用也不写第二遍。 |
 | `a_run_without_any_install_path_is_refused` | 命令行和配置都没有给出目录可供退而求其次，这次运行会停下，并在提示里点明提供安装路径的两条途径。 |
 | `a_running_build_refuses_a_second_one` | 正在跑的构建会拒绝第二个打包任务。有任务在跑时按钮是禁用的，这条用例就是按钮背后那道检查：同时开两个会把同一个输出文件写坏。 |
 | `a_running_script_sees_the_cancel_request` | 任务运行中脚本里的 `is_cancelled()` 会变成 `true`：用例像窗口那样从另一个线程在 50 毫秒后提出取消，脚本的等待循环随即退出，并报出自己等了多久。 |
@@ -102,6 +106,7 @@ Rust doc comment，再退回用例名。
 | `a_setup_runs_the_projects_own_install_and_uninstall_scripts` | 自带步骤的工程会把这些步骤带进安装包，由真实运行时执行；进程内的脚本用例直接驱动脚本驱动层，而它和工程目录之间还隔着把 `scripts/` 打进捆绑数据、再由 stub 找回来这两件事。少了其中任何一件的安装包，仍然能让那批进程内用例全部通过。 |
 | `a_setup_with_a_signature_appended_still_installs` | 被集成方签过名的安装包还是安装包：签名属于发布流水线而不是构建器，Authenticode 会把证书表追加在构建写下的所有内容之后，页脚也在内。只看自己文件最后几个字节的运行时会把这种包认成没有捆绑数据而拒绝安装，所以签过名的安装包必须扛得住。 |
 | `a_setup_unpacks_the_tools_its_project_bundles` | 工程用 `resources.tools_dir` 打包的辅助程序确实进了安装包：安装时脚本从 `get_tools_dir()` 拿到的目录里，那个批处理文件逐字节和工程里的一致（安装包跑起来的时候，工程目录已经不在旁边了），而且能被 `run_command` 真的跑起来，返回它自己声明的退出码 7。 |
+| `a_setup_writes_the_log_of_its_run_where_a_windowless_run_asks_for_it` | 无窗口运行把整次运行写进 `--log` 指定的文件：产品名与版本、装到哪个目录、这台机器是什么（是否提权、Windows 版本、位数、语言），加上脚本自己写下的每一行——脚本连写四十行，四十行都在，而向导内存里留下的只有最后三十二行。卸载用同一个开关，日志里写明这次是卸载，以及产品从哪个目录被删掉。 |
 | `a_shrinking_row_stops_at_the_minimum_its_items_declare` | `flex-shrink` 让一行容得下文字旁边的固定按钮，`min-width` 保住控件还能读：行宁可溢出，也不会把某个项压到版面声明的下限以下。`flex-shrink="0"` 的按钮保持设计宽度，溢出全由可以收缩的那个项承担。 |
 | `a_silent_install_writes_the_shortcuts_and_the_autostart_entry` | 无窗口安装没有复选框可读，只能照工程里的默认值处理快捷方式和自启动，它写下的 manifest 则列出安装目录之外创建的每个文件和注册表值。这些条目是用户还没启动产品就先碰到的东西，也是安装唯一写到自身目录之外的内容；跳过它们的安装包照样装得成功，只是会留下一个再也没人回收的开始菜单项。 |
 | `a_silent_run_installs_the_components_the_project_defaults_to` | 没有页面的安装只能照工程自己的答案办：写了 `required` 的装上，`default` 为真的装上，两者都不是的不装。每个组件只带一个文件，装出来的东西在盘上直接读得到。 |
@@ -256,7 +261,7 @@ Rust doc comment，再退回用例名。
 | `runtime_modes_select_distinct_layout_lists` | 安装和卸载两种模式各自取自己那份版面列表的第一页，互不混用。 |
 | `sidebar_paths_keep_drive_and_relevant_tail` | 侧栏里的长路径压缩成盘符加末尾几段，路径本身很短时原样显示。 |
 | `service_primitives_ask_the_machine_and_install_where_the_run_may` | 脚本层的这组服务原语：装之前先问机器（事件日志为真、编出来的名字为假），装一个自己的服务后 manifest 记下它，按 manifest 卸载时它被删掉；没有权限时安装返回 `false`、机器上不留服务，manifest 里也没有这一项。启动方式写成看不懂的词返回 `false`；删一个不存在的服务返回 `true`，第二次卸载就是这个样子。 |
-| `silent_arguments_read_the_directory_and_reject_anything_else` | 静默参数只认 `--dir`：没有参数时没有目录覆盖，`--dir` 后面带上路径就用它；写错的选项和后面缺路径的 `--dir` 都让运行停下。 |
+| `silent_arguments_read_the_directory_and_reject_anything_else` | 静默参数只认 `--dir` 与 `--log`：不给参数时没有目录覆盖、日志走默认位置；`--dir` 后面带上路径就用它，`--log` 后面带上文件就写到那儿，两个可以一起给、顺序不限，只给 `--dir` 时日志仍旧走默认位置；写错的选项，以及后面缺路径的 `--dir`、`--log` 都让运行停下。 |
 | `splits_a_url_into_what_a_request_asks_for` | URL 拆成请求要的那几段：http 与 https 各自的默认端口、写明的端口、没有路径时补 `/`、查询串留在路径里、协议名大小写不影响判断。 |
 | `startup_waits_for_project_selection` | 构建器启动后还没选工程：工程目录和输出路径都是空的，摘要、日志和结果都没有。 |
 | `status_source_replaces_placeholder_text_with_the_published_step` | `value-source="status"` 的标签在步骤发布时显示该步骤的翻译文字，没有发布的步骤时保留版面里写死的占位文字。 |

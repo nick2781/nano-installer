@@ -16,7 +16,7 @@ use windows::Win32::System::Registry::{
     REG_SAM_FLAGS, REG_SZ, REG_VALUE_TYPE,
 };
 
-use super::{dependency, script, shell, BundleIndex, RuntimeMode, UI};
+use super::{dependency, install_log, script, shell, BundleIndex, RuntimeMode, UI};
 
 /// What the installer UI held when the user started the task.
 ///
@@ -174,11 +174,15 @@ pub(super) fn start_install() {
             })
         });
     let Some(selection) = selection else {
-        show_result(Err(anyhow::anyhow!("the installer window is not ready")));
+        show_result(
+            Err(anyhow::anyhow!("the installer window is not ready")),
+            None,
+        );
         return;
     };
     run_worker(move |task| {
         let setup = std::env::current_exe()?;
+        begin_log(install_log::RunKind::Install, None);
         let bundle = BundleIndex::read(&setup)?.context("installer resource bundle missing")?;
         let config = bundle.read_config()?;
         let destination =
@@ -281,29 +285,86 @@ pub(super) fn resolve_install_destination(
     Ok(path)
 }
 
+/// The flags a windowless run takes.
+///
+/// A windowless run has no page and no message box, so its command line is its
+/// only channel: it names where the product goes and where the record of the
+/// run is left.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct SilentOptions {
+    /// The directory this run installs into, when the caller named one.
+    directory: Option<PathBuf>,
+    /// The file this run logs to, when the caller named one. Without it the log
+    /// goes to the temporary directory, and the run leaves no other trace than
+    /// its exit code.
+    log: Option<PathBuf>,
+}
+
 /// Reads the flags a silent install accepts.
 ///
-/// Only the install directory can be overridden. Anything else is rejected
-/// rather than ignored, so a mistyped option cannot quietly install somewhere
-/// nobody asked for.
-fn parse_silent_arguments(arguments: &[std::ffi::OsString]) -> Result<Option<PathBuf>> {
-    let mut destination = None;
+/// Only the installation directory and the log can be overridden. Anything else
+/// is rejected rather than ignored, so a mistyped option cannot quietly install
+/// somewhere nobody asked for.
+fn parse_silent_arguments(arguments: &[std::ffi::OsString]) -> Result<SilentOptions> {
+    let mut options = SilentOptions::default();
     let mut index = 0;
     while index < arguments.len() {
-        let argument = arguments[index].to_string_lossy();
-        match argument.as_ref() {
-            "--dir" => {
-                index += 1;
-                let value = arguments
-                    .get(index)
-                    .with_context(|| "--dir needs the directory to install into")?;
-                destination = Some(PathBuf::from(value));
-            }
+        let argument = arguments[index].to_string_lossy().to_string();
+        let slot = match argument.as_str() {
+            "--dir" => &mut options.directory,
+            "--log" => &mut options.log,
             other => bail!("unsupported silent option: {other}"),
-        }
-        index += 1;
+        };
+        let value = arguments
+            .get(index + 1)
+            .with_context(|| format!("{argument} needs the path it names"))?;
+        *slot = Some(PathBuf::from(value));
+        index += 2;
     }
-    Ok(destination)
+    Ok(options)
+}
+
+/// Opens the log a run writes to, for a machine that still gets the product
+/// when it cannot take one.
+///
+/// Nothing about an installation depends on its log, so a setup that cannot
+/// create the file carries on without it: the wizard keeps its own tail of the
+/// run in memory, and a windowless run reports through its exit code.
+fn begin_log(kind: install_log::RunKind, at: Option<PathBuf>) {
+    if let Err(error) = install_log::begin(kind, at) {
+        eprintln!("cannot write the log of this run: {error:#}");
+    }
+}
+
+/// Records how a windowless run ended and reports it the way its caller reads
+/// it: nothing on success, and on failure the error followed by the file that
+/// holds the whole run.
+fn finish_run(result: Result<()>) -> Result<()> {
+    let outcome = match result.as_ref() {
+        Ok(()) => install_log::Outcome::Finished,
+        Err(error) => install_log::Outcome::Failed(error),
+    };
+    match install_log::end(outcome) {
+        Some(line) => result.map_err(|error| anyhow::anyhow!("{error:#}\n{line}")),
+        None => result,
+    }
+}
+
+/// Records which product this run is about and what it does with it.
+///
+/// Written once the project's own configuration has been read, which is the
+/// first moment the run knows the name a support reader would recognize.
+fn describe_run(config: &Value, directory: &Path, what: &str) {
+    let name = config["project"]["name"].as_str().unwrap_or("unnamed");
+    let version = config["project"]["version"]
+        .as_str()
+        .filter(|version| !version.is_empty())
+        .map(|version| format!(" {version}"))
+        .unwrap_or_default();
+    install_log::describe(&[
+        ("product", format!("{name}{version}")),
+        (what, directory.display().to_string()),
+    ]);
 }
 
 /// Refuses a windowless run for a project that never declared one.
@@ -328,17 +389,24 @@ fn require_silent_support(config: &Value, key: &str) -> Result<()> {
 /// where it wants to be installed. The read is the bundle index alone, a footer
 /// and a small table; the payload stays on disk and is streamed later.
 pub(super) fn run_silent_install(arguments: &[std::ffi::OsString]) -> Result<()> {
-    let override_destination = parse_silent_arguments(arguments)?;
+    let mut options = parse_silent_arguments(arguments)?;
     let setup = std::env::current_exe()?;
-    let bundle = BundleIndex::read(&setup)?.context("installer resource bundle missing")?;
+    // The log opens before the image is read, so a run that is refused for what
+    // the image says still leaves a record of why.
+    begin_log(install_log::RunKind::Install, options.log.take());
+    finish_run(install_silently(&setup, &options))
+}
+
+fn install_silently(setup: &Path, options: &SilentOptions) -> Result<()> {
+    let bundle = BundleIndex::read(setup)?.context("installer resource bundle missing")?;
     let config = bundle.read_config()?;
     require_silent_support(&config, "silent_mode_support")?;
-    let destination = resolve_install_destination(&config, override_destination.as_deref())?;
+    let destination = resolve_install_destination(&config, options.directory.as_deref())?;
     // No window means no checkbox and no field is there to be read, so every
     // shortcut, autostart and value decision falls back to what the project
     // configured.
     let selection = InstallSelection::default();
-    install_setup(&setup, &destination, &selection, &Cancellation::default())
+    install_setup(setup, &destination, &selection, &Cancellation::default())
 }
 
 /// Runs an uninstall with no window, for a project that declares silent support.
@@ -346,15 +414,21 @@ pub(super) fn run_silent_install(arguments: &[std::ffi::OsString]) -> Result<()>
 /// User data is kept: a silent run has no keep-data checkbox to clear, and the
 /// runtime never destroys data the user did not ask to remove.
 pub(super) fn run_silent_uninstall(arguments: &[std::ffi::OsString]) -> Result<()> {
+    let options = parse_silent_arguments(arguments)?;
     ensure!(
-        arguments.is_empty(),
-        "the uninstaller accepts no option after --silent"
+        options.directory.is_none(),
+        "the uninstaller accepts no option that names a directory: the product is removed from where it is"
     );
     let uninstaller = std::env::current_exe()?;
-    let bundle = BundleIndex::read(&uninstaller)?.context("uninstaller bundle missing")?;
+    begin_log(install_log::RunKind::Uninstall, options.log);
+    finish_run(uninstall_removals(&uninstaller))
+}
+
+fn uninstall_removals(uninstaller: &Path) -> Result<()> {
+    let bundle = BundleIndex::read(uninstaller)?.context("uninstaller bundle missing")?;
     let config = bundle.read_config()?;
     require_silent_support(&config, "uninstall_mode_support")?;
-    uninstall(&uninstaller, true, &Cancellation::default())
+    uninstall(uninstaller, true, &Cancellation::default())
 }
 
 pub(super) fn start_uninstall() {
@@ -377,6 +451,7 @@ pub(super) fn start_uninstall() {
         .unwrap_or(true);
     run_worker(move |task| {
         let uninstaller = std::env::current_exe()?;
+        begin_log(install_log::RunKind::Uninstall, None);
         uninstall(&uninstaller, keep_data, task)
     });
 }
@@ -410,13 +485,26 @@ fn run_worker(work: impl FnOnce(&Cancellation) -> Result<()> + Send + 'static) {
             .as_ref()
             .err()
             .is_some_and(|error| error.downcast_ref::<Cancelled>().is_some());
+        // A stop is the user's own doing, so it is not a failure the log has to
+        // explain; anything else leaves the run's log as the report of it.
+        let log_line = match (&result, stopped) {
+            (Ok(()), _) => {
+                install_log::end(install_log::Outcome::Finished);
+                None
+            }
+            (Err(_), true) => {
+                install_log::end(install_log::Outcome::Stopped);
+                None
+            }
+            (Err(error), false) => install_log::end(install_log::Outcome::Failed(error)),
+        };
         match &result {
             // The completion page reports the outcome and owns the next action.
             Ok(()) => match completion {
                 Some(index) => {
                     let _ = super::show_page(index);
                 }
-                None => show_result(Ok(())),
+                None => show_result(Ok(()), None),
             },
             // Stopping is the user's own doing, so the wizard returns to the
             // page the task was started from instead of reporting a failure.
@@ -426,7 +514,7 @@ fn run_worker(work: impl FnOnce(&Cancellation) -> Result<()> + Send + 'static) {
             }
             Err(error) => {
                 let _ = super::show_page(0);
-                show_result(Err(anyhow::anyhow!("{error:#}")));
+                show_result(Err(anyhow::anyhow!("{error:#}")), log_line);
             }
         }
     });
@@ -437,12 +525,23 @@ fn run_worker(work: impl FnOnce(&Cancellation) -> Result<()> + Send + 'static) {
 /// A project with a completion page shows the outcome there. A project without
 /// one still has to be told, and that notice is drawn inside the installer
 /// window so it carries the product's skin rather than the system default.
-fn show_result(result: Result<()>) {
-    let text = match result {
+fn show_result(result: Result<()>, log_line: Option<String>) {
+    super::show_notice(&result_notice(result, log_line.as_deref()));
+}
+
+/// The words the wizard shows when a task ends.
+///
+/// A failure also names the file the run was written to, which is the one thing
+/// a user can hand over when something goes wrong on a machine nobody here can
+/// reach.
+fn result_notice(result: Result<()>, log_line: Option<&str>) -> String {
+    match result {
         Ok(()) => "Operation complete".to_string(),
-        Err(error) => format!("Operation failed:\n{error:#}"),
-    };
-    super::show_notice(&text);
+        Err(error) => match log_line {
+            Some(line) => format!("Operation failed:\n{error:#}\n\n{line}"),
+            None => format!("Operation failed:\n{error:#}"),
+        },
+    }
 }
 
 fn install_setup(
@@ -455,6 +554,8 @@ fn install_setup(
     super::report_progress(5, "status.preparing")?;
     let bundle = BundleIndex::read(setup)?.context("installer resource bundle missing")?;
     let config = bundle.read_config()?;
+    describe_run(&config, destination, "install into");
+    install_log::note("info", "preparing the installation");
     let prep = prepare_install(&bundle, &config, destination)?;
 
     let stage = StagingDirectory::create()?;
@@ -464,6 +565,7 @@ fn install_setup(
     // payloads, and a project script reads the same answer.
     let components = selected_components(&config, |id, default| selection.checked(id, default));
     if bundle.contains(script::INSTALL_SCRIPT) {
+        install_log::note("info", "running the project's own install script");
         return script::run_install(script::InstallRequest {
             setup: setup.to_path_buf(),
             bundle,
@@ -482,6 +584,7 @@ fn install_setup(
     // untouched.
     dependency::install_missing(&config, &bundle, &stage.0, task)?;
     super::report_progress(15, "status.extracting")?;
+    install_log::note("info", "unpacking the payload");
     let files = extract_payload(
         setup,
         &bundle,
@@ -496,6 +599,7 @@ fn install_setup(
     // has been written yet.
     check_cancelled(task)?;
     super::report_progress(50, "status.deploying")?;
+    install_log::note("info", &format!("deploying {} files", files.len()));
 
     let exe_name = config["install"]["exe_name"]
         .as_str()
@@ -543,8 +647,10 @@ fn install_setup(
         )
     })?;
     super::report_progress(95, "status.finishing")?;
+    install_log::note("info", "the product is deployed");
     super::record_installed_app(destination.join(exe_name))?;
     super::report_progress(100, "status.install_complete")?;
+    install_log::note("info", "the installation is complete");
     Ok(())
 }
 
@@ -1958,6 +2064,7 @@ fn uninstall(uninstaller: &Path, keep_data: bool, task: &Cancellation) -> Result
         .context("uninstaller has no parent directory")?;
     validate_destination(destination)?;
     let manifest_file = destination.join(MANIFEST_NAME);
+    install_log::note("info", "reading the installation's manifest");
     let manifest: Value =
         serde_json::from_slice(&fs::read(&manifest_file).with_context(|| {
             format!("installation manifest missing: {}", manifest_file.display())
@@ -1971,6 +2078,7 @@ fn uninstall(uninstaller: &Path, keep_data: bool, task: &Cancellation) -> Result
         .context("uninstaller filename is not Unicode")?;
     let bundle = BundleIndex::read(uninstaller)?.context("uninstaller bundle missing")?;
     let config = bundle.read_config()?;
+    describe_run(&config, destination, "remove from");
     if configured_name
         != config["output"]["uninstaller_name"]
             .as_str()
@@ -1997,6 +2105,7 @@ fn uninstall(uninstaller: &Path, keep_data: bool, task: &Cancellation) -> Result
     check_cancelled(task)?;
     if bundle.contains(script::UNINSTALL_SCRIPT) {
         let stage = StagingDirectory::create()?;
+        install_log::note("info", "running the project's own uninstall script");
         return script::run_uninstall(script::UninstallRequest {
             uninstaller: uninstaller.to_path_buf(),
             bundle,
@@ -2018,17 +2127,23 @@ fn uninstall(uninstaller: &Path, keep_data: bool, task: &Cancellation) -> Result
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
     super::report_progress(45, "uninstall.status.removing_shortcuts")?;
+    install_log::note(
+        "info",
+        "removing the entries the installation left outside itself",
+    );
     remove_recorded_artifacts(&manifest);
     if !keep_data {
         super::report_progress(60, "uninstall.status.removing_user_data")?;
         remove_user_data(&config)?;
     }
     super::report_progress(75, "uninstall.status.removing_files")?;
+    install_log::note("info", "removing the installed files");
     remove_installed_files(destination, &manifest)?;
     super::report_progress(90, "uninstall.status.finishing")?;
     finish_uninstall(destination, uninstaller, expected.root, &expected.path)?;
     shell::notify_shell();
     super::report_progress(100, "uninstall.status.complete")?;
+    install_log::note("info", "the product is removed");
     Ok(())
 }
 
@@ -2196,8 +2311,9 @@ mod tests {
         begin_deployment, check_cancelled, deploy_files, parse_registry_key,
         parse_silent_arguments, preserved_data_paths, previous_install, register_uninstaller,
         registry_path, require_free_space, require_silent_support, resolve_install_destination,
-        selected_components, validate_destination, wide, Cancellation, Cancelled, Deployment,
-        InstallArtifacts, PreviousInstall, RegistryKey, RegistryView, MANIFEST_NAME,
+        result_notice, selected_components, validate_destination, wide, Cancellation, Cancelled,
+        Deployment, InstallArtifacts, PreviousInstall, RegistryKey, RegistryView, SilentOptions,
+        MANIFEST_NAME,
     };
     use anyhow::Result;
     use std::path::{Path, PathBuf};
@@ -2765,6 +2881,35 @@ mod tests {
         Ok(())
     }
 
+    /// A failure the wizard reports names the file the run was written to.
+    ///
+    /// This is the notice that stands between a user whose install failed and
+    /// whoever has to explain why: the error says what went wrong, and the line
+    /// under it is the one thing the user can send on. A run that succeeded is
+    /// never told about a log, because there is nothing to report.
+    #[test]
+    fn a_failure_notice_points_at_the_log_of_the_run() {
+        let notice = result_notice(
+            Err(anyhow::anyhow!("cannot write files")),
+            Some("A log of this run is at:\nC:\\Users\\u\\Temp\\setup.log"),
+        );
+        assert!(
+            notice.starts_with("Operation failed:\ncannot write files"),
+            "{notice}"
+        );
+        assert!(notice.contains("C:\\Users\\u\\Temp\\setup.log"), "{notice}");
+
+        // Without a log there is nothing to name, and the notice says only what
+        // went wrong.
+        let notice = result_notice(Err(anyhow::anyhow!("cannot write files")), None);
+        assert!(!notice.contains("log"), "{notice}");
+
+        assert_eq!(
+            result_notice(Ok(()), Some("A log of this run is at:\nX")),
+            "Operation complete"
+        );
+    }
+
     /// Neither source is a directory to guess at, so the run stops with a
     /// message that names both ways to supply one.
     #[test]
@@ -2787,12 +2932,30 @@ mod tests {
         use std::ffi::OsString;
 
         let empty: Vec<OsString> = Vec::new();
-        assert_eq!(parse_silent_arguments(&empty)?, None);
+        assert_eq!(parse_silent_arguments(&empty)?, SilentOptions::default());
 
         let given = vec![OsString::from("--dir"), OsString::from("C:\\Install\\Here")];
         assert_eq!(
-            parse_silent_arguments(&given)?,
+            parse_silent_arguments(&given)?.directory,
             Some(PathBuf::from("C:\\Install\\Here"))
+        );
+
+        // A windowless run has no notice to read, so it can be told where to
+        // leave the record of itself. Both flags may appear in one command line,
+        // in either order.
+        let logged = vec![
+            OsString::from("--log"),
+            OsString::from("C:\\Logs\\setup.log"),
+            OsString::from("--dir"),
+            OsString::from("C:\\Install\\Here"),
+        ];
+        let options = parse_silent_arguments(&logged)?;
+        assert_eq!(options.log, Some(PathBuf::from("C:\\Logs\\setup.log")));
+        assert_eq!(options.directory, Some(PathBuf::from("C:\\Install\\Here")));
+        assert_eq!(
+            parse_silent_arguments(&logged[2..])?.log,
+            None,
+            "a --dir run keeps the default log"
         );
 
         // A mistyped option has to stop the run: quietly installing into the
@@ -2800,9 +2963,10 @@ mod tests {
         let unknown = vec![OsString::from("--silnet")];
         assert!(parse_silent_arguments(&unknown).is_err());
 
-        // So does --dir with nothing after it.
-        let dangling = vec![OsString::from("--dir")];
-        assert!(parse_silent_arguments(&dangling).is_err());
+        // So do --dir and --log with nothing after them.
+        for dangling in [vec![OsString::from("--dir")], vec![OsString::from("--log")]] {
+            assert!(parse_silent_arguments(&dangling).is_err());
+        }
         Ok(())
     }
 

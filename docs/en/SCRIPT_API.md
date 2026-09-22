@@ -57,8 +57,12 @@ readable as a control through `get_checkbox_value(<component id>)`, which is wha
 these two whether the run installs it.
 
 
-Scripts have no console. On failure the runtime appends the last 32 log lines to the error the
-wizard shows.
+Scripts have no console. Every run writes a log to disk, and every line `log_info`, `log_warn` and
+`log_error` writes goes into it, together with every step the run itself takes: it lands in the
+`nano-installer` directory of the temporary directory, or in the file a windowless run names with
+`--log`, as the [configuration reference](CONFIG_REFERENCE.md#unattended-runs) describes. On failure
+the runtime still appends the last 32 lines to the error the wizard shows, and the message names the
+file the whole run is in.
 
 ## Files and payload
 

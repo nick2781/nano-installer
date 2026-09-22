@@ -112,6 +112,7 @@ pub(super) fn run_install(request: InstallRequest) -> Result<()> {
     publish(crate::record_installed_app(
         context.install_path().join(exe_name),
     ));
+    crate::install_log::note("info", "the installation is complete");
     Ok(())
 }
 
@@ -177,6 +178,7 @@ pub(super) fn run_uninstall(request: UninstallRequest) -> Result<()> {
     install::finish_uninstall(&destination, &uninstaller, root, &registry_path)?;
     crate::shell::notify_shell();
     publish(crate::report_progress(100, "uninstall.status.complete"));
+    crate::install_log::note("info", "the product is removed");
     Ok(())
 }
 

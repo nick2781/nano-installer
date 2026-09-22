@@ -506,6 +506,10 @@ thread_local! {
 /// The buffer and this function belong to the run rather than to the script, so
 /// the built-in step that installs a project's dependencies writes into the
 /// same log a failing script reports.
+///
+/// The lines also go to the run's log on disk, which is the copy that outlives
+/// the process: the buffer here is never longer than the notice the wizard can
+/// show, and a run that succeeds never shows one at all.
 pub(crate) fn log(level: &str, message: &str) {
     LOG.with(|buffer| {
         let mut buffer = buffer.borrow_mut();
@@ -514,6 +518,7 @@ pub(crate) fn log(level: &str, message: &str) {
         }
         buffer.push_back(format!("{level}: {message}"));
     });
+    crate::install_log::note(level, message);
 }
 
 /// The script log, oldest line first, for reporting alongside a failure.

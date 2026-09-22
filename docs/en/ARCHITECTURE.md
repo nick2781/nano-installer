@@ -68,6 +68,14 @@ a cleaner in the temporary directory. The cleaner waits for the uninstaller to e
 and removes the emptied installation directory; it then hands its own removal to a short-lived
 `cmd` script. It keeps a directory that still holds files the user added.
 
+**The run log.** Every install and uninstall leaves a log on disk: in the `nano-installer` directory
+of the temporary directory by default, named after the setup image, the moment and which task this
+is, or in the file a windowless run names with `--log`. It holds the machine, the product and the
+directory, every step the run took and every line a project script wrote. It never sits inside the
+installation: a failed fresh install removes the directory it was writing into, which is exactly
+when the log is wanted. The wizard puts the path under the error it reports, and a windowless run
+writes it to standard error.
+
 **Custom steps.** If your project ships `scripts/install.rhai` or `scripts/uninstall.rhai`, those
 scripts run instead of the built-in steps. The engine is embedded in `nano-installer-core`, so
 every stub carries it; primitives reuse the same deployment, rollback, and manifest code as the

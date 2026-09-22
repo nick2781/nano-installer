@@ -5,6 +5,7 @@ mod config;
 mod dependency;
 mod icon;
 mod install;
+mod install_log;
 mod manifest;
 mod net;
 mod script;

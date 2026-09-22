@@ -253,6 +253,7 @@ ZIP 与 7z 会在构建时被拒绝。安装时基础载荷先落地，各组件
 
 ```powershell
 MyApp_Setup.exe --silent --dir "%LOCALAPPDATA%\MyApp"
+MyApp_Setup.exe --silent --log "%TEMP%\MyApp-setup.log"
 MyApp_Setup.exe --silent
 uninst.exe --silent
 ```
@@ -260,6 +261,10 @@ uninst.exe --silent
 - `--silent` 全程不开任何界面。静默运行绝不弹框，因为弹框会等一个永远不会到来的点击。
 - `--dir` 指定本次安装目录，优先级高于 `install.default_path`。两者都支持环境变量，使用前会先
   展开。
+- `--log <文件>` 指定这次运行的日志写到哪个文件，不写就落在临时目录的 `nano-installer` 目录里，
+  文件名带着安装程序的名字、时刻与这次是安装还是卸载。日志里有这台机器、产品与安装目录，以及运行
+  自己的每一步和脚本写下的每一行；失败时把它的完整路径写进标准错误，运维照着这个路径取文件即可。
+  无人值守部署通常把它指到一个集中收集的位置。
 - 其它任何参数都会被拒绝。写错的参数会让运行直接失败，而不是静默装到配置的默认目录。
 - `silent_mode_support` 与 `uninstall_mode_support` 互相独立：产品可以允许无人值守安装，
   但不允许无人值守卸载。

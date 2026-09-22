@@ -85,7 +85,9 @@ that setup and the uninstaller it deployed.
   manifest resources, and the runtime that matches the payload format.
 - Install: the payload lands on disk and comes back byte for byte, the manifest lists what was
   written, the uninstall entry points at the deployed uninstaller, a configured `%TEMP%` path is
-  expanded, `--dir` beats the configured path, and an unopted or mistyped run installs nothing.
+  expanded, `--dir` beats the configured path, and an unopted or mistyped run installs no product file;
+  the log a run writes -- in the temporary directory, or in the file `--log` names -- records the
+  product, the machine and every step, and on failure it is the file a support ticket gets.
 - Upgrade: a second install over the first drops the files the new payload no longer ships and
   leaves a file the payload does not own alone.
 - Uninstall: the product, the registration, and the directory go; a directory holding a file the

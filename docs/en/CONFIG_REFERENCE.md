@@ -283,6 +283,7 @@ With the switches on, the same executables accept `--silent`:
 
 ```powershell
 MyApp_Setup.exe --silent --dir "%LOCALAPPDATA%\MyApp"
+MyApp_Setup.exe --silent --log "%TEMP%\MyApp-setup.log"
 MyApp_Setup.exe --silent
 uninst.exe --silent
 ```
@@ -291,6 +292,12 @@ uninst.exe --silent
   because a dialog would wait for a click that never comes.
 - `--dir` chooses the install directory for that run and wins over `install.default_path`. Both
   accept environment variables, which are expanded before use.
+- `--log <file>` chooses the file this run logs to. Without it the log lands in the `nano-installer`
+  directory of the temporary directory, named after the setup image, the moment and which task this
+  is. It holds the machine, the product and the directory, every step the run took and every line a
+  project script wrote, and a run that fails writes its whole path to standard error -- which is the
+  path an administrator collects the file from. Unattended deployments usually point it at a place
+  they gather logs from anyway.
 - The setup refuses any other option, so a mistyped flag stops the run instead of installing into
   the configured default.
 - `silent_mode_support` and `uninstall_mode_support` are separate, so a product can allow

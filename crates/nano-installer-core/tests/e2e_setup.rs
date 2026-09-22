@@ -909,6 +909,31 @@ fn silent_command(exe: &Path, destination: Option<&Path>) -> Command {
     command
 }
 
+/// The same, with the file the run leaves its log in.
+///
+/// A windowless run has no notice to read, so this is where an administrator
+/// deploying a machine finds out what happened.
+fn silent_command_logged(exe: &Path, destination: Option<&Path>, log: &Path) -> Command {
+    let mut command = silent_command(exe, destination);
+    command.arg("--log").arg(log);
+    command
+}
+
+/// Runs an executable with `--silent` and a named log file, expecting it to
+/// succeed.
+fn run_silent_logged(exe: &Path, destination: Option<&Path>, log: &Path) -> anyhow::Result<Output> {
+    let output = silent_command_logged(exe, destination, log).output()?;
+    anyhow::ensure!(
+        output.status.success(),
+        "{} exited with {:?}\nstdout: {}\nstderr: {}",
+        exe.display(),
+        output.status.code(),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Ok(output)
+}
+
 fn run_silent(exe: &Path, destination: Option<&Path>) -> anyhow::Result<Output> {
     let output = silent_command(exe, destination).output()?;
     anyhow::ensure!(
@@ -1388,6 +1413,155 @@ fn an_unknown_silent_option_is_refused() -> anyhow::Result<()> {
         "the error should name the offending option"
     );
     assert!(!fixture.destination.exists(), "files were written anyway");
+    Ok(())
+}
+
+/// A windowless run leaves the record of itself where it was told to, and that
+/// record holds what the wizard's own tail cannot.
+///
+/// The wizard keeps the last lines of a run in memory to explain a failure, and
+/// a machine nobody can look at during an unattended deployment has no wizard at
+/// all. The file is the whole run: which product went where, what the machine
+/// was, and every line the project's own script wrote -- more of them than the
+/// wizard would have kept.
+#[test]
+fn a_setup_writes_the_log_of_its_run_where_a_windowless_run_asks_for_it() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.write_script(
+        "install.rhai",
+        r#"
+            let install_path = get_install_path();
+            if !extract_payload_with_progress(0.0, 60.0) {
+                return;
+            }
+            copy_uninstaller();
+            for i in 1..=40 {
+                log_info("script line " + i);
+            }
+            set_progress(90.0);
+        "#,
+    )?;
+    fixture.write_script("uninstall.rhai", "run_tracked_uninstall(10.0, 90.0);")?;
+    fixture.build()?;
+
+    let installed_log = fixture.destination.with_extension("install.log");
+    run_silent_logged(&fixture.setup, Some(&fixture.destination), &installed_log)?;
+    let written = std::fs::read_to_string(&installed_log)?;
+    for expected in [
+        "nano-installer setup log",
+        "run: install",
+        "elevated: ",
+        "windows: ",
+        "machine: ",
+        // The project's own name and version, which is what a support reader
+        // needs to tell one product's log from another's.
+        "product: E2eProbe 1.0.0",
+        "install into: ",
+        "info: preparing the installation",
+        "info: running the project's own install script",
+        "info: the installation is complete",
+    ] {
+        assert!(
+            written.contains(expected),
+            "{expected} is missing:\n{written}"
+        );
+    }
+    assert!(
+        written.contains(&format!("install into: {}", fixture.destination.display())),
+        "the log does not say where the product went:\n{written}"
+    );
+    // Forty lines, where the wizard would have kept the last thirty-two: the
+    // file is the whole run and not the tail of one.
+    let script_lines = written
+        .lines()
+        .filter(|line| line.contains("info: script line "))
+        .count();
+    assert_eq!(script_lines, 40, "the script's own lines are not all here");
+
+    // An uninstall logs the same way, and says which of the two it is.
+    let removed_log = fixture.destination.with_extension("uninstall.log");
+    run_silent_logged(&fixture.destination.join("uninst.exe"), None, &removed_log)?;
+    let written = std::fs::read_to_string(&removed_log)?;
+    for expected in [
+        "run: uninstall",
+        "product: E2eProbe 1.0.0",
+        "info: running the project's own uninstall script",
+        "info: the product is removed",
+    ] {
+        assert!(
+            written.contains(expected),
+            "{expected} is missing:\n{written}"
+        );
+    }
+    assert!(
+        written.contains(&format!("remove from: {}", fixture.destination.display())),
+        "the log does not say what was removed:\n{written}"
+    );
+    Ok(())
+}
+
+/// A run that fails leaves its log behind and names it to whoever started it.
+///
+/// This is the file a user is asked for: the run is over, the machine is back
+/// the way it was, and the only thing left that says what happened is the log
+/// the setup wrote -- which is why it may not live inside the installation the
+/// failed run removed.
+#[test]
+fn a_failing_run_leaves_its_log_behind_and_names_it() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.write_script(
+        "install.rhai",
+        r#"
+            log_info("about to fail");
+            throw "the probe refuses to install";
+        "#,
+    )?;
+    fixture.build()?;
+
+    let log = fixture.destination.with_extension("failure.log");
+    let output =
+        silent_command_logged(&fixture.setup, Some(&fixture.destination), &log).output()?;
+    assert!(!output.status.success(), "the failing script was accepted");
+
+    // The caller is told where the log is, because that is the one thing it can
+    // pass on.
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("A log of this run is at:") && stderr.contains(&log.display().to_string()),
+        "the failure does not name its log: {stderr}"
+    );
+
+    let written = std::fs::read_to_string(&log)?;
+    for expected in [
+        "product: E2eProbe 1.0.0",
+        "info: preparing the installation",
+        "info: about to fail",
+        "error: project script failed",
+        "the probe refuses to install",
+    ] {
+        assert!(
+            written.contains(expected),
+            "{expected} is missing:\n{written}"
+        );
+    }
+    assert!(
+        !written.contains("info: the run finished"),
+        "a failed run reported itself as finished:\n{written}"
+    );
+    // The log outlives the failure even though the failed run took the
+    // installation with it.
+    assert!(
+        !fixture.destination.exists(),
+        "a failed run left {} behind",
+        fixture.destination.display()
+    );
+    assert!(log.is_file(), "the log did not survive the rollback");
     Ok(())
 }
 

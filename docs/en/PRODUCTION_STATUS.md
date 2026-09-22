@@ -108,8 +108,17 @@ files and registry entries, so validate them in a disposable virtual machine onl
   user added is kept, and the cleaner removes itself once it is done.
 - A project that opts in with `advanced.silent_mode_support` runs an install with `--silent`, and
   one with `advanced.uninstall_mode_support` runs an uninstall the same way. A silent run opens
-  nothing, takes `--dir`, refuses any other option, and reports through the exit code and standard
-  error. A project that did not opt in is refused rather than installed or removed unattended.
+  nothing, takes `--dir` and `--log`, refuses any other option, and reports through the exit code and
+  standard error. A project that did not opt in is refused rather than installed or removed unattended.
+- Every install and uninstall leaves a log of itself on disk: in the `nano-installer` directory of the
+  temporary directory by default, named after the setup image, the moment and which of the two tasks it
+  was, or in the file a windowless run names with `--log`. It opens with the machine -- whether the run
+  is elevated, the Windows version and build, the architecture, the interface language -- then the
+  product and the directory it went to, and then every step the run took and every line a project script
+  wrote, up to a megabyte, where it says it stopped. A run that fails leaves the file behind and names
+  it -- under the error in the wizard, on standard error for a windowless run -- which is what a user
+  hands over; the file is not inside the installation, so it survives the directory a failed install
+  removes again.
 - A project can cut its content into components: `resources.payload_file` is what every run
   installs, each entry of `components.items` carries a ZIP or 7z archive of its own, a `Checkbox`
   of the same id on a page decides whether this run installs it, and a script asks the same
@@ -136,7 +145,7 @@ files and registry entries, so validate them in a disposable virtual machine onl
   files it does not own, and an uninstall removes the product, the registration, and the directory; a
   dependency the machine is missing is really installed, and a downloaded one is checked before it
   runs.
-  Thirteen of its forty-two cases open the wizard window and drive it: one measures the client
+  Thirteen of its forty-four cases open the wizard window and drive it: one measures the client
   area it drew, one walks the page actions a project declares, one stops a running task from a cancel
   button, one types a directory into the field a page asks for and starts the install with it, one
   clicks the row a radio group's install button waits for, one rolls the wheel over a list and
@@ -150,7 +159,7 @@ files and registry entries, so validate them in a disposable virtual machine onl
   browse button and closes the shell's folder dialog again. They need an interactive desktop
   session, so they skip where there is none and `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` makes the
   skip a failure; the cursor case asks that the session be showing a pointer as well, which a
-  hosted runner is not, and it prints its skip there. Of the other twenty-nine, three read their
+  hosted runner is not, and it prints its skip there. Of the other thirty-one, three read their
   answer back out of the machine rather than out of the primitive that wrote it: one checks every
   registry type a script named, and the copy of a key a view name selects, one checks the exit code
   and both streams of a command a script ran, and one checks that the service a script installed is
