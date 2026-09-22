@@ -61,11 +61,12 @@ output are shown as they are written.
 Every behaviour these documents promise sits next to the case that holds it in
 [Test coverage](TEST_COVERAGE.md), layer by layer, including what no automated case reaches yet.
 
-Unit tests cover bundle roundtrip, payload embedding, button hit testing, temporary-directory
-deployment, manifest writing, refusing to overwrite an existing directory, upgrades and stale-file
-cleanup, failure rollback, and uninstall rules for shortcuts and user data. Layout tests cover
-nested flow containers and spacing, percentage sizing, progress bar clipping, falling back from an
-out-of-range page, and the binding between progress pages and status text. Script tests cover
+Unit tests cover bundle roundtrip, entry digest checking, payload embedding, button hit testing,
+temporary-directory deployment, manifest writing, refusing to overwrite an existing directory,
+upgrades and stale-file cleanup, failure rollback, and uninstall rules for shortcuts and user data.
+Layout tests cover nested flow containers and spacing, percentage sizing, progress bar clipping,
+falling back from an out-of-range page, and the binding between progress pages and status text.
+Script tests cover
 deploying files and the manifest from a script, rolling back a failing script, replaying the
 manifest through `run_tracked_uninstall`, and the library fallback when a script skips cleanup. The
 page hook covers the page it picks for a given `from`, the wizard and the machine it reads, the

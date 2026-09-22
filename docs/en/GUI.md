@@ -47,8 +47,9 @@ not a substitute for the release checklist.
 
 The log lists the steps your build actually ran: the resolved paths and sizes of the installer and
 uninstaller runtimes, the uninstaller's name inside the bundle, the file count and size of each
-resource directory, the payload format, and the bundle index. Resources go straight into the custom
-bundle with no intermediate `skins.zip`, and your payload keeps the ZIP or 7z format you provided.
+resource directory, the payload format, and the bundle index, which records a SHA-256 beside
+every entry. Resources go straight into the custom bundle with no intermediate `skins.zip`, and your
+payload keeps the ZIP or 7z format you provided.
 
 Because the uninstaller has its own payload-free UI bundle, the log collects `layouts`, `assets`,
 `locales`, and `scripts` once under an `Uninstaller bundle:` heading and then again for the main

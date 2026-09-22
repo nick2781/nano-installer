@@ -99,6 +99,12 @@
   `NoModify`、`NoRepair` 两个标记——这个安装器没有单独的修改或修复步骤，两个标记让「程序和功能」
   不去摆出通往空处的按钮。容量一栏以前一直是空的。
 
+- 安装包自带的内容逐条核对摘要。捆绑数据里的每个条目都记着构建时算出的 SHA-256，读的时候对一遍：
+  payload 是边读边算的，中途出错或摘要对不上时那份副本会被删掉，会拿它去解压的那一步因此无从跑起；
+  被截断的下载、坏掉的一块盘、任何人动过的手脚，都会在解开之前停下来，按条目名报出记录值与实际摘要，
+  让人去拿一份新的安装包，而不是把对不上号的字节装进机器。捆绑格式因此升到版本 2，运行时不接受
+  版本 1 的包。
+
 ### 改进
 
 - 构建器不再接受自己不读的配置键。以前能解析却什么都不做的设置会让构建失败，并指出该改用哪个
@@ -314,6 +320,31 @@
   声明的下一页并写出原因，声明的顺序走到尽头仍是 `MoveTrouble::End`。`initial_interaction` 现在为
   每一页的控件填入默认值，钩子与 `get_checkbox_value` 读到的因此是真实的页面默认值；
   `config::audit_pages` 新增同一列表内页面 id 唯一。
+
+- 捆绑条目摘要：`BUNDLE_VERSION` 升到 2，条目布局变成
+  `name_len(u16) | name | size(u64) | sha256(32B) | data`，写入端与读取端都在
+  `crates/nano-installer-core/src/lib.rs`。`BundleEntry` 多一个 `digest`；`parse_bundle_index`
+  与测试用的 `parse_bundle` 各读满 32 字节；`check_entry_digest` 用一个函数说清「哪一条、记录的是
+  什么、实际是什么」。`read_file` 读回来后核对；`copy_file_to` 改为走新的 `stream_file_to`：
+  1 MiB 分块复制时把同一批字节喂给 `net::Sha256`，摘要对不上或中途读写出错都删掉目标文件，只剩
+  一份不完整的副本比没有更糟。摘要算法复用下载校验用的那份 CryptoAPI 实现——`Sha256` 改成
+  `pub(super)`、`finish()` 返回 `[u8; 32]`，新增 `sha256_bytes` 与 `hex_digest`，`sha256_file`
+  与 `download` 只是把结果格式化成十六进制。`scripts/audit_embedded_uninstaller.ps1` 同步读到
+  版本 2，并在取出内嵌卸载程序后用 `Get-FileHash` 核对它的摘要。
+
+- 捆绑条目摘要那两条用例这一次都跑通：一条在单元层面把 payload 翻掉一个字节，`read_file` 与
+  `copy_file_to` 都按条目名报出 `is damaged`，没被动过的条目照旧读得到，流式复制失败之后磁盘上
+  一个文件都没留下；一条在真机器上把构建好的安装包的 payload 翻掉一个字节再静默安装，这次安装失败、
+  输出点出 `payload/app.archive` 与摘要不符，目标目录连建都没有建出来。
+- `cargo test --locked --workspace`：共 320 条用例，319 通过、0 失败、1 忽略，退出码 0（核心库 233
+  含 1 忽略、安装包级 51、工程检查 5、可视化构建器 29、解压运行时 2）。报告在
+  `target/test-report.txt` 与 `target/test-report.html`。
+- 安装包级的 51 条全部跑通（`run_e2e_setup.ps1 -RequireDesktop`，把跳过当失败），光标那两条也在内：
+  这是它们第一次在本机整批转绿，前几次失败是工作站锁屏所致，与改动无关。报告在
+  `target/e2e-report.txt` 与 `target/e2e-report.html`。
+- 审计脚本自己那一段也验过：用构建器给一个小工程做出真实安装包，
+  `audit_embedded_uninstaller.ps1` 按版本 2 的索引取出内嵌卸载程序、核对摘要通过；把其中一个字节
+  改掉之后，它按名字报出 `Embedded uninstaller is damaged`。
 
 ### 已验证
 

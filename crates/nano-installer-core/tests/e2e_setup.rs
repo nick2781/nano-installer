@@ -2866,6 +2866,82 @@ fn a_payload_without_the_declared_executable_is_refused() -> anyhow::Result<()> 
     Ok(())
 }
 
+/// The offset of one bundle entry's bytes inside a built setup.
+///
+/// The bundle is read here the way `scripts/audit_embedded_uninstaller.ps1`
+/// reads it, from the footer backwards, so the byte a case damages is one the
+/// runtime will really look for rather than a byte of the stub in front of it.
+fn bundle_entry_offset(image: &Path, name: &str) -> anyhow::Result<usize> {
+    let bytes = std::fs::read(image)?;
+    let footer = bytes
+        .len()
+        .checked_sub(16)
+        .context("the setup is too small to carry a bundle footer")?;
+    anyhow::ensure!(
+        &bytes[footer + 8..] == b"NATVEND1",
+        "the setup has no bundle footer"
+    );
+    let size = u64::from_le_bytes(bytes[footer..footer + 8].try_into()?) as usize;
+    let start = footer
+        .checked_sub(size)
+        .context("implausible bundle size")?;
+    anyhow::ensure!(
+        &bytes[start..start + 8] == b"NATVRS01",
+        "the setup's bundle header is wrong"
+    );
+    // The digest the runtime checks an entry against sits behind its length.
+    let version = u16::from_le_bytes(bytes[start + 8..start + 10].try_into()?);
+    anyhow::ensure!(version == 2, "unexpected bundle version {version}");
+    let count = u32::from_le_bytes(bytes[start + 10..start + 14].try_into()?);
+    let mut cursor = start + 14;
+    for _ in 0..count {
+        let name_length = u16::from_le_bytes(bytes[cursor..cursor + 2].try_into()?) as usize;
+        cursor += 2;
+        let entry_name = std::str::from_utf8(&bytes[cursor..cursor + name_length])?;
+        cursor += name_length;
+        let entry_size = u64::from_le_bytes(bytes[cursor..cursor + 8].try_into()?) as usize;
+        cursor += 8 + 32;
+        if entry_name == name {
+            return Ok(cursor);
+        }
+        cursor += entry_size;
+    }
+    anyhow::bail!("the setup carries no {name} entry")
+}
+
+/// Damage inside the setup is damage to the product: a payload that no longer
+/// hashes to what the build recorded is refused by name, before the machine is
+/// touched at all, rather than unpacked into a half-broken installation.
+#[test]
+fn a_setup_whose_payload_was_damaged_in_transit_installs_nothing() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.build()?;
+
+    // One byte of the payload flipped and nothing else: the footer, the entry
+    // table, and the digest stay exactly as the build wrote them, which is what
+    // a truncated download or a bad sector leaves behind.
+    let at = bundle_entry_offset(&fixture.setup, "payload/app.archive")?;
+    let mut bytes = std::fs::read(&fixture.setup)?;
+    bytes[at] ^= 0xFF;
+    std::fs::write(&fixture.setup, &bytes)?;
+
+    let result = fixture.install_expecting_failure()?;
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("payload/app.archive") && stderr.contains("is damaged"),
+        "the failure should name the damaged entry: {stderr}"
+    );
+    assert!(
+        !fixture.destination.exists(),
+        "a refused install still created {}",
+        fixture.destination.display()
+    );
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // What the product needs from the machine
 // ---------------------------------------------------------------------------

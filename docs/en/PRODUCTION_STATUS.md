@@ -170,8 +170,10 @@ files and registry entries, so validate them in a disposable virtual machine onl
   byte, the manifest and the uninstall entry are written, an upgrade drops stale files and keeps
   files it does not own, and an uninstall removes the product, the registration, and the directory; a
   dependency the machine is missing is really installed, and a downloaded one is checked before it
-  runs.
-  Fifteen of its fifty cases open the wizard window and drive it: one measures the client
+  runs. What the setup itself carries is checked too: every bundle entry is read against the SHA-256
+  the build recorded, so a setup damaged after the build is refused by entry name and nothing is
+  created on the machine at all.
+  Fifteen of its fifty-one cases open the wizard window and drive it: one measures the client
   area it drew, one walks the page actions a project declares, one stops a running task from a cancel
   button, one types a directory into the field a page asks for and starts the install with it, one
   clicks the row a radio group's install button waits for, one rolls the wheel over a list and
@@ -187,13 +189,19 @@ files and registry entries, so validate them in a disposable virtual machine onl
   lands on the product's own card and the declared order walks on. They need an interactive
   desktop session, so they skip where there is none and `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` makes the
   skip a failure; the cursor case asks that the session be showing a pointer as well, which a
-  hosted runner is not, and it prints its skip there. Of the other thirty-five, three read their
+  hosted runner is not, and it prints its skip there. Of the other thirty-six, three read their
   answer back out of the machine rather than out of the primitive that wrote it: one checks every
   registry type a script named, and the copy of a key a view name selects, one checks the exit code
   and both streams of a command a script ran, and one checks that the service a script installed is
   really on the machine and gone again with the uninstall. The rest pass on Windows 11 and in CI.
 - A setup stays a setup after signing: a certificate table appended behind the bundle, which is what
   Authenticode writes into the file, no longer hides the footer the runtime reads its resources from.
+- What the setup carries is checked entry by entry. Every bundle entry records the SHA-256 the build
+  computed for it, and a read is checked against that: a truncated download, a bad sector, or a hand
+  that changed the file stops the run before anything is unpacked, names the entry and both digests,
+  and sends the user for a fresh copy of the setup instead of installing bytes nobody vouched for. A
+  payload streamed out of the setup is hashed as it goes past, and a copy that fails the check is
+  removed, so the step that would have unpacked it has nothing to run against.
 - The builder refuses a configuration key it does not read. A setting that once parsed and then
   changed nothing cannot ship as if it were doing its job; the message names the key and the
   setting that takes its place.

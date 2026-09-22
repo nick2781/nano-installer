@@ -77,18 +77,29 @@ pub(super) fn sha256_file(path: &Path) -> Result<String> {
         }
         hasher.update(&buffer[..read])?;
     }
-    hasher.finish()
+    Ok(hex_digest(&hasher.finish()?))
 }
 
-/// The SHA-256 of `bytes`, in lower-case hexadecimal.
+/// The SHA-256 of `bytes`, as the raw digest the bundle index stores.
 ///
-/// A file is what a download is checked against, so nothing outside the tests
-/// hashes bytes that are already in memory.
-#[cfg(test)]
-pub(super) fn sha256_hex(bytes: &[u8]) -> Result<String> {
+/// The bundler hashes every entry it writes, so this is the one place a digest
+/// is computed outside a stream.
+pub(super) fn sha256_bytes(bytes: &[u8]) -> Result<[u8; 32]> {
     let mut hasher = Sha256::new()?;
     hasher.update(bytes)?;
     hasher.finish()
+}
+
+/// A digest as the lower-case hexadecimal a project writes in its configuration
+/// and a message shows a user.
+pub(super) fn hex_digest(digest: &[u8; 32]) -> String {
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+/// The SHA-256 of `bytes`, in lower-case hexadecimal.
+#[cfg(test)]
+pub(super) fn sha256_hex(bytes: &[u8]) -> Result<String> {
+    Ok(hex_digest(&sha256_bytes(bytes)?))
 }
 
 fn fetch(
@@ -220,7 +231,7 @@ fn fetch(
             bail!("{url} stopped after {read_total} of {announced} bytes");
         }
     }
-    let digest = hasher.finish()?;
+    let digest = hex_digest(&hasher.finish()?);
     if let Some(expected) = expected_sha256 {
         if !expected.trim().eq_ignore_ascii_case(&digest) {
             bail!("{url} arrived as sha256 {digest}, but the project expects {expected}");
@@ -312,13 +323,16 @@ fn query_u32(request: *mut core::ffi::c_void, header: u32) -> Result<u32> {
 }
 
 /// A running SHA-256, backed by the machine's own cryptographic provider.
-struct Sha256 {
+///
+/// A bundle entry is hashed while it is streamed out of the setup, so the
+/// hasher is shared with the bundler rather than kept to this module.
+pub(super) struct Sha256 {
     provider: usize,
     hash: usize,
 }
 
 impl Sha256 {
-    fn new() -> Result<Self> {
+    pub(super) fn new() -> Result<Self> {
         let mut provider = 0usize;
         unsafe {
             CryptAcquireContextW(
@@ -342,11 +356,11 @@ impl Sha256 {
         }
     }
 
-    fn update(&mut self, data: &[u8]) -> Result<()> {
-        unsafe { CryptHashData(self.hash, data, 0) }.context("cannot hash the downloaded bytes")
+    pub(super) fn update(&mut self, data: &[u8]) -> Result<()> {
+        unsafe { CryptHashData(self.hash, data, 0) }.context("cannot hash the bytes")
     }
 
-    fn finish(self) -> Result<String> {
+    pub(super) fn finish(self) -> Result<[u8; 32]> {
         let mut digest = [0u8; 32];
         let mut length = digest.len() as u32;
         let result = unsafe {
@@ -361,8 +375,10 @@ impl Sha256 {
         if let Err(error) = result {
             return Err(error).context("cannot finish the SHA-256");
         }
-        let digest = &digest[..(length as usize).min(digest.len())];
-        Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect())
+        if length as usize != digest.len() {
+            bail!("the machine's provider returned a {length}-byte SHA-256");
+        }
+        Ok(digest)
     }
 }
 

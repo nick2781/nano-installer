@@ -31,8 +31,10 @@ payload keeps whatever compression you gave it; the bundler adds no second compr
 ## Inside the generated setup
 
 **Startup.** The runtime reads the bundle footer to index the bundle, so it knows where every entry
-lives without loading the payload into memory. It reads payload bytes by offset only when
-extraction starts.
+lives without loading the payload into memory. Each entry carries the SHA-256 the build recorded for
+it, and every read is checked against that digest -- a streamed payload is hashed as it goes past --
+so a setup damaged after the build is refused by entry name instead of unpacking bytes nobody
+vouched for. It reads payload bytes by offset only when extraction starts.
 
 **Interface.** Your pages come from `wizard.pages` (install) and `wizard.uninstall_pages`
 (uninstall). The runtime draws each page with Win32, WIC for PNG decoding, and GDI alpha blending.

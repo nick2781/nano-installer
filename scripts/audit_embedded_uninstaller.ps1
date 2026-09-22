@@ -34,7 +34,7 @@ try {
         if ([Text.Encoding]::ASCII.GetString($reader.ReadBytes(8)) -ne "NATVRS01") {
             throw "Installer bundle header is invalid"
         }
-        if ($reader.ReadUInt16() -ne 1) { throw "Unsupported installer bundle version" }
+        if ($reader.ReadUInt16() -ne 2) { throw "Unsupported installer bundle version" }
         $count = $reader.ReadUInt32()
         $embeddedName = "runtime/$ExpectedName"
         $found = $false
@@ -42,6 +42,8 @@ try {
             $nameLength = $reader.ReadUInt16()
             $name = [Text.Encoding]::UTF8.GetString($reader.ReadBytes($nameLength))
             $size = $reader.ReadUInt64()
+            $digest = $reader.ReadBytes(32)
+            if ($digest.Length -ne 32) { throw "Installer bundle entry has a truncated digest: $name" }
             if ($size -gt [UInt64]($stream.Length - $stream.Position)) {
                 throw "Installer bundle entry is out of bounds: $name"
             }
@@ -59,6 +61,14 @@ try {
                     }
                 } finally {
                     $output.Dispose()
+                }
+                # The bundle records what the entry hashes to; a setup whose
+                # embedded uninstaller no longer matches it is not the one the
+                # build wrote, and auditing its bytes would say nothing.
+                $actual = (Get-FileHash -LiteralPath $uninstallerPath -Algorithm SHA256).Hash.ToLowerInvariant()
+                $expected = ($digest | ForEach-Object { $_.ToString("x2") }) -join ""
+                if ($actual -ne $expected) {
+                    throw "Embedded uninstaller is damaged: recorded $expected, found $actual"
                 }
                 $found = $true
                 break

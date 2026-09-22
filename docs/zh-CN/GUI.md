@@ -38,8 +38,9 @@
 ## 读懂日志
 
 日志列出你的构建实际执行的步骤：安装和卸载运行时解析到的路径和大小、卸载程序在 bundle 里的名字、
-各资源目录的文件数量与大小、payload 格式，还有 bundle 索引。资源直接写进自定义 bundle，
-不生成中间的 `skins.zip`；应用文件（payload）保持你提供的 ZIP 或 7z 格式。
+各资源目录的文件数量与大小、payload 格式，还有 bundle 索引——每个条目都在索引里带着自己的
+SHA-256。资源直接写进自定义 bundle，不生成中间的 `skins.zip`；
+应用文件（payload）保持你提供的 ZIP 或 7z 格式。
 
 卸载程序有独立的 UI bundle，里面不含 payload，所以日志会先带着 `Uninstaller bundle:` 前缀
 收集一遍 `layouts`、`assets`、`locales`、`scripts`，再为主安装包收集一遍；

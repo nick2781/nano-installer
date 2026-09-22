@@ -419,13 +419,16 @@ mod tests {
     fn bundle_image(path: &Path, entries: &[(&str, &str)]) -> Result<()> {
         let mut bundle = Vec::new();
         bundle.extend_from_slice(b"NATVRS01");
-        bundle.extend_from_slice(&1u16.to_le_bytes());
+        bundle.extend_from_slice(&2u16.to_le_bytes());
         bundle.extend_from_slice(&(entries.len() as u32).to_le_bytes());
         for (name, contents) in entries {
             let name = name.as_bytes();
             bundle.extend_from_slice(&(name.len() as u16).to_le_bytes());
             bundle.extend_from_slice(name);
             bundle.extend_from_slice(&(contents.len() as u64).to_le_bytes());
+            // The digest the runtime checks a read against, so a fixture is
+            // accepted exactly the way a real bundle is.
+            bundle.extend_from_slice(&crate::net::sha256_bytes(contents.as_bytes())?);
             bundle.extend_from_slice(contents.as_bytes());
         }
         let mut file = std::fs::File::create(path)?;

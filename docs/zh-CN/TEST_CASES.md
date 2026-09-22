@@ -27,6 +27,7 @@ Rust doc comment，再退回用例名。
 | `a_component_project_is_refused_an_update_package` | 内容切成组件的工程做不出更新包：没有一个归档可以拿来比对，构建时当场拒绝并让人照旧发完整安装包，拒绝之后一个安装包文件都不留。 |
 | `a_configured_percent_path_is_expanded_and_used` | 配置里带 `%LOCALAPPDATA%` 的路径必须先展开再用，没展开的路径不是绝对路径，安装会拒绝相对目录。这条用例完全不带 `--dir` 运行，等同于静默运行里没有指定目录的情况。 |
 | `a_container_measures_the_edge_its_children_are_asked_for` | 问 `HBox` 要竖直方向的尺寸时，报的是最高的那个子项加上自己的上下内边距；问水平方向时报子项沿宽度要的总和。内嵌的百分比宽度容器透过它自己的子项来量，不会把外层的行撑大或压塌。 |
+| `a_damaged_bundle_entry_is_refused_and_leaves_no_copy` | 捆绑索引里的每个条目都记着构建时算出的摘要，读条目时核对：被改过一个字节的 payload 按名字报错、说明记录值与实际摘要；同一份包里没被动过的条目照旧读得到；流式复制损坏的条目报错，而且不在磁盘上留下这份副本——会拿它去解压的那一步因此无从跑起。 |
 | `a_default_log_is_named_after_the_image_the_moment_and_the_task` | 没有点名日志文件时，运行把日志写进临时目录下的 `nano-installer` 目录，文件名带上安装程序自己的名字、这一刻的时间和这次在做的事（安装还是卸载）。同一份安装包在两台机器、两个时刻各跑一次，支持人员靠这个文件名分得开，两次也不会互相覆盖。 |
 | `a_dependency_that_cannot_be_installed_stops_the_install` | 装不上的必需依赖会中止安装，而且在产品落盘之前就中止：报错点出依赖名和安装程序返回的退出码（用例那条命令返回 7），目的目录事后根本不存在。机器给不了产品需要的东西时，用户看到的是这句话，而不是一个起不来的产品。 |
 | `a_dependency_the_machine_already_has_is_not_installed_again` | 机器上已经有产品要的东西时不再装一遍：规则认得出它，安装程序就一次都不跑。用例把安装程序的参数写成一个它必然报错的命令，又把这条依赖标成必需，所以真去装了的话安装会当场失败，而不是悄悄放过去。 |
@@ -120,6 +121,7 @@ Rust doc comment，再退回用例名。
 | `a_setup_runs_the_projects_own_install_and_uninstall_scripts` | 自带步骤的工程会把这些步骤带进安装包，由真实运行时执行；进程内的脚本用例直接驱动脚本驱动层，而它和工程目录之间还隔着把 `scripts/` 打进捆绑数据、再由 stub 找回来这两件事。少了其中任何一件的安装包，仍然能让那批进程内用例全部通过。 |
 | `a_setup_with_a_signature_appended_still_installs` | 被集成方签过名的安装包还是安装包：签名属于发布流水线而不是构建器，Authenticode 会把证书表追加在构建写下的所有内容之后，页脚也在内。只看自己文件最后几个字节的运行时会把这种包认成没有捆绑数据而拒绝安装，所以签过名的安装包必须扛得住。 |
 | `a_setup_unpacks_the_tools_its_project_bundles` | 工程用 `resources.tools_dir` 打包的辅助程序确实进了安装包：安装时脚本从 `get_tools_dir()` 拿到的目录里，那个批处理文件逐字节和工程里的一致（安装包跑起来的时候，工程目录已经不在旁边了），而且能被 `run_command` 真的跑起来，返回它自己声明的退出码 7。 |
+| `a_setup_whose_payload_was_damaged_in_transit_installs_nothing` | 安装包自带的内容在送达路上被改过一个字节之后，这次安装什么都不装：用例自己按页脚与索引找到 payload 条目的位置、翻掉它的第一个字节（哈希的记录值不变），静默安装随即失败并点名那个条目报出摘要对不上，连目标目录都没有建出来——而不是把对不上号的字节解开、留下一份装了一半的产品。 |
 | `a_setup_writes_the_log_of_its_run_where_a_windowless_run_asks_for_it` | 无窗口运行把整次运行写进 `--log` 指定的文件：产品名与版本、装到哪个目录、这台机器是什么（是否提权、Windows 版本、位数、语言），加上脚本自己写下的每一行——脚本连写四十行，四十行都在，而向导内存里留下的只有最后三十二行。卸载用同一个开关，日志里写明这次是卸载，以及产品从哪个目录被删掉。 |
 | `a_shrinking_row_stops_at_the_minimum_its_items_declare` | `flex-shrink` 让一行容得下文字旁边的固定按钮，`min-width` 保住控件还能读：行宁可溢出，也不会把某个项压到版面声明的下限以下。`flex-shrink="0"` 的按钮保持设计宽度，溢出全由可以收缩的那个项承担。 |
 | `a_silent_install_writes_the_shortcuts_and_the_autostart_entry` | 无窗口安装没有复选框可读，只能照工程里的默认值处理快捷方式和自启动，它写下的 manifest 则列出安装目录之外创建的每个文件和注册表值。这些条目是用户还没启动产品就先碰到的东西，也是安装唯一写到自身目录之外的内容；跳过它们的安装包照样装得成功，只是会留下一个再也没人回收的开始菜单项。 |

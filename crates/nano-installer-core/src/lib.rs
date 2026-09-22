@@ -80,7 +80,12 @@ use windows::Win32::UI::WindowsAndMessaging::{SetCursor, IDC_IBEAM};
 
 const BUNDLE_MAGIC: &[u8; 8] = b"NATVRS01";
 const FOOTER_MAGIC: &[u8; 8] = b"NATVEND1";
-const BUNDLE_VERSION: u16 = 1;
+/// Version 2 carries a SHA-256 beside every entry, so a setup whose bundle was
+/// damaged after the build refuses the damaged entry instead of deploying it.
+/// Version 1 entries have no digest and are refused as unsupported.
+const BUNDLE_VERSION: u16 = 2;
+/// Length of the digest an index entry records for its bytes.
+const BUNDLE_DIGEST: usize = 32;
 const BASE_DPI: u32 = 96;
 const DEFAULT_DPI_THRESHOLD: u32 = 144;
 const WM_MOUSELEAVE: u32 = 0x02A3;
@@ -2100,7 +2105,7 @@ fn pack_project_with_progress(
     files.sort_by(|left, right| left.0.cmp(&right.0));
 
     progress(format!(
-        "Encoding bundle index: {} entries ({} content)",
+        "Hashing and indexing {} entries ({} content, each with its SHA-256)",
         files.len(),
         format_build_size(collected_size(&files))
     ));
@@ -2115,6 +2120,9 @@ fn pack_project_with_progress(
         bundle.extend_from_slice(&name_len.to_le_bytes());
         bundle.extend_from_slice(name);
         bundle.extend_from_slice(&(data.len() as u64).to_le_bytes());
+        // The digest sits in front of the bytes it describes, so the runtime
+        // knows what a payload should hash to without reading it once more.
+        bundle.extend_from_slice(&net::sha256_bytes(&data)?);
         bundle.extend_from_slice(&data);
     }
     Ok(bundle)
@@ -2172,11 +2180,13 @@ fn collect_file(root: &Path, path: &Path, files: &mut Vec<(String, Vec<u8>)>) ->
 
 /// A file stored in the bundle appended to a setup or uninstaller executable.
 ///
-/// Only the offset and length are kept; contents are read from the executable
-/// on demand so a large payload never lands in the process address space.
+/// Only the offset, length, and digest are kept; contents are read from the
+/// executable on demand so a large payload never lands in the process address
+/// space, and every read is checked against the digest the build recorded.
 struct BundleEntry {
     offset: u64,
     size: u64,
+    digest: [u8; BUNDLE_DIGEST],
 }
 
 /// Index of the bundle appended to an executable.
@@ -2217,15 +2227,20 @@ impl BundleIndex {
     }
 
     fn read_file(&self, name: &str) -> Result<Vec<u8>> {
-        let entry = self
-            .files
-            .get(name)
-            .with_context(|| format!("missing from native bundle: {name}"))?;
+        let entry = self.entry(name)?;
         let mut file = std::fs::File::open(&self.exe)?;
         file.seek(SeekFrom::Start(entry.offset))?;
         let mut contents = vec![0u8; entry.size as usize];
         file.read_exact(&mut contents)?;
+        check_entry_digest(name, &entry.digest, &net::sha256_bytes(&contents)?)?;
         Ok(contents)
+    }
+
+    /// The index entry for `name`.
+    fn entry(&self, name: &str) -> Result<&BundleEntry> {
+        self.files
+            .get(name)
+            .with_context(|| format!("missing from native bundle: {name}"))
     }
 
     /// Every entry stored under `directory`, in path order.
@@ -2247,25 +2262,39 @@ impl BundleIndex {
             .collect()
     }
 
-    /// Streams one bundle entry to `destination` in fixed-size chunks.
+    /// Streams one bundle entry to `destination`, checking its digest.
+    ///
+    /// A payload is far larger than the address space this runs in, so the
+    /// digest is taken while the bytes go past rather than over a buffer that
+    /// holds them all. A copy that does not check out is removed: the step that
+    /// would have unpacked it must not be able to run against damaged bytes.
     fn copy_file_to(&self, name: &str, destination: &Path) -> Result<u64> {
-        let entry = self
-            .files
-            .get(name)
-            .with_context(|| format!("missing from native bundle: {name}"))?;
+        let outcome = self.stream_file_to(name, destination);
+        if outcome.is_err() {
+            let _ = std::fs::remove_file(destination);
+        }
+        outcome
+    }
+
+    fn stream_file_to(&self, name: &str, destination: &Path) -> Result<u64> {
+        let entry = self.entry(name)?;
         let mut source = std::fs::File::open(&self.exe)?;
         source.seek(SeekFrom::Start(entry.offset))?;
         let mut target = std::fs::File::create(destination)
             .with_context(|| format!("failed to create {}", destination.display()))?;
+        let mut hasher = net::Sha256::new()?;
         let mut buffer = vec![0u8; 1024 * 1024];
         let mut remaining = entry.size;
         while remaining > 0 {
             let chunk = remaining.min(buffer.len() as u64) as usize;
             source.read_exact(&mut buffer[..chunk])?;
+            hasher.update(&buffer[..chunk])?;
             target.write_all(&buffer[..chunk])?;
             remaining -= chunk as u64;
         }
         target.flush()?;
+        drop(target);
+        check_entry_digest(name, &entry.digest, &hasher.finish()?)?;
         Ok(entry.size)
     }
 
@@ -2360,8 +2389,12 @@ fn parse_bundle_index(
     if &header[..8] != BUNDLE_MAGIC {
         bail!("invalid native bundle magic");
     }
-    if u16::from_le_bytes(header[8..10].try_into()?) != BUNDLE_VERSION {
-        bail!("unsupported native bundle version");
+    let version = u16::from_le_bytes(header[8..10].try_into()?);
+    if version != BUNDLE_VERSION {
+        bail!(
+            "this setup carries native bundle version {version}, and this runtime understands \
+             version {BUNDLE_VERSION}; setup and runtime must come from the same build"
+        );
     }
     let count = u32::from_le_bytes(header[10..14].try_into()?);
     let mut cursor = start + 14;
@@ -2381,6 +2414,10 @@ fn parse_bundle_index(
         file.read_exact(&mut length)?;
         let entry_size = u64::from_le_bytes(length);
         cursor += 8;
+        let mut digest = [0u8; BUNDLE_DIGEST];
+        file.seek(SeekFrom::Start(cursor))?;
+        file.read_exact(&mut digest)?;
+        cursor += BUNDLE_DIGEST as u64;
         let offset = cursor;
         cursor = cursor
             .checked_add(entry_size)
@@ -2393,10 +2430,32 @@ fn parse_bundle_index(
             BundleEntry {
                 offset,
                 size: entry_size,
+                digest,
             },
         );
     }
     Ok(files)
+}
+
+/// Refuses bytes that are not the ones the build recorded for `name`.
+///
+/// A bundle travels inside the setup, so damage to it is damage to the product:
+/// naming the entry and both digests says which file arrived wrong, which a
+/// failed extraction of anonymous bytes does not.
+fn check_entry_digest(
+    name: &str,
+    expected: &[u8; BUNDLE_DIGEST],
+    actual: &[u8; BUNDLE_DIGEST],
+) -> Result<()> {
+    if expected == actual {
+        return Ok(());
+    }
+    bail!(
+        "{name} is damaged: this setup records {}, the bytes inside it hash to {}; \
+         copy the setup again or download it once more",
+        net::hex_digest(expected),
+        net::hex_digest(actual)
+    );
 }
 
 /// In-memory bundle parser used by tests to inspect a freshly packed bundle.
@@ -2424,9 +2483,15 @@ fn parse_bundle(data: &[u8]) -> Result<HashMap<String, Vec<u8>>> {
         cursor.read_exact(&mut name)?;
         let mut length = [0u8; 8];
         cursor.read_exact(&mut length)?;
+        let mut digest = [0u8; BUNDLE_DIGEST];
+        cursor.read_exact(&mut digest)?;
         let mut contents = vec![0u8; u64::from_le_bytes(length) as usize];
         cursor.read_exact(&mut contents)?;
-        files.insert(String::from_utf8(name)?, contents);
+        let name = String::from_utf8(name)?;
+        // The same check the runtime makes, so a test that reads a packed
+        // bundle back also says the digests in it are the right ones.
+        check_entry_digest(&name, &digest, &net::sha256_bytes(&contents)?)?;
+        files.insert(name, contents);
     }
     Ok(files)
 }
@@ -9088,6 +9153,65 @@ mod tests {
         let missing = temp.path().join("missing.7z");
         assert!(index.copy_file_to("payload/absent.7z", &missing).is_err());
         assert!(!missing.exists());
+        Ok(())
+    }
+
+    /// An entry whose bytes changed after the build is refused by name, and a
+    /// streamed copy of it leaves no file behind: the step that would have
+    /// unpacked it must not run against bytes nobody vouched for.
+    #[test]
+    fn a_damaged_bundle_entry_is_refused_and_leaves_no_copy() -> anyhow::Result<()> {
+        let temp = tempfile::tempdir()?;
+        let project = temp.path().join("project");
+        for directory in ["layouts", "assets", "locales", "payload"] {
+            std::fs::create_dir_all(project.join(directory))?;
+        }
+        std::fs::write(
+            project.join("installer_config.json"),
+            br#"{"resources":{"payload_file":"payload/app.7z"}}"#,
+        )?;
+        std::fs::write(project.join("layouts/config.xml"), b"layout")?;
+        std::fs::write(project.join("assets/background.png"), b"png")?;
+        std::fs::write(project.join("locales/zh-CN.json"), b"{}")?;
+        let payload = b"the payload as the build stored it";
+        std::fs::write(project.join("payload/app.7z"), payload)?;
+
+        let image = temp.path().join("setup.exe");
+        write_setup_image(&image, &pack_project(&project, None)?)?;
+
+        // One byte flipped, the way a bad sector or a truncated transfer leaves
+        // a setup: the index still describes the payload exactly as the build
+        // recorded it, so the entry is found and its own bytes are what fails.
+        let mut bytes = std::fs::read(&image)?;
+        let at = bytes
+            .windows(payload.len())
+            .position(|window| window == &payload[..])
+            .context("the payload is in the image")?;
+        bytes[at] ^= 0x20;
+        std::fs::write(&image, &bytes)?;
+
+        let index =
+            BundleIndex::read(&image)?.context("the damaged setup still carries a bundle")?;
+        assert!(index.contains("payload/app.7z"));
+        let error = index
+            .read_file("payload/app.7z")
+            .expect_err("damaged bytes are not handed to a caller")
+            .to_string();
+        assert!(
+            error.contains("payload/app.7z") && error.contains("is damaged"),
+            "the failure should name the entry and what is wrong with it: {error}"
+        );
+        // The entries that arrived intact still read, so one damaged file does
+        // not put the rest of the bundle out of reach.
+        assert_eq!(index.read_file("layouts/config.xml")?, b"layout");
+
+        let streamed = temp.path().join("streamed.7z");
+        assert!(index.copy_file_to("payload/app.7z", &streamed).is_err());
+        assert!(
+            !streamed.exists(),
+            "a damaged copy stayed at {}",
+            streamed.display()
+        );
         Ok(())
     }
 
