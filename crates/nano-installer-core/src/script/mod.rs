@@ -312,6 +312,7 @@ fn finish_install(context: &ScriptContext, exe_name: &str, prep: &InstallPrep) -
         &destination,
         uninstaller_name,
         &context_config,
+        &files,
     )
 }
 

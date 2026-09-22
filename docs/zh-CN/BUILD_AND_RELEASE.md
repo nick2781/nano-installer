@@ -122,6 +122,11 @@ nano-installer-native-x64.exe build --project <dir> --delta-from <上一版的 p
 `BuildRequest.delta_from` 是同一件事的 API 入口，构建结果里的 `BuildResult.update` 回报保留了多少、
 带走了多少。
 
+安装包只负责装，不负责自己换掉自己。NSIS 也没有内置的更新器：用它的产品各自在家里决定什么时候
+去问新版本，然后运行一个新的安装包。这个框架照同一条线走，所以配置里没有「检查更新」的开关。
+要做自动更新的工程拿手上的原语自己搭：用 `download_file_with_hash` 取回新安装包并核对摘要，
+用 `run_command` 把它静默跑起来；manifest 里的版本号就是机器上装的是哪一版的依据。
+
 ## 签名
 
 构建器目前不做任何签名。生产发布必须在图标、版本资源和 bundle 全部写入之后给安装包签名，卸载

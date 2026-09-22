@@ -60,7 +60,10 @@ through shared state. The UI thread repaints when it receives a refresh message,
 leaves the thread that owns the window and your window stays responsive while it extracts.
 
 **Install.** The runtime stages files, writes the manifest and the uninstall registration, and
-creates the shortcuts and autostart value you configured. It treats a destination that already
+creates the shortcuts and autostart value you configured. That registration is the set a Windows
+installation list reads: the name, version, publisher, install location, uninstall command and
+icon, the quiet uninstall command, the size in kilobytes counted from the bytes on disk, and two
+flags saying there is no separate modify or repair step. It treats a destination that already
 holds this project as an upgrade: it backs replaced files up in a rollback journal, removes files
 the new payload no longer ships, and restores the previous version if something fails.
 
@@ -73,6 +76,9 @@ proceeds only where the manifest of that release is present and every expected f
 and refuses before writing anything when one does not. The files it keeps stay part of the
 installation -- the manifest names them, so an uninstall takes them back -- and a file the update
 does carry is not copied over a target that already holds exactly those bytes.
+The framework ships no updater of its own, the way NSIS does not: it offers the primitives
+that build an update package and run a new setup, and leaves asking for a new version and
+installing it to the product, so there is no "check for updates" switch here.
 
 **Uninstall.** The runtime ends the product process, deletes the recorded shortcuts and files, and
 removes the declared user data only when the user clears the keep-data option. Windows refuses to

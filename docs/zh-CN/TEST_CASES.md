@@ -300,11 +300,13 @@ Rust doc comment，再退回用例名。
 | `the_panels_draw_in_every_state_they_can_be_in` | 面板在指南说到的每种状态下都画得出来：这里没有一条用例能开窗口，状态是画在无窗口上下文里的——什么都没打开、检查过工程、构建进行中、构建失败、构建完成，两种界面语言都算。一个根本画不出来的状态会让用户看到空白窗口，而画的过程改掉要展示的状态则更糟。 |
 | `the_payload_format_selects_the_runtime_that_gets_embedded` | payload 格式决定嵌入哪个运行时。一直声称错误格式的安装包什么都装不上，因为那个 stub 读不懂归档。 |
 | `the_pointer_decides_which_cursor_the_wizard_shows` | 指针在向导上是什么形状，由它底下那个控件说了算：按钮上是手型，可以输入的文本框上是工字光标，落在页面空白处则是普通箭头；指针再挪回按钮，形状跟着回去。三种标准光标必须先能彼此区分（句柄互不相同），否则这条用例不管窗口做什么都会通过。 |
+| `the_reported_size_counts_every_owned_file` | 卸载项里的容量按磁盘上的字节数算：安装占用的每个文件都算进去，卸载程序本身也算，不是文件的条目（比如同名目录）不算；不足 1 KiB 的产品报 1 而不是 0，因为 0 在 Windows 那里读作「大小未知」。 |
 | `the_script_queries_fixed_disks_and_notifies_the_shell` | 脚本列出的固定磁盘都是 `C:\` 这样的根目录，测试所在的盘也在里面；取到的可用空间是正数且不超过总容量；`shell_notify` 之后脚本继续往下走。 |
 | `the_script_reads_the_environment_and_the_project_configuration` | 脚本读环境变量拿到真实值，机器上没有的变量读成空字符串而不是报错；读工程配置拿到产品名和可执行文件名，不存在的配置路径类型是 unit，对象是 map，脚本因此分得清写错和空值。 |
 | `the_script_reports_the_image_it_runs_from` | 脚本报告自己运行的映像路径和它所在目录，值就是跑测试的那个可执行文件，而不是它读的捆绑数据。 |
 | `the_setup_opens_its_wizard_window` | 不带 `--silent` 打开真实的安装包，等它的向导窗口画出来再量客户区，这是无窗口用例够不到的那道缝：版面加载失败、捆绑数据丢了资源、窗口类没注册，都可能让静默安装照样成功、让所有只读文件的检查通过。开窗口需要交互式的桌面会话，以服务方式启动的构建代理没有桌面，那种环境下用例跳过并说明原因；在本该有桌面的机器上，`NANO_INSTALLER_E2E_REQUIRE_DESKTOP` 会把这次跳过变成失败，因为从没跑过的检查不能算作跑过并通过。 |
 | `the_summary_reports_what_the_project_declares` | 窗口显示的摘要是工程声明的内容，包括工程可以省略的那些默认值。 |
+| `the_uninstall_entry_reports_the_size_the_quiet_uninstall_and_no_repair` | 卸载项的字段是 Windows 展示给用户的全部：静默卸载命令指向部署出来的卸载程序并带上静默参数；容量以 `REG_DWORD` 存下去，数值等于磁盘上这次安装占用的千字节（连卸载程序本身一起算）；`NoModify` 与 `NoRepair` 都是 `REG_DWORD` 1，Windows 因此不会摆出这个安装器根本没有的“修改”“修复”入口。 |
 | `the_values_the_page_holds_reach_the_script` | 用户在页面上留下的取值真的走进了脚本：用例往安装包窗口的输入框里敲进一个编号、点中单选组里版面没默认选中的那一行，再按下安装键，脚本把读到的值写进安装目录，几个值逐一对得上；其中两个问的是页面上没有的 id，读成空串。安装装得完说明不了什么，脚本用常量也装得完。 |
 | `two_payloads_that_carry_one_file_are_refused` | 两个归档带同一个相对路径时安装失败，而不是按声明顺序互相覆盖：报错点出是哪个组件、哪个文件。用户装到的东西不该取决于工程把组件排在第几个。 |
 | `typing_coalesces_into_one_undo_step` | 连续键入只记一步撤销：一串按键共用同一份快照，Ctrl+Z 回到这串输入开始前的值，换一种编辑动作才另起一步。 |

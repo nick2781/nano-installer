@@ -1391,6 +1391,68 @@ fn a_built_setup_installs_its_payload_and_registers_an_uninstall_entry() -> anyh
     Ok(())
 }
 
+/// The uninstall entry is the whole of what Windows shows a user, so it has to
+/// carry the fields an installation list reads: the size as a number, a command
+/// that removes the product without a window, and the two flags that keep
+/// Windows from offering a repair or a modify step this installer does not
+/// have. A string where a number belongs reads as an absent field.
+#[test]
+fn the_uninstall_entry_reports_the_size_the_quiet_uninstall_and_no_repair() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.build()?;
+    fixture.install()?;
+    let key = fixture.registry_key();
+
+    // What a script or an administrator runs to remove the product unattended:
+    // the deployed uninstaller, told to keep its window out of the way.
+    let (kind, quiet) =
+        read_registry_value(&key, "QuietUninstallString")?.expect("no quiet uninstall command");
+    assert_eq!(kind, "REG_SZ", "the quiet command is stored as {kind}");
+    assert!(
+        quiet.contains("uninst.exe") && quiet.ends_with("--silent"),
+        "the quiet command does not run the uninstaller silently: {quiet}"
+    );
+
+    // The size is what the directory takes: every file the installation owns,
+    // the uninstaller included, in the kilobytes Windows counts in.
+    let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(
+        fixture.destination.join("nano-installer-manifest.json"),
+    )?)?;
+    let owned = manifest["files"]
+        .as_array()
+        .expect("the manifest lists the deployed files")
+        .iter()
+        .filter_map(|value| value.as_str())
+        .map(|relative| fixture.destination.join(relative))
+        .chain(std::iter::once(fixture.destination.join("uninst.exe")))
+        .filter_map(|path| std::fs::metadata(path).ok())
+        .filter(|metadata| metadata.is_file())
+        .map(|metadata| metadata.len())
+        .sum::<u64>()
+        / 1024;
+    let (kind, size) = read_registry_value(&key, "EstimatedSize")?.expect("no estimated size");
+    assert_eq!(kind, "REG_DWORD", "the size is stored as {kind}");
+    let reported = u32::from_str_radix(size.trim_start_matches("0x"), 16)
+        .unwrap_or_else(|_| panic!("the size is not a number: {size}"));
+    assert_eq!(
+        reported,
+        u32::try_from(owned).unwrap_or(u32::MAX).max(1),
+        "the entry reports {reported} KiB while the installation holds {owned} KiB"
+    );
+
+    // No repair and no modify step exists, and the flags say so: a button that
+    // leads nowhere is worse than no button.
+    for name in ["NoModify", "NoRepair"] {
+        let (kind, value) = read_registry_value(&key, name)?.expect("a missing flag");
+        assert_eq!(kind, "REG_DWORD", "{name} is stored as {kind}");
+        assert_eq!(value, "0x1", "{name} is {value}");
+    }
+    Ok(())
+}
+
 /// A configured `%LOCALAPPDATA%` path has to be expanded before use, because an
 /// unexpanded one is not absolute and an install refuses a relative directory.
 /// This runs with no `--dir` at all, which is what a silent run without an

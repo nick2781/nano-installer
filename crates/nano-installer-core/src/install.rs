@@ -631,6 +631,9 @@ fn install_setup(
         exe_name,
         prep.previous.as_ref().map(|install| &install.manifest),
     )?;
+    // What the installation will hold, which is what the uninstall entry
+    // reports the size of.
+    let installed = files.all();
     Deployment {
         extracted: &extracted,
         destination,
@@ -655,6 +658,7 @@ fn install_setup(
             &prep.uninstaller_name,
             &config,
             prep.upgrade,
+            &installed,
         )
     })?;
     super::report_progress(95, "status.finishing")?;
@@ -2110,8 +2114,17 @@ pub(super) fn register_uninstaller(
     uninstaller_name: &str,
     config: &Value,
     upgrade: bool,
+    files: &[PathBuf],
 ) -> Result<()> {
-    write_uninstall_registration(root, path, destination, uninstaller_name, config, upgrade)
+    write_uninstall_registration(
+        root,
+        path,
+        destination,
+        uninstaller_name,
+        config,
+        upgrade,
+        files,
+    )
 }
 
 /// Writes the uninstall registration over a key the project owns already.
@@ -2126,8 +2139,49 @@ pub(super) fn rewrite_uninstall_registration(
     destination: &Path,
     uninstaller_name: &str,
     config: &Value,
+    files: &[PathBuf],
 ) -> Result<()> {
-    write_uninstall_registration(root, path, destination, uninstaller_name, config, true)
+    write_uninstall_registration(
+        root,
+        path,
+        destination,
+        uninstaller_name,
+        config,
+        true,
+        files,
+    )
+}
+
+/// One value of the uninstall entry, with the type Windows reads it as.
+///
+/// Windows lists a product under installed programs and offers the actions the
+/// entry claims, so the size and the two flags that stand beside the strings are
+/// numbers rather than text.
+enum UninstallField {
+    Text(String),
+    Dword(u32),
+}
+
+/// The size of an installation, in KiB, which is how Windows shows it.
+///
+/// Every file the installation owns is counted, the uninstaller included: what
+/// the directory takes is what the number is about, and the manifest leaves the
+/// uninstaller out of its own list because removing it is its own step. Windows
+/// reads the value in kilobytes, so a product smaller than one reports one:
+/// zero there reads as "size unknown".
+///
+/// The field is a `REG_DWORD`, so an installation past four tebibytes reports
+/// the largest value the type can hold rather than failing the install.
+fn installed_size_kib(destination: &Path, files: &[PathBuf], uninstaller_name: &str) -> u32 {
+    let bytes = files
+        .iter()
+        .map(|relative| destination.join(relative))
+        .chain(std::iter::once(destination.join(uninstaller_name)))
+        .filter_map(|path| fs::metadata(path).ok())
+        .filter(|metadata| metadata.is_file())
+        .map(|metadata| metadata.len())
+        .sum::<u64>();
+    u32::try_from(bytes / 1024).unwrap_or(u32::MAX).max(1)
 }
 
 fn write_uninstall_registration(
@@ -2137,6 +2191,7 @@ fn write_uninstall_registration(
     uninstaller_name: &str,
     config: &Value,
     upgrade: bool,
+    files: &[PathBuf],
 ) -> Result<()> {
     let mut key = Default::default();
     let mut disposition = REG_CREATE_KEY_DISPOSITION::default();
@@ -2161,41 +2216,95 @@ fn write_uninstall_registration(
         bail!("uninstall registry key already exists; refusing to overwrite")
     }
     let uninstaller = destination.join(uninstaller_name);
+    // What the entry says the product is, where it went, and how to remove it
+    // without a window. It is the set a Windows installation list expects, and
+    // the two flags are what keep it from offering actions this installer does
+    // not have: there is no separate repair or modify step, and a button that
+    // leads nowhere is worse than no button.
     let fields = [
         (
             "DisplayName",
-            config["project"]["name"]
-                .as_str()
-                .unwrap_or("nano-installer")
-                .to_string(),
+            UninstallField::Text(
+                config["project"]["name"]
+                    .as_str()
+                    .unwrap_or("nano-installer")
+                    .to_string(),
+            ),
         ),
         (
             "DisplayVersion",
-            config["project"]["version"]
-                .as_str()
-                .unwrap_or_default()
-                .to_string(),
+            UninstallField::Text(
+                config["project"]["version"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+            ),
         ),
         (
             "Publisher",
-            config["project"]["publisher"]
-                .as_str()
-                .unwrap_or_default()
-                .to_string(),
+            UninstallField::Text(
+                config["project"]["publisher"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+            ),
         ),
-        ("InstallLocation", destination.display().to_string()),
-        ("UninstallString", format!("\"{}\"", uninstaller.display())),
-        ("DisplayIcon", uninstaller.display().to_string()),
+        (
+            "InstallLocation",
+            UninstallField::Text(destination.display().to_string()),
+        ),
+        (
+            "UninstallString",
+            UninstallField::Text(format!("\"{}\"", uninstaller.display())),
+        ),
+        (
+            // The one Windows runs when a script or an administrator asks for
+            // the removal without a window.
+            "QuietUninstallString",
+            UninstallField::Text(format!(
+                "\"{}\" {}",
+                uninstaller.display(),
+                super::SILENT_FLAG
+            )),
+        ),
+        (
+            "DisplayIcon",
+            UninstallField::Text(uninstaller.display().to_string()),
+        ),
+        (
+            "EstimatedSize",
+            UninstallField::Dword(installed_size_kib(destination, files, uninstaller_name)),
+        ),
+        ("NoModify", UninstallField::Dword(1)),
+        ("NoRepair", UninstallField::Dword(1)),
     ];
     let result = fields
         .into_iter()
-        .try_for_each(|(name, value)| -> Result<()> {
-            let encoded = wide(&value);
-            let bytes = unsafe {
-                std::slice::from_raw_parts(encoded.as_ptr().cast::<u8>(), encoded.len() * 2)
-            };
-            unsafe {
-                RegSetValueExW(key, PCWSTR(wide(name).as_ptr()), 0, REG_SZ, Some(bytes)).ok()?;
+        .try_for_each(|(name, field)| -> Result<()> {
+            match field {
+                UninstallField::Text(value) => {
+                    let encoded = wide(&value);
+                    let bytes = unsafe {
+                        std::slice::from_raw_parts(encoded.as_ptr().cast::<u8>(), encoded.len() * 2)
+                    };
+                    unsafe {
+                        RegSetValueExW(key, PCWSTR(wide(name).as_ptr()), 0, REG_SZ, Some(bytes))
+                            .ok()?;
+                    }
+                }
+                UninstallField::Dword(value) => {
+                    let bytes = value.to_le_bytes();
+                    unsafe {
+                        RegSetValueExW(
+                            key,
+                            PCWSTR(wide(name).as_ptr()),
+                            0,
+                            REG_DWORD,
+                            Some(&bytes),
+                        )
+                        .ok()?;
+                    }
+                }
             }
             Ok(())
         });
@@ -2460,7 +2569,7 @@ fn schedule_removal_at_reboot(path: &Path) {
 #[cfg(test)]
 mod tests {
     use super::{
-        begin_deployment, check_cancelled, deploy_files, parse_registry_key,
+        begin_deployment, check_cancelled, deploy_files, installed_size_kib, parse_registry_key,
         parse_silent_arguments, preserved_data_paths, previous_install, register_uninstaller,
         registry_path, require_free_space, require_silent_support, resolve_install_destination,
         result_notice, same_contents, selected_components, validate_destination, wide,
@@ -3046,6 +3155,7 @@ mod tests {
             "uninst.exe",
             &config,
             false,
+            &[],
         )?;
         assert!(RegistryKey::new(HKEY_CURRENT_USER, &key.0).exists()?);
         assert!(register_uninstaller(
@@ -3055,6 +3165,7 @@ mod tests {
             "uninst.exe",
             &config,
             false,
+            &[],
         )
         .is_err());
         register_uninstaller(
@@ -3064,7 +3175,31 @@ mod tests {
             "uninst.exe",
             &config,
             true,
+            &[],
         )?;
+        Ok(())
+    }
+
+    /// Windows shows the size of an installation from the bytes on disk, and a
+    /// product smaller than a kilobyte still has to report something: zero
+    /// there means "unknown", which is why the result floors at one.
+    #[test]
+    fn the_reported_size_counts_every_owned_file() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let destination = temp.path();
+        std::fs::create_dir_all(destination.join("bin"))?;
+        std::fs::write(destination.join("bin/app.exe"), vec![0u8; 3 * 1024])?;
+        std::fs::write(destination.join("readme.txt"), b"short")?;
+        // Not a file, so it is not counted even when it is named.
+        std::fs::create_dir_all(destination.join("empty"))?;
+        let files = vec![PathBuf::from("bin/app.exe"), PathBuf::from("readme.txt")];
+        assert_eq!(installed_size_kib(destination, &files, "uninst.exe"), 3);
+        std::fs::write(destination.join("uninst.exe"), vec![0u8; 2 * 1024])?;
+        assert_eq!(installed_size_kib(destination, &files, "uninst.exe"), 5);
+        assert_eq!(
+            installed_size_kib(destination, &[PathBuf::from("empty")], "absent.exe"),
+            1
+        );
         Ok(())
     }
 

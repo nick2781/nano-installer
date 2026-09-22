@@ -142,6 +142,13 @@ pages is still a full setup.
 `BuildRequest.delta_from` is the same thing through the API, and `BuildResult.update` reports what
 the build kept and carried.
 
+A setup installs the product; it does not replace itself. NSIS ships no updater either: products
+built with it decide on their own when to ask for a new version and then run a new setup, and this
+framework follows the same line, so there is no "check for updates" switch in the configuration.
+A project that wants automatic updates builds the loop out of the primitives it already has:
+`download_file_with_hash` fetches the new setup and checks its digest, `run_command` runs it
+without a window, and the version in the manifest says which release the machine holds.
+
 ## Signing
 
 The builder does not sign anything yet. For a production release you sign the setup after the icon,

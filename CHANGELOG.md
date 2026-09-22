@@ -93,6 +93,11 @@
   各自多大、摘要是什么。安装时先核对这句话，对不上就停下来让人改用完整安装包，核对通过才动手；
   留在原地的文件仍然算这次安装的，卸载时一并收走。产品没变的那些字节因此不用再下一次，
   一份只改了几 MB 的新版本也就不必再发一份完整的几百 MB。
+- 卸载项补齐成 Windows 安装列表要的那一组字段：除产品名、版本、发布者、安装目录、卸载命令和图标，
+  还写静默卸载命令（部署出来的卸载程序加 `--silent`，脚本和无人值守部署用的就是它）、容量（按安装
+  目录占用的字节数折算成千字节，连卸载程序本身一起算，按 Windows 读的那种数字存下去），以及
+  `NoModify`、`NoRepair` 两个标记——这个安装器没有单独的修改或修复步骤，两个标记让「程序和功能」
+  不去摆出通往空处的按钮。容量一栏以前一直是空的。
 
 ### 改进
 
@@ -136,6 +141,9 @@
 - 脚本发出的提示与提问在没有对话框布局、静默运行或窗口还没建立时，仍旧是系统对话框。
 - 更新包只覆盖 payload 里的文件，layouts、assets、locales、scripts 始终随安装包一起走；改了页面的
   那一版仍然要发完整安装包。内容切成组件的工程也没有一个归档可以拿来比对，构建更新包时会被拒绝。
+- 安装包不带自动更新器，和 NSIS 一样：什么时候去问新版本、要不要静默装上，由产品自己决定。框架给的
+  是做出更新包和跑起新安装包的原语——`download_file_with_hash` 取回新安装包并核对摘要，
+  `run_command` 把它静默跑起来——所以配置里没有「检查更新」这个开关。
 
 <!-- release-notes:end -->
 
@@ -285,6 +293,13 @@
   一次 64 KiB，不把文件读进内存）。脚本流程走的是同一个 `extract_payload`，`record_kept` 把留在
   原地的文件记进上下文，`finish_install` 把它们并进 manifest。日志里留一行
   `update package: N file(s) verified in place, M deployed`，静默运行加 `--log` 就能断言。
+- 卸载项字段：`crates/nano-installer-core/src/install.rs` 的字段表改成 `UninstallField { Text, Dword }`，
+  写入循环按类型分别用 `REG_SZ` 与 `REG_DWORD`（`value.to_le_bytes()`）。`EstimatedSize` 由
+  `installed_size_kib` 算：把 manifest 记下的每个文件与卸载程序本身的大小加起来除以 1024 向下取整，
+  结果不小于 1（0 在 Windows 那里读作「大小未知」），并夹在 `u32::MAX` 以内，因为这个字段本身是
+  DWORD。`QuietUninstallString` 用运行时的 `SILENT_FLAG` 拼出来，静默参数因此只有一处定义。
+  `register_uninstaller` 与 `rewrite_uninstall_registration` 都多收一个 `files: &[PathBuf]`：
+  安装路径传的是 `PayloadFiles::all()`，脚本路径传的是 `finish_install` 记下的那份清单。
 
 - 页面钩子：新增 `crates/nano-installer-core/src/script/page.rs`——`PAGE_HOOK` 是 `next_page`，
   `next_page(request)` 先编译脚本、查 `ast.iter_functions()` 里有没有这个函数，再 `call_fn` 并把
@@ -342,6 +357,23 @@
   `run_e2e_setup.ps1 -RequireDesktop` 49 通过、0 失败。两份报告都照旧写出，`提权运行` 一栏如实
   写着「否」，服务那一半的结论因此仍要等提权的机器（CI 的 runner 是管理员账户）。
 - `scripts/verify_release_notes.ps1` 通过，生成器产出的发布正文与源码里的尾注逐字一致。
+- 卸载项那两条用例这一次都跑通：一条在真的装出来的机器上读回整条卸载项——`QuietUninstallString`
+  是 `REG_SZ` 且以 `--silent` 结尾；`EstimatedSize` 是 `REG_DWORD`，数值等于用例自己从 manifest 与
+  卸载程序重新算出的千字节数；`NoModify`、`NoRepair` 都是 `REG_DWORD` 1；一条在单元层面钉住容量
+  的算法：卸载程序算在内、同名目录不算、不足 1 KiB 报 1。
+- `cargo test --locked --workspace --no-fail-fast`：318 条用例全部跑到，315 通过、2 失败、1 忽略
+  （核心库 232 含 1 忽略、安装包级 50、工程检查 5、可视化构建器 29、解压运行时 2）。两条失败是光标
+  那两条：这次跑的时候桌面是锁屏状态（会话里跑着 `LogonUI`），前台是锁屏界面、指针读回来是箭头，
+  它们如实失败而不是跳过。加 `--no-fail-fast` 是因为 cargo 默认在一个目标失败之后就不再跑后面的目标，
+  那样其余 36 条根本轮不到；被忽略的
+  `install::tests::registers_and_cleans_up_scoped_uninstall_key` 要在隔离环境里写 HKCU。
+  报告在 `target/test-report.txt` 与 `target/test-report.html`。
+- 安装包级的 50 条里 48 条跑通，没过的两条就是上面那两条光标用例；`run_e2e_setup.ps1 -RequireDesktop`
+  那次把跳过当成失败，报告在 `target/e2e-report.txt` 与 `target/e2e-report.html`。
+- 这一轮还踩到了仓库记着的那条老坑：`target/debug/*-stub-native.exe` 是上一次构建留下的副本，
+  `cargo test` 不刷新它们，于是安装包带着上一版的运行时装进了机器，新用例第一次跑报的是
+  「没有静默卸载命令」。先 `cargo build -p nano-installer-stub-lzma -p nano-installer-stub-zlib
+  -p nano-installer-uninstaller`（`run_e2e_setup.ps1` 自己就会先做这一步）之后它转绿。
 
 ### 未完成
 

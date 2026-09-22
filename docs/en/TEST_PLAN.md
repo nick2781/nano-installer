@@ -87,7 +87,8 @@ that setup and the uninstaller it deployed.
 - Build product: the footer the runtime reads, a payload appended behind a real PE, the version and
   manifest resources, and the runtime that matches the payload format.
 - Install: the payload lands on disk and comes back byte for byte, the manifest lists what was
-  written, the uninstall entry points at the deployed uninstaller, a configured `%TEMP%` path is
+  written, the uninstall entry points at the deployed uninstaller and carries the size, the quiet
+  command and the two flags that say there is no repair or modify step, a configured `%TEMP%` path is
   expanded, `--dir` beats the configured path, and an unopted or mistyped run installs no product file;
   the log a run writes -- in the temporary directory, or in the file `--log` names -- records the
   product, the machine and every step, and on failure it is the file a support ticket gets.
@@ -109,7 +110,11 @@ drive a window need an interactive desktop session on top of that, which a proce
 service has no window station for: they skip there, and `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` turns
 that skip into a failure. One of them asks for more than a window: the cursor case can only be
 answered by a session that is showing a pointer. A hosted runner has a window station and draws
-windows, but has no mouse and reports a null cursor, so that case prints its own skip there.
+windows, but has no mouse and reports a null cursor, so that case prints its own skip there. A
+desktop that is locked -- `LogonUI` running in the session, the lock screen in front -- is a
+different matter: the pointer reads back as the arrow and moving it changes nothing, so those cases
+fail rather than skip. What they ask about is what a window does once the pointer really moved, and
+a skip would say nothing about it.
 
 Signing a built setup belongs to the release pipeline rather than to this suite: `scripts/sign.ps1`
 signs a file with the certificate `NANO_INSTALLER_CERT_THUMBPRINT` names and verifies the result.

@@ -32,6 +32,13 @@ files and registry entries, so validate them in a disposable virtual machine onl
   through rollback.
 - Uninstall terminates a running product, removes shortcuts, and deletes declared user data only
   when you clear the keep-data option.
+- The uninstall entry carries the set a Windows installation list reads: the product name,
+  version, publisher, install location, uninstall command and icon; the quiet command a script
+  or an administrator runs to remove the product without a window (the deployed uninstaller
+  with `--silent`); the size in kilobytes as a `REG_DWORD`, counted from the bytes on disk and
+  including the uninstaller itself, floored at one so that a tiny product does not read as
+  "size unknown"; and `NoModify` and `NoRepair`, both `REG_DWORD` 1, because there is no
+  separate modify or repair step and a button that leads nowhere is worse than no button.
 - `scripts/install.rhai` and `scripts/uninstall.rhai` run in an embedded Rhai engine whose
   primitives reuse the built-in deployment, rollback, and manifest code; a failing script rolls
   back, and a script that skips manifest cleanup falls back to the library removal.
@@ -164,7 +171,7 @@ files and registry entries, so validate them in a disposable virtual machine onl
   files it does not own, and an uninstall removes the product, the registration, and the directory; a
   dependency the machine is missing is really installed, and a downloaded one is checked before it
   runs.
-  Fifteen of its forty-nine cases open the wizard window and drive it: one measures the client
+  Fifteen of its fifty cases open the wizard window and drive it: one measures the client
   area it drew, one walks the page actions a project declares, one stops a running task from a cancel
   button, one types a directory into the field a page asks for and starts the install with it, one
   clicks the row a radio group's install button waits for, one rolls the wheel over a list and
@@ -180,7 +187,7 @@ files and registry entries, so validate them in a disposable virtual machine onl
   lands on the product's own card and the declared order walks on. They need an interactive
   desktop session, so they skip where there is none and `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` makes the
   skip a failure; the cursor case asks that the session be showing a pointer as well, which a
-  hosted runner is not, and it prints its skip there. Of the other thirty-four, three read their
+  hosted runner is not, and it prints its skip there. Of the other thirty-five, three read their
   answer back out of the machine rather than out of the primitive that wrote it: one checks every
   registry type a script named, and the copy of a key a view name selects, one checks the exit code
   and both streams of a command a script ran, and one checks that the service a script installed is
