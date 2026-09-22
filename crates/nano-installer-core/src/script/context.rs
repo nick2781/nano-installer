@@ -79,6 +79,9 @@ pub(super) struct ScriptState {
     pub(super) registry_keys: Vec<String>,
     /// Services a script installed, by the name the machine knows them by.
     pub(super) services: Vec<String>,
+    /// Files an update package verified on the machine and left where they
+    /// were, which the installation still owns.
+    pub(super) kept: Vec<PathBuf>,
     /// Set once the script replayed the manifest removal itself.
     pub(super) tracked_uninstall: bool,
     /// The directory the bundled tools were unpacked into, once a script asked.
@@ -224,6 +227,7 @@ impl ScriptContext {
                 registry_values: Vec::new(),
                 registry_keys: Vec::new(),
                 services: Vec::new(),
+                kept: Vec::new(),
                 tracked_uninstall: false,
                 tools: None,
             })),
@@ -356,6 +360,19 @@ impl ScriptContext {
     /// Records `target` before a script creates or overwrites it.
     pub(super) fn record_write(&self, target: &Path) -> Result<()> {
         self.state().journal.track(target)
+    }
+
+    /// Records the files an update package verified and left where they were.
+    ///
+    /// They are named in the manifest like the ones the run deployed: an
+    /// uninstall that did not know about them would leave them behind.
+    pub(super) fn record_kept(&self, paths: &[PathBuf]) {
+        let mut state = self.state();
+        for path in paths {
+            if !state.kept.iter().any(|recorded| recorded == path) {
+                state.kept.push(path.clone());
+            }
+        }
     }
 
     pub(super) fn record_shortcut(&self, link: &Path) {

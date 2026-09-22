@@ -17,6 +17,12 @@ files and registry entries, so validate them in a disposable virtual machine onl
   the manifest and the uninstall entry; uninstalling removes only what the manifest records.
 - Reinstalling over an existing installation upgrades in place, drops files the new payload no
   longer ships, and restores the previous version if anything fails.
+- A release can ship only the files whose bytes changed. `--delta-from` names the payload archive of
+  the release it replaces, the builder expands both archives and compares them file by file, and what
+  did not change is left to a statement in the setup: the files it expects on the machine, with their
+  byte counts and digests. An install checks those before it writes anything and refuses with "run
+  the full setup" when one does not match; the files it kept stay in the manifest, so an uninstall
+  takes them back.
 - The first page renders background bitmaps and Unicode text natively, in a window with no border
   and rounded corners that you can drag, minimize, and close; it shows a hand cursor over
   clickable controls.
@@ -158,7 +164,7 @@ files and registry entries, so validate them in a disposable virtual machine onl
   files it does not own, and an uninstall removes the product, the registration, and the directory; a
   dependency the machine is missing is really installed, and a downloaded one is checked before it
   runs.
-  Fifteen of its forty-six cases open the wizard window and drive it: one measures the client
+  Fifteen of its forty-nine cases open the wizard window and drive it: one measures the client
   area it drew, one walks the page actions a project declares, one stops a running task from a cancel
   button, one types a directory into the field a page asks for and starts the install with it, one
   clicks the row a radio group's install button waits for, one rolls the wheel over a list and
@@ -174,7 +180,7 @@ files and registry entries, so validate them in a disposable virtual machine onl
   lands on the product's own card and the declared order walks on. They need an interactive
   desktop session, so they skip where there is none and `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` makes the
   skip a failure; the cursor case asks that the session be showing a pointer as well, which a
-  hosted runner is not, and it prints its skip there. Of the other thirty-one, three read their
+  hosted runner is not, and it prints its skip there. Of the other thirty-four, three read their
   answer back out of the machine rather than out of the primitive that wrote it: one checks every
   registry type a script named, and the copy of a key a view name selects, one checks the exit code
   and both streams of a command a script ran, and one checks that the service a script installed is

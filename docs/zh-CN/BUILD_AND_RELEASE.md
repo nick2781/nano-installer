@@ -90,13 +90,37 @@ release 正文。`scripts/audit_script_encoding.ps1` 会在每次构建开始时
 ## 构建器参数
 
 ```text
-nano-installer-native-x64.exe build --project <dir> [--output <exe>] [--stubs <dir>]
+nano-installer-native-x64.exe build --project <dir> [--output <exe>] [--stubs <dir>] [--delta-from <archive>]
 ```
 
 - `--project` 必需。
 - `--output` 可选，默认输出到项目内的 `dist/<output.installer_name>`。
 - `--stubs` 指向包含三个运行时的目录。
+- `--delta-from` 点名上一版的 payload 归档，构建的是更新包而不是完整安装包，见下一节。
 - `NANO_INSTALLER_NATIVE_STUB_DIR` 可以覆盖运行时搜索目录。
+
+## 更新包
+
+```text
+nano-installer-native-x64.exe build --project <dir> --delta-from <上一版的 payload 归档> [--output <exe>]
+```
+
+`--delta-from` 点名它要替代的那一版随安装包发出去的 payload 归档，也就是工程写在
+`resources.payload_file` 里的那个文件。构建器用运行时分别展开这份归档和项目当前的 payload，按
+「字节数 + SHA-256」判定哪些文件没变，只把变了的文件写成一份 ZIP，再以工程声明的 payload 名字嵌进
+安装包——所以这份安装包按 ZIP 运行时打包，工程原来的 payload 是 7z 也一样。构建汇报里会给出留在
+机器上的文件数、带走的文件数和这份归档的大小。
+
+更新包只装在做出来的那一版之上。运行时会核对它没有带走的每个文件：在不在，字节数对不对，摘要是不是
+那一个；核对在写任何文件之前做完，所以机器上不对的时候，用户看到的是「改用完整安装包」，而不是一个
+半新半旧的产品。留在原地的文件照样记入 manifest，卸载时和其它文件一起收掉。
+
+两条限制。内容切成组件的工程没有一个归档可以拿来比对，构建更新包时会被拒绝。更新包只覆盖 payload
+里的文件，layouts、assets、locales、scripts 始终随安装包一起走，所以改了页面的那一版仍然是完整
+安装包。
+
+`BuildRequest.delta_from` 是同一件事的 API 入口，构建结果里的 `BuildResult.update` 回报保留了多少、
+带走了多少。
 
 ## 签名
 

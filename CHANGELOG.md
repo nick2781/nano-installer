@@ -88,6 +88,11 @@
   这一次点击是在画窗口的那个线程上处理的。钩子报错或点名了不存在的页不会把人困住：原因画在安装程序
   自己的卡片上，向导接着走声明顺序里的下一页。`back` 走的是用户来时的路，被跳过的那一页不会因为按
   Back 而出现；页面 id 在同一个页面列表里必须唯一，两页共用一个 id 在构建时就被拒绝。
+- 一次发布可以只把变了的文件发出去。构建时用 `--delta-from` 点名它替代的那一版的 payload 归档，
+  构建器展开两份归档逐个比对，没变的文件不进安装包，只在包里留下一句话：这些文件应该已经在机器上，
+  各自多大、摘要是什么。安装时先核对这句话，对不上就停下来让人改用完整安装包，核对通过才动手；
+  留在原地的文件仍然算这次安装的，卸载时一并收走。产品没变的那些字节因此不用再下一次，
+  一份只改了几 MB 的新版本也就不必再发一份完整的几百 MB。
 
 ### 改进
 
@@ -129,6 +134,8 @@
 - 安装包尚未签名，Windows SmartScreen 仍会提示「未知发布者」。
 - 尚未在真实 Windows 7 SP1 虚拟机上完成端到端验收。
 - 脚本发出的提示与提问在没有对话框布局、静默运行或窗口还没建立时，仍旧是系统对话框。
+- 更新包只覆盖 payload 里的文件，layouts、assets、locales、scripts 始终随安装包一起走；改了页面的
+  那一版仍然要发完整安装包。内容切成组件的工程也没有一个归档可以拿来比对，构建更新包时会被拒绝。
 
 <!-- release-notes:end -->
 
@@ -263,6 +270,22 @@
 与发布流水线的构建步骤同样处理。期限分支另加一段进程快照，超时时把还活着的进程连同父进程与
 命令行写进日志——下次再卡，不必再从外面猜。
 
+- 更新包：`crates/nano-installer-core/src/delta.rs` 是全部实现。`build_update` 不自己读归档，而是
+  用 `find_native_stub` 找到对应的运行时，`--extract <archive> <dir>` 展开上一版与这一版两份归档——
+  比对走的就是安装时要解包的那条路径——再按「同尺寸 + 同 SHA-256」把新版本的文件切成 `keep` 与
+  `changed`。变了的文件由构建器自己写成 ZIP（core 新增 `zip` 依赖），以工程声明的 payload 名字嵌进
+  bundle，所以 `summary.payload_format` 与 `payload_size` 会改成这份归档的形状，setup 也就自动选上
+  zlib 运行时；留一句话写在 bundle 的 `update/plan.json` 里（`{from, version, keep:[{path,size,sha256}]}`）。
+  组件工程直接 `bail!`，因为没有一个归档可以拿来比对。运行时侧 `install.rs` 先 `UpdatePlan::read`
+  读这份计划：`requires_installed_product` 要求目标目录里有 `MANIFEST_NAME`，`verify` 在写任何文件
+  之前逐个核对 keep 文件的存在、尺寸与摘要，不符就报错并让人改用完整安装包。文件清单是
+  `deployed ∪ kept`，manifest 因此仍然写全，卸载照旧收干净；陈旧文件的判断仍按上一版的 manifest。
+  部署这一侧，`PayloadFiles { deployed, kept, update }` 让 `deploy_files` 只铺 `deployed`，并且在
+  `update` 为真时对「目标文件已经和 payload 一模一样」的复制直接跳过（`same_contents` 分块比较，
+  一次 64 KiB，不把文件读进内存）。脚本流程走的是同一个 `extract_payload`，`record_kept` 把留在
+  原地的文件记进上下文，`finish_install` 把它们并进 manifest。日志里留一行
+  `update package: N file(s) verified in place, M deployed`，静默运行加 `--log` 就能断言。
+
 - 页面钩子：新增 `crates/nano-installer-core/src/script/page.rs`——`PAGE_HOOK` 是 `next_page`，
   `next_page(request)` 先编译脚本、查 `ast.iter_functions()` 里有没有这个函数，再 `call_fn` 并把
   返回值当文本读，返回布尔或数字之类当场报错而不是被当成某一页的名字；`MAX_PAGE_OPERATIONS` 是 100 万次
@@ -279,13 +302,19 @@
 
 ### 已验证
 
-- `cargo test --locked --workspace`：共 306 条用例，305 通过、0 失败、1 忽略，退出码 0（核心库 224、
-  安装包级 46、工程检查 5、可视化构建器 29，另加两个解压运行时用例；被忽略的
+- `cargo test --locked --workspace`：共 316 条用例，315 通过、0 失败、1 忽略，退出码 0（核心库 231、
+  安装包级 49、工程检查 5、可视化构建器 29，另加两个解压运行时用例；被忽略的
   `install::tests::registers_and_cleans_up_scoped_uninstall_key` 要在隔离环境里写 HKCU）。报告在
   `target/test-report.txt` 与 `target/test-report.html`。
-- 安装包级的 46 条全部跑通，其中 15 条会打开真实的向导窗口；
+- 安装包级的 49 条全部跑通，其中 15 条会打开真实的向导窗口；
   `run_e2e_setup.ps1 -RequireDesktop` 那次把跳过当成失败，报告在 `target/e2e-report.txt` 与
   `target/e2e-report.html`，同一个脚本加 `-Language en` 会另留一份英文版。
+- 更新包那三条安装包级用例这一次都跑通：一条用 `--delta-from` 做出一份只带两个文件的更新包，
+  它比同版本的完整安装包小，装上之后新 exe 与新文件到位、上一版删掉的文件消失、两个没变的文件
+  （其中一个是 512 KiB、压不动的运行库）与原样一致，日志里留下
+  `update package: 2 file(s) verified in place, 2 deployed`，卸载把留在原地的文件一并收走；
+  一条在机器上那份文件被人换过之后拒绝安装、机器上根本没装过时也拒绝，两次都让人改用完整安装包，
+  且拒绝时新版本一个字节都没写进去；一条证明内容切成组件的工程确实做不出更新包。
 - 页面钩子那两条安装包级用例这一次都跑通：一条让 `scripts/pages.rhai` 把向导从欢迎页直接送到选项页、
   再按 Back 回到欢迎页（三页的客户区各不相同，窗口尺寸就是证据），一条让钩子抛错、看向导把原因画在
   产品自己的卡片上之后照声明的页序走到许可协议页。
@@ -308,9 +337,9 @@
 - 示例工程 6 个页面的 10 张快照逐页对照版面检查通过，检查结果在 `target/setup-snapshots/manifest.json`；
   拍照要桌面会话，因此不进 CI。
 - 签名实验：用 signtool 与本地签发的证书签过的安装包在 Windows 11 上装成。
-- 这一版的两份报告在本地重新跑通：`run_tests.ps1` 退出码 0，报告里核心库 223 通过、1 忽略，
-  安装包级 46 通过，工程检查 5，构建器 29，两个运行时各 1（合计 305 通过、0 失败、1 忽略）；
-  `run_e2e_setup.ps1 -RequireDesktop` 46 通过、0 失败。两份报告都照旧写出，`提权运行` 一栏如实
+- 这一版的两份报告在本地重新跑通：`run_tests.ps1` 退出码 0，报告里核心库 230 通过、1 忽略，
+  安装包级 49 通过，工程检查 5，构建器 29，两个运行时各 1（合计 315 通过、0 失败、1 忽略）；
+  `run_e2e_setup.ps1 -RequireDesktop` 49 通过、0 失败。两份报告都照旧写出，`提权运行` 一栏如实
   写着「否」，服务那一半的结论因此仍要等提权的机器（CI 的 runner 是管理员账户）。
 - `scripts/verify_release_notes.ps1` 通过，生成器产出的发布正文与源码里的尾注逐字一致。
 

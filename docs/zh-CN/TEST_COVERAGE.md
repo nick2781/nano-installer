@@ -3,7 +3,7 @@
 文档承诺的每一条行为，以及守住它的那条自动化用例。表格里的每一行都列出了该行为失效时会失败的
 用例；没有出现在任何一行里的行为，就是没人看住的行为。
 
-`cargo test --locked --workspace` 会跑 306 条用例：核心库 224 条，真构建并运行安装包的 46 条，
+`cargo test --locked --workspace` 会跑 316 条用例：核心库 231 条，真构建并运行安装包的 49 条，
 按构建器的方式读工程的 5 条，可视化构建器 29 条，解压运行时 2 条。安装包级用例需要真实的运行时
 可执行文件，`.\scripts\run_e2e_setup.ps1` 会先把它们构建出来再跑，并把整次运行写进
 `target/e2e-report.txt`。
@@ -12,8 +12,8 @@
 
 | 层 | 用例数 | 能证明 | 不能证明 |
 | --- | --- | --- | --- |
-| 核心库 | 224 | 一页会变成什么——图层、坐标、命中区域、文字；捆绑数据里装了什么；安装往磁盘和注册表写了什么；每个脚本原语做什么、一个服务怎么装上和怎么删掉；脚本从页面上取回什么、脚本读到的组件选择；工程声明的依赖怎么被查出来、下载下来、校验并装上，以及哪些情形会被拒绝 | 打包出来的安装包能走到这些代码；服务装上之后真的跑起来——服务程序是产品自己的，用例带不了 |
-| 安装包级 | 46 | 构建好的安装包在这台机器上装了一遍，它的窗口也是真的被驱动起来的：payload 字节、manifest、卸载项、快捷方式、自启动、项目脚本、脚本要跑的辅助程序、向导窗口、页面钩子把向导跳过一页并按来路退回、它自己页面上那些要等点击的行为、在列表上滚动滚轮、脚本的提示与提问所画的那张由点击作答的卡片、页面上的取值交到脚本手里、勾选决定这次装哪些组件、脚本按类型写下的每个注册表值以及视图名选中的是哪一份拷贝、
+| 核心库 | 231 | 一页会变成什么——图层、坐标、命中区域、文字；捆绑数据里装了什么；安装往磁盘和注册表写了什么；每个脚本原语做什么、一个服务怎么装上和怎么删掉；脚本从页面上取回什么、脚本读到的组件选择；工程声明的依赖怎么被查出来、下载下来、校验并装上，以及哪些情形会被拒绝 | 打包出来的安装包能走到这些代码；服务装上之后真的跑起来——服务程序是产品自己的，用例带不了 |
+| 安装包级 | 49 | 构建好的安装包在这台机器上装了一遍，它的窗口也是真的被驱动起来的：payload 字节、manifest、卸载项、快捷方式、自启动、项目脚本、脚本要跑的辅助程序、向导窗口、页面钩子把向导跳过一页并按来路退回、它自己页面上那些要等点击的行为、在列表上滚动滚轮、脚本的提示与提问所画的那张由点击作答的卡片、页面上的取值交到脚本手里、勾选决定这次装哪些组件、脚本按类型写下的每个注册表值以及视图名选中的是哪一份拷贝、
   脚本跑过的命令留下的退出码与两个输出流，工程声明的依赖真的被问了一遍——缺的装上、已经有的不再装一遍、装不上的让整次安装停下、下载来的程序对不上哈希就一次都不跑——以及只有指针与键盘真的动起来才会发生的事——悬停与按下换上的状态位图、三种标准光标形状、语言菜单的上下键与 Enter/Escape、选目录对话框、脚本装上的服务在机器上确实存在并随卸载消失，以及一次无窗口运行写下的日志——写到点名的文件、失败时把它的路径交回给调用方 | 输入法自己画出来的那两个窗口；在外壳的选目录对话框里选定一个目录之后会写进哪个输入框；以及不显示指针的会话上光标长什么样——那里这条用例打印自己的跳过理由 |
 | 工程检查 | 5 | 构建之前窗口会显示的那份摘要与告警列表 | |
 | 可视化构建器 | 29 | 窗口自己的状态、参数、日志与告警 | 真的去点界面上的控件 |
@@ -135,6 +135,8 @@
 | 全新安装：文件、manifest、注册项 | `installs_a_fresh_directory_and_records_the_manifest`、`a_built_setup_installs_its_payload_and_registers_an_uninstall_entry` |
 | 配置路径展开，显式目录优先 | `configured_install_paths_are_expanded`、`an_explicit_install_path_wins_over_the_configured_one`、`a_configured_percent_path_is_expanded_and_used`、`an_explicit_directory_wins_over_the_configured_one` |
 | 拒绝装进不是自己创建的目录 | `refuses_to_install_over_a_directory_it_did_not_create`、`refuses_a_foreign_manifest_at_the_destination`、`refuses_relative_or_root_installation` |
+| 更新包：只带字节变了的文件，装之前先在机器上核对它做出来的那一版 | `an_update_package_carries_only_what_changed`、`an_update_package_refuses_a_machine_it_does_not_fit`、`an_update_leaves_a_target_that_already_holds_the_bytes`、`files_are_compared_by_their_bytes_in_chunks`、`an_unchanged_file_is_kept_rather_than_carried`、`a_changed_or_new_file_travels_in_the_update`、`a_file_that_moved_in_size_travels`、`a_tree_is_described_by_its_installed_paths`、`a_plan_round_trips_through_its_json` |
+| 内容切成组件的工程做不出更新包 | `a_component_project_is_refused_an_update_package` |
 | 升级：替换版本、删掉陈旧文件、保留别人的文件 | `an_upgrade_replaces_the_previous_version_and_drops_stale_files`、`installing_over_an_existing_installation_drops_stale_files`、`an_upgrade_keeps_a_file_the_payload_does_not_own` |
 | 失败回滚 | `a_failed_upgrade_restores_the_previous_version`、`removes_a_fresh_install_whose_registration_fails` |
 | 取消：任务在检查点停下并撤回已经写下的内容 | `a_cancel_request_stops_the_checkpoints_that_follow_it`、`a_cancelled_deployment_writes_nothing` |

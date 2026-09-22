@@ -90,7 +90,10 @@ file the whole run is in.
 `extract_payload*` reuses the built-in extraction: it stages the payload to disk, unpacks it with
 the matching runtime, and verifies it holds no uninstaller, no manifest, and no symbolic links. It
 unpacks the base payload and the components this run installs, in the order the project declares
-them, and two archives that carry one relative path fail there and then.
+them, and two archives that carry one relative path fail there and then. An update package (see
+[build and release](BUILD_AND_RELEASE.md)) goes through the same call: the files it does not carry
+are verified on the machine before anything is unpacked, and a machine that does not match fails the
+primitive rather than installing half of each version.
 
 `get_tools_dir()` unpacks the directory `resources.tools_dir` names into the setup's own scratch
 directory, keeping the relative paths, and returns that directory, which a script hands to

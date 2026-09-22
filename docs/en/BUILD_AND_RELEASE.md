@@ -105,13 +105,42 @@ CI is where it earns its keep.
 ## Builder arguments
 
 ```text
-nano-installer-native-x64.exe build --project <dir> [--output <exe>] [--stubs <dir>]
+nano-installer-native-x64.exe build --project <dir> [--output <exe>] [--stubs <dir>] [--delta-from <archive>]
 ```
 
 - `--project` is required.
 - `--output` is optional and defaults to `dist/<output.installer_name>` in the project.
 - `--stubs` points at a directory holding the three runtime executables.
+- `--delta-from` names an earlier release's payload archive and builds an update package
+  instead of a full setup; see below.
 - `NANO_INSTALLER_NATIVE_STUB_DIR` overrides the runtime search directory.
+
+## Update packages
+
+```text
+nano-installer-native-x64.exe build --project <dir> --delta-from <previous payload archive> [--output <exe>]
+```
+
+`--delta-from` names the payload archive of the release this one replaces -- the archive the project
+ships as `resources.payload_file`. The builder expands that archive and the project's current payload
+with the runtime stubs, compares them by size and SHA-256, writes only the files whose bytes changed
+into a ZIP of its own, and embeds that archive under the name the project gives its payload. The
+setup therefore packs the ZIP runtime whatever format the project's own payload uses, and the build
+reports how many files stay on the machine and how much the update carries.
+
+An update package installs over one release and no other. The runtime checks the files it did not
+carry -- that each is there, holds the recorded byte count and hashes to the recorded digest -- and
+decides before it writes anything, so a machine that does not match is told to run the full setup
+instead of ending up with half of each version. The files the update left in place stay in the
+manifest, so an uninstall takes them back with the rest.
+
+Two limits. A project that cuts its content into components has no single archive to compare
+against, and an update build of one is refused. An update package covers payload files only: the
+layouts, assets, locales and scripts always travel with the setup, so a release that changes its
+pages is still a full setup.
+
+`BuildRequest.delta_from` is the same thing through the API, and `BuildResult.update` reports what
+the build kept and carried.
 
 ## Signing
 

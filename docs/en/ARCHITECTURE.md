@@ -64,6 +64,16 @@ creates the shortcuts and autostart value you configured. It treats a destinatio
 holds this project as an upgrade: it backs replaced files up in a rollback journal, removes files
 the new payload no longer ships, and restores the previous version if something fails.
 
+**Updates.** A release can be built as an update package instead of a full setup: `--delta-from`
+names the payload archive of the release it replaces, and the builder expands both archives with the
+runtime stubs and compares them by size and SHA-256, so it carries only the files whose bytes
+changed. What it leaves behind goes into an `update/plan.json` entry of the bundle, naming each
+expected file with its byte count and digest. The runtime reads that entry first: an update package
+proceeds only where the manifest of that release is present and every expected file still matches,
+and refuses before writing anything when one does not. The files it keeps stay part of the
+installation -- the manifest names them, so an uninstall takes them back -- and a file the update
+does carry is not copied over a target that already holds exactly those bytes.
+
 **Uninstall.** The runtime ends the product process, deletes the recorded shortcuts and files, and
 removes the declared user data only when the user clears the keep-data option. Windows refuses to
 let a process delete the image it is running from, so the uninstall finishes by copying itself into

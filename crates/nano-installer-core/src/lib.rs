@@ -2,6 +2,7 @@
 compile_error!("nano-installer-native-x64 must be built for x86_64");
 
 mod config;
+mod delta;
 mod dependency;
 mod icon;
 mod install;
@@ -12,6 +13,8 @@ mod script;
 mod service;
 mod shell;
 mod version;
+
+pub use delta::UpdateSummary;
 
 use anyhow::{bail, Context, Result};
 use std::collections::{HashMap, HashSet};
@@ -1029,6 +1032,13 @@ pub struct BuildRequest {
     pub project_dir: PathBuf,
     pub output: Option<PathBuf>,
     pub stub_directory: Option<PathBuf>,
+    /// The payload archive of an earlier release, when this build is an update
+    /// package rather than a full setup.
+    ///
+    /// An update package carries only the files whose bytes differ from that
+    /// release and installs over exactly it, so it is a fraction of the full
+    /// setup. The project's own payload stays the source of the new version.
+    pub delta_from: Option<PathBuf>,
 }
 
 impl BuildRequest {
@@ -1037,6 +1047,7 @@ impl BuildRequest {
             project_dir: project_dir.into(),
             output: None,
             stub_directory: None,
+            delta_from: None,
         }
     }
 }
@@ -1076,7 +1087,11 @@ pub struct ProjectSummary {
     pub uninstaller_icon: Option<PathBuf>,
     pub default_install_path: Option<String>,
     pub payload_path: PathBuf,
+    /// What the setup carries, which for an update package is the archive this
+    /// build wrote rather than the project's own payload.
     pub payload_size: u64,
+    /// The format of the payload this setup carries: the project's own payload,
+    /// or the update archive a `delta_from` build writes.
     pub payload_format: PayloadFormat,
     /// Whether the generated setup asks Windows for administrator rights.
     pub require_admin: bool,
@@ -1106,6 +1121,8 @@ pub struct BuildResult {
     pub stub_path: PathBuf,
     pub bundle_size: u64,
     pub output_size: u64,
+    /// What building an update package came to, and `None` for a full setup.
+    pub update: Option<UpdateSummary>,
 }
 
 pub fn inspect_project(project: impl AsRef<Path>) -> Result<ProjectSummary> {
@@ -1208,6 +1225,37 @@ pub fn inspect_project(project: impl AsRef<Path>) -> Result<ProjectSummary> {
     })
 }
 
+/// A directory a build writes into and removes when it ends.
+///
+/// An update package is assembled outside the project -- the archive is this
+/// build's own work rather than a file the author wrote -- so it lives in the
+/// temporary directory and goes away with the build that made it.
+struct ScratchDirectory(PathBuf);
+
+impl ScratchDirectory {
+    fn create() -> Result<Self> {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let path = std::env::temp_dir().join(format!(
+            "nano-installer-build-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&path)
+            .with_context(|| format!("failed to create {}", path.display()))?;
+        Ok(Self(path))
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for ScratchDirectory {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 pub fn build_project(request: BuildRequest) -> Result<BuildResult> {
     build_project_with_progress(request, |_| {})
 }
@@ -1247,6 +1295,54 @@ pub fn build_project_with_progress(
     });
     let config = read_project_config(&project)?;
     let output = &summary.output_path;
+    // An update package carries only what changed since the release it is built
+    // from, so the archive the setup embeds is one this build writes rather than
+    // the project's own payload.
+    let mut update: Option<UpdateSummary> = None;
+    let mut update_plan: Option<Vec<u8>> = None;
+    let mut update_archive: Option<PathBuf> = None;
+    let mut update_scratch: Option<ScratchDirectory> = None;
+    if let Some(from) = request.delta_from.as_deref() {
+        if config["components"]["items"]
+            .as_array()
+            .map(|items| !items.is_empty())
+            .unwrap_or(false)
+        {
+            bail!(
+                "{}: an update package is built from a project whose content is one payload, and \
+                 this project cuts its content into components; ship the full setup instead",
+                from.display()
+            );
+        }
+        let scratch = ScratchDirectory::create()?;
+        let archive = scratch.path().join("update.zip");
+        let (plan, built) = delta::build_update(
+            from,
+            &summary.payload_path,
+            config["project"]["version"].as_str().unwrap_or_default(),
+            request.stub_directory.as_deref(),
+            scratch.path(),
+            &archive,
+        )?;
+        progress(BuildEvent {
+            stage: BuildStage::Packing,
+            message: format!(
+                "Update package from {}: {} file(s) kept on the machine, {} carried ({})",
+                from.display(),
+                built.kept,
+                built.changed,
+                format_build_size(built.archive_size)
+            ),
+        });
+        update = Some(built);
+        update_plan = Some(plan.to_json_bytes()?);
+        update_archive = Some(archive);
+        update_scratch = Some(scratch);
+        // What this setup carries is the update archive, and the runtime it
+        // embeds is the one that unpacks that archive.
+        summary.payload_format = PayloadFormat::Zip;
+        summary.payload_size = built.archive_size;
+    }
     let version_info = installer_version_info(&config, output)?;
     progress(BuildEvent {
         stage: BuildStage::SelectingStub,
@@ -1311,9 +1407,14 @@ pub fn build_project_with_progress(
         message: "Bundled runtime install handler (runs only after the user clicks Install): staged payload extraction, uninstaller deployment, manifest and registry registration"
             .to_string(),
     });
+    let mut extras: Vec<(String, Vec<u8>)> = vec![(embedded_uninstaller_name.clone(), uninstaller)];
+    if let Some(plan) = update_plan {
+        extras.push((delta::UPDATE_PLAN.to_string(), plan));
+    }
     let bundle = pack_project_with_progress(
         &project,
-        Some((&embedded_uninstaller_name, uninstaller)),
+        extras,
+        update_archive.as_deref(),
         true,
         |message| {
             progress(BuildEvent {
@@ -1388,6 +1489,7 @@ pub fn build_project_with_progress(
         stub_path: stub,
         bundle_size: bundle.len() as u64,
         output_size,
+        update,
     })
 }
 
@@ -1398,7 +1500,7 @@ fn build_uninstaller_executable(
     output_name: &str,
     mut progress: impl FnMut(String),
 ) -> Result<Vec<u8>> {
-    let bundle = pack_project_with_progress(project, None, false, |message| {
+    let bundle = pack_project_with_progress(project, Vec::new(), None, false, |message| {
         progress(format!("Uninstaller bundle: {message}"));
     })?;
     let temporary = TemporaryExecutable::copy_from(stub)?;
@@ -1859,13 +1961,18 @@ fn find_native_stub(name: &str, override_directory: Option<&Path>) -> Result<Pat
 }
 
 #[cfg(test)]
-fn pack_project(project: &Path, extra_file: Option<(&str, Vec<u8>)>) -> Result<Vec<u8>> {
-    pack_project_with_progress(project, extra_file, true, |_| {})
+fn pack_project(project: &Path, extra: Option<(&str, Vec<u8>)>) -> Result<Vec<u8>> {
+    let extras = extra
+        .into_iter()
+        .map(|(name, data)| (name.to_string(), data))
+        .collect();
+    pack_project_with_progress(project, extras, None, true, |_| {})
 }
 
 fn pack_project_with_progress(
     project: &Path,
-    extra_file: Option<(&str, Vec<u8>)>,
+    extras: Vec<(String, Vec<u8>)>,
+    payload_override: Option<&Path>,
     include_payload: bool,
     mut progress: impl FnMut(String),
 ) -> Result<Vec<u8>> {
@@ -1929,7 +2036,18 @@ fn pack_project_with_progress(
         let payload = config["resources"]["payload_file"]
             .as_str()
             .context("resources.payload_file is required")?;
-        collect_file(project, &project.join(payload), &mut files)?;
+        match payload_override {
+            // An update package carries the archive this build wrote, under the
+            // name the project gives its payload, so the runtime finds it the
+            // same way in either kind of setup.
+            Some(path) => {
+                if !path.is_file() {
+                    bail!("missing update archive: {}", path.display());
+                }
+                files.push((payload.to_string(), std::fs::read(path)?));
+            }
+            None => collect_file(project, &project.join(payload), &mut files)?,
+        }
         let payload_size = files.last().map(|(_, data)| data.len()).unwrap_or_default();
         progress(format!(
             "Added payload {payload} ({}, already compressed)",
@@ -1972,12 +2090,12 @@ fn pack_project_with_progress(
             ));
         }
     }
-    if let Some((name, data)) = extra_file {
+    for (name, data) in extras {
         progress(format!(
             "Embedded {name} ({})",
             format_build_size(data.len() as u64)
         ));
-        files.push((name.to_string(), data));
+        files.push((name, data));
     }
     files.sort_by(|left, right| left.0.cmp(&right.0));
 
@@ -9031,7 +9149,11 @@ mod tests {
         let mut messages = Vec::new();
         let bundle = pack_project_with_progress(
             project,
-            Some(("runtime/uninst-stub-native.exe", b"uninstaller".to_vec())),
+            vec![(
+                "runtime/uninst-stub-native.exe".to_string(),
+                b"uninstaller".to_vec(),
+            )],
+            None,
             true,
             |message| messages.push(message),
         )?;
@@ -10684,7 +10806,7 @@ mod tests {
     #[test]
     fn taptap_uninstaller_buttons_have_distinct_hit_regions() -> anyhow::Result<()> {
         let project = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/TapTap");
-        let bundle = pack_project_with_progress(&project, None, false, |_| {})?;
+        let bundle = pack_project_with_progress(&project, Vec::new(), None, false, |_| {})?;
         let files = parse_bundle(&bundle)?;
         let interaction = initial_interaction(&files, RuntimeMode::Uninstaller)?;
         let ui = load_layout(
@@ -10719,7 +10841,7 @@ mod tests {
         interaction: &InteractionState,
     ) -> anyhow::Result<RuntimeUi> {
         let project = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/TapTap");
-        let bundle = pack_project_with_progress(&project, None, false, |_| {})?;
+        let bundle = pack_project_with_progress(&project, Vec::new(), None, false, |_| {})?;
         let files = parse_bundle(&bundle)?;
         let mut interaction = interaction.clone();
         interaction.page_index = page_index;
@@ -11459,7 +11581,7 @@ mod tests {
     fn progress_pages_render_every_control_they_declare() -> anyhow::Result<()> {
         let interaction = {
             let project = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/TapTap");
-            let bundle = pack_project_with_progress(&project, None, false, |_| {})?;
+            let bundle = pack_project_with_progress(&project, Vec::new(), None, false, |_| {})?;
             initial_interaction(&parse_bundle(&bundle)?, RuntimeMode::Installer)?
         };
         let ui = taptap_page(RuntimeMode::Installer, 1, &interaction)?;

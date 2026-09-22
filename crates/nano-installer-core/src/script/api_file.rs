@@ -252,15 +252,16 @@ fn tools(context: &ScriptContext) -> String {
 fn extract(context: &ScriptContext, start: f64, end: f64) -> bool {
     let extracted = context.stage().join("files");
     let _ = std::fs::remove_dir_all(&extracted);
-    let result = install::extract_payload(
-        context.setup(),
-        context.bundle(),
-        context.config(),
-        context.stage(),
-        &extracted,
-        context.components(),
-        context.cancellation(),
-    );
+    let result = install::extract_payload(install::PayloadRequest {
+        setup: context.setup(),
+        bundle: context.bundle(),
+        config: context.config(),
+        destination: &context.install_path(),
+        scratch: context.stage(),
+        target: &extracted,
+        components: context.components(),
+        task: context.cancellation(),
+    });
     let files = match result {
         Ok(files) => files,
         Err(error) => {
@@ -268,7 +269,18 @@ fn extract(context: &ScriptContext, start: f64, end: f64) -> bool {
             return false;
         }
     };
-    if let Err(error) = deploy(context, &extracted, &files) {
+    if files.update {
+        log(
+            "info",
+            &format!(
+                "update package: {} file(s) verified in place, {} deployed",
+                files.kept.len(),
+                files.deployed.len()
+            ),
+        );
+    }
+    context.record_kept(&files.kept);
+    if let Err(error) = deploy(context, &extracted, &files.deployed) {
         log("error", &format!("payload deployment failed: {error:#}"));
         return false;
     }

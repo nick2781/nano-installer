@@ -15,6 +15,9 @@ anyhow.workspace = true
 roxmltree.workspace = true
 serde_json.workspace = true
 rhai.workspace = true
+# An update package carries only the files that changed, and the builder
+# writes them itself so a project does not have to archive anything by hand.
+zip.workspace = true
 
 [dependencies.windows]
 version = "0.58"

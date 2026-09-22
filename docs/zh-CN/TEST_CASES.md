@@ -21,8 +21,10 @@ Rust doc comment，再退回用例名。
 | `a_cancel_request_stops_the_checkpoints_that_follow_it` | 收到取消请求的检查点报出 `cancelled by the user`，而且带的是它自己的错误类型，向导据此说"已取消"而不是"失败"；取消只作用于这一个任务，下一个任务拿到的是全新的句柄。 |
 | `a_cancelled_deployment_writes_nothing` | 部署一开始就已经被要求取消时，一个文件都不会复制；回滚随后把这次新建的安装目录整个删掉。 |
 | `a_cancelled_install_gives_up_after_the_script_and_undoes_what_it_wrote` | 脚本自己注意到取消、结束长步骤并正常返回后，运行时在脚本之后的检查点停下，报 `cancelled by the user`，脚本写下的目录一并撤回。 |
+| `a_changed_or_new_file_travels_in_the_update` | 内容变了的文件和这一版才有的新文件都随更新包一起走：一个不多，一个不少。 |
 | `a_click_on_a_radio_is_the_value_the_install_waits_for` | 在真实窗口里点单选按钮：安装键等的是被点中那一行的取值。先点安装键没反应；点亮版面默认选中的那一行再点安装，仍然没反应；改点另一行再点安装，窗口切到任务页，产品装进配置指定的目录。版面级用例只证明点击会变成一个动作，这条证明窗口真的记下了被点的是哪一行。 |
 | `a_closed_language_select_draws_its_arrow_over_its_fill_and_outline` | 收起的 `Select` 由底色、描边和箭头三层组成，箭头从远端边向内缩一段并垂直居中，跟着显示缩放一起变大；收起时画向下的那张，展开时画向上的那张。 |
+| `a_component_project_is_refused_an_update_package` | 内容切成组件的工程做不出更新包：没有一个归档可以拿来比对，构建时当场拒绝并让人照旧发完整安装包，拒绝之后一个安装包文件都不留。 |
 | `a_configured_percent_path_is_expanded_and_used` | 配置里带 `%LOCALAPPDATA%` 的路径必须先展开再用，没展开的路径不是绝对路径，安装会拒绝相对目录。这条用例完全不带 `--dir` 运行，等同于静默运行里没有指定目录的情况。 |
 | `a_container_measures_the_edge_its_children_are_asked_for` | 问 `HBox` 要竖直方向的尺寸时，报的是最高的那个子项加上自己的上下内边距；问水平方向时报子项沿宽度要的总和。内嵌的百分比宽度容器透过它自己的子项来量，不会把外层的行撑大或压塌。 |
 | `a_default_log_is_named_after_the_image_the_moment_and_the_task` | 没有点名日志文件时，运行把日志写进临时目录下的 `nano-installer` 目录，文件名带上安装程序自己的名字、这一刻的时间和这次在做的事（安装还是卸载）。同一份安装包在两台机器、两个时刻各跑一次，支持人员靠这个文件名分得开，两次也不会互相覆盖。 |
@@ -42,6 +44,7 @@ Rust doc comment，再退回用例名。
 | `a_failure_notice_points_at_the_log_of_the_run` | 向导报失败时，除了错误本身还点名这次运行写下的日志文件——用户能交给别人的就是这一行。没有日志可点的时候（比如窗口都还没建立）提示里不提日志，安装成功时也不提。 |
 | `a_field_checks_the_value_the_project_asks_it_to` | 输入框自己的规矩就写在版面上：`required` 管值有没有，`min-length` 与 `max-length` 按字符数算（中文按字算，不按字节），`pattern` 是掩码而不是正则——`*` 是任意长的一段（可以为空），`?` 恰好一个字符，整段值都要对得上，所以安装目录写 `?:*` 就是要一个盘符开头的路径。没写规矩的字段一律合格，可留空的字段空着也合格；值最先破坏的那条规矩留下自己那句文案，没写文案的规矩只让字段不合格、什么也不说。 |
 | `a_field_the_user_fills_in_is_what_lets_the_install_start` | 在真窗口里从头走一遍要填字段的流程：字段空着时点安装键没有反应，只勾同意也不行，往字段里逐字符敲进一个路径之后安装才开始，产品落在敲进去的那个目录里。字段、按钮条件和安装动作三件事里任何一环没接上，它都会停在原地。 |
+| `a_file_that_moved_in_size_travels` | 尺寸挪过的文件照样随更新包走：先看尺寸再看摘要，尺寸变了就不算没变，哪怕摘要是同一个。 |
 | `a_file_type_that_would_write_outside_the_classes_tree_is_refused` | 文件类型的两个名字先查再用：扩展名或程序 id 里带路径分隔符、或其中任何一个为空，调用直接返回 `false`；命令行空着的调用同样被拒绝，因为那样的文件类型打不开任何东西。五种被拒的调用一个字节都没写进注册表，manifest 里也没有记录。 |
 | `a_hidden_element_takes_its_whole_subtree_with_it` | 祖先上的 `visible="false"` 把底下整个子树都藏起来：子控件的动作、文字和面板自己的底色都不画，页面上别的地方不受影响。把属性改回 `true` 后这个分支又完整画出来。 |
 | `a_hint_shows_the_rule_the_value_breaks` | 绑 `value-source="field-error:<字段 id>"` 的标签画出那条被破坏的规矩写下的文案：字段空着时报 `required` 那句，值不合格时报 `pattern` 那句，文案按工程自己的语言查表；值合格时这个标签什么都不画，点名页面上没有的字段也一样。 |
@@ -69,6 +72,7 @@ Rust doc comment，再退回用例名。
 | `a_panel_pair_shows_the_panel_and_only_the_control_that_fits` | `toggle_panel:<id>:show` 和 `:hide` 是面板两侧的两个控件：面板收起时只画展开那个，展开后两个换过来，面板自己的底色也跟着出现或消失。 |
 | `a_payload_without_the_declared_executable_is_refused` | `install.exe_name` 指明 payload 里必须有的那个可执行文件。部署一份不含它的 payload，装出来的产品启动不了，所以这次运行在写任何东西之前就停下来。 |
 | `a_placed_window_is_pulled_back_inside_its_work_area` | 建议位置已经放得下就不动它；探出工作区右边或下边的窗口被拉回来；来自左侧副显示器的负坐标不会把它顶出去；比工作区还大的窗口缩到工作区大小。 |
+| `a_plan_round_trips_through_its_json` | 更新计划写成 JSON 再读回来形状不变：来源归档名、这一版要装的版本、每条保留文件的路径、字节数和 64 位十六进制摘要都还在，路径仍按安装目录里的相对路径读。 |
 | `a_progress_bar_paints_a_rounded_track_and_follows_the_live_value` | 进度条先画轨道，`border-radius` 把它修成胶囊形；版面里写的 `progress` 是空闲时的样子，任务上报的进度会盖住它，任务还没开始时只画轨道，没有任务时又回到版面写的值。 |
 | `a_project_bundles_the_tools_directory_it_names` | 工程把 `resources.tools_dir` 指到的目录整个打进安装包，子目录和它们的相对路径都在内：脚本拿到的是工程自己那份目录的布局，而不是一堆压平的文件名。 |
 | `a_project_that_did_not_opt_in_refuses_a_windowless_run` | 无窗口运行是工程自己的决定，从没声明过它的工程既不能被无人值守地安装，也不能被无人值守地卸载。 |
@@ -125,6 +129,7 @@ Rust doc comment，再退回用例名。
 | `a_styled_image_draws_into_a_sub_rectangle_at_the_opacity_it_declares` | `file='...' dest='...' fade='...'` 这种写法把图片画进控件内的一个子矩形，并按 `fade` 给透明度；目标矩形相对控件而不是页面，跟着控件一起被缩放。 |
 | `a_supported_locale_without_a_file_is_reported` | 工程声明支持、却没有对应语言文件的语言会被报告出来，因为别的环节不会报：运行时会退回默认语言，产品只是显示成另一种语言而已。 |
 | `a_translation_missing_page_text_is_reported` | 默认语言能回答的页面文案键，凡是某个语言漏掉的都要报出来，没漏的不报。 |
+| `a_tree_is_described_by_its_installed_paths` | 一棵目录树按它装到机器上的路径来描述，目录多深都一样，每个文件都带上自己的字节数和摘要。 |
 | `a_typed_value_wins_over_the_bound_default` | 绑定到工程文件的输入框先显示配置里的路径，但用户输入或选择过的值要一直留在屏幕上，`disk-free:` 绑定读的也是同一个输入框。 |
 | `a_validation_message_the_page_asks_for_is_reported` | 字段不合格时显示的文案也是页面文案，构建期和别的键一样逐语言比对：默认语言里有、某个语言文件里漏掉的那条会被报出来，而不是等用户看到一句没翻译好的提示。 |
 | `a_wheel_over_a_list_brings_the_rows_below_into_reach` | 在真实窗口里滚滚轮：先点列表下方那片本该被后面一行盖住的位置，接住点击的是页面自己放在那儿的按钮，说明被裁掉的行确实收不到点击；在列表上滚一格滚轮之后，点同一个位置落在刚滚进来的那一行上，改由它接管。滚轮消息带的是屏幕坐标，这条用例走的就是系统把消息交给窗口时的那条路。 |
@@ -153,10 +158,14 @@ Rust doc comment，再退回用例名。
 | `an_install_script_removes_a_variable_it_no_longer_wants` | `remove_env` 删掉机器上本来就有的那个变量，返回 `true`；它同时把这条记录从待撤销清单里去掉，所以卸载不会再去删一个已经不在的值，也不会把 `Environment` 这个键当成自己的删掉。 |
 | `an_install_script_sets_a_variable_the_uninstall_takes_back` | `set_env` 把变量写进 Windows 读环境变量的那个键，装完之后新进程就能读到；脚本自己的进程仍保留启动时的环境，这与 Windows 对写入者的行为一致。manifest 只记这个值（不记键），卸载把值撤回去，`Environment` 键连同里面的 PATH 都留着。 |
 | `an_install_script_that_never_deploys_the_executable_is_refused` | 脚本没部署 `install.exe_name` 指定的可执行文件时安装被拒绝，错误里点名缺的是哪个文件；失败的一次不会留下写了一半的目录。 |
+| `an_unchanged_file_is_kept_rather_than_carried` | 新版本没动过的文件记进保留清单、不放进更新包，记下的是机器上那份的字节数和 SHA-256，而不是一句承诺。 |
 | `an_uninstall_script_replays_the_manifest_it_asks_for` | 卸载脚本调用 `run_tracked_uninstall` 后，manifest 记下的文件和注册表值都被清掉，manifest 自己也不在了。 |
 | `an_uninstall_script_sees_the_uninstall_mode_and_the_keep_data_checkbox` | 卸载脚本在两种勾选状态下都看得到 `get_mode()` 返回 uninstall，`get_checkbox_value("keep_data")` 如实反映复选框，没登记过的复选框返回 false，`is_cancelled()` 返回 false。 |
 | `an_uninstall_script_that_skips_the_manifest_still_removes_the_product` | 卸载脚本没调用 `run_tracked_uninstall` 时，库自己回退着把 manifest 记下的东西删掉，产品仍然被卸干净。 |
 | `an_unknown_silent_option_is_refused` | 写错的选项必须让这次运行停下。改成装进配置的默认目录，会把文件放到没人要求的位置。 |
+| `an_update_leaves_a_target_that_already_holds_the_bytes` | 更新包碰上字节完全相同的目标文件时不写它，证据是一个只读文件：只有不写才装得过去，而同样一个只读文件在内容不同时照样被写（也就必然失败），说明跳过是按字节比出来的，不是更新包一概如此。 |
+| `an_update_package_carries_only_what_changed` | 更新包是照它替代的那个版本做出来的安装包：只带上字节变了的文件，装上去之后新 exe 与新文件到位、上一版删掉的文件消失，没变的两个文件（其中一个是 512 KiB、压不动的运行库）仍是首次安装写下的那份，而且它比同版本的完整安装包小。日志里那句 `update package: 2 file(s) verified in place, 2 deployed` 说明它只在原地核对、只部署了要变的两个；卸载时这些留在原地的文件也一并收走。 |
+| `an_update_package_refuses_a_machine_it_does_not_fit` | 更新包只装在它做出来的那个版本之上。机器上那份文件被人换过（尺寸和摘要都对不上）时当场拒绝，点出是哪个文件不合、并让人改用完整安装包，退出前连新版本的一半都没写进去；机器上根本没装过产品时同样拒绝，并说明该跑哪个安装包。 |
 | `an_upgrade_keeps_a_file_the_payload_does_not_own` | 产品自己写的本地设置文件不属于 payload，升级时必须原样留着。 |
 | `an_upgrade_replaces_the_previous_version_and_drops_stale_files` | 覆盖安装把上个版本的文件换成本次的，旧版本里不再有的文件被删掉，manifest 里只剩这次部署的文件。 |
 | `bottom_hbox_distributes_fixed_and_flexible_items` | 底部一行的宽度分配：两个可伸缩项平分剩余空间，定宽按钮保持 184 像素，算出 196、196、184。 |
@@ -180,6 +189,7 @@ Rust doc comment，再退回用例名。
 | `every_log_level_reaches_the_failure_the_wizard_shows` | 脚本失败时，info、warn、error 三种级别的日志都跟着错误一起报出来，作者能从向导的错误框里看出是哪一步失败、为什么。 |
 | `every_shipped_question_keeps_its_answers_inside_the_card` | 对话框的按钮必须留在包住它们的那张卡片里：问题文字来自产品自己的翻译，句子一长就折到第二行，而卡片过去是固定高度、按钮贴着底边，两行的问题会把它们顶出边框。这里把随包发布的每种语言都查一遍，因为句子最长的那些语言恰恰只在用户机器上才露馅。 |
 | `file_primitives_create_copy_list_and_remove_files` | 文件原语逐个核对结果：建目录、写文件、判断存在与是否为目录、取文件大小（缺文件是 -1）、读文本（缺文件读成空）、列目录、复制、删除（重复删也成功）、递归删目录，以及相对路径的递归删除被拒绝。 |
+| `files_are_compared_by_their_bytes_in_chunks` | 两个文件按字节比、分块读，多大都一样：一块 64 KiB，比一个 200 KB 的文件时改动最后一个字节就能看出来；尺寸不同不必读文件就有答案，目标文件不存在也算不相同。 |
 | `flex_wrap_is_opt_in_per_container` | `flex-wrap` 是每个容器各自选的：写 `true` 或 `wrap` 才换行，没写或写 `false` 都不换。 |
 | `flow_attributes_become_the_item_a_container_shares_space_with` | 容器通过这些字段读子项，所以 `flex-basis`、`flex-grow`、`flex-shrink`、`min-width` 和内边距外边距都要被读进去：有 `flex-basis` 的项先占位再分剩余空间，没写的按宽度加内边距和外边距算，`Spacer` 只声明可增长，纵向容器从另一条边读同样的属性。 |
 | `flow_items_honour_align_self_basis_and_anchored_edges` | 流式项既遵守容器的 `align-items` 和 `align-self`，也遵守 `right`、`bottom` 这类贴边属性：居中的按钮落在行的中间，`align-self="start"` 的贴顶，写死右边和下边的按钮落在页面那个角上。 |

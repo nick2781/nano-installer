@@ -19,7 +19,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Context;
 use nano_installer_core::{
-    build_project, build_project_with_progress, BuildRequest, PayloadFormat,
+    build_project, build_project_with_progress, BuildRequest, BuildResult, PayloadFormat,
 };
 use windows::Win32::Foundation::{BOOL, HANDLE, HWND, LPARAM, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
@@ -60,6 +60,13 @@ const PRESSED_BUTTON: (u8, u8, u8) = (0x30, 0x80, 0xB0);
 const POPUP_BACKGROUND: (u8, u8, u8) = (0x42, 0x51, 0x5E);
 const CHOSEN_ROW: (u8, u8, u8) = (0x49, 0x5A, 0x68);
 const HIGHLIGHTED_ROW: (u8, u8, u8) = (0x70, 0x50, 0xB0);
+
+/// The product exe the second release of an update case ships.
+///
+/// The two releases differ in their product exe, which is what an update
+/// package has to carry and what an install over the wrong release has to
+/// leave alone.
+const SECOND_RELEASE_EXE: &[u8] = b"MZ end-to-end probe executable, second release\r\n";
 
 /// Resolves a shell folder the way the runtime resolves it.
 ///
@@ -759,6 +766,33 @@ impl Fixture {
         request.stub_directory = Some(self.stubs.clone());
         build_project(request)?;
         Ok(())
+    }
+
+    /// Builds this project's full setup to a path of the case's choosing.
+    fn build_to(&self, output: &Path) -> anyhow::Result<BuildResult> {
+        let mut request = BuildRequest::new(&self.project);
+        request.output = Some(output.to_path_buf());
+        request.stub_directory = Some(self.stubs.clone());
+        build_project(request)
+    }
+
+    /// Builds a setup that carries only what changed since a release's payload.
+    fn build_update(&self, from: &Path, output: &Path) -> anyhow::Result<BuildResult> {
+        let mut request = BuildRequest::new(&self.project);
+        request.output = Some(output.to_path_buf());
+        request.stub_directory = Some(self.stubs.clone());
+        request.delta_from = Some(from.to_path_buf());
+        build_project(request)
+    }
+
+    /// Keeps the payload archive the project ships now.
+    ///
+    /// An update package is built against the release it replaces, so the case
+    /// has to hold on to the archive before the next version overwrites it.
+    fn keep_payload(&self, name: &str) -> anyhow::Result<PathBuf> {
+        let kept = self.case_path(name);
+        std::fs::copy(self.project.join("payload/app.archive"), &kept)?;
+        Ok(kept)
     }
 
     /// Writes the payload archive with the bundled `7za.exe`.
@@ -1668,6 +1702,220 @@ fn an_upgrade_keeps_a_file_the_payload_does_not_own() -> anyhow::Result<()> {
         user_file.display()
     );
     assert_eq!(std::fs::read(&user_file)?, b"[user]\nvalue=1\n");
+    Ok(())
+}
+
+/// An update package is a setup built from the release it replaces: it carries
+/// only the files whose bytes changed, installs over exactly that release, and
+/// leaves the files it did not carry where the first install put them.
+#[test]
+fn an_update_package_carries_only_what_changed() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    // A file both releases ship unchanged, large enough that carrying it again
+    // would be visible in the size of the setup. The bytes come from a hash of
+    // the offset, so the archiver cannot squeeze them away.
+    let runtime = (0..512 * 1024u32)
+        .map(|index| (index.wrapping_mul(2_654_435_761) ^ (index >> 7)) as u8)
+        .collect::<Vec<u8>>();
+    // The release the update is built from: what the next version keeps, and one
+    // file it drops.
+    fixture.archive_with(
+        PayloadFormat::Zip,
+        true,
+        &[
+            ("data/runtime.bin", runtime.as_slice()),
+            ("data/legacy.bin", b"dropped in the next release"),
+        ],
+    )?;
+    let previous = fixture.keep_payload("app-v1.archive")?;
+    fixture.build()?;
+    fixture.install()?;
+    let kept = fixture.destination.join("data/expected.bin");
+    let installed_runtime = fixture.destination.join("data/runtime.bin");
+    assert_eq!(
+        std::fs::read(&kept)?,
+        (0u8..=255).collect::<Vec<u8>>(),
+        "the first install did not deploy the payload as it was archived"
+    );
+    assert_eq!(
+        std::fs::read(&installed_runtime)?,
+        runtime,
+        "the first install did not deploy the large file as it was archived"
+    );
+
+    // The next version: a new product exe, one new file, and the file the
+    // release before it shipped is gone.
+    fixture.archive_with(
+        PayloadFormat::Zip,
+        true,
+        &[
+            ("data/runtime.bin", runtime.as_slice()),
+            ("E2eProbe.exe", SECOND_RELEASE_EXE),
+            ("data/added.bin", b"added in this release"),
+        ],
+    )?;
+    fixture.edit_config(|config| config["project"]["version"] = serde_json::json!("1.1.0"))?;
+
+    // The same release as a full setup as well, so the size the update package
+    // came to is measured against what it saves rather than against a number.
+    let full = fixture.build_to(&fixture.setup)?;
+    assert!(
+        full.update.is_none(),
+        "a full setup reported an update package"
+    );
+    let update_setup = fixture.case_path("E2eProbe_Update.exe");
+    let update = fixture.build_update(&previous, &update_setup)?;
+    let summary = update
+        .update
+        .context("the build reported no update summary")?;
+    assert_eq!(
+        summary.kept, 2,
+        "the two releases share the payload file and the large file, and nothing else"
+    );
+    assert_eq!(
+        summary.changed, 2,
+        "the update carries the product exe and the file this release adds"
+    );
+    let full_size = std::fs::metadata(&fixture.setup)?.len();
+    let update_size = std::fs::metadata(&update_setup)?.len();
+    assert!(
+        update_size < full_size,
+        "the update package ({update_size} bytes) is no smaller than the full setup ({full_size} bytes)"
+    );
+
+    // What the update does on the machine it was built for.
+    let log = fixture.case_path("update.log");
+    run_silent_logged(&update_setup, Some(&fixture.destination), &log)?;
+    assert_eq!(
+        std::fs::read(fixture.destination.join("E2eProbe.exe"))?,
+        SECOND_RELEASE_EXE,
+        "the update did not deploy the new product exe"
+    );
+    assert!(
+        fixture.destination.join("data/added.bin").is_file(),
+        "the update did not deploy the file this release adds"
+    );
+    assert!(
+        !fixture.destination.join("data/legacy.bin").exists(),
+        "the update left the file this release drops behind"
+    );
+    // The files the update does not carry are the ones the first install wrote,
+    // byte for byte and untouched.
+    assert_eq!(std::fs::read(&kept)?, (0u8..=255).collect::<Vec<u8>>());
+    assert_eq!(std::fs::read(&installed_runtime)?, runtime);
+    let written = std::fs::read_to_string(&log)?;
+    assert!(
+        written.contains("update package: 2 file(s) verified in place, 2 deployed"),
+        "the log does not report what the update did:\n{written}"
+    );
+
+    // What the update kept is part of the installation, so an uninstall takes it
+    // back along with the files it wrote.
+    fixture.uninstall()?;
+    assert!(
+        !kept.exists() && !installed_runtime.exists(),
+        "the uninstall left a file the update had kept behind"
+    );
+    Ok(())
+}
+
+/// An update package installs over one release, and says so where the files it
+/// expects are missing or hold something else.
+#[test]
+fn an_update_package_refuses_a_machine_it_does_not_fit() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    let previous = fixture.keep_payload("app-v1.archive")?;
+    fixture.build()?;
+
+    fixture.archive_with(
+        PayloadFormat::Zip,
+        true,
+        &[("E2eProbe.exe", SECOND_RELEASE_EXE)],
+    )?;
+    let update_setup = fixture.case_path("E2eProbe_Update.exe");
+    fixture.build_update(&previous, &update_setup)?;
+
+    // A machine with nothing installed: an update replaces a release, and there
+    // is nothing here for it to replace.
+    let empty = fixture.case_path("empty-machine");
+    let refused = run_expecting_failure(&update_setup, Some(&empty))?;
+    let stderr = String::from_utf8_lossy(&refused.stderr);
+    assert!(
+        stderr.contains("full setup"),
+        "the refusal should say which setup to run instead: {stderr}"
+    );
+    assert!(
+        !empty.exists(),
+        "a refused update created {}",
+        empty.display()
+    );
+
+    // A machine holding another release of the same product: the file the plan
+    // expects is there, and it is not the file the plan was built from.
+    fixture.install()?;
+    std::fs::write(
+        fixture.destination.join("data/expected.bin"),
+        b"someone else's bytes",
+    )?;
+    let refused = run_expecting_failure(&update_setup, Some(&fixture.destination))?;
+    let stderr = String::from_utf8_lossy(&refused.stderr);
+    assert!(
+        stderr.contains("data/expected.bin") && stderr.contains("full"),
+        "the refusal should name the file that does not fit and the way out: {stderr}"
+    );
+    assert_eq!(
+        std::fs::read(fixture.destination.join("E2eProbe.exe"))?,
+        b"MZ end-to-end probe executable\r\n",
+        "a refused update wrote part of the next release anyway"
+    );
+    Ok(())
+}
+
+/// An update package is built from a project whose content is one payload.
+///
+/// A project that cuts its content into components has no one archive to compare
+/// against, so it is told to ship the full setup rather than given an update
+/// package that would install part of a product.
+#[test]
+fn a_component_project_is_refused_an_update_package() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    let previous = fixture.keep_payload("app-v1.archive")?;
+    fixture.components_project()?;
+    for (name, entry) in [
+        ("core.archive", ("core/runtime.txt", b"core".as_slice())),
+        ("docs.archive", ("docs/readme.txt", b"docs".as_slice())),
+        ("tools.archive", ("tools/tool.txt", b"tools".as_slice())),
+        (
+            "samples.archive",
+            ("samples/sample.txt", b"samples".as_slice()),
+        ),
+    ] {
+        fixture.archive_component(name, PayloadFormat::Zip, &[entry])?;
+    }
+
+    let update_setup = fixture.case_path("E2eProbe_Update.exe");
+    let error = fixture
+        .build_update(&previous, &update_setup)
+        .expect_err("a project cut into components was given an update package");
+    let message = format!("{error:#}");
+    assert!(
+        message.contains("components") && message.contains("full setup"),
+        "the refusal should name the reason and the way out: {message}"
+    );
+    assert!(
+        !update_setup.exists(),
+        "a refused build left a setup behind: {}",
+        update_setup.display()
+    );
     Ok(())
 }
 

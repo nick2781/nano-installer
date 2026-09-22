@@ -245,12 +245,18 @@ fn finish_install(context: &ScriptContext, exe_name: &str, prep: &InstallPrep) -
     let after = Snapshot::take(&destination);
     // The uninstaller and the manifest are recorded by their own fields, so
     // they never belong in the file list the uninstaller deletes.
-    let files = after
+    let mut files = after
         .files_added_since(&state.before)
         .into_iter()
         .filter(|path| path != Path::new(uninstaller_name))
         .filter(|path| path != Path::new(install::MANIFEST_NAME))
         .collect::<Vec<_>>();
+    // An update package leaves the files it verified where they are, and they
+    // are as much part of the installation as the ones it wrote: a manifest
+    // that did not name them would leave them behind on uninstall, and a
+    // manifest that dropped them would call them stale on the next upgrade.
+    files.extend(state.kept.iter().cloned());
+    files.sort();
     if !files.iter().any(|path| path == Path::new(exe_name)) {
         bail!("the install script did not deploy {exe_name}")
     }

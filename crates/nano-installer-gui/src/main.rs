@@ -2410,6 +2410,7 @@ mod tests {
             stub_path: PathBuf::from("lzma-stub-native.exe"),
             bundle_size: 1_024,
             output_size: 4_096,
+            update: None,
         });
         draw_panels(&mut app, &context);
 

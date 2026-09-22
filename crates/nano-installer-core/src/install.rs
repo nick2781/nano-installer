@@ -1,7 +1,7 @@
 use anyhow::{bail, ensure, Context, Result};
 use serde_json::{json, Value};
 use std::fs;
-use std::io::Read;
+use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -16,6 +16,7 @@ use windows::Win32::System::Registry::{
     REG_SAM_FLAGS, REG_SZ, REG_VALUE_TYPE,
 };
 
+use super::delta::UpdatePlan;
 use super::{dependency, install_log, script, shell, BundleIndex, RuntimeMode, UI};
 
 /// What the installer UI held when the user started the task.
@@ -585,21 +586,31 @@ fn install_setup(
     dependency::install_missing(&config, &bundle, &stage.0, task)?;
     super::report_progress(15, "status.extracting")?;
     install_log::note("info", "unpacking the payload");
-    let files = extract_payload(
+    let files = extract_payload(PayloadRequest {
         setup,
-        &bundle,
-        &config,
-        &stage.0,
-        &extracted,
-        &components,
+        bundle: &bundle,
+        config: &config,
+        destination,
+        scratch: &stage.0,
+        target: &extracted,
+        components: &components,
         task,
-    )?;
+    })?;
     // A cancel is most likely to arrive while the payload unpacks, and this is
     // the last moment it costs nothing: nothing outside the staging directory
     // has been written yet.
     check_cancelled(task)?;
     super::report_progress(50, "status.deploying")?;
-    install_log::note("info", &format!("deploying {} files", files.len()));
+    // What an update leaves where it is says as much about the run as what it
+    // writes, and a silent run has nothing else to report it through.
+    let (deployed, kept) = files.counts();
+    if files.update {
+        install_log::note(
+            "info",
+            &format!("update package: {kept} file(s) verified in place, {deployed} deployed"),
+        );
+    }
+    install_log::note("info", &format!("deploying {deployed} files"));
 
     let exe_name = config["install"]["exe_name"]
         .as_str()
@@ -755,23 +766,93 @@ fn require_free_space(destination: &Path, required_mb: u64) -> Result<()> {
     Ok(())
 }
 
+/// What an install writes, and what an update package leaves where it is.
+///
+/// An update package carries only the files whose bytes changed, so the rest of
+/// the release is already on disk; those files are not deployed, and they still
+/// belong to the installation the manifest describes.
+pub(super) struct PayloadFiles {
+    /// Files this run writes out of the payloads it unpacked.
+    pub(super) deployed: Vec<PathBuf>,
+    /// Files an update package found on disk, verified, and left alone.
+    pub(super) kept: Vec<PathBuf>,
+    /// Whether the setup that carried the payload was an update package, which
+    /// is what tells a deployment that an unchanged target is already right.
+    pub(super) update: bool,
+}
+
+impl PayloadFiles {
+    /// Every file the installation holds once the run is done, which is what
+    /// the manifest records and what an uninstall has to take back.
+    pub(super) fn all(&self) -> Vec<PathBuf> {
+        let mut files = self.deployed.clone();
+        files.extend(self.kept.iter().cloned());
+        files.sort();
+        files
+    }
+
+    /// How many files the run deploys, and how many an update kept in place.
+    pub(super) fn counts(&self) -> (usize, usize) {
+        (self.deployed.len(), self.kept.len())
+    }
+}
+
+/// Everything one payload extraction needs from the run that asked for it.
+///
+/// The built-in install and a project script both unpack the same payloads, so
+/// they hand the same answer to the same call rather than each carrying a long
+/// argument list of their own.
+pub(super) struct PayloadRequest<'a> {
+    /// The setup or uninstaller image whose bundle holds the payloads.
+    pub(super) setup: &'a Path,
+    pub(super) bundle: &'a BundleIndex,
+    pub(super) config: &'a Value,
+    /// Where the product is being installed, which is what an update package is
+    /// checked against.
+    pub(super) destination: &'a Path,
+    /// The scratch directory the payload archives are streamed into.
+    pub(super) scratch: &'a Path,
+    /// Where the expanded files are assembled before they are deployed.
+    pub(super) target: &'a Path,
+    pub(super) components: &'a [String],
+    pub(super) task: &'a Cancellation,
+}
+
 /// Streams the payload out of the setup image and expands it into `target`.
 ///
 /// The payload is copied to disk first and expanded by the stub that matches
 /// its format, so a large archive never has to fit in the process address
 /// space. The expanded file list is validated before it is deployed.
-pub(super) fn extract_payload(
-    setup: &Path,
-    bundle: &BundleIndex,
-    config: &Value,
-    scratch: &Path,
-    target: &Path,
-    components: &[String],
-    task: &Cancellation,
-) -> Result<Vec<PathBuf>> {
+///
+/// An update package is checked here rather than later: what it expects to find
+/// on disk is verified before the first file is written, so a machine that holds
+/// another release is told so instead of ending up with half of each version.
+pub(super) fn extract_payload(request: PayloadRequest<'_>) -> Result<PayloadFiles> {
+    let PayloadRequest {
+        setup,
+        bundle,
+        config,
+        destination,
+        scratch,
+        target,
+        components,
+        task,
+    } = request;
     let uninstaller_name = config["output"]["uninstaller_name"]
         .as_str()
         .unwrap_or("uninst.exe");
+    let product = config["project"]["name"]
+        .as_str()
+        .or_else(|| config["project"]["output_name"].as_str())
+        .unwrap_or("this product");
+    let mut kept: Vec<PathBuf> = Vec::new();
+    let mut update = false;
+    if let Some(plan) = UpdatePlan::read(bundle)? {
+        plan.requires_installed_product(destination, product)?;
+        plan.verify(destination, product)?;
+        kept = plan.kept_paths();
+        update = true;
+    }
     // Every part is unpacked on its own, so the parts can be compared before they
     // meet: two archives that carry one path would otherwise take turns silently
     // overwriting each other, and which file ends up installed would depend on the
@@ -805,11 +886,21 @@ pub(super) fn extract_payload(
                 path.display()
             );
         }
+        if let Some(path) = unpacked.iter().find(|path| kept.contains(path)) {
+            bail!(
+                "{label} carries {}, which this update expects to find on the machine and not to \
+                 install",
+                path.display()
+            );
+        }
         merge_staged(&part, target, &unpacked)?;
         files.extend(unpacked);
         files.sort();
     }
-    if files
+    let mut installed = files.clone();
+    installed.extend(kept.iter().cloned());
+    installed.sort();
+    if installed
         .iter()
         .any(|path| path == Path::new(uninstaller_name) || path == Path::new(MANIFEST_NAME))
     {
@@ -819,10 +910,14 @@ pub(super) fn extract_payload(
         .as_str()
         .context("install.exe_name is required")?;
     super::validate_output_filename(exe_name, "install.exe_name")?;
-    if !files.iter().any(|path| path == Path::new(exe_name)) {
+    if !installed.iter().any(|path| path == Path::new(exe_name)) {
         bail!("payload does not contain the configured application executable: {exe_name}")
     }
-    Ok(files)
+    Ok(PayloadFiles {
+        deployed: files,
+        kept,
+        update,
+    })
 }
 
 /// Moves the files a part unpacked into the directory the payload deploys from.
@@ -960,7 +1055,7 @@ pub(super) fn manifest_file_paths(manifest: &Value) -> Result<Vec<PathBuf>> {
 struct Deployment<'a> {
     extracted: &'a Path,
     destination: &'a Path,
-    files: &'a [PathBuf],
+    files: &'a PayloadFiles,
     uninstaller_name: &'a str,
     uninstaller: &'a [u8],
     root: windows::Win32::System::Registry::HKEY,
@@ -996,6 +1091,9 @@ impl Deployment<'_> {
         journal: &mut RollbackJournal,
         register: impl FnOnce() -> Result<()>,
     ) -> Result<()> {
+        // What the installation holds once the run is done: the files it wrote
+        // plus the ones an update package verified and left where they were.
+        let files = self.files.all();
         deploy_files(
             self.extracted,
             self.destination,
@@ -1019,7 +1117,7 @@ impl Deployment<'_> {
             journal,
             registry_root_name(self.root),
             self.registry_path,
-            self.files,
+            &files,
             &ManifestArtifacts {
                 shortcuts: self.artifacts.shortcut_paths(),
                 shortcut_dirs: self.artifacts.shortcut_dir_paths(),
@@ -1090,27 +1188,36 @@ pub(super) fn write_manifest(
 ///
 /// Every target is journaled first, so a failure part-way through restores what
 /// was there before. Files this installer never wrote are left alone.
+///
+/// A target an update package already holds, byte for byte, is not rewritten:
+/// the plan promises those bytes, and copying them again would only cost the
+/// time the update saved. The files the plan kept are left where they are for
+/// the same reason.
 pub(super) fn deploy_files(
     extracted: &Path,
     destination: &Path,
-    files: &[PathBuf],
+    files: &PayloadFiles,
     previous: Option<&PreviousInstall>,
     journal: &mut RollbackJournal,
     task: &Cancellation,
 ) -> Result<()> {
-    for relative in files {
+    for relative in &files.deployed {
         // Between two files rather than halfway through one: the journal has
         // everything copied so far and puts it back when the deploy fails.
         check_cancelled(task)?;
         let source = extracted.join(relative);
         let target = destination.join(relative);
+        if files.update && same_contents(&source, &target)? {
+            continue;
+        }
         fs::create_dir_all(target.parent().context("payload target has no parent")?)?;
         journal.track(&target)?;
         fs::copy(source, target)?;
     }
     if let Some(previous) = previous {
+        let installed = files.all();
         for relative in &previous.files {
-            if files.iter().any(|path| path == relative) {
+            if installed.iter().any(|path| path == relative) {
                 continue;
             }
             let target = destination.join(relative);
@@ -1122,6 +1229,51 @@ pub(super) fn deploy_files(
         }
     }
     Ok(())
+}
+
+/// Whether two files hold the same bytes.
+///
+/// Read in chunks rather than in one piece: a payload file can be an
+/// application's whole runtime, and comparing two of them must not depend on
+/// how much memory is free.
+fn same_contents(left: &Path, right: &Path) -> Result<bool> {
+    let (Ok(left_meta), Ok(right_meta)) = (fs::metadata(left), fs::metadata(right)) else {
+        return Ok(false);
+    };
+    if !left_meta.is_file() || left_meta.len() != right_meta.len() {
+        return Ok(false);
+    }
+    let mut left = io::BufReader::new(fs::File::open(left)?);
+    let mut right = io::BufReader::new(fs::File::open(right)?);
+    let mut left_buffer = [0u8; 64 * 1024];
+    let mut right_buffer = [0u8; 64 * 1024];
+    loop {
+        let left_len = read_chunk(&mut left, &mut left_buffer)?;
+        let right_len = read_chunk(&mut right, &mut right_buffer)?;
+        if left_len != right_len {
+            return Ok(false);
+        }
+        if left_len == 0 {
+            return Ok(true);
+        }
+        if left_buffer[..left_len] != right_buffer[..right_len] {
+            return Ok(false);
+        }
+    }
+}
+
+/// Fills `buffer` unless the file ends first, and reports how much it filled.
+fn read_chunk(reader: &mut impl io::Read, buffer: &mut [u8]) -> io::Result<usize> {
+    let mut filled = 0;
+    while filled < buffer.len() {
+        match reader.read(&mut buffer[filled..]) {
+            Ok(0) => break,
+            Ok(count) => filled += count,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(filled)
 }
 
 /// Non-payload artifacts an install creates: shortcuts and an autostart entry.
@@ -2311,9 +2463,9 @@ mod tests {
         begin_deployment, check_cancelled, deploy_files, parse_registry_key,
         parse_silent_arguments, preserved_data_paths, previous_install, register_uninstaller,
         registry_path, require_free_space, require_silent_support, resolve_install_destination,
-        result_notice, selected_components, validate_destination, wide, Cancellation, Cancelled,
-        Deployment, InstallArtifacts, PreviousInstall, RegistryKey, RegistryView, SilentOptions,
-        MANIFEST_NAME,
+        result_notice, same_contents, selected_components, validate_destination, wide,
+        Cancellation, Cancelled, Deployment, InstallArtifacts, PayloadFiles, PreviousInstall,
+        RegistryKey, RegistryView, SilentOptions, MANIFEST_NAME,
     };
     use anyhow::Result;
     use std::path::{Path, PathBuf};
@@ -2427,6 +2579,15 @@ mod tests {
         Ok(files)
     }
 
+    /// What a full setup deploys: every file it unpacks, nothing left on disk.
+    fn full(files: &[PathBuf]) -> PayloadFiles {
+        PayloadFiles {
+            deployed: files.to_vec(),
+            kept: Vec::new(),
+            update: false,
+        }
+    }
+
     fn deploy(
         extracted: &Path,
         destination: &Path,
@@ -2438,10 +2599,11 @@ mod tests {
         // An empty plan keeps the tests from touching the real desktop.
         let artifacts = InstallArtifacts::default();
         let task = Cancellation::default();
+        let payload = full(files);
         Deployment {
             extracted,
             destination,
-            files,
+            files: &payload,
             uninstaller_name: "uninst.exe",
             uninstaller: b"uninstaller",
             root: HKEY_CURRENT_USER,
@@ -2507,7 +2669,15 @@ mod tests {
         task.request();
 
         assert!(
-            deploy_files(&extracted, &destination, &files, None, &mut journal, &task).is_err(),
+            deploy_files(
+                &extracted,
+                &destination,
+                &full(&files),
+                None,
+                &mut journal,
+                &task
+            )
+            .is_err(),
             "a cancelled deployment copied files anyway"
         );
         journal.rollback();
@@ -2515,6 +2685,93 @@ mod tests {
             !destination.exists(),
             "the directory a cancelled install created is still there"
         );
+        Ok(())
+    }
+
+    /// An update deploys over a target that already holds exactly its bytes by
+    /// not touching it: a read-only file is the proof, because a copy onto one
+    /// fails.
+    #[test]
+    fn an_update_leaves_a_target_that_already_holds_the_bytes() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let extracted = temp.path().join("extracted");
+        let files = write_payload(&extracted, &[("E2eProbe.exe", b"second release")])?;
+        let destination = temp.path().join("installed");
+        let mut journal = begin_deployment(&destination, &temp.path().join("rollback"), None)?;
+        // The machine already holds the bytes this payload carries, and the file
+        // is read-only: a copy onto it fails, so coming through the deployment
+        // untouched is what says the file was left alone.
+        let target = destination.join("E2eProbe.exe");
+        std::fs::write(&target, b"second release")?;
+        let mut permissions = std::fs::metadata(&target)?.permissions();
+        permissions.set_readonly(true);
+        std::fs::set_permissions(&target, permissions.clone())?;
+
+        let payload = PayloadFiles {
+            deployed: files,
+            kept: Vec::new(),
+            update: true,
+        };
+        let task = Cancellation::default();
+        let deployed = deploy_files(
+            &extracted,
+            &destination,
+            &payload,
+            None,
+            &mut journal,
+            &task,
+        );
+        // This crate is built for Windows only, where the read-only attribute is
+        // what the deployment has to leave alone rather than write through.
+        #[allow(clippy::permissions_set_readonly_false)]
+        {
+            permissions.set_readonly(false);
+            std::fs::set_permissions(&target, permissions)?;
+        }
+        deployed?;
+        assert_eq!(std::fs::read(&target)?, b"second release");
+
+        // Bytes that differ are written, which is what makes the skip above a
+        // comparison rather than something every update does.
+        std::fs::write(&target, b"first release")?;
+        deploy_files(
+            &extracted,
+            &destination,
+            &payload,
+            None,
+            &mut journal,
+            &task,
+        )?;
+        assert_eq!(std::fs::read(&target)?, b"second release");
+        Ok(())
+    }
+
+    /// Two files are compared by their bytes, in chunks, however large they are.
+    #[test]
+    fn files_are_compared_by_their_bytes_in_chunks() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let left = temp.path().join("left.bin");
+        let right = temp.path().join("right.bin");
+        // Larger than one chunk, so the comparison has to walk both files.
+        let large = (0..200_000u32)
+            .map(|index| (index % 251) as u8)
+            .collect::<Vec<_>>();
+        std::fs::write(&left, &large)?;
+        std::fs::write(&right, &large)?;
+        assert!(same_contents(&left, &right)?);
+
+        // The last byte is enough to tell them apart.
+        let mut other = large.clone();
+        other[199_999] = other[199_999].wrapping_add(1);
+        std::fs::write(&right, &other)?;
+        assert!(!same_contents(&left, &right)?);
+
+        // A size that differs is answered without reading either file.
+        std::fs::write(&right, b"short")?;
+        assert!(!same_contents(&left, &right)?);
+
+        // A target that is not there does not hold the bytes.
+        assert!(!same_contents(&left, &temp.path().join("missing.bin"))?);
         Ok(())
     }
 
