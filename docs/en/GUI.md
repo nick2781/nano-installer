@@ -55,6 +55,11 @@ Because the uninstaller has its own payload-free UI bundle, the log collects `la
 `locales`, and `scripts` once under an `Uninstaller bundle:` heading and then again for the main
 setup, while it packages the payload once, into the main setup.
 
+A project that named a `finalize.uninstaller` or `finalize.installer` command sees that step in the
+log too: a `Running finalize.uninstaller: ...` line saying which file is about to be handed to which
+command, every line the command printed, and, when it fails, its exit code and the fact that no setup
+was left behind.
+
 Log lines use local timestamps in `[YYYY-MM-DD HH:mm:ss.SSS]` form. Warnings are amber and errors
 are red. The log window is selectable: mouse selection, the scroll wheel, horizontal scrolling,
 `Ctrl+A`, and `Ctrl+C` all work in it. **Copy all** copies the complete log without a selection.

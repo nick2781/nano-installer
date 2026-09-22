@@ -28,6 +28,31 @@
 
 路径都相对项目目录解析。
 
+## 构建完成后的命令
+
+安装包和内嵌卸载程序写完后，构建器可以把这两个文件交给工程自己的命令再处理一遍。签名是最常见的
+用途，这两个字段就是 NSIS 的 `!finalize` 与 `!uninstfinalize`。
+
+| 字段 | 类型 | 作用 |
+| --- | --- | --- |
+| `finalize.uninstaller` | string | 卸载程序还是独立文件、尚未嵌进安装包时执行的命令 |
+| `finalize.installer` | string | 安装包全部写完后执行的命令 |
+
+命令里的 `%1` 换成那个文件的完整路径：
+
+```json
+"finalize": {
+  "uninstaller": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sign.ps1 -File \"%1\"",
+  "installer": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sign.ps1 -File \"%1\""
+}
+```
+
+两条命令各自运行，写出的每一行都进构建日志。退出码非零就中止构建：卸载程序被拒时不会做出安装包，
+安装包被拒时磁盘上也不留那份成品，免得流水线的下一步把它捡走。
+
+构建器自己不签名，也不碰证书：证书、时间戳服务与密钥环都属于流水线。设置写成空串会被拒绝，否则
+工程会以为自己签过名。
+
 ## 安装行为
 
 | 字段 | 类型 | 作用 |

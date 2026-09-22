@@ -86,7 +86,9 @@ why the suite writes its own project, builds a setup from it with the real build
 that setup and the uninstaller it deployed.
 
 - Build product: the footer the runtime reads, a payload appended behind a real PE, the version and
-  manifest resources, and the runtime that matches the payload format.
+  manifest resources, the runtime that matches the payload format, and the step a project's own
+  finalize command takes on the finished files: a setup it accepted still installs, and one it
+  refused stops the build and is not left on disk.
 - Install: the payload lands on disk and comes back byte for byte, the manifest lists what was
   written, the uninstall entry points at the deployed uninstaller and carries the size, the quiet
   command and the two flags that say there is no repair or modify step, a configured `%TEMP%` path is
@@ -118,7 +120,11 @@ fail rather than skip. What they ask about is what a window does once the pointe
 a skip would say nothing about it.
 
 Signing a built setup belongs to the release pipeline rather than to this suite: `scripts/sign.ps1`
-signs a file with the certificate `NANO_INSTALLER_CERT_THUMBPRINT` names and verifies the result.
+signs a file with the certificate `NANO_INSTALLER_CERT_THUMBPRINT` names and verifies the result. The
+builder offers the two hooks and hands the finished files to the command a project writes down
+(uninstaller first, setup second), and stops when that command fails; the suite holds both ends of
+that: one case shows the command really ran on the finished files and that a handled setup still
+installs, and one shows a command that refuses stops the build and leaves no setup behind.
 What the suite covers is the part no certificate changes, which is that the file still reads its own
 resources once the signature has been appended.
 

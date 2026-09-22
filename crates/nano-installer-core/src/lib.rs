@@ -1484,7 +1484,27 @@ pub fn build_project_with_progress(
         message: "Writing bundle size and footer marker".to_string(),
     });
     file.flush()?;
-    let output_size = file.metadata()?.len();
+    drop(file);
+    // The setup is complete and in place, which is when a project's own command
+    // gets it -- NSIS's `!finalize`. Signing appends a certificate table behind
+    // the footer, which is why a signed setup still installs: the runtime
+    // searches the end of the file for the footer rather than reading it there.
+    if let Some(command) = finalize_command(&config, "installer") {
+        let outcome = run_finalize("finalize.installer", command, output, |message| {
+            progress(BuildEvent {
+                stage: BuildStage::WritingResources,
+                message,
+            })
+        });
+        if outcome.is_err() {
+            // A setup the project's own command refused is not one to leave
+            // lying about: a later step of the same pipeline would pick it up
+            // and ship a file nobody signed.
+            let _ = std::fs::remove_file(output);
+        }
+        outcome?;
+    }
+    let output_size = std::fs::metadata(output)?.len();
     progress(BuildEvent {
         stage: BuildStage::Complete,
         message: format!("Created {}", output.display()),
@@ -1496,6 +1516,68 @@ pub fn build_project_with_progress(
         output_size,
         update,
     })
+}
+
+/// The command a project wants run on a finished file, if it named one.
+fn finalize_command<'a>(config: &'a serde_json::Value, key: &str) -> Option<&'a str> {
+    config["finalize"][key]
+        .as_str()
+        .map(str::trim)
+        .filter(|command| !command.is_empty())
+}
+
+/// Runs a project's finalize command on a file this build has finished.
+///
+/// The builder's version of NSIS's `!finalize` and `!uninstfinalize`: the
+/// project names a command, the builder hands it the file it has just written
+/// and waits for the answer. Signing is what that is usually for, and the
+/// builder signs nothing itself -- the certificate, and the pipeline that owns
+/// it, stay outside. `%1` in the command stands for the file's path, and a
+/// command that exits non-zero stops the build: a setup whose signature failed
+/// must not be the one that ships.
+fn run_finalize(
+    setting: &str,
+    command: &str,
+    file: &Path,
+    mut progress: impl FnMut(String),
+) -> Result<()> {
+    let command = command.replace("%1", &file.display().to_string());
+    progress(format!("Running {setting}: {command}"));
+    // The command goes into a script of its own rather than straight onto
+    // `cmd.exe`'s command line: a command line that names one quoted path and
+    // one quoted argument is the shape cmd.exe re-parses wrongly once it holds
+    // more than two quote characters, and both the program and the file it is
+    // handed may well live under a name with a space in it.
+    let scratch = ScratchDirectory::create()?;
+    let script = scratch.path().join("finalize.cmd");
+    std::fs::write(&script, format!("@echo off\r\n{command}\r\n"))
+        .with_context(|| format!("cannot write {setting} to {}", script.display()))?;
+    let output = shell::run_captured(
+        "cmd.exe",
+        &[
+            "/d".to_string(),
+            "/c".to_string(),
+            script.display().to_string(),
+        ],
+        &|| false,
+    )
+    .with_context(|| format!("{setting} could not be started: {command}"))?;
+    // Whatever the command printed belongs in the build log: a signer that
+    // refused the file says why there, and that reason is the whole answer.
+    for line in output.stdout.lines().chain(output.stderr.lines()) {
+        if !line.trim().is_empty() {
+            progress(line.trim_end().to_string());
+        }
+    }
+    if output.code != 0 {
+        let code = if output.code < 0 {
+            "no exit code".to_string()
+        } else {
+            format!("exit code {}", output.code)
+        };
+        bail!("{setting} failed with {code}: {command}");
+    }
+    Ok(())
 }
 
 fn build_uninstaller_executable(
@@ -1536,6 +1618,17 @@ fn build_uninstaller_executable(
     file.write_all(FOOTER_MAGIC)?;
     file.flush()?;
     drop(file);
+    // The uninstaller is finished here, and this is the last moment at which it
+    // exists as a file of its own: whatever the project runs on it -- signing it
+    // is the usual reason -- is baked into the bytes the setup embeds.
+    if let Some(command) = finalize_command(config, "uninstaller") {
+        run_finalize(
+            "finalize.uninstaller",
+            command,
+            &temporary.path,
+            &mut progress,
+        )?;
+    }
     let executable = std::fs::read(&temporary.path)?;
     progress(format!(
         "Built self-contained {output_name} ({})",

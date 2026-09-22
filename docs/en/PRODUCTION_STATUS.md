@@ -173,7 +173,7 @@ files and registry entries, so validate them in a disposable virtual machine onl
   runs. What the setup itself carries is checked too: every bundle entry is read against the SHA-256
   the build recorded, so a setup damaged after the build is refused by entry name and nothing is
   created on the machine at all.
-  Fifteen of its fifty-one cases open the wizard window and drive it: one measures the client
+  Fifteen of its fifty-three cases open the wizard window and drive it: one measures the client
   area it drew, one walks the page actions a project declares, one stops a running task from a cancel
   button, one types a directory into the field a page asks for and starts the install with it, one
   clicks the row a radio group's install button waits for, one rolls the wheel over a list and
@@ -189,13 +189,19 @@ files and registry entries, so validate them in a disposable virtual machine onl
   lands on the product's own card and the declared order walks on. They need an interactive
   desktop session, so they skip where there is none and `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` makes the
   skip a failure; the cursor case asks that the session be showing a pointer as well, which a
-  hosted runner is not, and it prints its skip there. Of the other thirty-six, three read their
+  hosted runner is not, and it prints its skip there. Of the other thirty-eight, three read their
   answer back out of the machine rather than out of the primitive that wrote it: one checks every
   registry type a script named, and the copy of a key a view name selects, one checks the exit code
   and both streams of a command a script ran, and one checks that the service a script installed is
   really on the machine and gone again with the uninstall. The rest pass on Windows 11 and in CI.
 - A setup stays a setup after signing: a certificate table appended behind the bundle, which is what
   Authenticode writes into the file, no longer hides the footer the runtime reads its resources from.
+- A project's own command can run on the finished files, which is NSIS's `!finalize` and
+  `!uninstfinalize`: the builder calls `finalize.uninstaller` while the uninstaller is still a file of
+  its own, before the setup embeds it, and `finalize.installer` once the setup is complete and
+  closed. `%1` in the command stands for that file's path, every line it prints goes into the build
+  log, and a non-zero exit code stops the build and leaves the refused setup off disk. Signing is
+  what that is usually for, and the builder signs nothing itself.
 - What the setup carries is checked entry by entry. Every bundle entry records the SHA-256 the build
   computed for it, and a read is checked against that: a truncated download, a bad sector, or a hand
   that changed the file stops the run before anything is unpacked, names the entry and both digests,
@@ -222,18 +228,29 @@ files and registry entries, so validate them in a disposable virtual machine onl
 
 ## Signing
 
+## Signing
+
 The builder does not sign anything, and it should not. A setup and its uninstaller are signed by the
 release pipeline that publishes them, exactly as an NSIS installer is signed by the product that
 builds it: NSIS only offers `!finalize` and `!uninstfinalize`, hooks that hand the generated file to
-a command, and signs nothing itself. `scripts/sign.ps1` does that job here, signing a file with the
-certificate `NANO_INSTALLER_CERT_THUMBPRINT` names and verifying the result; the build never calls
-it.
+a command, and signs nothing itself. Those two hooks have their counterparts here now: a project
+writes its commands into `finalize.installer` and `finalize.uninstaller`, the builder calls them on
+the uninstaller while it is still a file of its own and on the setup once it is complete, every line
+they print goes into the build log, and a non-zero exit code stops the build and deletes the setup it
+refused. `scripts/sign.ps1` is how that command is usually written: it signs with the certificate
+`NANO_INSTALLER_CERT_THUMBPRINT` names and verifies the result. The division of labour has not moved
+-- the certificate and its key stay in the pipeline.
 
 What this project owes that pipeline is an artifact that signing does not break, because Authenticode
 appends its certificate table behind everything the build wrote and the bundle footer stops being the
 last thing in the file. The runtime searches the tail of the file for the footer instead of reading
 its final bytes, `a_setup_with_a_signature_appended_still_installs` holds that in place, and a setup
-signed with signtool and a locally issued certificate was installed on Windows 11.
+signed with signtool and a locally issued certificate was installed on Windows 11. The path through
+the real hooks was walked end to end as well: a probe project pointed both `finalize` settings at
+`scripts/sign.ps1`, and the setup it produced and the uninstaller extracted from that setup both pass
+`signtool verify /pa` (with a DigiCert timestamp); `scripts/audit_embedded_uninstaller.ps1` still
+finds the footer, extracts the uninstaller and matches its digest on the signed setup; and a signed
+setup installs, registers its uninstall entry and removes itself again.
 
 ## Blocking a release
 

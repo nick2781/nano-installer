@@ -79,6 +79,7 @@ const SECTIONS: &[(&str, &[&str])] = &[
         "advanced",
         &["silent_mode_support", "uninstall_mode_support"],
     ),
+    ("finalize", &["installer", "uninstaller"]),
 ];
 
 /// Tables whose keys the project itself chooses: `links` names its own URLs, and a layout opens
@@ -234,6 +235,15 @@ pub(super) fn audit(config: &Value) -> Result<()> {
                     audit_components(&path, entry, base_payload, &mut problems)
                 }
                 ("dependencies", "items") => audit_dependencies(&path, entry, &mut problems),
+                ("finalize", "installer" | "uninstaller") => {
+                    // A command that is not there would leave the author
+                    // believing their setup is signed when it is not.
+                    if entry.as_str().unwrap_or_default().trim().is_empty() {
+                        problems.push(format!(
+                            "{path}: name the command to run on the finished file, or remove the setting"
+                        ));
+                    }
+                }
                 _ => {}
             }
         }
@@ -611,7 +621,8 @@ mod tests {
                 ]
             },
             "uninstall": { "data_paths": ["%APPDATA%\\MyApp"] },
-            "advanced": { "silent_mode_support": true, "uninstall_mode_support": true }
+            "advanced": { "silent_mode_support": true, "uninstall_mode_support": true },
+            "finalize": { "installer": "sign.bat \"%1\"", "uninstaller": "sign.bat \"%1\"" }
         }))
         .expect("every key here is read by the build");
     }
@@ -643,6 +654,18 @@ mod tests {
         let text = audit_text(&json!({ "install": { "exe_nmae": "MyApp.exe" } }));
         assert!(
             text.contains("install.exe_nmae: not a setting this build knows"),
+            "{text}"
+        );
+    }
+
+    /// A finalize command that is not there would leave the author believing the
+    /// setup was signed when nothing ran on it at all.
+    #[test]
+    fn refuses_a_finalize_command_that_is_not_there() {
+        let text = audit_text(&json!({ "finalize": { "uninstaller": "   " } }));
+        assert!(text.contains("finalize.uninstaller"), "{text}");
+        assert!(
+            text.contains("name the command to run on the finished file"),
             "{text}"
         );
     }

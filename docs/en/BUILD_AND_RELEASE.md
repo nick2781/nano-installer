@@ -151,6 +151,25 @@ without a window, and the version in the manifest says which release the machine
 
 ## Signing
 
-The builder does not sign anything yet. For a production release you sign the setup after the icon,
-version resources, and bundle are written, and sign the uninstaller separately before it is
-embedded. `scripts/sign.ps1` is a placeholder signer; the default build never calls it.
+The builder signs nothing itself; it hands the finished files to a command of the project's own. The
+setup triggers `finalize.installer` after the icon, version resources, and bundle are written, and the
+uninstaller triggers `finalize.uninstaller` while it is still a file of its own, before the setup
+embeds it. The [configuration
+reference](CONFIG_REFERENCE.md#commands-that-run-on-the-finished-build) spells the two settings out.
+A command that exits non-zero stops the build, and the file it refused is not left on disk.
+
+`scripts/sign.ps1` is what a pipeline usually writes there: it signs with the certificate
+`NANO_INSTALLER_CERT_THUMBPRINT` names, timestamps against `http://timestamp.digicert.com` unless
+`NANO_INSTALLER_TIMESTAMP_URL` says otherwise, and verifies its own work with `signtool verify /pa`.
+A certificate that is missing, or a signature that failed, ends the build.
+
+```json
+"finalize": {
+  "uninstaller": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sign.ps1 -File \"%1\"",
+  "installer": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sign.ps1 -File \"%1\""
+}
+```
+
+A signed setup is still a setup: Authenticode appends its certificate table behind everything the
+build wrote, and the runtime looks for its bundle footer in the last megabyte of the file rather than
+at its very end, so the setup installs and uninstalls as it always did.

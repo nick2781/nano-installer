@@ -3,7 +3,7 @@
 Every behaviour the documentation promises, and the automated case that holds it. A row names the
 cases that fail when that behaviour breaks; a behaviour with no row is one nobody is checking.
 
-`cargo test --locked --workspace` runs 320 cases: 233 in the core library, 51 that build a real
+`cargo test --locked --workspace` runs 323 cases: 234 in the core library, 53 that build a real
 setup and run it, 5 that read a project the way the builder does, 29 in the visual builder, and 2
 in the extraction runtimes. The setup-level cases need real runtime executables built first, which
 is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `target/e2e-report.txt`.
@@ -12,9 +12,10 @@ is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `targe
 
 | Layer | Cases | Proves | Cannot prove |
 | --- | --- | --- | --- |
-| Core library | 233 | what a page becomes — layers, coordinates, hit regions, text — what the bundle carries, what an install writes to disk and the registry, what each script primitive does and how a service is installed and deleted, what a script reads back off the page and off the run, and how the dependencies a project declares are found, fetched, checked and installed | that a packaged setup reaches any of it, and that an installed service then runs -- the program a service runs is the product's own, and no case can ship one |
-| Setup end to end | 51 | a built setup installed on the machine, its own window driven: payload bytes (a setup whose bytes changed refuses the install before it creates anything), manifest, the uninstall entry's own fields, shortcuts, autostart, project scripts, the helpers a script runs, the wizard window, a page hook sending it past a page and Back returning the way the user came, the clicks its own pages wait for, a wheel over a list, the card a script's messages and questions are answered on, the page's values reaching the script, which components a page and a project put in, every registry type a script names and the copy of a key
-  a view name selects, what a command a script ran wrote, and what only a moving pointer and a real
+| Core library | 234 | what a page becomes — layers, coordinates, hit regions, text — what the bundle carries, what an install writes to disk and the registry, what each script primitive does and how a service is installed and deleted, what a script reads back off the page and off the run, and how the dependencies a project declares are found, fetched, checked and installed | that a packaged setup reaches any of it, and that an installed service then runs -- the program a service runs is the product's own, and no case can ship one |
+| Setup end to end | 53 | a built setup installed on the machine, its own window driven: payload bytes (a setup whose bytes changed refuses the install before it creates anything), manifest, the uninstall entry's own fields, shortcuts, autostart, project scripts, the helpers a script runs, the wizard window, a page hook sending it past a page and Back returning the way the user came, the clicks its own pages wait for, a wheel over a list, the card a script's messages and questions are answered on, the page's values reaching the script, which components a page and a project put in, every registry type a script names and the copy of a key
+  a view name selects, what a command a script ran wrote, the command a project runs on its finished setup and its
+   uninstaller (which must succeed, or the file it refused is not left behind), and what only a moving pointer and a real keyboard
   keyboard bring about -- the bitmaps hover and press swap in, the three standard cursor shapes, the language menu's arrow keys with Enter and Escape, the folder picker, and the dependencies a project declares -- one the machine is missing installed, one it already has left alone, one that cannot be installed stopping the run, and a download checked against the digest the project recorded, and the service a script installed really on the machine and gone again with the uninstall, and the log a windowless run writes -- to the file it was told to,
   naming itself to its caller when the run fails | the two windows an input method draws itself; which field a directory chosen in the shell's folder dialog is written to; and the cursor shape on a session that is showing no pointer, where that case prints its own skip |
 | Project inspection | 5 | the summary and the warning list the builder shows before a build | |
@@ -33,6 +34,7 @@ is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `targe
 | `output.installer_icon` | `window_icon_uses_the_brand_asset`, `icon::tests::parses_ico_and_creates_group_directory`, `icon::tests::rejects_ico_image_outside_file` |
 | `output.uninstaller_name` | `uninstaller_name_rejects_directory_components`, `uninstaller_metadata_uses_project_version_and_configured_name` |
 | `output.uninstaller_icon` | `inspects_taptap_project_without_dpi_warnings` |
+| `finalize.installer`, `finalize.uninstaller` | `a_finalize_command_runs_on_the_finished_setup_and_uninstaller`, `a_finalize_command_that_fails_stops_the_build`, `refuses_a_finalize_command_that_is_not_there` |
 | `install.default_path` | `configured_install_paths_are_expanded`, `an_explicit_install_path_wins_over_the_configured_one`, `a_run_without_any_install_path_is_refused`, `a_configured_percent_path_is_expanded_and_used`, `an_explicit_directory_wins_over_the_configured_one` |
 | `install.exe_name` | `a_payload_without_the_declared_executable_is_refused`, `an_install_script_that_never_deploys_the_executable_is_refused` |
 | `install.required_space_mb` | `value_sources_read_the_config_the_disk_and_the_running_step`, `formats_bound_disk_sizes`, `refuses_an_install_when_the_drive_holds_less_space_than_the_project_asks_for` |
@@ -150,6 +152,7 @@ setup-level cases prove the `scripts` directory and the tools directory survive 
 | windowless runs and the switches that allow them | `silent_arguments_read_the_directory_and_reject_anything_else`, `an_unknown_silent_option_is_refused`, `a_project_that_did_not_opt_in_refuses_a_windowless_run` |
 | the run log: every run writes one to disk, and a failed run leaves it as the report that leaves the machine | `a_setup_writes_the_log_of_its_run_where_a_windowless_run_asks_for_it`, `a_failing_run_leaves_its_log_behind_and_names_it`, `a_run_that_fails_leaves_a_log_that_names_it_and_what_happened`, `a_failure_notice_points_at_the_log_of_the_run`, `a_default_log_is_named_after_the_image_the_moment_and_the_task` |
 | the bundle the setup carries, the entry digests it records and checks, and a signature appended behind it | `project_bundle_roundtrips_layout_assets_and_locales`, `bundle_index_streams_entries_without_loading_the_payload`, `a_damaged_bundle_entry_is_refused_and_leaves_no_copy`, `bundle_index_ignores_images_without_a_footer`, `bundle_index_reads_a_bundle_that_a_signature_follows`, `a_setup_whose_payload_was_damaged_in_transit_installs_nothing`, `a_setup_with_a_signature_appended_still_installs` |
+| A project's own command runs on the finished files, and a refused file is not shipped | `a_finalize_command_runs_on_the_finished_setup_and_uninstaller`, `a_finalize_command_that_fails_stops_the_build` |
 | the wizard window opens at the size the project declares | `the_setup_opens_its_wizard_window` |
 | the resources Windows reads before the process starts | `a_built_setup_carries_a_readable_bundle_and_real_resources`, `manifest::tests::the_manifest_reaches_a_real_executable` |
 

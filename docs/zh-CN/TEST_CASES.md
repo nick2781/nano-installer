@@ -47,6 +47,8 @@ Rust doc comment，再退回用例名。
 | `a_field_the_user_fills_in_is_what_lets_the_install_start` | 在真窗口里从头走一遍要填字段的流程：字段空着时点安装键没有反应，只勾同意也不行，往字段里逐字符敲进一个路径之后安装才开始，产品落在敲进去的那个目录里。字段、按钮条件和安装动作三件事里任何一环没接上，它都会停在原地。 |
 | `a_file_that_moved_in_size_travels` | 尺寸挪过的文件照样随更新包走：先看尺寸再看摘要，尺寸变了就不算没变，哪怕摘要是同一个。 |
 | `a_file_type_that_would_write_outside_the_classes_tree_is_refused` | 文件类型的两个名字先查再用：扩展名或程序 id 里带路径分隔符、或其中任何一个为空，调用直接返回 `false`；命令行空着的调用同样被拒绝，因为那样的文件类型打不开任何东西。五种被拒的调用一个字节都没写进注册表，manifest 里也没有记录。 |
+| `a_finalize_command_runs_on_the_finished_setup_and_uninstaller` | 工程自己的命令跑在成品上：卸载程序还是独立文件、尚未嵌进安装包时被处理一遍，标记因此落在安装包里那个条目上；安装包写完、页脚也写完之后再处理一遍，标记落在文件末尾，也就是签名会长出来的地方。两条命令拿到的是各自的文件（卸载程序在前、安装包在后），被处理过的安装包照常安装、注册卸载项。 |
+| `a_finalize_command_that_fails_stops_the_build` | 命令拒绝这个文件就中止构建：错误里点名是哪个设置、命令返回了什么退出码，命令自己写下的那行也进了构建日志；那份没签成的安装包不会留在磁盘上。 |
 | `a_hidden_element_takes_its_whole_subtree_with_it` | 祖先上的 `visible="false"` 把底下整个子树都藏起来：子控件的动作、文字和面板自己的底色都不画，页面上别的地方不受影响。把属性改回 `true` 后这个分支又完整画出来。 |
 | `a_hint_shows_the_rule_the_value_breaks` | 绑 `value-source="field-error:<字段 id>"` 的标签画出那条被破坏的规矩写下的文案：字段空着时报 `required` 那句，值不合格时报 `pattern` 那句，文案按工程自己的语言查表；值合格时这个标签什么都不画，点名页面上没有的字段也一样。 |
 | `a_hook_must_answer_with_page_text` | 页面钩子的 `next_page` 必须用文本回答：返回布尔、数字之类的东西会被当场拒绝并说明该返回什么，而不是被当成某一页的名字。 |
@@ -251,6 +253,7 @@ Rust doc comment，再退回用例名。
 | `refuses_a_dependency_the_project_never_declared` | 脚本问一个工程没声明的依赖名，拿到的是明确的错误（哪个名字不是本工程声明的依赖），而不是一个像「没装」那样的答案。 |
 | `refuses_a_detection_rule_that_asks_the_wrong_thing` | 判断规则一次只回答一个问题：同时写文件与注册表、比大小却没写值名、同时写 `equals` 与 `at_least`、把 `registry` 拼错，都会在构建期被指出。 |
 | `refuses_a_download_that_does_not_say_what_should_arrive` | 下载必须写明哈希与 http(s) 地址：没写 `sha256`、写了但位数不对、URL 不是 http(s)，三种都在构建期拒绝。机器上装的东西不该是服务器那天回什么就是什么。 |
+| `refuses_a_finalize_command_that_is_not_there` | `finalize.installer` 或 `finalize.uninstaller` 写成空串（或只有空白）会让构建失败，并指出要么写下那条命令、要么删掉这个设置：一个不存在的命令会让人以为安装包签过了。 |
 | `refuses_a_foreign_manifest_at_the_destination` | 目标目录里的 manifest 属于别的产品时，读取上一次安装会被拒绝。 |
 | `refuses_a_misspelled_setting` | `install.exe_nmae` 这种拼错的键会让构建失败并指出是哪一条，而不是安静地什么也不做。 |
 | `refuses_a_page_role_the_runtime_does_not_run` | 页面写了运行时不会跑的职责（比如 `license`）会让构建失败，指出该用 `progress` 或 `finish`。 |

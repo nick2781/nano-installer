@@ -23,12 +23,17 @@ try {
     try {
         if ($stream.Length -lt 16) { throw "Installer has no bundle footer" }
         $reader = [IO.BinaryReader]::new($stream, [Text.Encoding]::UTF8, $true)
-        $null = $stream.Seek(-16, [IO.SeekOrigin]::End)
-        $bundleSize = $reader.ReadUInt64()
-        if ([Text.Encoding]::ASCII.GetString($reader.ReadBytes(8)) -ne "NATVEND1") {
-            throw "Installer has an invalid bundle footer"
-        }
-        $bundleStart = $stream.Length - 16 - [long]$bundleSize
+        # The footer is searched for near the end of the file rather than taken
+        # to be the last thing in it, the way the runtime reads it: a project's
+        # own finalize command may have appended a signature behind the bundle.
+        $window = [Math]::Min([long]$stream.Length, 1MB)
+        $null = $stream.Seek(-$window, [IO.SeekOrigin]::End)
+        $tail = $reader.ReadBytes([int]$window)
+        $magicAt = [Text.Encoding]::ASCII.GetString($tail).LastIndexOf("NATVEND1", [StringComparison]::Ordinal)
+        if ($magicAt -lt 8) { throw "Installer has no bundle footer" }
+        $bundleSize = [BitConverter]::ToUInt64($tail, $magicAt - 8)
+        $footerAt = ($stream.Length - $window) + $magicAt
+        $bundleStart = $footerAt - 8 - [long]$bundleSize
         if ($bundleStart -lt 0) { throw "Installer bundle size is invalid" }
         $null = $stream.Seek($bundleStart, [IO.SeekOrigin]::Begin)
         if ([Text.Encoding]::ASCII.GetString($reader.ReadBytes(8)) -ne "NATVRS01") {

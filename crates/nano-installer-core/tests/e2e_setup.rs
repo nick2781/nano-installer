@@ -1322,6 +1322,140 @@ fn append_certificate_table(setup: &Path) -> anyhow::Result<()> {
 }
 
 // ---------------------------------------------------------------------------
+// What the project runs on the finished files
+// ---------------------------------------------------------------------------
+
+/// A project signs its own build, and the builder hands it the files: the
+/// uninstaller while it is still a file of its own, the setup once it is
+/// complete on disk. These are NSIS's `!finalize` and `!uninstfinalize`; what
+/// the command does with the file is the project's business, so here it records
+/// which file it was given and stamps a mark into it.
+#[test]
+fn a_finalize_command_runs_on_the_finished_setup_and_uninstaller() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    let log = fixture.case_path("finalize.log");
+    // A program of the project's own, standing in for a signer: it appends the
+    // file it was handed to a log and leaves a mark in that file.
+    let write_command = |name: &str, label: &str| {
+        std::fs::write(
+            fixture.case_path(name),
+            format!(
+                "@echo off\r\n>>\"{log}\" echo {label} %~1\r\n>>\"%~1\" echo {label}-finalize-mark\r\n",
+                log = log.display()
+            ),
+        )
+    };
+    write_command("uninstaller-finalize.cmd", "uninstaller")?;
+    write_command("installer-finalize.cmd", "installer")?;
+    fixture.edit_config(|config| {
+        // Both are quoted, as a real command naming a program under a path with
+        // a space in it would be.
+        config["finalize"] = serde_json::json!({
+            "uninstaller": format!(
+                "\"{}\" \"%1\"",
+                fixture.case_path("uninstaller-finalize.cmd").display()
+            ),
+            "installer": format!(
+                "\"{}\" \"%1\"",
+                fixture.case_path("installer-finalize.cmd").display()
+            ),
+        });
+    })?;
+
+    fixture.build()?;
+
+    // The uninstaller was stamped before it was embedded, so the mark is inside
+    // the entry the setup carries rather than on some file beside it.
+    let bytes = std::fs::read(&fixture.setup)?;
+    let (offset, size) = bundle_entry(&fixture.setup, "runtime/uninst.exe")?;
+    assert!(
+        bytes[offset..offset + size].ends_with(b"uninstaller-finalize-mark\r\n"),
+        "the embedded uninstaller does not carry what the project's command wrote into it"
+    );
+    // The setup was stamped after it was finished, footer and all: the mark sits
+    // behind the bundle, which is exactly what a signature does to the file.
+    assert!(
+        bytes.ends_with(b"installer-finalize-mark\r\n"),
+        "the finished setup does not carry what the project's command wrote into it"
+    );
+
+    let log_text = std::fs::read_to_string(&log)?;
+    let lines: Vec<&str> = log_text.lines().collect();
+    assert_eq!(
+        lines.len(),
+        2,
+        "each command should have run once: {log_text}"
+    );
+    assert!(lines[0].starts_with("uninstaller "), "{log_text}");
+    assert!(lines[1].starts_with("installer "), "{log_text}");
+    // The uninstaller is handed a file of its own, and the setup is handed the
+    // file this case asked for.
+    assert!(
+        !lines[0].contains("E2eProbe_Setup.exe"),
+        "the uninstaller command was handed the setup instead: {log_text}"
+    );
+    assert!(
+        lines[1].ends_with(&fixture.setup.display().to_string()),
+        "the installer command was handed something else: {log_text}"
+    );
+
+    // And a setup that grew behind its footer still installs.
+    fixture.install()?;
+    assert!(
+        fixture.destination.join("E2eProbe.exe").is_file(),
+        "a stamped setup deployed nothing"
+    );
+    assert!(
+        fixture.read_uninstall_entry()?.is_some(),
+        "a stamped setup registered nothing"
+    );
+    Ok(())
+}
+
+/// A command that refuses the file stops the build, and the setup it refused is
+/// not left where the next step of a pipeline would pick it up and ship a file
+/// nobody signed.
+#[test]
+fn a_finalize_command_that_fails_stops_the_build() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.edit_config(|config| {
+        config["finalize"] = serde_json::json!({
+            "installer": "echo the signer refused this file& exit /b 7"
+        });
+    })?;
+
+    let mut messages = Vec::new();
+    let mut request = BuildRequest::new(&fixture.project);
+    request.output = Some(fixture.setup.clone());
+    request.stub_directory = Some(fixture.stubs.clone());
+    let error = build_project_with_progress(request, |event| messages.push(event.message))
+        .expect_err("a command that refused the file stops the build");
+    let error = format!("{error:#}");
+    assert!(error.contains("finalize.installer"), "{error}");
+    assert!(error.contains("exit code 7"), "{error}");
+    // What the command printed is in the build log: that is where the reason a
+    // signer gave for refusing the file has to be readable.
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.contains("the signer refused this file")),
+        "the command's own output never reached the log: {messages:?}"
+    );
+    assert!(
+        !fixture.setup.exists(),
+        "a setup the project's own command refused stayed at {}",
+        fixture.setup.display()
+    );
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Install
 // ---------------------------------------------------------------------------
 
@@ -2866,24 +3000,23 @@ fn a_payload_without_the_declared_executable_is_refused() -> anyhow::Result<()> 
     Ok(())
 }
 
-/// The offset of one bundle entry's bytes inside a built setup.
+/// The offset and length of one bundle entry inside a built setup.
 ///
-/// The bundle is read here the way `scripts/audit_embedded_uninstaller.ps1`
-/// reads it, from the footer backwards, so the byte a case damages is one the
-/// runtime will really look for rather than a byte of the stub in front of it.
-fn bundle_entry_offset(image: &Path, name: &str) -> anyhow::Result<usize> {
+/// The bundle is read here the way the runtime reads it: the footer is searched
+/// for near the end of the file rather than taken to be the last thing in it,
+/// because a project's own finalize command may have appended a signature
+/// behind it.
+fn bundle_entry(image: &Path, name: &str) -> anyhow::Result<(usize, usize)> {
     let bytes = std::fs::read(image)?;
-    let footer = bytes
-        .len()
-        .checked_sub(16)
-        .context("the setup is too small to carry a bundle footer")?;
-    anyhow::ensure!(
-        &bytes[footer + 8..] == b"NATVEND1",
-        "the setup has no bundle footer"
-    );
-    let size = u64::from_le_bytes(bytes[footer..footer + 8].try_into()?) as usize;
+    let window = bytes.len().min(1 << 20);
+    let window_start = bytes.len() - window;
+    let footer = (window_start + 8..=bytes.len() - 8)
+        .rev()
+        .find(|at| &bytes[*at..*at + 8] == b"NATVEND1")
+        .context("the setup has no bundle footer")?;
+    let size = u64::from_le_bytes(bytes[footer - 8..footer].try_into()?) as usize;
     let start = footer
-        .checked_sub(size)
+        .checked_sub(size + 8)
         .context("implausible bundle size")?;
     anyhow::ensure!(
         &bytes[start..start + 8] == b"NATVRS01",
@@ -2902,7 +3035,7 @@ fn bundle_entry_offset(image: &Path, name: &str) -> anyhow::Result<usize> {
         let entry_size = u64::from_le_bytes(bytes[cursor..cursor + 8].try_into()?) as usize;
         cursor += 8 + 32;
         if entry_name == name {
-            return Ok(cursor);
+            return Ok((cursor, entry_size));
         }
         cursor += entry_size;
     }
@@ -2923,7 +3056,7 @@ fn a_setup_whose_payload_was_damaged_in_transit_installs_nothing() -> anyhow::Re
     // One byte of the payload flipped and nothing else: the footer, the entry
     // table, and the digest stay exactly as the build wrote them, which is what
     // a truncated download or a bad sector leaves behind.
-    let at = bundle_entry_offset(&fixture.setup, "payload/app.archive")?;
+    let at = bundle_entry(&fixture.setup, "payload/app.archive")?.0;
     let mut bytes = std::fs::read(&fixture.setup)?;
     bytes[at] ^= 0xFF;
     std::fs::write(&fixture.setup, &bytes)?;

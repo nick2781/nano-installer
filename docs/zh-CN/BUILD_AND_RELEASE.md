@@ -129,5 +129,21 @@ nano-installer-native-x64.exe build --project <dir> --delta-from <上一版的 p
 
 ## 签名
 
-构建器目前不做任何签名。生产发布必须在图标、版本资源和 bundle 全部写入之后给安装包签名，卸载
-程序则在嵌入它之前单独签名。`scripts/sign.ps1` 只是预留的签名脚本，默认构建不会调用它。
+构建器自己不签名，它把成品交给工程自己的命令去签：安装包在图标、版本资源和 bundle 全部写入之后
+触发 `finalize.installer`，卸载程序在嵌进安装包之前、还是独立文件的时候触发 `finalize.uninstaller`。
+两个字段的写法见[配置参考](CONFIG_REFERENCE.md#构建完成后的命令)；命令返回非零就中止构建，那个没签成的
+文件也不会留在磁盘上。
+
+`scripts/sign.ps1` 就是那条命令：用 `NANO_INSTALLER_CERT_THUMBPRINT` 指定的证书签名，时间戳默认打
+`http://timestamp.digicert.com`（`NANO_INSTALLER_TIMESTAMP_URL` 可以换掉），签完立刻用
+`signtool verify /pa` 自检一遍，证书没配或签名失败都报错退出。
+
+```json
+"finalize": {
+  "uninstaller": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sign.ps1 -File \"%1\"",
+  "installer": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sign.ps1 -File \"%1\""
+}
+```
+
+签过名的安装包还是安装包：Authenticode 把证书表追加在文件所有内容之后，运行时读的是文件末尾那
+一段里的尾标记，因此照常安装、照常卸载。

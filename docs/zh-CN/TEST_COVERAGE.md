@@ -3,7 +3,7 @@
 文档承诺的每一条行为，以及守住它的那条自动化用例。表格里的每一行都列出了该行为失效时会失败的
 用例；没有出现在任何一行里的行为，就是没人看住的行为。
 
-`cargo test --locked --workspace` 会跑 320 条用例：核心库 233 条，真构建并运行安装包的 51 条，
+`cargo test --locked --workspace` 会跑 323 条用例：核心库 234 条，真构建并运行安装包的 53 条，
 按构建器的方式读工程的 5 条，可视化构建器 29 条，解压运行时 2 条。安装包级用例需要真实的运行时
 可执行文件，`.\scripts\run_e2e_setup.ps1` 会先把它们构建出来再跑，并把整次运行写进
 `target/e2e-report.txt`。
@@ -12,9 +12,10 @@
 
 | 层 | 用例数 | 能证明 | 不能证明 |
 | --- | --- | --- | --- |
-| 核心库 | 233 | 一页会变成什么——图层、坐标、命中区域、文字；捆绑数据里装了什么；安装往磁盘和注册表写了什么；每个脚本原语做什么、一个服务怎么装上和怎么删掉；脚本从页面上取回什么、脚本读到的组件选择；工程声明的依赖怎么被查出来、下载下来、校验并装上，以及哪些情形会被拒绝 | 打包出来的安装包能走到这些代码；服务装上之后真的跑起来——服务程序是产品自己的，用例带不了 |
-| 安装包级 | 51 | 构建好的安装包在这台机器上装了一遍，它的窗口也是真的被驱动起来的：payload 字节（被改动过的安装包会连目标目录都不建就拒绝这次安装）、manifest、卸载项自己那组字段、快捷方式、自启动、项目脚本、脚本要跑的辅助程序、向导窗口、页面钩子把向导跳过一页并按来路退回、它自己页面上那些要等点击的行为、在列表上滚动滚轮、脚本的提示与提问所画的那张由点击作答的卡片、页面上的取值交到脚本手里、勾选决定这次装哪些组件、脚本按类型写下的每个注册表值以及视图名选中的是哪一份拷贝、
-  脚本跑过的命令留下的退出码与两个输出流，工程声明的依赖真的被问了一遍——缺的装上、已经有的不再装一遍、装不上的让整次安装停下、下载来的程序对不上哈希就一次都不跑——以及只有指针与键盘真的动起来才会发生的事——悬停与按下换上的状态位图、三种标准光标形状、语言菜单的上下键与 Enter/Escape、选目录对话框、脚本装上的服务在机器上确实存在并随卸载消失，以及一次无窗口运行写下的日志——写到点名的文件、失败时把它的路径交回给调用方 | 输入法自己画出来的那两个窗口；在外壳的选目录对话框里选定一个目录之后会写进哪个输入框；以及不显示指针的会话上光标长什么样——那里这条用例打印自己的跳过理由 |
+| 核心库 | 234 | 一页会变成什么——图层、坐标、命中区域、文字；捆绑数据里装了什么；安装往磁盘和注册表写了什么；每个脚本原语做什么、一个服务怎么装上和怎么删掉；脚本从页面上取回什么、脚本读到的组件选择；工程声明的依赖怎么被查出来、下载下来、校验并装上，以及哪些情形会被拒绝 | 打包出来的安装包能走到这些代码；服务装上之后真的跑起来——服务程序是产品自己的，用例带不了 |
+| 安装包级 | 53 | 构建好的安装包在这台机器上装了一遍，它的窗口也是真的被驱动起来的：payload 字节（被改动过的安装包会连目标目录都不建就拒绝这次安装）、manifest、卸载项自己那组字段、快捷方式、自启动、项目脚本、脚本要跑的辅助程序、向导窗口、页面钩子把向导跳过一页并按来路退回、它自己页面上那些要等点击的行为、在列表上滚动滚轮、脚本的提示与提问所画的那张由点击作答的卡片、页面上的取值交到脚本手里、勾选决定这次装哪些组件、脚本按类型写下的每个注册表值以及视图名选中的是哪一份拷贝、
+  脚本跑过的命令留下的退出码与两个输出流，工程自己的命令在成品上跑过一遍（它拒绝的成品不会留下），
+  工程声明的依赖真的被问了一遍——缺的装上、已经有的不再装一遍、装不上的让整次安装停下、下载来的程序对不上哈希就一次都不跑——以及只有指针与键盘真的动起来才会发生的事——悬停与按下换上的状态位图、三种标准光标形状、语言菜单的上下键与 Enter/Escape、选目录对话框、脚本装上的服务在机器上确实存在并随卸载消失，以及一次无窗口运行写下的日志——写到点名的文件、失败时把它的路径交回给调用方 | 输入法自己画出来的那两个窗口；在外壳的选目录对话框里选定一个目录之后会写进哪个输入框；以及不显示指针的会话上光标长什么样——那里这条用例打印自己的跳过理由 |
 | 工程检查 | 5 | 构建之前窗口会显示的那份摘要与告警列表 | |
 | 可视化构建器 | 29 | 窗口自己的状态、参数、日志与告警 | 真的去点界面上的控件 |
 | 解压运行时 | 2 | 坏归档、以及归档里不安全的路径会被拒绝 | 解压一个完好的归档——安装包级用例会用真实运行时解真实 payload |
@@ -31,6 +32,7 @@
 | `output.installer_icon` | `window_icon_uses_the_brand_asset`、`icon::tests::parses_ico_and_creates_group_directory`、`icon::tests::rejects_ico_image_outside_file` |
 | `output.uninstaller_name` | `uninstaller_name_rejects_directory_components`、`uninstaller_metadata_uses_project_version_and_configured_name` |
 | `output.uninstaller_icon` | `inspects_taptap_project_without_dpi_warnings` |
+| `finalize.installer`、`finalize.uninstaller` | `a_finalize_command_runs_on_the_finished_setup_and_uninstaller`、`a_finalize_command_that_fails_stops_the_build`、`refuses_a_finalize_command_that_is_not_there` |
 | `install.default_path` | `configured_install_paths_are_expanded`、`an_explicit_install_path_wins_over_the_configured_one`、`a_run_without_any_install_path_is_refused`、`a_configured_percent_path_is_expanded_and_used`、`an_explicit_directory_wins_over_the_configured_one` |
 | `install.exe_name` | `a_payload_without_the_declared_executable_is_refused`、`an_install_script_that_never_deploys_the_executable_is_refused` |
 | `install.required_space_mb` | `value_sources_read_the_config_the_disk_and_the_running_step`、`formats_bound_disk_sizes`、`refuses_an_install_when_the_drive_holds_less_space_than_the_project_asks_for` |
@@ -148,6 +150,7 @@
 | 无窗口运行，以及允许它的开关 | `silent_arguments_read_the_directory_and_reject_anything_else`、`an_unknown_silent_option_is_refused`、`a_project_that_did_not_opt_in_refuses_a_windowless_run` |
 | 运行日志：整次运行写到磁盘，失败时这份日志就是交出去的诊断 | `a_setup_writes_the_log_of_its_run_where_a_windowless_run_asks_for_it`、`a_failing_run_leaves_its_log_behind_and_names_it`、`a_run_that_fails_leaves_a_log_that_names_it_and_what_happened`、`a_failure_notice_points_at_the_log_of_the_run`、`a_default_log_is_named_after_the_image_the_moment_and_the_task` |
 | 安装包带的捆绑数据、它记录并核对的条目摘要，以及追加在它之后的签名 | `project_bundle_roundtrips_layout_assets_and_locales`、`bundle_index_streams_entries_without_loading_the_payload`、`a_damaged_bundle_entry_is_refused_and_leaves_no_copy`、`bundle_index_ignores_images_without_a_footer`、`bundle_index_reads_a_bundle_that_a_signature_follows`、`a_setup_whose_payload_was_damaged_in_transit_installs_nothing`、`a_setup_with_a_signature_appended_still_installs` |
+| 工程自己的命令在成品上跑一遍，被拒就不出成品 | `a_finalize_command_runs_on_the_finished_setup_and_uninstaller`、`a_finalize_command_that_fails_stops_the_build` |
 | 向导窗口按工程声明的尺寸打开 | `the_setup_opens_its_wizard_window` |
 | Windows 在进程启动前读的那份资源 | `a_built_setup_carries_a_readable_bundle_and_real_resources`、`manifest::tests::the_manifest_reaches_a_real_executable` |
 

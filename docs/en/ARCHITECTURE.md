@@ -28,6 +28,14 @@ your icon, version, and application manifest resources into it, appends a bundle
 layouts, assets, locales, scripts, and payload, and appends a self-contained uninstaller. The
 payload keeps whatever compression you gave it; the bundler adds no second compression layer.
 
+When the setup is written, the builder hands both finished files to a command of the project's own --
+the uninstaller while it is still a file of its own, before it is embedded, and the setup once it is
+complete and closed. Every line the command prints goes into the build log, a non-zero exit code
+stops the build, and the setup it refused is not left on disk. Signing is what those two hooks
+(NSIS's `!finalize` and `!uninstfinalize`) are usually for, and the builder signs nothing itself; the
+[configuration reference](CONFIG_REFERENCE.md#commands-that-run-on-the-finished-build) says how to
+name them.
+
 ## Inside the generated setup
 
 **Startup.** The runtime reads the bundle footer to index the bundle, so it knows where every entry

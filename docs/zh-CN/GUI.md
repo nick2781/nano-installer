@@ -46,6 +46,10 @@ SHA-256。资源直接写进自定义 bundle，不生成中间的 `skins.zip`；
 收集一遍 `layouts`、`assets`、`locales`、`scripts`，再为主安装包收集一遍；
 payload 只打进主安装包。
 
+工程在 `finalize.uninstaller` 或 `finalize.installer` 里写了自己的命令时，日志里还有它的那一段：
+先是 `Running finalize.uninstaller: …` 说明这次要对哪个文件跑哪条命令，接着是命令自己写下的每一行；
+命令失败时是它的退出码，而那份安装包不会被留下。
+
 日志行用本地时间戳 `[YYYY-MM-DD HH:mm:ss.SSS]`。日志窗口里的文字可以选中，警告是琥珀色、
 错误是红色，鼠标拖选、滚轮、横向滚动、`Ctrl+A` 和 `Ctrl+C` 都能用；
 **Copy all** 不用先选中就能复制完整日志。保存和复制时都保留原文和时间戳。
