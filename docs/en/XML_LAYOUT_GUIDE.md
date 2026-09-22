@@ -313,15 +313,20 @@ The runtime draws no element when it, or any ancestor, has `visible="false"`.
 | `finish` | Same as `close`, intended for the finish page |
 | `cancel` | Stops the task that is running; with nothing running it closes the wizard |
 | `switch_language` | Expands the language list and switches the locale on selection |
-| `next` | Switches to the next page the project declares |
-| `back` | Switches to the previous page it declares |
+| `next` | Switches to the next page: the one the project declares, or the one a page hook in `scripts/pages.rhai` names |
+| `back` | Switches to the previous page the user was on; a page a hook skipped is not one of them |
 | `toggle_panel:<id>:show/hide` | Shows or hides a target panel and switches the paired show/hide control |
 | `dialog_ok` | Confirms the open dialog: a close question stops the running task or exits the setup, a question a script asks answers yes, a notice just closes |
 | `dialog_cancel` | Dismisses the open dialog: a question a script asks answers no, and the page under it takes clicks again |
 
 A project that declares more than one page walks it with `next` and `back`: the first page has
 nothing behind it and the last page nothing in front, so each stops there instead of wrapping
-around. The task itself reports on the second page and ends on the last one, unless a page says
+around. With a `scripts/pages.rhai` defining `next_page(from)`, every click on `next` asks it
+first: naming a page takes the wizard there and skips whatever the declared order has in
+between, and an empty answer walks to the declared next page. `back` never asks the hook; it
+retraces the pages the user really visited, so a page the hook skipped does not reappear. See
+the [script API](SCRIPT_API.md#page-hooks). The task itself reports on the second page and ends
+on the last one, unless a page says
 otherwise with `role` -- `progress` marks the page a task reports on and `finish` the page it ends
 on, which is how a licence page or an options page gets in front of the task. The roles are
 described under [files, languages, and pages](CONFIG_REFERENCE.md#files-languages-and-pages).

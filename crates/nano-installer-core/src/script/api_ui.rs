@@ -4,23 +4,12 @@ use rhai::Engine;
 
 use super::context::{log, ScriptContext};
 
-pub(super) fn register(engine: &mut Engine, context: ScriptContext) {
-    let c = context.clone();
-    engine.register_fn("set_progress", move |percent: f64| c.progress(percent));
-
-    let c = context.clone();
-    engine.register_fn("set_status", move |text: &str| c.status(text));
-
-    let c = context.clone();
-    engine.register_fn("set_status_key", move |key: &str| c.status_key(key));
-
-    // True once the user asked the running task to stop. The runtime gives up
-    // at the checkpoint after the step that is running, so a script that would
-    // rather stop in its own time -- between two files it deploys, say -- asks
-    // this and returns by itself.
-    let c = context.clone();
-    engine.register_fn("is_cancelled", move || c.cancellation().requested());
-
+/// Registers the primitives that only read what the wizard holds.
+///
+/// A page hook runs with these and with the other reading primitives: it
+/// decides where the wizard goes, so it neither reports progress nor stops a
+/// task that is not running.
+pub(super) fn register_queries(engine: &mut Engine, context: ScriptContext) {
     let c = context.clone();
     engine.register_fn("get_install_path", move || -> String {
         c.install_path_text()
@@ -31,9 +20,9 @@ pub(super) fn register(engine: &mut Engine, context: ScriptContext) {
         c.checkbox(id)
     });
 
-    // What the page held when the user started the task. A page that declares
-    // neither the field nor the choice reads as empty text, so a project's
-    // script can ask without its layout having to carry every control.
+    // What the page held when the wizard drew it. A page that declares neither
+    // the field nor the choice reads as empty text, so a project's script can
+    // ask without its layout having to carry every control.
     let c = context.clone();
     engine.register_fn("get_text_value", move |id: &str| -> String {
         c.text_value(id)
@@ -70,4 +59,24 @@ pub(super) fn register(engine: &mut Engine, context: ScriptContext) {
     engine.register_fn("log_info", |message: &str| log("info", message));
     engine.register_fn("log_warn", |message: &str| log("warn", message));
     engine.register_fn("log_error", |message: &str| log("error", message));
+}
+
+pub(super) fn register(engine: &mut Engine, context: ScriptContext) {
+    register_queries(engine, context.clone());
+
+    let c = context.clone();
+    engine.register_fn("set_progress", move |percent: f64| c.progress(percent));
+
+    let c = context.clone();
+    engine.register_fn("set_status", move |text: &str| c.status(text));
+
+    let c = context.clone();
+    engine.register_fn("set_status_key", move |key: &str| c.status_key(key));
+
+    // True once the user asked the running task to stop. The runtime gives up
+    // at the checkpoint after the step that is running, so a script that would
+    // rather stop in its own time -- between two files it deploys, say -- asks
+    // this and returns by itself.
+    let c = context.clone();
+    engine.register_fn("is_cancelled", move || c.cancellation().requested());
 }

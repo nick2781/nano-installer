@@ -11,12 +11,72 @@ use std::path::{Path, PathBuf};
 use super::context::{checked_delete_target, log, ScriptContext};
 use crate::install;
 
+/// Registers the primitives that only look at the machine.
+///
+/// A page hook runs with these and with the other reading primitives: it can
+/// ask whether a file is there before sending the wizard to the page that
+/// installs over it, and it cannot write anything, because no primitive that
+/// writes is registered against it.
+pub(super) fn register_queries(engine: &mut Engine) {
+    engine.register_fn("file_exists", |path: &str| -> bool {
+        Path::new(path).exists()
+    });
+
+    engine.register_fn("is_dir", |path: &str| -> bool { Path::new(path).is_dir() });
+
+    engine.register_fn("get_file_size", |path: &str| -> i64 {
+        std::fs::metadata(path)
+            .map(|metadata| metadata.len() as i64)
+            .unwrap_or(-1)
+    });
+
+    engine.register_fn("read_text_file", |path: &str| -> String {
+        std::fs::read_to_string(path).unwrap_or_default()
+    });
+
+    engine.register_fn("list_dir", |path: &str| -> rhai::Array {
+        let mut entries = rhai::Array::new();
+        let Ok(reader) = std::fs::read_dir(path) else {
+            return entries;
+        };
+        for entry in reader.flatten() {
+            entries.push(rhai::Dynamic::from(
+                entry.file_name().to_string_lossy().to_string(),
+            ));
+        }
+        entries
+    });
+
+    engine.register_fn("path_join", |base: &str, child: &str| -> String {
+        Path::new(base).join(child).to_string_lossy().to_string()
+    });
+
+    engine.register_fn("path_parent", |path: &str| -> String {
+        Path::new(path)
+            .parent()
+            .map(|parent| parent.to_string_lossy().to_string())
+            .unwrap_or_default()
+    });
+
+    engine.register_fn("path_filename", |path: &str| -> String {
+        Path::new(path)
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_default()
+    });
+
+    engine.register_fn("get_temp_path", || -> String {
+        std::env::temp_dir().to_string_lossy().to_string()
+    });
+}
+
 pub(super) fn register(engine: &mut Engine, context: ScriptContext) {
+    register_queries(engine);
+
     let c = context.clone();
     engine.register_fn("extract_payload", move || -> bool {
         extract(&c, 0.0, 100.0)
     });
-
     let c = context.clone();
     engine.register_fn(
         "extract_payload_with_progress",
@@ -127,57 +187,6 @@ pub(super) fn register(engine: &mut Engine, context: ScriptContext) {
                 false
             }
         }
-    });
-
-    engine.register_fn("file_exists", |path: &str| -> bool {
-        Path::new(path).exists()
-    });
-
-    engine.register_fn("is_dir", |path: &str| -> bool { Path::new(path).is_dir() });
-
-    engine.register_fn("get_file_size", |path: &str| -> i64 {
-        std::fs::metadata(path)
-            .map(|metadata| metadata.len() as i64)
-            .unwrap_or(-1)
-    });
-
-    engine.register_fn("read_text_file", |path: &str| -> String {
-        std::fs::read_to_string(path).unwrap_or_default()
-    });
-
-    engine.register_fn("list_dir", |path: &str| -> rhai::Array {
-        let mut entries = rhai::Array::new();
-        let Ok(reader) = std::fs::read_dir(path) else {
-            return entries;
-        };
-        for entry in reader.flatten() {
-            entries.push(rhai::Dynamic::from(
-                entry.file_name().to_string_lossy().to_string(),
-            ));
-        }
-        entries
-    });
-
-    engine.register_fn("path_join", |base: &str, child: &str| -> String {
-        Path::new(base).join(child).to_string_lossy().to_string()
-    });
-
-    engine.register_fn("path_parent", |path: &str| -> String {
-        Path::new(path)
-            .parent()
-            .map(|parent| parent.to_string_lossy().to_string())
-            .unwrap_or_default()
-    });
-
-    engine.register_fn("path_filename", |path: &str| -> String {
-        Path::new(path)
-            .file_name()
-            .map(|name| name.to_string_lossy().to_string())
-            .unwrap_or_default()
-    });
-
-    engine.register_fn("get_temp_path", || -> String {
-        std::env::temp_dir().to_string_lossy().to_string()
     });
 
     let c = context.clone();

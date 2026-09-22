@@ -67,7 +67,10 @@ cleanup, failure rollback, and uninstall rules for shortcuts and user data. Layo
 nested flow containers and spacing, percentage sizing, progress bar clipping, falling back from an
 out-of-range page, and the binding between progress pages and status text. Script tests cover
 deploying files and the manifest from a script, rolling back a failing script, replaying the
-manifest through `run_tracked_uninstall`, and the library fallback when a script skips cleanup.
+manifest through `run_tracked_uninstall`, and the library fallback when a script skips cleanup. The
+page hook covers the page it picks for a given `from`, the wizard and the machine it reads, the
+refusal when it answers with something other than text, and the unchanged order when a script has
+no such function.
 
 The build script audits PE imports for the builder, all three runtimes, the setup, and the embedded
 uninstaller. It also reads the manifest resource back out of the generated setup and the embedded

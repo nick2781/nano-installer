@@ -3,7 +3,7 @@
 文档承诺的每一条行为，以及守住它的那条自动化用例。表格里的每一行都列出了该行为失效时会失败的
 用例；没有出现在任何一行里的行为，就是没人看住的行为。
 
-`cargo test --locked --workspace` 会跑 294 条用例：核心库 214 条，真构建并运行安装包的 44 条，
+`cargo test --locked --workspace` 会跑 306 条用例：核心库 224 条，真构建并运行安装包的 46 条，
 按构建器的方式读工程的 5 条，可视化构建器 29 条，解压运行时 2 条。安装包级用例需要真实的运行时
 可执行文件，`.\scripts\run_e2e_setup.ps1` 会先把它们构建出来再跑，并把整次运行写进
 `target/e2e-report.txt`。
@@ -12,8 +12,8 @@
 
 | 层 | 用例数 | 能证明 | 不能证明 |
 | --- | --- | --- | --- |
-| 核心库 | 214 | 一页会变成什么——图层、坐标、命中区域、文字；捆绑数据里装了什么；安装往磁盘和注册表写了什么；每个脚本原语做什么、一个服务怎么装上和怎么删掉；脚本从页面上取回什么、脚本读到的组件选择；工程声明的依赖怎么被查出来、下载下来、校验并装上，以及哪些情形会被拒绝 | 打包出来的安装包能走到这些代码；服务装上之后真的跑起来——服务程序是产品自己的，用例带不了 |
-| 安装包级 | 44 | 构建好的安装包在这台机器上装了一遍，它的窗口也是真的被驱动起来的：payload 字节、manifest、卸载项、快捷方式、自启动、项目脚本、脚本要跑的辅助程序、向导窗口、它自己页面上那些要等点击的行为、在列表上滚动滚轮、脚本的提示与提问所画的那张由点击作答的卡片、页面上的取值交到脚本手里、勾选决定这次装哪些组件、脚本按类型写下的每个注册表值以及视图名选中的是哪一份拷贝、
+| 核心库 | 224 | 一页会变成什么——图层、坐标、命中区域、文字；捆绑数据里装了什么；安装往磁盘和注册表写了什么；每个脚本原语做什么、一个服务怎么装上和怎么删掉；脚本从页面上取回什么、脚本读到的组件选择；工程声明的依赖怎么被查出来、下载下来、校验并装上，以及哪些情形会被拒绝 | 打包出来的安装包能走到这些代码；服务装上之后真的跑起来——服务程序是产品自己的，用例带不了 |
+| 安装包级 | 46 | 构建好的安装包在这台机器上装了一遍，它的窗口也是真的被驱动起来的：payload 字节、manifest、卸载项、快捷方式、自启动、项目脚本、脚本要跑的辅助程序、向导窗口、页面钩子把向导跳过一页并按来路退回、它自己页面上那些要等点击的行为、在列表上滚动滚轮、脚本的提示与提问所画的那张由点击作答的卡片、页面上的取值交到脚本手里、勾选决定这次装哪些组件、脚本按类型写下的每个注册表值以及视图名选中的是哪一份拷贝、
   脚本跑过的命令留下的退出码与两个输出流，工程声明的依赖真的被问了一遍——缺的装上、已经有的不再装一遍、装不上的让整次安装停下、下载来的程序对不上哈希就一次都不跑——以及只有指针与键盘真的动起来才会发生的事——悬停与按下换上的状态位图、三种标准光标形状、语言菜单的上下键与 Enter/Escape、选目录对话框、脚本装上的服务在机器上确实存在并随卸载消失，以及一次无窗口运行写下的日志——写到点名的文件、失败时把它的路径交回给调用方 | 输入法自己画出来的那两个窗口；在外壳的选目录对话框里选定一个目录之后会写进哪个输入框；以及不显示指针的会话上光标长什么样——那里这条用例打印自己的跳过理由 |
 | 工程检查 | 5 | 构建之前窗口会显示的那份摘要与告警列表 | |
 | 可视化构建器 | 29 | 窗口自己的状态、参数、日志与告警 | 真的去点界面上的控件 |
@@ -46,7 +46,7 @@
 | `resources.*` | `project_bundle_roundtrips_layout_assets_and_locales`、`project_pack_progress_describes_assets_payload_and_uninstaller`、`the_payload_format_selects_the_runtime_that_gets_embedded`、`a_project_bundles_the_tools_directory_it_names`、`a_project_that_names_no_tools_bundles_none`、`a_setup_unpacks_the_tools_its_project_bundles` |
 | `localization.default_locale` | `version::tests::maps_default_locale_to_version_language`、`the_summary_reports_what_the_project_declares` |
 | `localization.supported_locales` | `a_supported_locale_without_a_file_is_reported`、`a_translation_missing_page_text_is_reported` |
-| `wizard.pages`、`wizard.uninstall_pages` | `runtime_modes_select_distinct_layout_lists`、`out_of_range_pages_fall_back_to_the_first_layout` |
+| `wizard.pages`、`wizard.uninstall_pages` | `runtime_modes_select_distinct_layout_lists`、`out_of_range_pages_fall_back_to_the_first_layout`、`refuses_two_pages_answering_to_one_id` |
 | `ui.dpi_aware`、`ui.dpi_threshold` | `a_display_scales_the_layout_by_its_own_dpi`、`a_layout_picks_the_image_density_the_display_asks_for`、`dpi_asset_resolution_prefers_requested_density_and_falls_back`、`dpi_scaling_rounds_layout_coordinates` |
 | `ui.dialog_layout` | `a_project_without_a_dialog_layout_still_opens`、`a_dialog_is_drawn_over_the_page_and_centred`、`a_question_a_script_asks_is_drawn_with_both_of_its_answers`、`a_script_dialog_is_drawn_in_the_wizard` |
 | `uninstall.data_paths` | `only_expands_data_paths_inside_a_user_profile`、`ignores_data_paths_when_the_project_declares_none`、`uninstalling_below_appdata_removes_the_data_only_when_the_box_is_cleared` |
@@ -87,7 +87,8 @@
 | 文本框编辑：光标、选区、撤销、按词按键 | `a_caret_sits_after_the_characters_before_it`、`a_double_click_selects_the_word_under_the_pointer`、`a_selection_band_covers_the_characters_it_selects`、`a_selection_is_ordered_from_whichever_end_the_caret_is_at`、`removing_a_selection_keeps_the_text_around_it`、`typing_coalesces_into_one_undo_step`、`undo_remembers_the_caret_that_belongs_to_the_value`、`word_keys_stop_at_the_boundaries_they_delete`、`byte_index_walks_characters_not_bytes`、`editable_text_fields_are_recorded_and_readonly_ones_are_not`、`a_typed_value_wins_over_the_bound_default`、`a_readonly_field_shows_its_value_without_taking_edits`、`an_empty_field_is_one_a_user_can_click_into` |
 | 输入法组字窗与候选窗锚在页面画出的那个插入符上 | `an_input_method_anchors_at_the_caret_the_page_drew` |
 | `visible="false"` 与面板显隐 | `a_hidden_element_takes_its_whole_subtree_with_it`、`a_panel_pair_shows_the_panel_and_only_the_control_that_fits` |
-| 页面顺序与页面声明的职责（`next`、`back`、`role`） | `a_page_role_finds_the_page_that_holds_it`、`a_page_list_without_roles_keeps_its_positions`、`a_next_button_walks_to_the_page_the_project_declares` |
+| 页面顺序与页面声明的职责（`next`、`back`、`role`） | `a_page_role_finds_the_page_that_holds_it`、`a_page_list_without_roles_keeps_its_positions`、`a_next_button_walks_to_the_page_the_project_declares`、`a_page_id_finds_the_page_that_carries_it`、`the_end_of_the_declared_order_is_an_end` |
+| 页面钩子：`scripts/pages.rhai` 的 `next_page(from)` 决定下一页，只读的原语、按来路返回的历史，以及钩子失败时仍按声明的页序走下去 | `a_page_hook_sends_the_wizard_to_the_page_it_names`、`a_page_hook_that_names_no_page_keeps_the_declared_order`、`a_hook_names_the_page_the_wizard_goes_to`、`a_hook_reads_the_wizard_and_the_machine`、`a_hook_must_answer_with_page_text`、`a_hook_that_fails_reports_the_project_message`、`a_script_without_the_hook_says_nothing`、`a_page_hook_sends_the_wizard_past_a_page_the_project_skips`、`a_page_hook_that_fails_is_reported_and_the_wizard_walks_on` |
 | 动作表里的每一个动作 | `every_action_in_the_table_answers_with_its_own_window_action`、`action_attributes_map_to_window_actions` |
 | 对话框：位置、按钮、通知、随文字长高的卡片 | `a_dialog_is_drawn_over_the_page_and_centred`、`a_dialog_button_answers_with_its_own_action`、`a_dialog_button_is_drawn_from_the_question_rather_than_the_layout`、`a_notice_hides_the_secondary_button`、`a_page_without_a_dialog_draws_no_overlay`、`every_shipped_question_keeps_its_answers_inside_the_card`、`the_example_dialog_places_its_message_and_both_buttons` |
 | 链接的解析顺序 | `agreement_links_resolve_through_the_project_links_table`、`a_link_the_project_does_not_configure_stays_plain_text`、`link_runs_carry_their_target_and_plain_runs_do_not`、`agreement_markdown_becomes_colored_visible_runs` |
@@ -101,7 +102,7 @@
 
 ## 项目脚本
 
-原语清单见 [脚本接口](SCRIPT_API.md)。进程内的用例直接驱动脚本驱动层；安装包级那两条证明 `scripts`
+原语清单见 [脚本接口](SCRIPT_API.md)。进程内的用例直接驱动脚本驱动层；安装包级那几条证明 `scripts`
 目录和工具目录在打包之后仍然活着，而且到得了脚本手上。
 
 | 行为 | 用例 |
@@ -122,6 +123,7 @@
 | 服务：装一个自己的服务、问机器它在不在和在不在跑、改它的启动方式、删掉它；同名却跑着别的程序的服务会被拒绝 | `service_primitives_ask_the_machine_and_install_where_the_run_may`、`a_service_is_installed_and_removed_where_the_run_may`、`a_service_start_kind_is_read_from_its_word`、`a_service_command_line_quotes_the_program`、`a_service_is_found_and_told_apart_from_one_that_is_not_there`、`a_service_that_runs_another_program_is_not_taken_over` |
 | 保留还是删除用户数据 | `uninstalling_below_appdata_removes_the_data_only_when_the_box_is_cleared` |
 | `scripts` 目录进入构建好的安装包 | `a_setup_runs_the_projects_own_install_and_uninstall_scripts` |
+| `scripts/pages.rhai` 进入构建好的安装包，并在用户翻页时被调用 | `a_page_hook_sends_the_wizard_past_a_page_the_project_skips`、`a_page_hook_that_fails_is_reported_and_the_wizard_walks_on` |
 | 脚本发出的提示、报错与提问画在向导里、由点击作答 | `a_question_a_script_asks_is_drawn_with_both_of_its_answers`、`a_script_dialog_is_drawn_in_the_wizard` |
 
 ## 安装、升级与卸载

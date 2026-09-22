@@ -13,7 +13,7 @@ mod service;
 mod shell;
 mod version;
 
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{bail, Context, Result};
 use std::collections::{HashMap, HashSet};
 use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -251,6 +251,9 @@ struct MenuUi {
 
 struct RuntimeState {
     files: HashMap<String, Vec<u8>>,
+    /// The project's page hook, when it ships one: the runtime asks it where
+    /// the wizard goes every time the user leaves a page forward.
+    page_hook: Option<String>,
     /// Scale the current page was measured at. Replaced when the window moves
     /// to a display with a different scaling factor.
     dpi: DpiContext,
@@ -294,6 +297,11 @@ struct InteractionState {
     text_input_values: HashMap<String, String>,
     /// Wizard page currently rendered, as an index into the mode's page list.
     page_index: usize,
+    /// The pages the user walked through to reach the one on screen, oldest
+    /// first. A page hook may send the wizard past a page the project declares,
+    /// so going back follows the way the user actually came rather than the
+    /// declared order, which would show a page the hook decided against.
+    page_history: Vec<usize>,
     /// Install or uninstall progress, 0-100, published by the worker thread.
     progress: Option<u8>,
     /// Locale key describing the running task, published by the worker thread.
@@ -2080,6 +2088,16 @@ impl BundleIndex {
         self.files.contains_key(name)
     }
 
+    /// A bundle with nothing in it, for a caller that never reads a file from
+    /// it: the page hook decides where the wizard goes, and the primitives that
+    /// would read the bundle are not registered against it.
+    fn empty() -> Self {
+        Self {
+            exe: PathBuf::new(),
+            files: HashMap::new(),
+        }
+    }
+
     fn read_file(&self, name: &str) -> Result<Vec<u8>> {
         let entry = self
             .files
@@ -2299,6 +2317,13 @@ fn run_embedded(bundle: BundleIndex, mode: RuntimeMode) -> Result<()> {
     // Only the configuration, layout, asset, and locale entries are read; the
     // payload stays on disk and is streamed when the install action runs.
     let files = bundle.read_ui_files()?;
+    // The page hook is carried for as long as the wizard lives, because a click
+    // asks it for an answer rather than the task that runs later.
+    let page_hook = bundle
+        .contains(script::page::PAGE_SCRIPT)
+        .then(|| bundle.read_file(script::page::PAGE_SCRIPT))
+        .transpose()?
+        .and_then(|source| String::from_utf8(source).ok());
     let (dpi_settings, dpi) = configure_dpi(&files)?;
     let locale = initial_locale(&files)?;
     let interaction = initial_interaction(&files, mode)?;
@@ -2306,6 +2331,7 @@ fn run_embedded(bundle: BundleIndex, mode: RuntimeMode) -> Result<()> {
     let (width, height) = (ui.width, ui.height);
     UI.set(Mutex::new(RuntimeState {
         files,
+        page_hook,
         dpi,
         dpi_settings,
         locale,
@@ -2338,6 +2364,12 @@ fn initial_locale(files: &HashMap<String, Vec<u8>>) -> Result<String> {
         .to_string())
 }
 
+/// The values the wizard holds before the user has touched anything.
+///
+/// Every page a project declares is read, not just the one the wizard opens
+/// on: what a control holds until the user changes it is the default its own
+/// layout gives it, and both a script and the page hook may ask about a page
+/// the user has not reached yet.
 fn initial_interaction(
     files: &HashMap<String, Vec<u8>>,
     mode: RuntimeMode,
@@ -2347,40 +2379,40 @@ fn initial_interaction(
             .get("installer_config.json")
             .context("installer_config.json missing from native bundle")?,
     )?;
-    let layout_path = runtime_layout_path(&config, mode)?;
-    let xml = std::str::from_utf8(
-        files
-            .get(layout_path)
-            .with_context(|| format!("layout missing from native bundle: {layout_path}"))?,
-    )?;
-    let document = roxmltree::Document::parse(xml)?;
     let mut interaction = InteractionState::default();
-    for checkbox in document
-        .descendants()
-        .filter(|node| node.has_tag_name("Checkbox"))
-    {
-        if let Some(id) = checkbox.attribute("id") {
-            interaction.checkbox_states.insert(
-                id.to_string(),
-                checkbox.attribute("checked") == Some("true"),
-            );
-        }
-    }
-    for input in document
-        .descendants()
-        .filter(|node| node.has_tag_name("TextInput"))
-    {
-        let Some(id) = input.attribute("id") else {
+    for index in 0..runtime_page_count(&config, mode) {
+        let layout_path = runtime_layout_path_at(&config, mode, index)?;
+        let Some(xml) = files.get(layout_path) else {
             continue;
         };
-        let value = input.attribute("value").map(str::to_string).or_else(|| {
-            input
-                .attribute("value-source")
-                .and_then(|source| source.strip_prefix("config:"))
-                .and_then(|path| config_value_as_string(&config, path))
-        });
-        if let Some(value) = value {
-            interaction.text_input_values.insert(id.to_string(), value);
+        let document = roxmltree::Document::parse(std::str::from_utf8(xml)?)?;
+        for checkbox in document
+            .descendants()
+            .filter(|node| node.has_tag_name("Checkbox"))
+        {
+            if let Some(id) = checkbox.attribute("id") {
+                interaction.checkbox_states.insert(
+                    id.to_string(),
+                    checkbox.attribute("checked") == Some("true"),
+                );
+            }
+        }
+        for input in document
+            .descendants()
+            .filter(|node| node.has_tag_name("TextInput"))
+        {
+            let Some(id) = input.attribute("id") else {
+                continue;
+            };
+            let value = input.attribute("value").map(str::to_string).or_else(|| {
+                input
+                    .attribute("value-source")
+                    .and_then(|source| source.strip_prefix("config:"))
+                    .and_then(|path| config_value_as_string(&config, path))
+            });
+            if let Some(value) = value {
+                interaction.text_input_values.insert(id.to_string(), value);
+            }
         }
     }
     Ok(interaction)
@@ -2920,10 +2952,6 @@ fn translate_layout(output: &mut LayoutOutput, left: i32, top: i32) {
     }
 }
 
-fn runtime_layout_path(config: &serde_json::Value, mode: RuntimeMode) -> Result<&str> {
-    runtime_layout_path_at(config, mode, 0)
-}
-
 fn runtime_page_count(config: &serde_json::Value, mode: RuntimeMode) -> usize {
     let pages = match mode {
         RuntimeMode::Installer => &config["wizard"]["pages"],
@@ -2970,15 +2998,199 @@ fn runtime_page_index_for_role(
 pub(crate) fn page_index_for_role(role: &str) -> Option<usize> {
     let runtime = UI.get()?;
     let state = runtime.lock().ok()?;
-    let config = serde_json::from_slice::<serde_json::Value>(
+    let config = runtime_config(&state).ok()?;
+    runtime_page_index_for_role(&config, state.mode, role)
+}
+
+/// The configuration the running wizard was built from.
+fn runtime_config(state: &RuntimeState) -> Result<serde_json::Value> {
+    Ok(serde_json::from_slice::<serde_json::Value>(
         state
             .files
             .get("installer_config.json")
             .map(Vec::as_slice)
             .unwrap_or_default(),
-    )
-    .ok()?;
-    runtime_page_index_for_role(&config, state.mode, role)
+    )?)
+}
+
+/// The pages the running wizard declares, in the order the project lists them.
+fn runtime_pages(state: &RuntimeState) -> Result<Vec<serde_json::Value>> {
+    let config = runtime_config(state)?;
+    let pages = match state.mode {
+        RuntimeMode::Installer => &config["wizard"]["pages"],
+        RuntimeMode::Uninstaller => &config["wizard"]["uninstall_pages"],
+    };
+    Ok(pages.as_array().cloned().unwrap_or_default())
+}
+
+/// The id of the page at `index`, empty for a page the project did not name.
+fn page_id(pages: &[serde_json::Value], index: usize) -> &str {
+    pages
+        .get(index)
+        .and_then(|page| page["id"].as_str())
+        .unwrap_or_default()
+}
+
+/// The page a project declares under `id`.
+fn page_index_of_id(pages: &[serde_json::Value], id: &str) -> Option<usize> {
+    pages
+        .iter()
+        .position(|page| page["id"].as_str() == Some(id))
+}
+
+/// What stopped the wizard from walking the way the project asked.
+enum MoveTrouble {
+    /// The project's page hook could not name a page, so the wizard keeps the
+    /// order the project declares.
+    Hook(anyhow::Error),
+    /// There is nowhere to go: the declared order ends here and the hook said
+    /// nothing about this move.
+    End(anyhow::Error),
+}
+
+/// Where the wizard goes when the user leaves page `from` by pressing next.
+///
+/// The project's hook decides when it names a page for this move; otherwise the
+/// declared order does, which is what a project without a hook always gets. A
+/// hook that names a page the project does not declare, or the page the wizard
+/// is already on, is a mistake the caller reports -- and the declared order
+/// still moves the wizard on, because an installer a user cannot walk is worse
+/// than a page order an author got wrong.
+fn forward_page(
+    pages: &[serde_json::Value],
+    from: usize,
+    chosen: Result<Option<String>>,
+) -> (Option<usize>, Option<MoveTrouble>) {
+    let declared = (from + 1 < pages.len()).then_some(from + 1);
+    let beyond = || anyhow::anyhow!("this wizard has no page 1 step(s) from the one on screen");
+    let chosen = match chosen {
+        Ok(chosen) => chosen,
+        // Nowhere to go either way: the hook's failure is the more useful
+        // thing to say, because the declared order has nothing to offer.
+        Err(error) => return (declared, Some(MoveTrouble::Hook(error))),
+    };
+    let Some(id) = chosen else {
+        return match declared {
+            Some(index) => (Some(index), None),
+            None => (None, Some(MoveTrouble::End(beyond()))),
+        };
+    };
+    match page_index_of_id(pages, &id) {
+        Some(index) if index != from => (Some(index), None),
+        Some(_) => (
+            declared,
+            Some(MoveTrouble::Hook(anyhow::anyhow!(
+                "the page hook named the page the wizard is on, {id}"
+            ))),
+        ),
+        None => (
+            declared,
+            Some(MoveTrouble::Hook(anyhow::anyhow!(
+                "the page hook named a page this wizard does not declare: {id}"
+            ))),
+        ),
+    }
+}
+
+/// Asks the project's page hook where the wizard goes when it leaves `from`.
+///
+/// Nothing but the values the hook may read is gathered here: the script itself
+/// runs once the wizard's state is no longer locked, because a hook that is
+/// evaluated while the state is held would deadlock the moment one of its
+/// primitives asked the wizard something.
+fn page_hook_request(
+    state: &RuntimeState,
+    from: usize,
+) -> Result<Option<script::page::PageRequest>> {
+    let Some(hook) = state.page_hook.clone() else {
+        return Ok(None);
+    };
+    let config = runtime_config(state)?;
+    let pages = runtime_pages(state)?;
+    let checked = |id: &str, fallback: bool| {
+        state
+            .interaction
+            .checkbox_states
+            .get(id)
+            .copied()
+            .unwrap_or(fallback)
+    };
+    let mode = match state.mode {
+        RuntimeMode::Installer => script::Mode::Install,
+        RuntimeMode::Uninstaller => script::Mode::Uninstall,
+    };
+    Ok(Some(script::page::PageRequest {
+        environment: script::PageEnvironment {
+            mode,
+            components: install::selected_components(&config, checked),
+            config,
+            install_path: PathBuf::from(
+                state
+                    .interaction
+                    .text_input_values
+                    .get("editDir")
+                    .cloned()
+                    .unwrap_or_default(),
+            ),
+            checkboxes: state.interaction.checkbox_states.clone(),
+            texts: state.interaction.text_input_values.clone(),
+            choices: state.interaction.choices.clone(),
+        },
+        from: page_id(&pages, from).to_string(),
+        hook,
+    }))
+}
+
+/// Moves the wizard one page forward, along the order the project declares or
+/// the page its hook names.
+fn navigate_forward() -> Result<()> {
+    let (pages, from, request) = {
+        let runtime = UI.get().context("native UI state is missing")?;
+        let state = runtime
+            .lock()
+            .map_err(|_| anyhow::anyhow!("native UI state lock was poisoned"))?;
+        (
+            runtime_pages(&state)?,
+            state.interaction.page_index,
+            page_hook_request(&state, state.interaction.page_index)?,
+        )
+    };
+    let chosen = match request {
+        Some(request) => script::page::next_page(request),
+        None => Ok(None),
+    };
+    let (target, trouble) = forward_page(&pages, from, chosen);
+    match trouble {
+        Some(MoveTrouble::Hook(error)) => show_notice(&format!(
+            "The page hook could not say where the wizard goes, so the order the project \
+             declares is used instead:\n{error:#}"
+        )),
+        Some(MoveTrouble::End(error)) => show_runtime_error(&error),
+        None => {}
+    }
+    match target {
+        Some(index) => walk_to_page(index),
+        None => Ok(()),
+    }
+}
+
+/// Returns the wizard to the page the user came from.
+///
+/// The way back is the way the user actually walked: a page a hook sent the
+/// wizard past is never shown by going back, and a page a task took the wizard
+/// to has no way back into it at all, because the task owns the window in
+/// between and starts the wizard afresh when it is done.
+fn navigate_back() -> Result<()> {
+    update_runtime(|state| {
+        let from = state.interaction.page_index;
+        let target = match state.interaction.page_history.pop() {
+            Some(previous) => previous,
+            None if from > 0 => from - 1,
+            None => bail!("this wizard has no page before the one on screen"),
+        };
+        state.interaction.page_index = target;
+        Ok(())
+    })
 }
 
 /// The layout of the page at `index`, falling back to the first page so an
@@ -7525,12 +7737,12 @@ unsafe fn handle_window_action(window: HWND, action: WindowAction) {
             }
         }
         WindowAction::NextPage => {
-            if let Err(error) = show_adjacent_page(1) {
+            if let Err(error) = navigate_forward() {
                 show_runtime_error(&error);
             }
         }
         WindowAction::PreviousPage => {
-            if let Err(error) = show_adjacent_page(-1) {
+            if let Err(error) = navigate_back() {
                 show_runtime_error(&error);
             }
         }
@@ -8168,29 +8380,27 @@ fn launch_installed_app() -> Result<()> {
     Ok(())
 }
 
-/// Moves the wizard one page along the list the project declares.
-///
-/// The page list belongs to the project, so walking it stops at either end
-/// rather than wrapping around to a page the author never put there.
-fn show_adjacent_page(step: isize) -> Result<()> {
-    let current = UI
-        .get()
-        .context("native UI state is missing")?
-        .lock()
-        .map_err(|_| anyhow::anyhow!("native UI state lock was poisoned"))?
-        .interaction
-        .page_index;
-    let target = current as isize + step;
-    ensure!(
-        target >= 0 && (target as usize) < page_count(),
-        "this wizard has no page {step} step(s) from the one on screen"
-    );
-    show_page(target as usize)
-}
-
 /// Switches the wizard to `index` and repaints.
+///
+/// A direct move -- the page a task reports on, or the first page a failed task
+/// returns to -- forgets where the wizard has been. The task owns the window in
+/// between, so what follows is a new walk through the pages rather than a
+/// continuation of the one that led into it.
 pub(crate) fn show_page(index: usize) -> Result<()> {
     update_runtime(|state| {
+        state.interaction.page_history.clear();
+        state.interaction.page_index = index;
+        Ok(())
+    })
+}
+
+/// Walks the wizard to `index`, remembering the page it leaves behind.
+fn walk_to_page(index: usize) -> Result<()> {
+    update_runtime(|state| {
+        let from = state.interaction.page_index;
+        if from != index {
+            state.interaction.page_history.push(from);
+        }
         state.interaction.page_index = index;
         Ok(())
     })
@@ -8238,26 +8448,6 @@ pub(crate) fn record_installed_app(app: PathBuf) -> Result<()> {
         state.installed_app = Some(app.clone());
         Ok(())
     })
-}
-
-/// The page count of the mode the runtime is currently in.
-pub(crate) fn page_count() -> usize {
-    let Some(runtime) = UI.get() else {
-        return 0;
-    };
-    let Ok(state) = runtime.lock() else {
-        return 0;
-    };
-    let Ok(config) = serde_json::from_slice::<serde_json::Value>(
-        state
-            .files
-            .get("installer_config.json")
-            .map(Vec::as_slice)
-            .unwrap_or_default(),
-    ) else {
-        return 0;
-    };
-    runtime_page_count(&config, state.mode)
 }
 
 /// Applies `change` to the runtime state, rebuilds the layout, and repaints.
@@ -8610,21 +8800,21 @@ mod tests {
         anchored_left, anchored_top, button_enabled, button_image, byte_index, caret_layer,
         centered_bounds, clamped_bounds, composition_points, container_intrinsic_size,
         cross_alignment, cross_alignment_for_item, disk_free_bytes, disk_root, field_state,
-        flow_axis, flow_item_for_node, flow_widths, format_size_bytes, initial_interaction,
-        insets_for_node, inspect_project, installer_version_info, load_layout, main_alignment,
-        mask_matches, measure_layout_text_width, pack_project, pack_project_with_progress,
-        parse_bundle, parse_color, parse_image_style, parse_text_runs, pick_directory_target,
-        push_action, push_border_layer, push_hover_region, push_node_border, query_disk_free_bytes,
-        render_flow, render_flow_item, render_progress_bar, resolve_asset_path,
-        resolve_link_target, resolve_value_source, resolved_text_for_node, restore_snapshot,
-        runtime_layout_path, runtime_layout_path_at, runtime_page_count,
+        flow_axis, flow_item_for_node, flow_widths, format_size_bytes, forward_page,
+        initial_interaction, insets_for_node, inspect_project, installer_version_info, load_layout,
+        main_alignment, mask_matches, measure_layout_text_width, pack_project,
+        pack_project_with_progress, page_id, page_index_of_id, parse_bundle, parse_color,
+        parse_image_style, parse_text_runs, pick_directory_target, push_action, push_border_layer,
+        push_hover_region, push_node_border, query_disk_free_bytes, render_flow, render_flow_item,
+        render_progress_bar, resolve_asset_path, resolve_link_target, resolve_value_source,
+        resolved_text_for_node, restore_snapshot, runtime_layout_path_at, runtime_page_count,
         runtime_page_index_for_role, scale_value, selection_layers, size_attribute,
         uninstaller_version_info, validate_output_filename, word_end_after, word_range,
         word_start_before, wrap_lines, wraps, BundleIndex, DialogKind, DialogState, DpiContext,
         DpiSettings, FlowAxis, FlowItem, ImageLayer, Insets, InteractionState, LayerRect,
-        LayoutContext, LayoutOutput, PayloadFormat, RuntimeMode, RuntimeUi, TextAlignment, TextHit,
-        TextInputRegion, TextSnapshot, WindowAction, BUNDLE_MAGIC, BUNDLE_VERSION, COLORREF,
-        FOOTER_MAGIC, POINT,
+        LayoutContext, LayoutOutput, MoveTrouble, PayloadFormat, RuntimeMode, RuntimeUi,
+        TextAlignment, TextHit, TextInputRegion, TextSnapshot, WindowAction, BUNDLE_MAGIC,
+        BUNDLE_VERSION, COLORREF, FOOTER_MAGIC, POINT,
     };
     use anyhow::Context;
     use std::collections::HashMap;
@@ -10344,11 +10534,11 @@ mod tests {
             "../../../examples/TapTap/installer_config.json"
         ))?;
         assert_eq!(
-            runtime_layout_path(&config, RuntimeMode::Installer)?,
+            runtime_layout_path_at(&config, RuntimeMode::Installer, 0)?,
             "layouts/configpage.xml"
         );
         assert_eq!(
-            runtime_layout_path(&config, RuntimeMode::Uninstaller)?,
+            runtime_layout_path_at(&config, RuntimeMode::Uninstaller, 0)?,
             "layouts/uninstallpage.xml"
         );
         Ok(())
@@ -10408,6 +10598,87 @@ mod tests {
             runtime_page_index_for_role(&single, RuntimeMode::Installer, "finish"),
             None
         );
+    }
+
+    /// The pages the cases below walk, with the ids a page hook addresses.
+    fn hook_pages() -> Vec<serde_json::Value> {
+        serde_json::json!([
+            {"id": "welcome", "layout": "layouts/welcome.xml"},
+            {"id": "licence", "layout": "layouts/licence.xml"},
+            {"id": "options", "layout": "layouts/options.xml"},
+            {"id": "tasks", "layout": "layouts/tasks.xml", "role": "progress"}
+        ])
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+    }
+
+    /// What a page hook answered: a page it named, nothing, or a failure.
+    fn named(id: &str) -> anyhow::Result<Option<String>> {
+        Ok(Some(id.to_string()))
+    }
+
+    fn silent() -> anyhow::Result<Option<String>> {
+        Ok(None)
+    }
+
+    fn failed() -> anyhow::Result<Option<String>> {
+        Err(anyhow::anyhow!("scripts/pages.rhai failed: no page"))
+    }
+
+    #[test]
+    fn a_page_hook_sends_the_wizard_to_the_page_it_names() {
+        // The hook skips the licence page from the welcome page.
+        let (target, trouble) = forward_page(&hook_pages(), 0, named("options"));
+        assert_eq!(target, Some(2));
+        assert!(trouble.is_none());
+        // A page the hook says nothing about keeps the declared order.
+        let (target, trouble) = forward_page(&hook_pages(), 2, silent());
+        assert_eq!(target, Some(3));
+        assert!(trouble.is_none());
+    }
+
+    /// A hook that names a page the project does not declare, or the page the
+    /// wizard is already on, is a mistake: the wizard says so and walks on, so
+    /// that a project's bug never traps the person running it.
+    #[test]
+    fn a_page_hook_that_names_no_page_keeps_the_declared_order() {
+        for chosen in [named("nothing"), named("welcome"), failed()] {
+            let (target, trouble) = forward_page(&hook_pages(), 0, chosen);
+            assert_eq!(
+                target,
+                Some(1),
+                "the wizard did not fall back to the next page"
+            );
+            assert!(
+                matches!(trouble, Some(MoveTrouble::Hook(_))),
+                "the hook's mistake was not reported"
+            );
+        }
+    }
+
+    /// The last declared page is the end of the walk, and the wizard says so
+    /// rather than moving somewhere the project never declared.
+    #[test]
+    fn the_end_of_the_declared_order_is_an_end() {
+        let (target, trouble) = forward_page(&hook_pages(), 3, silent());
+        assert_eq!(target, None);
+        assert!(matches!(trouble, Some(MoveTrouble::End(_))));
+        // A hook that names a page still moves the wizard from the last one.
+        let (target, trouble) = forward_page(&hook_pages(), 3, named("licence"));
+        assert_eq!(target, Some(1));
+        assert!(trouble.is_none());
+    }
+
+    #[test]
+    fn a_page_id_finds_the_page_that_carries_it() {
+        assert_eq!(page_index_of_id(&hook_pages(), "options"), Some(2));
+        assert_eq!(page_index_of_id(&hook_pages(), "tasks"), Some(3));
+        assert_eq!(page_index_of_id(&hook_pages(), "nothing"), None);
+        assert_eq!(page_id(&hook_pages(), 1), "licence");
+        // A page a project gave no id is not one a hook can name.
+        let anonymous = serde_json::json!([{"layout": "layouts/a.xml"}]);
+        assert_eq!(page_id(anonymous.as_array().unwrap(), 0), "");
     }
 
     #[test]

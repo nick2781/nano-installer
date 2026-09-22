@@ -69,13 +69,14 @@
 | `resources.tools_dir` | string | 可选；要打包的辅助程序目录，脚本用 `get_tools_dir()` 取回 |
 | `localization.default_locale` | string | 启动时使用的语言，默认 `zh-CN` |
 | `localization.supported_locales` | array | 计划提供的语言列表；构建时会对没有对应 JSON 文件的条目告警 |
-| `wizard.pages[].layout` | string | 安装页列表，用 `action="next"` 与 `action="back"` 逐页走 |
+| `wizard.pages[].layout` | string | 安装页列表，用 `action="next"` 与 `action="back"` 逐页走，或由 `scripts/pages.rhai` 决定下一页 |
 | `wizard.pages[].role` | string | 可选：`progress` 标记任务汇报的那一页，`finish` 标记收尾的那一页 |
 | `wizard.uninstall_pages[].layout` | string | 卸载页列表，走法相同 |
 | `wizard.uninstall_pages[].role` | string | 卸载程序可用的同样两个职责 |
 
 不写 `role` 时，第二页汇报、最后一页收尾，也就是普通工程声明的那三页的意思。页面还可以写
-`id` 与 `title`：前者是给你自己看的名字，后者是报告里给它的小标题。
+`id` 与 `title`：`id` 是页面钩子点名要去的那个页面的名字，在同一个列表里必须唯一，两页共用一个 `id`
+会在构建时被拒绝；`title` 是报告里给它的小标题。
 
 ## 界面
 
@@ -236,7 +237,8 @@ ZIP 与 7z 会在构建时被拒绝。安装时基础载荷先落地，各组件
 ## 自定义安装与卸载步骤
 
 加入 `scripts/install.rhai` 或 `scripts/uninstall.rhai` 即可替代内置步骤，见
-[脚本 API](SCRIPT_API.md)。
+[脚本 API](SCRIPT_API.md)。`scripts/pages.rhai` 不替代步骤，它决定每次翻页去哪一页，见
+[页面钩子](SCRIPT_API.md#页面钩子)。
 
 ## 无人值守运行
 

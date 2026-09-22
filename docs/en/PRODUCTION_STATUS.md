@@ -139,13 +139,26 @@ files and registry entries, so validate them in a disposable virtual machine onl
   wants to decide when for itself asks the same declaration and takes the same fetch route through
   `dependency_installed`, `install_dependency`, `download_file`, `download_file_with_hash` and
   `sha256_of_file`.
+- A project script can decide which page comes next. With `scripts/pages.rhai` in the project
+  defining `next_page(from)`, the runtime hands it the id of the page the user is on every time
+  Next is clicked, and it answers with the page to go to: naming one takes the wizard there and
+  skips whatever the project declared in between, while an empty answer, a page the project gave
+  no `id`, or no such function at all keeps the declared order. A hook can only look -- the
+  queries of `system`, `ui`, `registry` and `file` plus `get_mode()` and `log_*` are registered
+  for it, and it runs under an operation ceiling of its own -- a million operations, against an
+  install script's hundred million -- so it cannot change the machine, and a hook that fails or
+  names a page that does not exist does not
+  trap the user: the reason lands on the product's own card and the declared order walks on.
+  Back walks the way the user came, so a page the hook skipped does not reappear; starting,
+  returning from or ending a task clears that trail. A page id has to be unique inside one page
+  list, and the build refuses a project that gives two pages the same one.
 - The setup-level suite in `crates/nano-installer-core/tests/e2e_setup.rs` builds a setup from a
   project it writes itself and runs it against a real installation: files land on disk byte for
   byte, the manifest and the uninstall entry are written, an upgrade drops stale files and keeps
   files it does not own, and an uninstall removes the product, the registration, and the directory; a
   dependency the machine is missing is really installed, and a downloaded one is checked before it
   runs.
-  Thirteen of its forty-four cases open the wizard window and drive it: one measures the client
+  Fifteen of its forty-six cases open the wizard window and drive it: one measures the client
   area it drew, one walks the page actions a project declares, one stops a running task from a cancel
   button, one types a directory into the field a page asks for and starts the install with it, one
   clicks the row a radio group's install button waits for, one rolls the wheel over a list and
@@ -156,8 +169,10 @@ files and registry entries, so validate them in a disposable virtual machine onl
   holds it down and reads the three pictures the button declares back out of the window, one
   reads which of the three standard pointers the window answers with over a button, a field and
   the page, one walks the language menu with the arrow keys, Enter and Escape, and one clicks a
-  browse button and closes the shell's folder dialog again. They need an interactive desktop
-  session, so they skip where there is none and `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` makes the
+  browse button and closes the shell's folder dialog again, one lets a page hook send the wizard
+  past the licence page and Back the way the user came, and one watches a hook fail: the reason
+  lands on the product's own card and the declared order walks on. They need an interactive
+  desktop session, so they skip where there is none and `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` makes the
   skip a failure; the cursor case asks that the session be showing a pointer as well, which a
   hosted runner is not, and it prints its skip there. Of the other thirty-one, three read their
   answer back out of the machine rather than out of the primitive that wrote it: one checks every

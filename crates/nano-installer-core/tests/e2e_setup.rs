@@ -322,6 +322,47 @@ impl Fixture {
         })
     }
 
+    /// Declares a wizard of four pages a project's page hook walks, with a
+    /// licence page between the welcome page and the options page.
+    ///
+    /// Each page declares a different client area, so the size of the window
+    /// says which page is up -- and whether the hook sent the wizard past the
+    /// licence page rather than through it.
+    fn hook_project(&self, hook: &str) -> anyhow::Result<()> {
+        std::fs::write(
+            self.project.join("layouts/configpage.xml"),
+            r##"<Page width="720" height="450" background="#FF101010">
+  <Button id="next" action="next" text="Next" position="absolute" left="560" top="390" width="120" height="36" />
+</Page>"##,
+        )?;
+        std::fs::write(
+            self.project.join("layouts/licencepage.xml"),
+            r##"<Page width="640" height="420" background="#FF202020">
+  <Button id="next" action="next" text="Next" position="absolute" left="500" top="370" width="120" height="36" />
+</Page>"##,
+        )?;
+        std::fs::write(
+            self.project.join("layouts/optionspage.xml"),
+            r##"<Page width="600" height="400" background="#FF303030">
+  <Button id="back" action="back" text="Back" position="absolute" left="20" top="20" width="120" height="36" />
+</Page>"##,
+        )?;
+        std::fs::write(
+            self.project.join("layouts/taskspage.xml"),
+            r##"<Page width="500" height="300" background="#FF404040" />"##,
+        )?;
+        self.write_script("pages.rhai", hook)?;
+        self.edit_config(|config| {
+            config["wizard"]["pages"] = serde_json::json!([
+                {"id": "welcome", "title": "Welcome", "layout": "layouts/configpage.xml"},
+                {"id": "licence", "title": "Licence", "layout": "layouts/licencepage.xml"},
+                {"id": "options", "title": "Options", "layout": "layouts/optionspage.xml"},
+                {"id": "tasks", "title": "Installing", "layout": "layouts/taskspage.xml",
+                 "role": "progress"}
+            ]);
+        })
+    }
+
     /// Declares a wizard whose install button waits for the page's own field.
     ///
     /// The agreement box and the install directory both have to be in order
@@ -2958,6 +2999,140 @@ fn a_next_button_walks_to_the_page_the_project_declares() -> anyhow::Result<()> 
         walked_back,
         Some(first),
         "the back button did not move the wizard back to the first page"
+    );
+    Ok(())
+}
+
+/// A project's page hook decides the page the wizard goes to, and the way back
+/// is the way the user came rather than the order the project declares.
+///
+/// The licence page sits between the two the hook connects, and every page
+/// declares its own client area, so the window's own size says both things: the
+/// hook sent the wizard past the licence page, and the back button returned to
+/// the page it came from rather than to the page the hook skipped.
+#[test]
+fn a_page_hook_sends_the_wizard_past_a_page_the_project_skips() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.hook_project(
+        r#"
+        fn next_page(from) {
+            if from == "welcome" { "options" } else { "" }
+        }
+        "#,
+    )?;
+    fixture.build()?;
+
+    let _ = unsafe { SetProcessDPIAware() };
+    let mut setup = SetupGuard::spawn(&fixture.setup)?;
+
+    let waited = wait_for_runtime_window(&mut setup, Instant::now() + Duration::from_secs(30));
+    let found = match &waited {
+        WindowWait::Found(window) => Some(*window),
+        WindowWait::Exited(_) | WindowWait::Timeout => None,
+    };
+    let Some(window) = found else {
+        let reason = match waited {
+            WindowWait::Exited(status) => format!("the setup {status} instead of opening a window"),
+            WindowWait::Timeout => "no window appeared within 30 seconds".to_string(),
+            WindowWait::Found(_) => "the window could not be measured".to_string(),
+        };
+        let _ = setup.kill();
+        let _ = setup.wait();
+        return skip_missing_desktop(&reason);
+    };
+
+    let welcome = client_size(window);
+    // The centre of the button the welcome page places at 560,390.
+    click_client_point(window, 620, 408);
+    let sent = wait_for_client_size(window, (600, 400), Instant::now() + Duration::from_secs(10));
+    // The centre of the button the options page places at 20,20.
+    click_client_point(window, 80, 38);
+    let returned = wait_for_client_size(window, welcome, Instant::now() + Duration::from_secs(10));
+
+    let _ = setup.kill();
+    let _ = setup.wait();
+
+    assert_eq!(
+        welcome,
+        (720, 450),
+        "the wizard opened on {welcome:?} rather than the 720x450 welcome page"
+    );
+    assert_eq!(
+        sent,
+        Some((600, 400)),
+        "the page hook did not send the wizard to the options page the hook named; \
+         the 640x420 licence page it skipped is what the declared order shows"
+    );
+    assert_eq!(
+        returned,
+        Some(welcome),
+        "the back button did not return to the page the user came from"
+    );
+    Ok(())
+}
+
+/// A page hook that fails is reported in the wizard, and the order the project
+/// declares still moves the person on rather than leaving them trapped.
+///
+/// The card the runtime reports it in is drawn from the project's own dialog
+/// layout, and this one closes the wizard when it is clicked: the process only
+/// ends if that card was on screen, which is what separates "the failure was
+/// reported" from "the wizard quietly went somewhere else".
+#[test]
+fn a_page_hook_that_fails_is_reported_and_the_wizard_walks_on() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.hook_project(r#"fn next_page(from) { throw "no idea where to go"; }"#)?;
+    std::fs::write(
+        fixture.project.join("layouts/msgBox.xml"),
+        r##"<Page width="400" height="180" background="#FF2A3844">
+  <Button id="btnOK" action="close" text="OK"
+          position="absolute" left="40" top="120" width="140" height="36" />
+</Page>"##,
+    )?;
+    fixture.build()?;
+
+    let _ = unsafe { SetProcessDPIAware() };
+    let mut setup = SetupGuard::spawn(&fixture.setup)?;
+
+    let waited = wait_for_runtime_window(&mut setup, Instant::now() + Duration::from_secs(30));
+    let found = match &waited {
+        WindowWait::Found(window) => Some(*window),
+        WindowWait::Exited(_) | WindowWait::Timeout => None,
+    };
+    let Some(window) = found else {
+        let reason = match waited {
+            WindowWait::Exited(status) => format!("the setup {status} instead of opening a window"),
+            WindowWait::Timeout => "no window appeared within 30 seconds".to_string(),
+            WindowWait::Found(_) => "the window could not be measured".to_string(),
+        };
+        let _ = setup.kill();
+        let _ = setup.wait();
+        return skip_missing_desktop(&reason);
+    };
+
+    // The centre of the button the welcome page places at 560,390.
+    click_client_point(window, 620, 408);
+    let walked = wait_for_client_size(window, (640, 420), Instant::now() + Duration::from_secs(10));
+    // The runtime centres a 400x180 card on the page it is drawn over, which
+    // puts that card's button at the centre of 160,240 to 300,276 on the
+    // 640x420 page the declared order moved to.
+    click_client_point(window, 230, 258);
+    let closed = wait_for_exit(&mut setup, Duration::from_secs(10));
+
+    assert_eq!(
+        walked,
+        Some((640, 420)),
+        "the failed page hook left the wizard where it was instead of walking on"
+    );
+    assert!(
+        closed,
+        "no card was drawn to report the failed page hook: the click landed on the page"
     );
     Ok(())
 }

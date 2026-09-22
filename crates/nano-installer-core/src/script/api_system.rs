@@ -7,19 +7,15 @@ use std::path::PathBuf;
 use super::context::{json_to_dynamic, log, ScriptContext};
 use crate::install;
 
-pub(super) fn register(engine: &mut Engine, context: ScriptContext) {
+/// Registers the primitives that only ask the machine a question.
+///
+/// A page hook runs with these and with the other reading primitives: it may
+/// look at the environment, the drives, and the project's own configuration
+/// before choosing a page, and it can neither set a variable nor ask the user
+/// anything -- those belong to a task, and one is not running.
+pub(super) fn register_queries(engine: &mut Engine, context: ScriptContext) {
     engine.register_fn("get_env", |name: &str| -> String {
         std::env::var(name).unwrap_or_default()
-    });
-
-    let c = context.clone();
-    engine.register_fn("set_env", move |name: &str, value: &str| -> bool {
-        set_user_environment(&c, name, value)
-    });
-
-    let c = context.clone();
-    engine.register_fn("remove_env", move |name: &str| -> bool {
-        clear_user_environment(&c, name)
     });
 
     engine.register_fn("get_drives", || -> rhai::Array {
@@ -66,8 +62,6 @@ pub(super) fn register(engine: &mut Engine, context: ScriptContext) {
         }
     });
 
-    engine.register_fn("shell_notify", crate::shell::notify_shell);
-
     let c = context.clone();
     engine.register_fn("get_config_value", move |path: &str| -> Dynamic {
         c.config_value(path)
@@ -94,6 +88,22 @@ pub(super) fn register(engine: &mut Engine, context: ScriptContext) {
         let _ = &c;
         crate::shell::is_elevated()
     });
+}
+
+pub(super) fn register(engine: &mut Engine, context: ScriptContext) {
+    register_queries(engine, context.clone());
+
+    let c = context.clone();
+    engine.register_fn("set_env", move |name: &str, value: &str| -> bool {
+        set_user_environment(&c, name, value)
+    });
+
+    let c = context.clone();
+    engine.register_fn("remove_env", move |name: &str| -> bool {
+        clear_user_environment(&c, name)
+    });
+
+    engine.register_fn("shell_notify", crate::shell::notify_shell);
 
     engine.register_fn("show_message", |title: &str, message: &str| {
         // The product's own dialog carries its skin and stays with the wizard,

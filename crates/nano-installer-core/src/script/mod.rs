@@ -20,6 +20,7 @@ mod api_shortcut;
 mod api_system;
 mod api_ui;
 mod context;
+pub(crate) mod page;
 
 use anyhow::{bail, Context, Result};
 use rhai::{Engine, Scope};
@@ -31,6 +32,8 @@ use crate::BundleIndex;
 /// The log the run keeps, which the built-in flow writes into as well: a dependency it
 /// had to install belongs in the report of a failure that follows.
 pub(crate) use context::log;
+/// The values a page hook is given, which the wizard gathers and the hook reads.
+pub(crate) use context::PageEnvironment;
 use context::{log_tail, read_script, reset_log, undo, ScriptContext, ScriptEnvironment, Snapshot};
 
 /// Script entry points inside a project's `scripts/` directory.
@@ -208,7 +211,7 @@ fn fallback_uninstall(context: &ScriptContext) -> Result<()> {
 
 /// Which entry point is running; the two share every primitive.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum Mode {
+pub(crate) enum Mode {
     Install,
     Uninstall,
 }

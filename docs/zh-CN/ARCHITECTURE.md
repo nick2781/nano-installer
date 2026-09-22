@@ -36,6 +36,9 @@ Win32 绘制，PNG 交给 WIC 解码，透明通道用 GDI alpha blend 合成。
 层，可嵌套的 `VBox`/`HBox`/`Content` 流式布局（内边距、外边距、百分比尺寸、`flex-wrap` 折行都
 在内），进度条，复选框与可展开面板交互，可点击链接，就地文本编辑（选区、剪贴板与撤销栈），目录
 选择框，运行时切换语言，没有边框、四角是圆的窗口，任务栏图标，双缓冲绘制，拖动、最小化和关闭。
+页面用 `action="next"` 与 `action="back"` 前后走；项目里放了 `scripts/pages.rhai` 时，每次点
+`next` 先问它的 `next_page(from)` 去哪一页，钩子拿到的只有只读原语，`back` 则按用户来时的路
+退回来。
 
 **提问与提示。** 要用户回答的问题（如退出确认）和要用户看到的提示，都画在窗口内部，用的是
 `ui.dialog_layout` 指定的那份布局，不交给系统弹窗。对话框就是一份普通布局，
@@ -64,7 +67,8 @@ Win32 绘制，PNG 交给 WIC 解码，透明通道用 GDI alpha blend 合成。
 
 **自定义步骤。** 项目里放了 `scripts/install.rhai` 或 `scripts/uninstall.rhai`，安装和卸载步骤就
 按脚本走。脚本引擎编译在 `nano-installer-core` 里，所以每个运行时都带着它；脚本原语复用与内置流程
-相同的部署、回滚与 manifest 代码，另外设了操作数上限，脚本失控也不会把安装挂死。
+相同的部署、回滚与 manifest 代码，另外设了操作数上限，脚本失控也不会把安装挂死。项目里放了
+`scripts/pages.rhai` 时，翻页由它的 `next_page(from)` 决定，见[脚本接口](SCRIPT_API.md)。
 
 ## 工具链
 

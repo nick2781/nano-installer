@@ -73,14 +73,16 @@ installing, so removal restores the machine to its previous state.
 | `resources.tools_dir` | string | Optional; directory of helper programs to bundle, read back by `get_tools_dir()` |
 | `localization.default_locale` | string | Language used at startup, defaults to `zh-CN` |
 | `localization.supported_locales` | array | Languages you intend to ship; the build reports any entry without a matching JSON file |
-| `wizard.pages[].layout` | string | Install pages, walked with `action="next"` and `action="back"` |
+| `wizard.pages[].layout` | string | Install pages, walked with `action="next"` and `action="back"`, or by `scripts/pages.rhai` |
 | `wizard.pages[].role` | string | Optional: `progress` marks the page a task reports on, `finish` the page it ends on |
 | `wizard.uninstall_pages[].layout` | string | Uninstall pages, walked the same way |
 | `wizard.uninstall_pages[].role` | string | The same two roles for the uninstaller |
 
 Without a `role`, the second page reports and the last one finishes, which is what the three
-pages an ordinary project declares mean. A page may also carry `id` and `title`: the first names
-it for your own reading, and the second is the heading a report shows it under.
+pages an ordinary project declares mean. A page may also carry `id` and `title`: a page hook in
+`scripts/pages.rhai` addresses a page by its `id`, which has to be unique inside one list -- two
+pages answering to one id are refused at build time -- and `title` is the heading a report shows
+it under.
 
 ## Interface
 
@@ -265,7 +267,8 @@ read the same declaration. See the [script API](SCRIPT_API.md#dependencies-and-d
 ## Custom install and uninstall steps
 
 Add `scripts/install.rhai` or `scripts/uninstall.rhai` to replace the built-in steps. See the
-[script API](SCRIPT_API.md).
+[script API](SCRIPT_API.md). A `scripts/pages.rhai` replaces no step: it decides which page
+follows each Next, see [page hooks](SCRIPT_API.md#page-hooks).
 
 ## Unattended runs
 

@@ -40,7 +40,10 @@ Supported today: absolute bitmap and text layers, nested `VBox`/`HBox`/`Content`
 padding, margins, percentage sizing and `flex-wrap`, progress bars, checkbox and expandable-panel
 interaction, clickable links, in-place text editing with selection, clipboard, and an undo stack,
 the folder chooser, runtime locale switching, a borderless rounded window, a taskbar icon,
-double-buffered painting, dragging, minimize, and close.
+double-buffered painting, dragging, minimize, and close. Pages move with `action="next"` and
+`action="back"`; with a `scripts/pages.rhai` in the project, every Next asks its `next_page(from)`
+where to go -- a hook is given read-only primitives only -- and Back retraces the pages the user
+really visited.
 
 **Questions and notices.** The setup never hands a question or a notice to a system message box.
 Anything the user has to answer, such as the close confirmation, and anything they have to
@@ -79,7 +82,9 @@ writes it to standard error.
 **Custom steps.** If your project ships `scripts/install.rhai` or `scripts/uninstall.rhai`, those
 scripts run instead of the built-in steps. The engine is embedded in `nano-installer-core`, so
 every stub carries it; primitives reuse the same deployment, rollback, and manifest code as the
-built-in flow, and an operation ceiling keeps a runaway script from hanging an installation.
+built-in flow, and an operation ceiling keeps a runaway script from hanging an installation. A
+project that ships `scripts/pages.rhai` hands the page order to its `next_page(from)`, see the
+[script API](SCRIPT_API.md).
 
 ## Tooling
 

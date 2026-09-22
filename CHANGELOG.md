@@ -80,6 +80,14 @@
   不再只有向导内存里那最后 32 行。运行失败时这份文件留在原地，向导把它的完整路径写在错误下面，
   无窗口运行写进标准错误，用户或者运维把它交出去就够；它不在安装目录里，所以失败的全新安装
   撤掉自己创建的目录之后，日志还在。
+- 翻页可以由项目脚本决定。项目里放了 `scripts/pages.rhai` 并定义 `next_page(from)` 之后，用户每点
+  一次「下一步」，运行时就把当前页的 id 交给它，由它回答去哪一页：点名一页就照它走，工程声明在中间
+  的那一页直接跳过；回答空串、工程没给这一页写 `id`、或者根本没有这个函数，都按工程声明的页序继续
+  走。钩子只能看不能动——只注册 `system`、`ui`、`registry`、`file` 的查询与 `get_mode()`、`log_*`，
+  装文件、写注册表、弹卡片都不在其中，另有一条自己的操作数上限：100 万次运算，安装脚本是 1 亿，因为
+  这一次点击是在画窗口的那个线程上处理的。钩子报错或点名了不存在的页不会把人困住：原因画在安装程序
+  自己的卡片上，向导接着走声明顺序里的下一页。`back` 走的是用户来时的路，被跳过的那一页不会因为按
+  Back 而出现；页面 id 在同一个页面列表里必须唯一，两页共用一个 id 在构建时就被拒绝。
 
 ### 改进
 
@@ -255,15 +263,32 @@
 与发布流水线的构建步骤同样处理。期限分支另加一段进程快照，超时时把还活着的进程连同父进程与
 命令行写进日志——下次再卡，不必再从外面猜。
 
+- 页面钩子：新增 `crates/nano-installer-core/src/script/page.rs`——`PAGE_HOOK` 是 `next_page`，
+  `next_page(request)` 先编译脚本、查 `ast.iter_functions()` 里有没有这个函数，再 `call_fn` 并把
+  返回值当文本读，返回布尔或数字之类当场报错而不是被当成某一页的名字；`MAX_PAGE_OPERATIONS` 是 100 万次
+  运算，比安装脚本那 1 亿次低两个数量级——这一次点击是在画窗口的那个线程上处理的——钩子因此冻不住窗口。
+  `script::context::ScriptContext::for_page` 是它专用的上下文：
+  journal 惰性、bundle 为空、只注册 `api_system`、`api_ui`、`api_registry`、`api_file` 各自新拆出的
+  `register_queries`，写机器与动窗口的原语一概不在其中。运行时侧 `lib.rs` 把 bundle 里的
+  `scripts/pages.rhai` 读进 `RuntimeState.page_hook`，`navigate_forward` 每次点击问一次、
+  `navigate_back` 走 `InteractionState.page_history`（`show_page` 清空它，任务开始、失败返回与结束
+  都会重设），`forward_page` 把「钩子挑的页不在列表里」「就是当前页」「钩子失败」三种情况统一退回
+  声明的下一页并写出原因，声明的顺序走到尽头仍是 `MoveTrouble::End`。`initial_interaction` 现在为
+  每一页的控件填入默认值，钩子与 `get_checkbox_value` 读到的因此是真实的页面默认值；
+  `config::audit_pages` 新增同一列表内页面 id 唯一。
+
 ### 已验证
 
-- `cargo test --locked --workspace`：共 294 条用例，293 通过、0 失败、1 忽略，退出码 0（核心库 214、
-  安装包级 44、工程检查 5、可视化构建器 29，另加两个解压运行时用例；被忽略的
+- `cargo test --locked --workspace`：共 306 条用例，305 通过、0 失败、1 忽略，退出码 0（核心库 224、
+  安装包级 46、工程检查 5、可视化构建器 29，另加两个解压运行时用例；被忽略的
   `install::tests::registers_and_cleans_up_scoped_uninstall_key` 要在隔离环境里写 HKCU）。报告在
   `target/test-report.txt` 与 `target/test-report.html`。
-- 安装包级的 44 条全部跑通，其中 13 条会打开真实的向导窗口；
+- 安装包级的 46 条全部跑通，其中 15 条会打开真实的向导窗口；
   `run_e2e_setup.ps1 -RequireDesktop` 那次把跳过当成失败，报告在 `target/e2e-report.txt` 与
   `target/e2e-report.html`，同一个脚本加 `-Language en` 会另留一份英文版。
+- 页面钩子那两条安装包级用例这一次都跑通：一条让 `scripts/pages.rhai` 把向导从欢迎页直接送到选项页、
+  再按 Back 回到欢迎页（三页的客户区各不相同，窗口尺寸就是证据），一条让钩子抛错、看向导把原因画在
+  产品自己的卡片上之后照声明的页序走到许可协议页。
 - 注册表类型、命令输出与服务这三条安装包级用例的答案是从机器上读回来的，不是从写下它的原语手里：
   六个值的类型由 `reg query` 报出（`REG_SZ`、`REG_EXPAND_SZ`、`REG_MULTI_SZ`、`REG_DWORD`、
   `REG_QWORD`、`REG_BINARY`），带视图后缀的键建得出、读得到、删得掉，命令留下的是退出码 5 与
@@ -283,9 +308,9 @@
 - 示例工程 6 个页面的 10 张快照逐页对照版面检查通过，检查结果在 `target/setup-snapshots/manifest.json`；
   拍照要桌面会话，因此不进 CI。
 - 签名实验：用 signtool 与本地签发的证书签过的安装包在 Windows 11 上装成。
-- 这一版的两份报告在本地重新跑通：`run_tests.ps1` 退出码 0，报告里核心库 213 通过、1 忽略，
-  安装包级 44 通过，工程检查 5，构建器 29，两个运行时各 1（合计 293 通过、0 失败、1 忽略）；
-  `run_e2e_setup.ps1 -RequireDesktop` 44 通过、0 失败。两份报告都照旧写出，`提权运行` 一栏如实
+- 这一版的两份报告在本地重新跑通：`run_tests.ps1` 退出码 0，报告里核心库 223 通过、1 忽略，
+  安装包级 46 通过，工程检查 5，构建器 29，两个运行时各 1（合计 305 通过、0 失败、1 忽略）；
+  `run_e2e_setup.ps1 -RequireDesktop` 46 通过、0 失败。两份报告都照旧写出，`提权运行` 一栏如实
   写着「否」，服务那一半的结论因此仍要等提权的机器（CI 的 runner 是管理员账户）。
 - `scripts/verify_release_notes.ps1` 通过，生成器产出的发布正文与源码里的尾注逐字一致。
 

@@ -2,7 +2,9 @@
 
 If your project ships `scripts/install.rhai`, that script decides the install steps;
 `scripts/uninstall.rhai` does the same for uninstall. Without them the built-in flow runs. Both
-scripts share one set of primitives and differ only in their entry point.
+scripts share one set of primitives and differ only in their entry point. A project may also ship
+`scripts/pages.rhai`, which runs no step at all: it answers where the wizard goes when the user
+turns a page, see [page hooks](#page-hooks).
 
 The scripts are project data, not a plugin system: primitives are fixed and the engine enforces an
 operation ceiling, so a runaway loop cannot hang an installation.
@@ -266,6 +268,46 @@ clicks while the card is up.
 
 A run with nothing to draw in keeps the system box it used before: a silent install, a script that
 starts before the window opens, and a project that ships no dialog layout.
+
+## Page hooks
+
+`scripts/pages.rhai` answers one question: which page this turn goes to. The runtime hands it the
+`id` of the page the user is on every time `next` is clicked; `back` never asks, it walks the way
+the user came. Without the file, the declared order stands.
+
+```rhai
+fn next_page(from) {
+    if get_mode() == "install" && from == "welcome" {
+        return "options";   // straight to the options page, past the licence
+    }
+    ""                      // saying nothing keeps the declared order
+}
+```
+
+| Rule | Meaning |
+| --- | --- |
+| the name | `next_page(from)`, where `from` is the `id` of the page the user is on, and an empty string for a page the project gave no `id` |
+| the answer | the `id` of the page to go to; an empty (or all-whitespace) string leaves the order alone |
+| no such function | the same as never speaking, so the declared order stands |
+| the mode | `get_mode()` answers `"install"` or `"uninstall"` |
+
+A hook can look and not touch: only the read-only primitives are registered for it -- the queries of
+`system`, `ui`, `registry` and `file`, plus `get_mode()` and `log_*`. Writing a file, a registry
+value, a card or a stopped task are none of them available, so a hook cannot change the machine or
+hang the window, and it runs under an operation ceiling of its own -- a million operations, against
+an install script's hundred million -- because this click is handled on the thread that draws the
+window.
+
+A hook that goes wrong does not trap the user: naming a page the project never declared, naming the
+page the wizard is already on, or failing outright all put the reason on the product's own card and
+let the declared order walk on. The end of that order is still the end, hook or no hook.
+
+`back` walks the way the user came. After a hook has sent the wizard past a page, Back returns to
+the page the user was really on before, not to the one that was skipped; starting, returning from
+or ending a task clears that trail.
+
+A page `id` has to be unique inside one page list, and the build refuses a project that gives two
+pages the same one: a hook addresses a page by it, and one `id` cannot stand for two pages.
 
 ## Example
 

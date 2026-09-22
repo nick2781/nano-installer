@@ -151,6 +151,8 @@ fn number(bytes: &[u8], width: usize) -> i64 {
 }
 
 pub(super) fn register(engine: &mut Engine, context: ScriptContext) {
+    register_queries(engine);
+
     let c = context.clone();
     engine.register_fn(
         "reg_write_string",
@@ -243,6 +245,34 @@ pub(super) fn register(engine: &mut Engine, context: ScriptContext) {
         },
     );
 
+    engine.register_fn("reg_delete_value", |key: &str, name: &str| -> bool {
+        let Some(target) = split(key) else {
+            return false;
+        };
+        target.delete_value(name).is_ok()
+    });
+
+    let c = context.clone();
+    engine.register_fn("reg_delete_key", move |key: &str| -> bool {
+        let Some(target) = split(key) else {
+            return false;
+        };
+        if let Err(error) = target.delete_key() {
+            log("error", &format!("reg_delete_key {key} failed: {error:#}"));
+            return false;
+        }
+        // The uninstaller must not try to delete it again.
+        c.forget_registry_key(key);
+        true
+    });
+}
+
+/// Registers the primitives that only read the registry.
+///
+/// A page hook runs with these and with the other reading primitives: a page
+/// can be left out of the wizard because of what the machine already has, and
+/// the hook still cannot write a value nothing would then record.
+pub(super) fn register_queries(engine: &mut Engine) {
     engine.register_fn("reg_read", |key: &str, name: &str| -> String {
         let Some(target) = split(key) else {
             return String::new();
@@ -339,27 +369,6 @@ pub(super) fn register(engine: &mut Engine, context: ScriptContext) {
             return false;
         };
         target.exists().unwrap_or(false)
-    });
-
-    engine.register_fn("reg_delete_value", |key: &str, name: &str| -> bool {
-        let Some(target) = split(key) else {
-            return false;
-        };
-        target.delete_value(name).is_ok()
-    });
-
-    let c = context.clone();
-    engine.register_fn("reg_delete_key", move |key: &str| -> bool {
-        let Some(target) = split(key) else {
-            return false;
-        };
-        if let Err(error) = target.delete_key() {
-            log("error", &format!("reg_delete_key {key} failed: {error:#}"));
-            return false;
-        }
-        // The uninstaller must not try to delete it again.
-        c.forget_registry_key(key);
-        true
     });
 }
 

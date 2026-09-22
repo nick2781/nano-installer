@@ -45,6 +45,10 @@ Rust doc comment，再退回用例名。
 | `a_file_type_that_would_write_outside_the_classes_tree_is_refused` | 文件类型的两个名字先查再用：扩展名或程序 id 里带路径分隔符、或其中任何一个为空，调用直接返回 `false`；命令行空着的调用同样被拒绝，因为那样的文件类型打不开任何东西。五种被拒的调用一个字节都没写进注册表，manifest 里也没有记录。 |
 | `a_hidden_element_takes_its_whole_subtree_with_it` | 祖先上的 `visible="false"` 把底下整个子树都藏起来：子控件的动作、文字和面板自己的底色都不画，页面上别的地方不受影响。把属性改回 `true` 后这个分支又完整画出来。 |
 | `a_hint_shows_the_rule_the_value_breaks` | 绑 `value-source="field-error:<字段 id>"` 的标签画出那条被破坏的规矩写下的文案：字段空着时报 `required` 那句，值不合格时报 `pattern` 那句，文案按工程自己的语言查表；值合格时这个标签什么都不画，点名页面上没有的字段也一样。 |
+| `a_hook_must_answer_with_page_text` | 页面钩子的 `next_page` 必须用文本回答：返回布尔、数字之类的东西会被当场拒绝并说明该返回什么，而不是被当成某一页的名字。 |
+| `a_hook_names_the_page_the_wizard_goes_to` | 页面钩子按 `from` 决定下一页：点名一页就照它走，回答空串就把顺序交还给工程声明的页序；钩子没提到的那一页同样按声明的顺序走。 |
+| `a_hook_reads_the_wizard_and_the_machine` | 钩子读到的是向导此刻的值与机器此刻的答案：`get_mode()` 给出这次是安装还是卸载，`get_install_path()` 与 `file_exists` 问的是同一个目录，答案随传进去的值变，而不是写死的常量。 |
+| `a_hook_that_fails_reports_the_project_message` | 钩子抛错时报出 `scripts/pages.rhai failed:`，工程自己用 `log_error` 写下的那几行随错误一起交回给调用方，和任务脚本失败时一样。 |
 | `a_hover_and_a_press_show_the_pictures_the_button_declares` | 在真窗口里驱动指针：指针落到按钮上，窗口画的是 `hover-image`；按住不放，画的是 `pressed-image`；指针离开窗口，按钮回到 `normal-image`，而且整帧和指针来之前一个像素都不差。三种状态图和页面底色各是一种纯色，所以读按钮中心那一个点就知道此刻挂着哪一张；再看改动有没有落到按钮矩形之外，就知道变的是按钮，而不是整页重画了一遍。 |
 | `a_label_takes_its_text_font_and_alignment_from_the_layout` | `Label` 的内容全是文字，字号、加粗、颜色和对齐都按版面写的那样生效，`value` 和 `text` 一样被接受；没写对齐的标签从自己的左边缘开始，字号也跟着显示缩放走。 |
 | `a_language_menu_lists_its_options_and_marks_the_one_in_use` | 展开的语言菜单按选项一行一个地画在页面之上，当前语言那一行填上选中底色，`visible="false"` 的选项不出现在列表里；点某一行会给出切换到那个语言的区域。 |
@@ -53,6 +57,11 @@ Rust doc comment，再退回用例名。
 | `a_nested_container_reports_the_extent_its_children_need` | 没声明尺寸的面板有多大由内容决定：沿自己的轴把子项和间距相加，垂直于轴取最大的子项，自己的内边距只算一次。外层容器用同样的量法放置它，版面不必给包装层声明尺寸。 |
 | `a_next_button_walks_to_the_page_the_project_declares` | 在真实窗口里点一次 `next`，向导要切到工程声明的第二页，再点 `back` 要回到第一页：两页声明的客户区不同，所以窗口尺寸就是证据。 |
 | `a_notice_hides_the_secondary_button` | 通知只有一个答复，版面里的取消键不画也不能点；换成提问时取消键又画回来，一份对话框版面因此可以两用。 |
+| `a_page_hook_sends_the_wizard_past_a_page_the_project_skips` | 在真窗口里点 `next`：钩子把向导从欢迎页直接送到选项页，中间那页许可协议（客户区 640x420）根本没出现；再点 `back` 回到的是用户来时的欢迎页，而不是钩子跳过的那一页——三页的客户区各不相同，窗口尺寸就是证据。 |
+| `a_page_hook_sends_the_wizard_to_the_page_it_names` | 钩子点名哪一页就走到哪一页，中间声明的页面跳过；钩子对这一次翻页不作声时，回到工程声明的下一页。 |
+| `a_page_hook_that_fails_is_reported_and_the_wizard_walks_on` | 钩子抛错时向导用工程自己的对话框版面把这件事报出来（用例点的是那张卡片上的按钮，进程因此退出，说明卡片确实在屏幕上），同时仍按声明的页序走到下一页：坏掉的钩子不会把人困在某一页。 |
+| `a_page_hook_that_names_no_page_keeps_the_declared_order` | 钩子点名工程没有声明的页、点名向导当前的这一页、或者干脆失败，三种情况都退回声明的下一页并各报一条原因，而不是把用户留在原地。 |
+| `a_page_id_finds_the_page_that_carries_it` | 页面 id 找到它所在的那一页；工程没给 id 的页面读成空串，钩子也就点不到它。 |
 | `a_page_list_without_roles_keeps_its_positions` | 没有写 `role` 的页面列表保持老规矩：第二页汇报进度、最后一页收尾；只有一页的列表既没有可汇报的页也没有可收尾的页。 |
 | `a_page_paints_its_fill_under_its_image_and_its_outline_over_them` | 页面的装饰按指南的顺序落层：底色、铺在它上面的背景图、从边缘向内画的描边，`border-radius` 转成窗口区域上报而不是画进图层，倍率放大时圆角跟着放大。完全没写尺寸的页面退回文档里的默认客户区大小。 |
 | `a_page_role_finds_the_page_that_holds_it` | 页面用 `role` 声明自己的职责时，任务报到写 `progress` 的那一页，而不是第二页；收尾同样按 `finish` 走，工程因此可以自由排页。 |
@@ -90,6 +99,7 @@ Rust doc comment，再退回用例名。
 | `a_script_sees_the_components_the_run_installs` | 脚本读到的是这次运行真正装的那些组件：`is_component_selected` 按组件名回答，`selected_components` 按工程声明的顺序给出数组；页面没勾中、工程没声明过的都是 `false`。报告由脚本自己写出来再比对，所以读到的确实是这一次的选择，不是脚本猜的。 |
 | `a_script_step_text_wins_over_the_locale_key` | 脚本发布的字面状态文字会留在屏幕上，即使更早步骤记下的 locale 键还在。 |
 | `a_script_that_asks_for_tools_a_project_did_not_bundle_gets_nothing` | 没写 `resources.tools_dir` 的工程，以及写了这项设置但包里没有对应条目的安装包，`get_tools_dir()` 都返回空字符串并在日志里留一条告警，安装照常完成——没有那个程序时怎么办，由脚本自己决定。 |
+| `a_script_without_the_hook_says_nothing` | 没有 `next_page` 这个函数的脚本（或干脆解析不了的脚本）不改变页序：前者当作没说话，后者报出「解析不了」。 |
 | `a_scrollable_container_shows_the_part_it_is_scrolled_to` | 装不下容器的那部分内容只从窗口里露出一块：偏移量把各行整体推上去，推出容器边缘的那一行既不画出来也不再登记点击，偏移量超出列表末尾时停在末尾，不会露出底下的空白。列表有多长由各行自己声明的高度决定，跟容器拿到多少地方无关，这正是「能滚」与「被压扁」的分界。 |
 | `a_scrollbar_says_where_the_list_stands` | 滚动条画在视口尾部那条 8 像素宽的轨道上，滑块的长度是列表露出来的那部分所占的比例，位置跟着偏移量走；点轨道上滑块之外的两段各把视图挪动一页（一页就是视口本身的大小），所以不拖滑块也能翻。列表装得下时不画轨道、也不登记翻页区域；声明了 `scrollable` 却没有 `id` 的容器不开滚动，免得页面上的无名列表共用一个位置。 |
 | `a_select_offers_the_options_the_page_declares` | 下拉框是页面提供的一种选择，不只是语言控件：关闭时显示当前选项的文字（没人点过时是第一个），点击它要的是自己的菜单而不是语言列表，展开的选项按版面顺序排列、各用各的文字，隐藏的选项不出现；被选中的值决定旁边按钮是否可点。 |
@@ -242,6 +252,7 @@ Rust doc comment，再退回用例名。
 | `refuses_relative_or_root_installation` | 安装目标必须是绝对路径，相对路径和盘符根目录都被拒绝。 |
 | `refuses_to_install_over_a_directory_it_did_not_create` | 目标目录已经存在、里面还有用户的文件时，读取上次安装和部署都失败，用户的文件原样留着，也不写 manifest。 |
 | `refuses_two_components_that_share_an_id_or_a_payload` | 两个组件不能共用一个 `id` 或一个归档：同名 `id` 让一个复选框代表两个组件，同一个归档让它们无法分别勾选，两种都在构建期拒绝。 |
+| `refuses_two_pages_answering_to_one_id` | 同一个页面列表里两页共用一个 id 会被构建时拒绝：页面钩子按 id 点名，一个 id 两页会让向导走到排在前面的那一页。 |
 | `refuses_two_pages_claiming_one_role` | 两个页面都声明同一个职责会被拒绝，并点出是第几页，免得任务报到哪一页变得看运气。 |
 | `registers_and_cleans_up_scoped_uninstall_key` | 注册卸载项会把键写进去，重复注册同一个键失败，带清理标志再注册一次后键被删掉。 |
 | `registry_path_normalizes_legacy_escaped_separators` | 旧的、带双反斜杠的注册表路径被归一化成单反斜杠，不支持的根键名报错。 |
@@ -269,6 +280,7 @@ Rust doc comment，再退回用例名。
 | `taptap_uninstaller_buttons_have_distinct_hit_regions` | 示例卸载页上卸载和取消两个按钮的点击区域不重叠，卸载键完全在取消键右侧。 |
 | `text_colors_read_as_rgb_with_or_without_an_alpha_channel` | 颜色写六位和八位都读成同一个 RGB，画文字时忽略 alpha，字节顺序是 RGB 而不是 BGR；读不懂的颜色画成白色。 |
 | `the_boxes_the_page_carries_decide_which_components_install` | 在真窗口里勾上一个组件、再清掉页面上已经勾着的另一个：装完之后被勾中的那个组件的文件在盘上，被清掉的那个不在，页面上没有复选框的组件按工程的 `required` 与 `default` 决定。四个组件四种规则，一次安装全走一遍。 |
+| `the_end_of_the_declared_order_is_an_end` | 声明的顺序走到最后一页就是尽头，报出「没有下一页」而不是绕回去；钩子这时仍可以点名一页，把向导从最后一页带走。 |
 | `the_example_dialog_places_its_message_and_both_buttons` | 示例工程自己的对话框版面能把问题文字和两个按钮都摆好：问题是一行有真实高度、宽度和位置的折行文字，两个按钮并排不重叠，问题也不被按钮盖住。 |
 | `the_example_project_matches_the_schema` | 示例工程自己的配置也要过这张表：它是别人照抄的模板，不能带着没人读的键。 |
 | `the_language_menu_answers_to_the_keyboard` | 在真窗口里用键盘走一遍语言菜单：点一下控件把菜单展开，当前语言那一行标着记号；按一次下箭头，高亮落到下一行，而当前语言那行上的记号还在；按 Escape，菜单收起，页面回到展开之前的样子，一个像素都没变；再展开、再按下箭头、按 Enter，页面上的那句话换成另一种语言写的，而且除那句话和这个控件，别处都没有被重画。 |

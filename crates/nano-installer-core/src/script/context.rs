@@ -144,28 +144,78 @@ pub(super) struct ScriptEnvironment {
     pub(super) journal: Option<RollbackJournal>,
 }
 
+/// Everything a page hook can read.
+///
+/// A hook runs between two pages rather than as part of a task, so it is given
+/// the values the wizard holds and nothing that belongs to an installation: no
+/// previous version, no manifest, and no cancellation to ask about.
+pub(crate) struct PageEnvironment {
+    pub(crate) mode: Mode,
+    pub(crate) config: Value,
+    pub(crate) install_path: PathBuf,
+    pub(crate) checkboxes: HashMap<String, bool>,
+    pub(crate) texts: HashMap<String, String>,
+    pub(crate) choices: HashMap<String, String>,
+    /// The components the wizard's current answers say a run would install.
+    pub(crate) components: Vec<String>,
+}
+
 impl ScriptContext {
     pub(super) fn new(environment: ScriptEnvironment) -> Self {
         let journal = environment
             .journal
             .expect("the script driver creates the rollback journal first");
+        let inner = Inner {
+            mode: environment.mode,
+            setup: environment.setup,
+            stage: environment.stage,
+            config: environment.config,
+            install_path: environment.install_path,
+            checkboxes: environment.checkboxes,
+            texts: environment.texts,
+            choices: environment.choices,
+            components: environment.components,
+            keep_data: environment.keep_data,
+            manifest: environment.manifest,
+            previous: environment.previous,
+            bundle: environment.bundle,
+            cancel: environment.cancel,
+        };
+        Self::assemble(inner, journal)
+    }
+
+    /// The context a page hook runs in.
+    ///
+    /// Only the primitives that read are registered against it, so the journal,
+    /// the staging directory, the bundle, and the cancellation below are never
+    /// reached: they are here because every primitive shares one context type,
+    /// and a hook that changed the machine would be an installation step nobody
+    /// declared.
+    pub(super) fn for_page(environment: PageEnvironment) -> Self {
+        let inner = Inner {
+            mode: environment.mode,
+            setup: std::env::current_exe().unwrap_or_default(),
+            stage: std::env::temp_dir(),
+            config: environment.config,
+            install_path: environment.install_path,
+            checkboxes: environment.checkboxes,
+            texts: environment.texts,
+            choices: environment.choices,
+            components: environment.components,
+            keep_data: false,
+            manifest: Value::Null,
+            previous: None,
+            bundle: crate::BundleIndex::empty(),
+            cancel: Cancellation::default(),
+        };
+        let journal =
+            RollbackJournal::new(std::env::temp_dir().join("nano-installer-page-hook"), None);
+        Self::assemble(inner, journal)
+    }
+
+    fn assemble(inner: Inner, journal: RollbackJournal) -> Self {
         Self {
-            inner: Arc::new(Inner {
-                mode: environment.mode,
-                setup: environment.setup,
-                stage: environment.stage,
-                config: environment.config,
-                install_path: environment.install_path,
-                checkboxes: environment.checkboxes,
-                texts: environment.texts,
-                choices: environment.choices,
-                components: environment.components,
-                keep_data: environment.keep_data,
-                manifest: environment.manifest,
-                previous: environment.previous,
-                bundle: environment.bundle,
-                cancel: environment.cancel,
-            }),
+            inner: Arc::new(inner),
             state: Arc::new(Mutex::new(ScriptState {
                 journal,
                 before: Snapshot::default(),

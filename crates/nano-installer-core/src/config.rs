@@ -289,6 +289,20 @@ fn audit_pages(path: &str, value: &Value, problems: &mut Vec<String>) {
             ));
         }
     }
+    // A project's page hook names the page the wizard goes to, and a name two
+    // pages answer to would send the wizard to whichever came first.
+    let mut seen: Vec<&str> = Vec::new();
+    for entry in entries {
+        let Some(id) = entry["id"].as_str() else {
+            continue;
+        };
+        if seen.contains(&id) {
+            problems.push(format!(
+                "{path}: the id {id} names more than one page; a page hook addresses a page by it"
+            ));
+        }
+        seen.push(id);
+    }
 }
 
 fn audit_components(path: &str, value: &Value, base_payload: &str, problems: &mut Vec<String>) {
@@ -650,6 +664,20 @@ mod tests {
         }));
         assert!(
             text.contains("wizard.pages[0].role: license is not a page role"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn refuses_two_pages_answering_to_one_id() {
+        let text = audit_text(&json!({
+            "wizard": { "pages": [
+                { "id": "options", "layout": "layouts/a.xml" },
+                { "id": "options", "layout": "layouts/b.xml" }
+            ] }
+        }));
+        assert!(
+            text.contains("wizard.pages: the id options names more than one page"),
             "{text}"
         );
     }
