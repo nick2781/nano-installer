@@ -173,7 +173,7 @@ files and registry entries, so validate them in a disposable virtual machine onl
   runs. What the setup itself carries is checked too: every bundle entry is read against the SHA-256
   the build recorded, so a setup damaged after the build is refused by entry name and nothing is
   created on the machine at all.
-  Fifteen of its fifty-three cases open the wizard window and drive it: one measures the client
+  Sixteen of its fifty-four cases open the wizard window and drive it: one measures the client
   area it drew, one walks the page actions a project declares, one stops a running task from a cancel
   button, one types a directory into the field a page asks for and starts the install with it, one
   clicks the row a radio group's install button waits for, one rolls the wheel over a list and
@@ -183,7 +183,9 @@ files and registry entries, so validate them in a disposable virtual machine onl
   reads back what the script wrote after each answer, one moves the pointer onto a button and
   holds it down and reads the three pictures the button declares back out of the window, one
   reads which of the three standard pointers the window answers with over a button, a field and
-  the page, one walks the language menu with the arrow keys, Enter and Escape, and one clicks a
+  the page, one walks the language menu with the arrow keys, Enter and Escape, one walks the page's
+  controls with Tab, acts on the one the focus ring is on with Space or Enter and comes round to
+  the first control from the last, and one clicks a
   browse button and closes the shell's folder dialog again, one lets a page hook send the wizard
   past the licence page and Back the way the user came, and one watches a hook fail: the reason
   lands on the product's own card and the declared order walks on. They need an interactive

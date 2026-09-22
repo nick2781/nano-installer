@@ -401,6 +401,30 @@ nothing stays plain text rather than failing.
 A `Button` or any other element can also link through `action="open_url:help"`, which uses the same
 table, or `action="open_url:https://..."` with the URL written out in full.
 
+## Keyboard and focus
+
+The controls a page declares enter the Tab order in the order they are written: `Tab` walks to the
+next one, `Shift+Tab` back to the previous one, and either end wraps around. The control the
+keyboard is on is marked with a one-pixel dotted ring drawn over its own rectangle, in the colour
+the control names with `focus-color`, then the colour the page names, then the default accent
+`#FF1F6FEB`:
+
+```xml
+<Page width="720" height="450" focus-color="#FF00FF00">
+  <Button id="next" action="next" focus-color="#FFFF8000" text="@next" ... />
+</Page>
+```
+
+The ring says where the keyboard is; it does not mean the control was pressed. `Enter` and Space do
+what the control under the ring does: a button runs the action it declares, a checkbox or radio
+button is toggled, and a text field takes the caret with the ring, so typing goes straight in. A
+control pressed with the mouse takes the ring too, which is where the keyboard carries on from.
+
+A control that cannot be reached is never marked: a button held back by `enabled="false"` or
+`enabled-when`, a `readonly` field, an element with `visible="false"`, a label with no `action`, and
+a field the layout gives no `id` to -- there would be no name to remember it by. While a menu or a
+dialog is open, `Tab` leaves the page's ring alone: the keyboard belongs to them.
+
 ## Click targets and the pointer
 
 Buttons, selects, checkboxes and radio buttons, and any element that declares an `action` respond to
@@ -426,6 +450,8 @@ bindings that read the same control pick up the new path immediately.
 ## Not implemented yet
 
 - Implicit minimum sizes beyond `min-width`/`min-height`, and `min-height` on a flow container.
+- Screen readers and high-contrast themes: controls expose no role or state to UI Automation or
+  MSAA, and the system's high-contrast palette does not replace the colours a layout declares.
 - The composition window is repositioned when focus or the caret moves, but not while the user is
   scrolling the page under an active composition.
 - An item's cross-axis size is still the container's extent unless the item declares one; there is

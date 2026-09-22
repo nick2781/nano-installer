@@ -351,6 +351,26 @@ MiB 值转成可读大小，`size` 按 1024 进位格式化为 B/KB/MB/GB/TB。
 `Button` 或其他元素也可以用 `action="open_url:help"` 走同一张表，或写作
 `action="open_url:https://..."` 直接给出完整网址。
 
+## 键盘与焦点
+
+控件按版面声明的顺序进入 Tab 顺序：`Tab` 走到下一个，`Shift+Tab` 走回上一个，走到头就绕回来。
+键盘落在哪个控件上，就在那个控件自己的矩形上画一圈一像素的点状环，颜色取该控件的 `focus-color`，
+控件没写就用页面的，页面也没写就用默认的强调色 `#FF1F6FEB`：
+
+```xml
+<Page width="720" height="450" focus-color="#FF00FF00">
+  <Button id="next" action="next" focus-color="#FFFF8000" text="@next" ... />
+</Page>
+```
+
+环只说明键盘在哪，不代表按了下去。`Enter` 和空格执行环底下的控件：按钮跑它声明的动作，复选框与
+单选按钮被切换；圈住输入框时同时把光标交给它，直接打字就写得进去。鼠标按下的控件同样拿到环，
+键盘因此接着从刚点过的地方走。
+
+进不了 Tab 顺序的控件不会被圈到：被 `enabled="false"` 或 `enabled-when` 挡住的按钮、`readonly` 的
+输入框、`visible="false"` 的元素、没声明 `action` 的标签，以及没写 `id` 的输入框——键盘停在它身上时
+没有名字可以记。菜单或对话框打开期间，`Tab` 不动页面上的环，这一段的键盘归它们。
+
 ## 点击目标与光标
 
 Button、Select、复选框与单选按钮，以及任何声明了 `action` 的元素都响应点击，鼠标悬停时变成
@@ -373,5 +393,7 @@ Button、Select、复选框与单选按钮，以及任何声明了 `action` 的�
 ## 尚未实现
 
 - `min-width`/`min-height` 之外的隐式最小尺寸，以及流式容器的 `min-height`。
+- 读屏与高对比主题还没有：控件不向 UI Automation / MSAA 暴露角色与状态，系统的高对比配色也不会
+  替换版面声明的颜色。
 - 元素交叉轴尺寸默认仍是容器边长（未声明尺寸时），没有进一步的 `stretch`/`baseline` 区分。
 - 组合窗会在焦点或光标移动时重新定位，但不会在组合过程中跟随页面滚动。

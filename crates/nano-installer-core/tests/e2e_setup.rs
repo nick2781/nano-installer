@@ -29,7 +29,9 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::Storage::Xps::{PrintWindow, PRINT_WINDOW_FLAGS};
 use windows::Win32::System::Com::CoTaskMemFree;
-use windows::Win32::UI::Input::KeyboardAndMouse::{VIRTUAL_KEY, VK_DOWN, VK_ESCAPE, VK_RETURN};
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    VIRTUAL_KEY, VK_DOWN, VK_ESCAPE, VK_RETURN, VK_SPACE, VK_TAB,
+};
 use windows::Win32::UI::Shell::{
     FOLDERID_Desktop, FOLDERID_Programs, SHGetKnownFolderPath, KF_FLAG_DEFAULT,
 };
@@ -60,6 +62,18 @@ const PRESSED_BUTTON: (u8, u8, u8) = (0x30, 0x80, 0xB0);
 const POPUP_BACKGROUND: (u8, u8, u8) = (0x42, 0x51, 0x5E);
 const CHOSEN_ROW: (u8, u8, u8) = (0x49, 0x5A, 0x68);
 const HIGHLIGHTED_ROW: (u8, u8, u8) = (0x70, 0x50, 0xB0);
+
+/// The colours the keyboard case reads back: the picture the checkbox draws in
+/// each of its two states, and the ring the page declares for the control the
+/// keyboard is on.
+///
+/// They differ from each other and from the page behind them, so a frame says
+/// which state the window is in and whether the ring is there.
+const UNCHECKED_BOX: (u8, u8, u8) = (0x18, 0x28, 0x38);
+const CHECKED_BOX: (u8, u8, u8) = (0x58, 0x98, 0xD8);
+const FOCUS_RING: (u8, u8, u8) = (0x00, 0xFF, 0x00);
+/// The page the case's button walks to.
+const SECOND_PAGE: (u8, u8, u8) = (0x30, 0x30, 0x30);
 
 /// The product exe the second release of an update case ships.
 ///
@@ -656,6 +670,42 @@ impl Fixture {
         self.edit_config(|config| {
             config["wizard"]["pages"] = serde_json::json!([
                 {"id": "config", "title": "Options", "layout": "layouts/configpage.xml"}
+            ]);
+        })
+    }
+
+    /// Declares a page whose three controls the keyboard can walk, and the page
+    /// the last of them walks to.
+    ///
+    /// The checkbox draws a picture per state, so a case can read its state back
+    /// out of the window, and the ring is a colour the page names, so it cannot
+    /// be mistaken for anything a control draws. The second page declares no
+    /// control at all, which is what makes Tab there a question of its own.
+    fn keyboard_project(&self) -> anyhow::Result<()> {
+        std::fs::write(
+            self.project.join("layouts/configpage.xml"),
+            r##"<Page width="400" height="200" background="#FF000000" focus-color="#FF00FF00">
+  <Checkbox id="terms" position="absolute" left="40" top="20" width="24" height="24"
+            unchecked-image="assets/off.png" checked-image="assets/on.png" />
+  <TextInput id="notes" position="absolute" left="40" top="60" width="200" height="24" />
+  <Button id="next" action="next" text="Next"
+          position="absolute" left="40" top="120" width="120" height="30" />
+</Page>"##,
+        )?;
+        std::fs::write(
+            self.project.join("layouts/secondpage.xml"),
+            r##"<Page width="300" height="150" background="#FF303030" />"##,
+        )?;
+        for (name, colour) in [("off.png", UNCHECKED_BOX), ("on.png", CHECKED_BOX)] {
+            std::fs::write(
+                self.project.join("assets").join(name),
+                solid_png(4, 4, colour),
+            )?;
+        }
+        self.edit_config(|config| {
+            config["wizard"]["pages"] = serde_json::json!([
+                {"id": "config", "title": "Options", "layout": "layouts/configpage.xml"},
+                {"id": "second", "title": "Second", "layout": "layouts/secondpage.xml"}
             ]);
         })
     }
@@ -4466,9 +4516,11 @@ fn a_hover_and_a_press_show_the_pictures_the_button_declares() -> anyhow::Result
         colour_at_window(window, centre)
     );
     assert_eq!(
-        left.expect("checked just above").differing_pixels(&resting),
+        left.expect("checked just above")
+            .differences_outside(&resting, button),
         0,
-        "the window after the pointer left is not the window it was before it arrived"
+        "the window after the pointer left is not the window it was before it arrived, \
+         outside the button the press put the keyboard on"
     );
 
     Ok(())
@@ -4721,6 +4773,220 @@ fn the_language_menu_answers_to_the_keyboard() -> anyhow::Result<()> {
         chosen.differences_outside_all(&closed, &[sentence, control]),
         0,
         "choosing the other language repainted more than the sentence and the control"
+    );
+
+    Ok(())
+}
+
+/// The keyboard walks the controls a page lays out and acts on the one it
+/// reaches.
+///
+/// Tab walks them in the order the page declares them and the ring says where
+/// the keyboard is, so every step is read back as the colour of a control's
+/// corner. Space and Enter do what the control under the ring does: here that is
+/// a checkbox changing its picture and a button walking to the next page. From
+/// the last control Tab wraps round to the first, and a page that declares no
+/// control leaves the keyboard nothing to do.
+///
+/// The other direction, Shift+Tab, is covered where it can be held still: the
+/// walk itself is a case of its own, and a window case cannot press Shift --
+/// a key message carries no modifier, the runtime asks Windows for it, and this
+/// suite posts its keys rather than typing them.
+#[test]
+fn the_keyboard_walks_the_page_and_acts_on_what_it_reaches() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.keyboard_project()?;
+    fixture.build()?;
+
+    let _ = unsafe { SetProcessDPIAware() };
+    let mut setup = SetupGuard::spawn(&fixture.setup)?;
+    let waited = wait_for_runtime_window(&mut setup, Instant::now() + Duration::from_secs(30));
+    let found = match &waited {
+        WindowWait::Found(window) => Some(*window),
+        WindowWait::Exited(_) | WindowWait::Timeout => None,
+    };
+    let Some(window) = found else {
+        let reason = match waited {
+            WindowWait::Exited(status) => format!("the setup {status} instead of opening a window"),
+            WindowWait::Timeout => "no window appeared within 30 seconds".to_string(),
+            WindowWait::Found(_) => "the window could not be measured".to_string(),
+        };
+        let _ = setup.kill();
+        let _ = setup.wait();
+        return skip_missing_desktop(&reason);
+    };
+
+    let deadline = Instant::now() + Duration::from_secs(20);
+    // The checkbox is 24 by 24 at (40, 20), the field 200 by 24 at (40, 60) and
+    // the button 120 by 30 at (40, 120). The ring is drawn on the corners of the
+    // control and on every other pixel of its edges, so a corner is where a case
+    // can read it off, and the middle of the checkbox is where the picture shows.
+    let picture = (52, 32);
+    let terms = (40, 20);
+    let notes = (40, 60);
+    let next = (40, 120);
+    let empty_page = (350, 170);
+
+    // Nothing has been touched yet: no ring, and a checkbox in its first state.
+    let start = wait_for_frame(window, deadline, |frame| {
+        frame.colour_at(picture.0, picture.1) == UNCHECKED_BOX
+            && frame.colour_at(terms.0, terms.1) == UNCHECKED_BOX
+            && frame.colour_at(empty_page.0, empty_page.1) == (0x00, 0x00, 0x00)
+    });
+    assert!(
+        start.is_some(),
+        "the page did not come up as it was declared: {} and {}",
+        colour_at_window(window, picture),
+        colour_at_window(window, empty_page)
+    );
+    let start = start.expect("checked just above");
+
+    // The first Tab lands on the first control the page declares.
+    press_key(window, VK_TAB);
+    let first = wait_for_frame(window, deadline, |frame| {
+        frame.colour_at(terms.0, terms.1) == FOCUS_RING
+    });
+    assert!(
+        first.is_some(),
+        "Tab did not put the ring on the first control: {}",
+        colour_at_window(window, terms)
+    );
+    let first = first.expect("checked just above");
+    assert_eq!(
+        first.colour_at(picture.0, picture.1),
+        UNCHECKED_BOX,
+        "the ring covered the control it was drawn around"
+    );
+    assert_eq!(
+        first.differences_outside(&start, (40, 20, 64, 44)),
+        0,
+        "putting the ring on a control repainted the page around it"
+    );
+
+    // Space does what the control under the ring does, which for a checkbox is
+    // to flip it.
+    press_key(window, VK_SPACE);
+    let toggled = wait_for_frame(window, deadline, |frame| {
+        frame.colour_at(picture.0, picture.1) == CHECKED_BOX
+    });
+    assert!(
+        toggled.is_some(),
+        "Space did not flip the checkbox the ring was on: {}",
+        colour_at_window(window, picture)
+    );
+    assert_eq!(
+        toggled
+            .expect("checked just above")
+            .colour_at(terms.0, terms.1),
+        FOCUS_RING,
+        "flipping the checkbox took the ring off it"
+    );
+
+    // Tab walks on to the field the page declares next, and the ring leaves the
+    // control behind it.
+    press_key(window, VK_TAB);
+    let second = wait_for_frame(window, deadline, |frame| {
+        frame.colour_at(notes.0, notes.1) == FOCUS_RING
+    });
+    assert!(
+        second.is_some(),
+        "Tab did not move the ring onto the field: {}",
+        colour_at_window(window, notes)
+    );
+    assert_eq!(
+        second
+            .expect("checked just above")
+            .colour_at(terms.0, terms.1),
+        CHECKED_BOX,
+        "the checkbox kept the ring after the keyboard left it"
+    );
+
+    // And once more, onto the button, which is the last control on the page.
+    press_key(window, VK_TAB);
+    let third = wait_for_frame(window, deadline, |frame| {
+        frame.colour_at(next.0, next.1) == FOCUS_RING
+    });
+    assert!(
+        third.is_some(),
+        "Tab did not move the ring onto the button: {}",
+        colour_at_window(window, next)
+    );
+    assert_eq!(
+        third
+            .expect("checked just above")
+            .colour_at(notes.0, notes.1),
+        (0x00, 0x00, 0x00),
+        "the field kept the ring after the keyboard left it"
+    );
+
+    // Either end wraps, which is what keeps the keyboard on a page it can walk:
+    // Tab from the last control comes round to the first, and the ring leaves the
+    // control behind it.
+    press_key(window, VK_TAB);
+    let wrapped = wait_for_frame(window, deadline, |frame| {
+        frame.colour_at(terms.0, terms.1) == FOCUS_RING
+    });
+    assert!(
+        wrapped.is_some(),
+        "Tab from the last control did not wrap round to the first: {}",
+        colour_at_window(window, terms)
+    );
+    assert_eq!(
+        wrapped
+            .expect("checked just above")
+            .colour_at(next.0, next.1),
+        (0x00, 0x00, 0x00),
+        "the button kept the ring after the keyboard wrapped round"
+    );
+
+    // Back to the last control, where the button carries the action Enter runs.
+    press_key(window, VK_TAB);
+    press_key(window, VK_TAB);
+    let last = wait_for_frame(window, deadline, |frame| {
+        frame.colour_at(next.0, next.1) == FOCUS_RING
+    });
+    assert!(
+        last.is_some(),
+        "Tab did not walk back onto the button: {}",
+        colour_at_window(window, next)
+    );
+
+    // Enter runs what the control under the ring carries, which here is the page
+    // the button walks to. The window takes the size of the page it shows, so the
+    // client area is waited on rather than the frame: a frame read while the
+    // window is still resizing would say the next key changed the window when the
+    // page change did.
+    press_key(window, VK_RETURN);
+    let walked = wait_for_client_size(window, (300, 150), deadline);
+    assert!(
+        walked.is_some(),
+        "Enter did not do what the button under the ring carries: the client area is {:?}",
+        client_size(window)
+    );
+
+    // The second page declares no control, so Tab has nowhere to go: it leaves
+    // the window as it was rather than falling over.
+    let before = capture_frame(window)?;
+    assert_eq!(
+        before.colour_at(150, 75),
+        SECOND_PAGE,
+        "the page the button walks to did not draw itself: {}",
+        colour_at_window(window, (150, 75))
+    );
+    press_key(window, VK_TAB);
+    std::thread::sleep(Duration::from_millis(200));
+    let after = capture_frame(window)?;
+    assert_eq!(
+        after.differing_pixels(&before),
+        0,
+        "Tab changed a page that declares no control"
+    );
+    assert!(
+        unsafe { IsWindow(window) }.as_bool(),
+        "the window went away when Tab was pressed on a page with no control"
     );
 
     Ok(())

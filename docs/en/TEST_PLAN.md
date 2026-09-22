@@ -101,6 +101,12 @@ that setup and the uninstaller it deployed.
   user added survives.
 - Window: the setup opens its wizard window, and the client area matches the size the project
   declares. A run without a window reaches none of that.
+- Keyboard: Tab walks the controls in the order the page declares them, the ring shows which one the
+  keyboard is on, Space and Enter do what that control does -- here a checkbox flips and a button
+  walks to the next page -- Tab from the last one wraps round to the first, and a page that declares
+  no control leaves the keyboard nothing to do. Only one direction sits in this case: a key message
+  the suite posts carries no modifier and the runtime asks Windows for it, so walking backwards is
+  held still by a unit case instead.
 - Signed setup: a certificate table appended behind the bundle, which is what Authenticode writes
   when the release pipeline signs the file, keeps the runtime able to find its own resources.
 

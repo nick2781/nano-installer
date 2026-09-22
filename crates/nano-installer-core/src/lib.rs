@@ -61,7 +61,7 @@ use windows::Win32::UI::Input::Ime::{
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetDoubleClickTime, GetKeyState, ReleaseCapture, SetCapture, TrackMouseEvent, TME_LEAVE,
     TRACKMOUSEEVENT, VIRTUAL_KEY, VK_A, VK_BACK, VK_C, VK_CONTROL, VK_DELETE, VK_END, VK_ESCAPE,
-    VK_HOME, VK_LEFT, VK_RETURN, VK_RIGHT, VK_SHIFT, VK_V, VK_X, VK_Y, VK_Z,
+    VK_HOME, VK_LEFT, VK_RETURN, VK_RIGHT, VK_SHIFT, VK_SPACE, VK_TAB, VK_V, VK_X, VK_Y, VK_Z,
 };
 use windows::Win32::UI::Shell::{
     FileOpenDialog, IFileOpenDialog, IShellItem, ShellExecuteW, FOS_PICKFOLDERS, SIGDN_FILESYSPATH,
@@ -179,6 +179,8 @@ struct RuntimeUi {
     actions: Vec<ActionRegion>,
     text_hits: Vec<TextHit>,
     hover_regions: Vec<HoverRegion>,
+    /// Controls the keyboard can reach, in the order the page lays them out.
+    focus_regions: Vec<FocusRegion>,
     /// Containers the page lets the user scroll, with what the window needs to
     /// move them.
     scroll_views: Vec<ScrollView>,
@@ -321,6 +323,12 @@ struct InteractionState {
     highlighted_option: Option<usize>,
     /// Text field that takes typed characters, if any.
     focused_text_input: Option<String>,
+    /// Control the keyboard is on, if any. It is the control Tab walked to, or
+    /// the one the last click landed on, and it is what a keystroke acts on: the
+    /// ring around it is the only thing that says where the next key goes. A
+    /// text field is a control like any other, so focusing one also puts the
+    /// caret in it.
+    focused_control: Option<String>,
     /// Caret position inside the focused field, counted in characters.
     caret_index: usize,
     /// The other end of a selection, when the user has one. The caret is always
@@ -563,6 +571,22 @@ struct HoverRegion {
     bottom: i32,
 }
 
+/// A control the keyboard can land on, in the order the page lays it out.
+///
+/// The order is the page's own: the regions are recorded while the layout walks
+/// the tree, so Tab follows what the reader sees on a page of any shape, and a
+/// control the page hid is not in the list at all.
+struct FocusRegion {
+    id: String,
+    /// What activating this control does. A text field has none: a keystroke
+    /// there is typing, which the caret already covers.
+    action: Option<WindowAction>,
+    left: i32,
+    top: i32,
+    right: i32,
+    bottom: i32,
+}
+
 #[derive(Clone)]
 enum WindowAction {
     Close,
@@ -670,6 +694,8 @@ struct LayoutOutput {
     overlay_texts: Vec<TextLayer>,
     actions: Vec<ActionRegion>,
     hover_regions: Vec<HoverRegion>,
+    /// Controls the keyboard can reach, in the order they are laid out.
+    focus_regions: Vec<FocusRegion>,
     /// Containers this render found scrollable, with the view each one shows.
     scroll_views: Vec<ScrollView>,
     /// Menu a `Select` drew open while this layout was rendered.
@@ -2871,6 +2897,11 @@ fn load_layout(
         &context,
         &mut output,
     )?;
+    // The ring says which control the keyboard is on. A dialog owns the keyboard
+    // while it is open, so it covers the page without a ring behind it.
+    if interaction.dialog.is_none() {
+        push_focus_ring(&mut output, interaction, page)?;
+    }
     // The caret and the selection follow the focused field, so they are built
     // here where the font measurement helpers are available.
     let focused_field = interaction
@@ -2905,6 +2936,7 @@ fn load_layout(
         actions: output.actions,
         text_hits: output.text_hits,
         hover_regions: output.hover_regions,
+        focus_regions: output.focus_regions,
         scroll_views: output.scroll_views,
         text_inputs: output.text_inputs,
         caret,
@@ -3023,7 +3055,13 @@ fn render_layout_content(
             && layer_width > 0
             && layer_height > 0
         {
-            push_action(node, rect, &mut output.actions, context);
+            push_action(
+                node,
+                rect,
+                &mut output.actions,
+                &mut output.focus_regions,
+                context,
+            );
             push_hover_region(node, rect, context, &mut output.hover_regions);
         }
         if node.has_tag_name("ProgressBar") && layer_width > 0 && layer_height > 0 {
@@ -3706,6 +3744,7 @@ fn push_action(
     node: roxmltree::Node<'_, '_>,
     rect: LayerRect,
     actions: &mut Vec<ActionRegion>,
+    focus_regions: &mut Vec<FocusRegion>,
     context: &LayoutContext<'_>,
 ) {
     let interaction = context.interaction;
@@ -3771,12 +3810,29 @@ fn push_action(
         }
     };
     if let Some(action) = action {
+        let left = rect.left;
+        let top = rect.top;
+        let right = rect.left + rect.width;
+        let bottom = rect.top + rect.height;
+        // What carries an action is what the keyboard can land on, and it is
+        // recorded here because this is where the layout knows both the control
+        // and where it put it -- in the order the page itself is walked.
+        if let Some(id) = node.attribute("id") {
+            focus_regions.push(FocusRegion {
+                id: id.to_string(),
+                action: Some(action.clone()),
+                left,
+                top,
+                right,
+                bottom,
+            });
+        }
         actions.push(ActionRegion {
             action,
-            left: rect.left,
-            top: rect.top,
-            right: rect.left + rect.width,
-            bottom: rect.top + rect.height,
+            left,
+            top,
+            right,
+            bottom,
         });
     }
 }
@@ -4285,8 +4341,22 @@ fn push_text_input(
     if !node.has_tag_name("TextInput") || is_readonly_text_input(node) {
         return;
     }
+    let id = node.attribute("id").unwrap_or_default().to_string();
+    // A field the user can type into holds a place in the Tab order like any
+    // other control. It carries no action, because what a key does there is
+    // type: the caret is what answers it.
+    if !id.is_empty() {
+        output.focus_regions.push(FocusRegion {
+            id: id.clone(),
+            action: None,
+            left: rect.left,
+            top: rect.top,
+            right: rect.left + rect.width,
+            bottom: rect.top + rect.height,
+        });
+    }
     output.text_inputs.push(TextInputRegion {
-        id: node.attribute("id").unwrap_or_default().to_string(),
+        id,
         text: text_input_value(node, context.interaction, context.config).unwrap_or_default(),
         color: parse_color(node.attribute("color").unwrap_or("#FFFFFFFF")),
         font_size: scale_value(
@@ -5617,7 +5687,13 @@ fn render_toggle(
         }
         push_styled_layer(context.files, &mut output.layers, style, rect, context.dpi)?;
     }
-    push_action(node, rect, &mut output.actions, context);
+    push_action(
+        node,
+        rect,
+        &mut output.actions,
+        &mut output.focus_regions,
+        context,
+    );
     push_node_text(
         node,
         LayerRect {
@@ -5653,7 +5729,13 @@ fn render_flow_item(
     match node.tag_name().name() {
         "Checkbox" | "RadioButton" => render_toggle(node, rect, context, output)?,
         "Button" => {
-            push_action(node, rect, &mut output.actions, context);
+            push_action(
+                node,
+                rect,
+                &mut output.actions,
+                &mut output.focus_regions,
+                context,
+            );
             push_hover_region(node, rect, context, &mut output.hover_regions);
             if let Some(value) = button_image(node, context.interaction, &context.fields) {
                 push_styled_layer(
@@ -5672,12 +5754,24 @@ fn render_flow_item(
             }
         }
         "Label" => {
-            push_action(node, rect, &mut output.actions, context);
+            push_action(
+                node,
+                rect,
+                &mut output.actions,
+                &mut output.focus_regions,
+                context,
+            );
             push_hover_region(node, rect, context, &mut output.hover_regions);
             push_node_text(node, rect, context, output);
         }
         "Select" => {
-            push_action(node, rect, &mut output.actions, context);
+            push_action(
+                node,
+                rect,
+                &mut output.actions,
+                &mut output.focus_regions,
+                context,
+            );
             push_hover_region(node, rect, context, &mut output.hover_regions);
             push_node_text(node, rect, context, output);
             render_select(node, rect, context, output)?;
@@ -5688,7 +5782,13 @@ fn render_flow_item(
         }
         "ProgressBar" => render_progress_bar(node, rect, context, output)?,
         "Image" | "Icon" => {
-            push_action(node, rect, &mut output.actions, context);
+            push_action(
+                node,
+                rect,
+                &mut output.actions,
+                &mut output.focus_regions,
+                context,
+            );
             push_hover_region(node, rect, context, &mut output.hover_regions);
             if let Some(source) = node.attribute("src") {
                 push_styled_layer(
@@ -6348,6 +6448,114 @@ fn push_border_layer(
     Ok(())
 }
 
+/// Paints the ring around the control the keyboard is on, if it has one.
+///
+/// The ring is drawn over the control's own rectangle, so it follows the layout
+/// at any scale and needs no room of its own. It is dotted rather than solid
+/// because a control can draw a border of its own, and a second solid line laid
+/// over the first says nothing about where the keyboard is.
+fn push_focus_ring(
+    output: &mut LayoutOutput,
+    interaction: &InteractionState,
+    page: roxmltree::Node<'_, '_>,
+) -> Result<()> {
+    let Some(focused) = interaction.focused_control.as_deref() else {
+        return Ok(());
+    };
+    // The page is laid out again whenever the ring moves, so the regions on
+    // screen are the ones this render just recorded: a control the new page does
+    // not have leaves nothing to draw, which is what makes Tab a no-op there.
+    let rect = {
+        let Some(region) = output
+            .focus_regions
+            .iter()
+            .find(|region| region.id == focused)
+        else {
+            return Ok(());
+        };
+        LayerRect {
+            left: region.left,
+            top: region.top,
+            width: region.right - region.left,
+            height: region.bottom - region.top,
+        }
+    };
+    push_focus_ring_layer(&mut output.layers, rect, &focus_ring_color(page, focused))
+}
+
+/// The colour of the ring: what the focused control asks for, then what the page
+/// it sits on asks for, then the accent the wizard draws its focus with.
+fn focus_ring_color(page: roxmltree::Node<'_, '_>, id: &str) -> String {
+    // The accent a project gets when it names no colour of its own.
+    const FOCUS_COLOR: &str = "#FF1F6FEB";
+
+    page.document()
+        .descendants()
+        .find(|node| node.is_element() && node.attribute("id") == Some(id))
+        .and_then(|control| control.attribute("focus-color"))
+        .or_else(|| page.attribute("focus-color"))
+        .unwrap_or(FOCUS_COLOR)
+        .to_string()
+}
+
+/// Draws the dotted outline of the focus ring as one layer.
+///
+/// Every other pixel of every edge is left transparent, which is what makes a
+/// one-pixel line read as a ring at any scale: the pixels are layout pixels, so
+/// a display that scales the page scales the dots with it.
+fn push_focus_ring_layer(layers: &mut Vec<ImageLayer>, rect: LayerRect, color: &str) -> Result<()> {
+    if rect.width <= 0 || rect.height <= 0 {
+        return Ok(());
+    }
+    let pixel_width = u32::try_from(rect.width).context("focus ring width must be positive")?;
+    let pixel_height = u32::try_from(rect.height).context("focus ring height must be positive")?;
+    let pixel_count = (pixel_width as usize)
+        .checked_mul(pixel_height as usize)
+        .context("focus ring size overflow")?;
+    let mut pixels = vec![
+        0u8;
+        pixel_count
+            .checked_mul(4)
+            .context("focus ring size overflow")?
+    ];
+    let (alpha, red, green, blue) = parse_argb(color);
+    let premultiply = |component: u8| ((component as u16 * alpha as u16) / 255) as u8;
+    for y in 0..rect.height {
+        for x in 0..rect.width {
+            let dotted = if y == 0 || y == rect.height - 1 {
+                x % 2 == 0
+            } else if x == 0 || x == rect.width - 1 {
+                y % 2 == 0
+            } else {
+                continue;
+            };
+            if !dotted {
+                continue;
+            }
+            let offset = ((y as usize * pixel_width as usize) + x as usize) * 4;
+            pixels[offset] = premultiply(blue);
+            pixels[offset + 1] = premultiply(green);
+            pixels[offset + 2] = premultiply(red);
+            pixels[offset + 3] = alpha;
+        }
+    }
+    layers.push(ImageLayer {
+        image: NativeImage {
+            width: pixel_width,
+            height: pixel_height,
+            pixels,
+        },
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+        source: None,
+        alpha: 255,
+        clip: None,
+    });
+    Ok(())
+}
+
 /// Draws a progress bar: a rounded track, then the filled portion on top.
 ///
 /// `bar-image` is authored as a single full-width sprite, so the filled part is
@@ -6805,12 +7013,20 @@ unsafe extern "system" fn window_proc(
             let (x, y) = client_point(lparam);
             if let Some((id, index)) = text_input_at(x, y) {
                 let extend = key_down(VK_SHIFT);
+                // A click on a field puts the ring on it as well as the caret in
+                // it, so the keyboard carries on from where the click left off.
+                let _ = set_focused_control(window, Some(id.clone()));
                 let _ = begin_text_selection_drag(window, id, index, extend);
                 let _ = SetCapture(window);
                 return LRESULT(0);
             }
             if let Some(id) = hover_control_at(x, y) {
-                let _ = set_pressed_control(window, Some(id));
+                let _ = set_pressed_control(window, Some(id.clone()));
+                if text_input_is_focused() {
+                    // Clicking away from a field takes the caret out of it.
+                    let _ = focus_text_input(window, None, 0);
+                }
+                let _ = set_focused_control(window, Some(id));
                 return LRESULT(0);
             }
             let over_action = window_action_at(x, y).is_some();
@@ -6899,6 +7115,19 @@ unsafe extern "system" fn window_proc(
             handle_text_input_char(window, wparam.0 as u32);
             LRESULT(0)
         }
+        // Tab walks the controls the page lays out, and Shift+Tab walks them the
+        // other way. It comes before the field that owns the keyboard, because a
+        // field has to be leavable by the same key that entered it. A menu or a
+        // dialog owns the keyboard while it is open, so neither walks the page
+        // under it: the ring stays where it was.
+        WM_KEYDOWN
+            if wparam.0 as u32 == VK_TAB.0 as u32 && !menu_is_open() && !dialog_is_open() =>
+        {
+            if let Err(error) = move_page_focus(window, key_down(VK_SHIFT)) {
+                show_runtime_error(&error);
+            }
+            LRESULT(0)
+        }
         WM_KEYDOWN if text_input_is_focused() => {
             handle_text_input_key(window, wparam.0 as u32);
             LRESULT(0)
@@ -6919,6 +7148,18 @@ unsafe extern "system" fn window_proc(
                 VK_RETURN => handle_window_action(window, WindowAction::DialogOk),
                 VK_ESCAPE => handle_window_action(window, WindowAction::DialogCancel),
                 _ => {}
+            }
+            LRESULT(0)
+        }
+        // The keys a button answers to do what the control the ring is on does.
+        // They come after the menu and the dialog, which answer them themselves,
+        // and after the focused field, where a space is a character.
+        WM_KEYDOWN
+            if (wparam.0 as u32 == VK_RETURN.0 as u32 || wparam.0 as u32 == VK_SPACE.0 as u32)
+                && !install::busy() =>
+        {
+            if let Err(error) = activate_focused_control(window) {
+                show_runtime_error(&error);
             }
             LRESULT(0)
         }
@@ -8088,6 +8329,110 @@ unsafe fn set_pressed_control(window: HWND, id: Option<String>) -> Result<()> {
     Ok(())
 }
 
+/// Moves the keyboard onto a control, and repaints so the ring follows.
+unsafe fn set_focused_control(window: HWND, id: Option<String>) -> Result<()> {
+    let runtime = UI.get().context("native UI state is missing")?;
+    let mut state = runtime
+        .lock()
+        .map_err(|_| anyhow::anyhow!("native UI state lock was poisoned"))?;
+    if state.interaction.focused_control == id {
+        return Ok(());
+    }
+    state.interaction.focused_control = id;
+    rebuild_runtime_ui(&mut state)?;
+    drop(state);
+    let _ = InvalidateRect(window, None, false);
+    let _ = UpdateWindow(window);
+    Ok(())
+}
+
+/// Moves the keyboard to the next control the page lays out.
+///
+/// Tab walks the order the page itself lays them out in and Shift+Tab walks it
+/// backwards; either end wraps, so the keyboard never falls off the ring and a
+/// key that does nothing is one the user pressed on an empty page. A text field
+/// takes the caret while the ring is on it, which is what lets a user reach a
+/// field and type without a mouse, and gives the caret back when the ring
+/// leaves.
+unsafe fn move_page_focus(window: HWND, backward: bool) -> Result<()> {
+    let runtime = UI.get().context("native UI state is missing")?;
+    let (id, editable, caret_index) = {
+        let state = runtime
+            .lock()
+            .map_err(|_| anyhow::anyhow!("native UI state lock was poisoned"))?;
+        let regions = &state.ui.focus_regions;
+        if regions.is_empty() {
+            return Ok(());
+        }
+        let current = state
+            .interaction
+            .focused_control
+            .as_deref()
+            .and_then(|focused| regions.iter().position(|region| region.id == focused));
+        // A page whose focus went away -- it was walked to another page, or the
+        // control it was on is hidden now -- starts the walk over.
+        let index = next_focus_index(regions.len(), current, backward);
+        let region = &regions[index];
+        // A region with no action is a text field: what a key does there is type.
+        let editable = region.action.is_none();
+        // Tabbing into a field puts the caret after what it already holds, which
+        // is where the next character would go.
+        let caret_index = if editable {
+            state
+                .ui
+                .text_inputs
+                .iter()
+                .find(|field| field.id == region.id)
+                .map_or(0, |field| field.text.chars().count())
+        } else {
+            0
+        };
+        (region.id.clone(), editable, caret_index)
+    };
+    focus_text_input(window, editable.then(|| id.clone()), caret_index)?;
+    set_focused_control(window, Some(id))
+}
+
+/// Runs what the control the keyboard is on does.
+///
+/// A text field carries no action, so Enter and Space over one are left to the
+/// field: there, they are characters like any other.
+unsafe fn activate_focused_control(window: HWND) -> Result<()> {
+    let runtime = UI.get().context("native UI state is missing")?;
+    let action = {
+        let state = runtime
+            .lock()
+            .map_err(|_| anyhow::anyhow!("native UI state lock was poisoned"))?;
+        let focused = state.interaction.focused_control.as_deref();
+        state
+            .ui
+            .focus_regions
+            .iter()
+            .find(|region| Some(region.id.as_str()) == focused)
+            .and_then(|region| region.action.clone())
+    };
+    if let Some(action) = action {
+        handle_window_action(window, action);
+    }
+    Ok(())
+}
+
+/// The place the keyboard moves to in the order a page lays its controls out.
+///
+/// `current` is where the ring is now, which is `None` while the keyboard has
+/// not landed on anything yet: a walk that starts there begins at the end it is
+/// walking from. Either end wraps, so the keyboard never falls off the page and
+/// a key that does nothing is one the user pressed on a page with nothing on it
+/// (`len` is never zero, which is what the caller checks first).
+fn next_focus_index(len: usize, current: Option<usize>, backward: bool) -> usize {
+    match (current, backward) {
+        (Some(index), true) => (index + len - 1) % len,
+        (Some(index), false) => (index + 1) % len,
+        (None, true) => len - 1,
+        (None, false) => 0,
+    }
+}
+
 /// Whether any select has its menu open.
 fn menu_is_open() -> bool {
     UI.get()
@@ -9078,7 +9423,7 @@ mod tests {
         cross_alignment, cross_alignment_for_item, disk_free_bytes, disk_root, field_state,
         flow_axis, flow_item_for_node, flow_widths, format_size_bytes, forward_page,
         initial_interaction, insets_for_node, inspect_project, installer_version_info, load_layout,
-        main_alignment, mask_matches, measure_layout_text_width, pack_project,
+        main_alignment, mask_matches, measure_layout_text_width, next_focus_index, pack_project,
         pack_project_with_progress, page_id, page_index_of_id, parse_bundle, parse_color,
         parse_image_style, parse_text_runs, pick_directory_target, push_action, push_border_layer,
         push_hover_region, push_node_border, query_disk_free_bytes, render_flow, render_flow_item,
@@ -10227,6 +10572,7 @@ mod tests {
                     height: 10,
                 },
                 &mut actions,
+                &mut Vec::new(),
                 &context,
             );
             actions.into_iter().next().map(|region| region.action)
@@ -13114,7 +13460,7 @@ mod tests {
         let context = context_for(&files, &config, &translations, &interaction);
         let mut actions = Vec::new();
         let mut hovers = Vec::new();
-        push_action(button, rect, &mut actions, &context);
+        push_action(button, rect, &mut actions, &mut Vec::new(), &context);
         push_hover_region(button, rect, &context, &mut hovers);
         assert!(actions.is_empty());
         assert!(hovers.is_empty());
@@ -13128,7 +13474,7 @@ mod tests {
         let context = context_for(&files, &config, &translations, &interaction);
         let mut actions = Vec::new();
         let mut hovers = Vec::new();
-        push_action(button, rect, &mut actions, &context);
+        push_action(button, rect, &mut actions, &mut Vec::new(), &context);
         push_hover_region(button, rect, &context, &mut hovers);
         assert_eq!(actions.len(), 1);
         assert!(matches!(actions[0].action, WindowAction::Install));
@@ -14083,6 +14429,7 @@ mod tests {
                     height: 10,
                 },
                 &mut actions,
+                &mut Vec::new(),
                 &context,
             );
             actions.into_iter().next().map(|region| region.action)
@@ -14718,6 +15065,275 @@ mod tests {
         // ...but only the one that accepts typing is recorded.
         assert_eq!(ui.text_inputs.len(), 1);
         assert_eq!(ui.text_inputs[0].id, "editable");
+        Ok(())
+    }
+
+    /// A page whose controls are declared in an order a case can name, with the
+    /// ones that must stay out of the keyboard's way beside them.
+    ///
+    /// The `gone` control is hidden by the panel state, so a case can check that
+    /// what the page hides is not reachable by Tab either.
+    const FOCUS_ORDER_PAGE: &str = r##"<Page width="400" height="200" background="#FF000000" focus-color="#FF00FF00">
+                  <Button id="first" action="next" text="Next"
+                          position="absolute" left="20" top="20" width="120" height="30" />
+                  <TextInput id="field" position="absolute" left="20" top="60"
+                             width="200" height="24" />
+                  <TextInput id="sealed" readonly="true" position="absolute" left="20" top="90"
+                             width="200" height="24" />
+                  <TextInput position="absolute" left="20" top="120" width="200" height="24" />
+                  <Checkbox id="terms" position="absolute" left="240" top="20"
+                            width="24" height="24" />
+                  <Button id="locked" action="next" enabled="false" text="Locked"
+                          position="absolute" left="240" top="60" width="120" height="30" />
+                  <Button id="gone" action="next" text="Gone"
+                          position="absolute" left="240" top="100" width="120" height="30" />
+                  <Label id="note" text="Just words"
+                         position="absolute" left="240" top="140" width="120" height="20" />
+                </Page>"##;
+
+    fn focus_order_project() -> HashMap<String, Vec<u8>> {
+        one_page_project(FOCUS_ORDER_PAGE, "{}")
+    }
+
+    /// The same page in a project that declares the dialog layout a question is
+    /// drawn from, so a case can cover the page with one.
+    fn focus_order_project_with_dialog() -> HashMap<String, Vec<u8>> {
+        let mut config = one_page_config();
+        config["ui"] = serde_json::json!({ "dialog_layout": "layouts/msgBox.xml" });
+        let mut files = one_page_project_with(config, FOCUS_ORDER_PAGE, "{}");
+        files.insert(
+            "layouts/msgBox.xml".to_string(),
+            br##"<Page width="400" height="230" background="#FF2A3844">
+                  <Label id="lblMsg" text="placeholder" value-source="dialog:message"
+                         position="absolute" left="20" top="20" width="360" height="40" />
+                  <Button id="btnOK" action="dialog_ok" text="@ok"
+                          position="absolute" left="240" top="170" width="140" height="36" />
+                </Page>"##
+                .to_vec(),
+        );
+        files
+    }
+
+    /// The interaction state of `focus_order_project` with the panel that hides
+    /// `gone` closed, which is what keeps that control off the page.
+    fn focus_order_interaction() -> InteractionState {
+        let mut interaction = InteractionState::default();
+        interaction
+            .panel_visibility
+            .insert("gone".to_string(), false);
+        interaction
+    }
+
+    /// The corner of a control, at an even coordinate, where a dotted ring draws
+    /// its first pixel.
+    ///
+    /// The ring is dotted from the rectangle's own corner: every other pixel of
+    /// every edge, starting with the corner itself.
+    fn ring_corner(layer: &ImageLayer) -> [u8; 4] {
+        [
+            layer.image.pixels[0],
+            layer.image.pixels[1],
+            layer.image.pixels[2],
+            layer.image.pixels[3],
+        ]
+    }
+
+    /// What one pixel of a layer holds, as blue, green, red and alpha.
+    fn layer_pixel(layer: &ImageLayer, x: usize, y: usize) -> [u8; 4] {
+        let offset = (y * layer.image.width as usize + x) * 4;
+        [
+            layer.image.pixels[offset],
+            layer.image.pixels[offset + 1],
+            layer.image.pixels[offset + 2],
+            layer.image.pixels[offset + 3],
+        ]
+    }
+
+    /// The keyboard walks the page the way the page is written: the controls it
+    /// can reach are recorded in the order the layout lays them out, each over
+    /// the rectangle it was placed at, so Tab follows the order a reader reads
+    /// rather than a numbering the layout would have to keep in step by hand.
+    ///
+    /// What carries an action carries what activating it does; a text field
+    /// carries none, because a keystroke there is typing and the caret is what
+    /// answers it.
+    #[test]
+    fn tab_reaches_every_control_in_the_order_the_page_lays_them_out() -> anyhow::Result<()> {
+        // The keyboard walks the page the way the page is written, so the order
+        // is the one a reader follows rather than a numbering the layout would
+        // have to keep in step by hand.
+        let files = focus_order_project();
+        let ui = drawn_at_96(&files, &focus_order_interaction())?;
+        let reached: Vec<&str> = ui
+            .focus_regions
+            .iter()
+            .map(|region| region.id.as_str())
+            .collect();
+        assert_eq!(reached, ["first", "field", "terms"]);
+
+        // Each region is the rectangle the control was placed at, which is what
+        // the ring is drawn over and what a case can find the control by.
+        let first = &ui.focus_regions[0];
+        assert_eq!(
+            (first.left, first.top, first.right, first.bottom),
+            (20, 20, 140, 50)
+        );
+        // A button carries what activating it does; a text field carries nothing,
+        // because a keystroke there is typing.
+        assert!(matches!(first.action, Some(WindowAction::NextPage)));
+        assert!(ui.focus_regions[1].action.is_none());
+        Ok(())
+    }
+
+    /// A control the keyboard must not stop on is not in the order: a button a
+    /// condition holds back answers nothing, a readonly field takes no typing, a
+    /// control the page hides is not on the page, and an element with no action
+    /// does nothing when it is activated.
+    ///
+    /// A field the layout gives no id is left out too, because there would be
+    /// nowhere to say which control the ring is on.
+    #[test]
+    fn a_control_the_page_keeps_out_of_reach_is_not_in_the_tab_order() {
+        // A disabled button answers nothing, a readonly field takes no typing,
+        // and a control the page hides is not on the page: none of them is
+        // somewhere Tab can land, or the keyboard would stop on a control that
+        // does not answer.
+        let files = focus_order_project();
+        let ui = drawn_at_96(&files, &focus_order_interaction()).expect("the page draws");
+        let reached: Vec<&str> = ui
+            .focus_regions
+            .iter()
+            .map(|region| region.id.as_str())
+            .collect();
+        for absent in ["sealed", "locked", "gone", "note"] {
+            assert!(
+                !reached.contains(&absent),
+                "{absent} is in the Tab order: {reached:?}"
+            );
+        }
+        // A field the layout gives no id cannot be named, so it is not reachable
+        // either: the wizard would have nowhere to say where the keyboard is.
+        assert_eq!(reached.len(), 3, "an unnamed field joined the order");
+    }
+
+    /// Tab walks one way and Shift+Tab the other, and either end wraps, so a page
+    /// with a control on it always has somewhere for the keyboard to go.
+    ///
+    /// A keyboard that is nowhere yet starts at the end it is walking from, and
+    /// a page whose focus went away -- the control it was on belongs to the page
+    /// before this one -- starts the walk over the same way.
+    #[test]
+    fn the_walk_wraps_at_both_ends_of_the_control_order() {
+        assert_eq!(next_focus_index(3, None, false), 0);
+        assert_eq!(next_focus_index(3, None, true), 2);
+        // Forward: through the order, then from the last one round to the first.
+        assert_eq!(next_focus_index(3, Some(1), false), 2);
+        assert_eq!(next_focus_index(3, Some(2), false), 0);
+        // Backward: through the order, then from the first one round to the last.
+        assert_eq!(next_focus_index(3, Some(1), true), 0);
+        assert_eq!(next_focus_index(3, Some(0), true), 2);
+        // One control is a page the keyboard stays on whichever way it walks.
+        assert_eq!(next_focus_index(1, Some(0), false), 0);
+        assert_eq!(next_focus_index(1, Some(0), true), 0);
+    }
+
+    /// The ring is one layer over the control's own rectangle, so the page is
+    /// drawn exactly as it is without it and the ring is the only difference.
+    ///
+    /// It is dotted rather than solid -- the corner carries a colour and the
+    /// pixel beside it does not, and the middle of the control is left to the
+    /// control -- because a control may draw a border of its own, and a second
+    /// solid line over the first would say nothing about where the keyboard is.
+    #[test]
+    fn the_focus_ring_is_drawn_over_the_control_the_keyboard_is_on() -> anyhow::Result<()> {
+        // The ring is one layer over the control's own rectangle: the page is
+        // drawn the same either way, and the only difference is the ring.
+        let files = focus_order_project();
+        let plain = drawn_at_96(&files, &focus_order_interaction())?;
+        let mut interaction = focus_order_interaction();
+        interaction.focused_control = Some("field".to_string());
+        let focused = drawn_at_96(&files, &interaction)?;
+
+        assert_eq!(focused.layers.len(), plain.layers.len() + 1);
+        let ring = focused.layers.last().expect("the ring was drawn");
+        let field = focused
+            .focus_regions
+            .iter()
+            .find(|region| region.id == "field")
+            .expect("the field is reachable");
+        assert_eq!(
+            (ring.left, ring.top, ring.width, ring.height),
+            (
+                field.left,
+                field.top,
+                field.right - field.left,
+                field.bottom - field.top
+            )
+        );
+        // The colour is the one the page declares, and the edge is dotted: the
+        // corner carries it and the pixel beside the corner does not.
+        assert_eq!(ring_corner(ring), [0x00, 0xFF, 0x00, 0xFF]);
+        assert_eq!(layer_pixel(ring, 1, 0), [0x00, 0x00, 0x00, 0x00]);
+        assert_eq!(layer_pixel(ring, 2, 0), [0x00, 0xFF, 0x00, 0xFF]);
+        // The middle of the control is left to the control itself.
+        assert_eq!(layer_pixel(ring, 10, 10), [0x00, 0x00, 0x00, 0x00]);
+        Ok(())
+    }
+
+    /// A control laid over artwork can name a ring colour the page's would
+    /// disappear into, and the page's own colour covers every control that says
+    /// nothing.
+    #[test]
+    fn a_control_names_the_colour_of_its_own_focus_ring() -> anyhow::Result<()> {
+        // A control laid over artwork can ask for a ring the page's colour would
+        // disappear into, and the page's own colour covers the controls that say
+        // nothing.
+        let files = one_page_project(
+            r##"<Page width="400" height="200" focus-color="#FF00FF00">
+                  <Button id="one" action="next" text="One" focus-color="#FFFF0000"
+                          position="absolute" left="20" top="20" width="120" height="30" />
+                  <Button id="two" action="next" text="Two"
+                          position="absolute" left="20" top="80" width="120" height="30" />
+                </Page>"##,
+            "{}",
+        );
+        let mut interaction = InteractionState {
+            focused_control: Some("one".to_string()),
+            ..Default::default()
+        };
+        let first = drawn_at_96(&files, &interaction)?;
+        // Red is the first component the layer holds last, and blue is first.
+        assert_eq!(
+            ring_corner(first.layers.last().expect("the ring was drawn")),
+            [0x00, 0x00, 0xFF, 0xFF]
+        );
+        interaction.focused_control = Some("two".to_string());
+        let second = drawn_at_96(&files, &interaction)?;
+        assert_eq!(
+            ring_corner(second.layers.last().expect("the ring was drawn")),
+            [0x00, 0xFF, 0x00, 0xFF]
+        );
+        Ok(())
+    }
+
+    /// A dialog takes the keyboard while it is open, so the page behind it says
+    /// nothing about where a key would go: the ring is the one layer the dialog
+    /// takes away, and the page under it is otherwise drawn the same.
+    #[test]
+    fn a_dialog_covers_the_page_without_a_focus_ring_behind_it() -> anyhow::Result<()> {
+        // A dialog takes the keyboard while it is open, so the page behind it
+        // says nothing about where a key would go: no ring is drawn there.
+        let files = focus_order_project_with_dialog();
+        let mut interaction = focus_order_interaction();
+        interaction.focused_control = Some("first".to_string());
+        let without = drawn_at_96(&files, &interaction)?;
+        let with_dialog = drawn_at_96(&files, &interaction_with_dialog(notice()))?;
+        assert!(
+            without.layers.len() > with_dialog.layers.len(),
+            "the page behind the dialog drew no ring to leave out"
+        );
+        // The ring is the layer the dialog takes away, and nothing else.
+        assert_eq!(without.layers.len(), with_dialog.layers.len() + 1);
         Ok(())
     }
 }

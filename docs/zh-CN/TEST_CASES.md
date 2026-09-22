@@ -27,12 +27,15 @@ Rust doc comment，再退回用例名。
 | `a_component_project_is_refused_an_update_package` | 内容切成组件的工程做不出更新包：没有一个归档可以拿来比对，构建时当场拒绝并让人照旧发完整安装包，拒绝之后一个安装包文件都不留。 |
 | `a_configured_percent_path_is_expanded_and_used` | 配置里带 `%LOCALAPPDATA%` 的路径必须先展开再用，没展开的路径不是绝对路径，安装会拒绝相对目录。这条用例完全不带 `--dir` 运行，等同于静默运行里没有指定目录的情况。 |
 | `a_container_measures_the_edge_its_children_are_asked_for` | 问 `HBox` 要竖直方向的尺寸时，报的是最高的那个子项加上自己的上下内边距；问水平方向时报子项沿宽度要的总和。内嵌的百分比宽度容器透过它自己的子项来量，不会把外层的行撑大或压塌。 |
+| `a_control_names_the_colour_of_its_own_focus_ring` | 焦点环的颜色由控件自己说了算：控件写了 `focus-color` 就用它，没写的用页面写的，页面也没写才用默认的强调色。用例把画出来的那个像素读回来核对。 |
+| `a_control_the_page_keeps_out_of_reach_is_not_in_the_tab_order` | 挡住的控件不进 Tab 顺序：被 `enabled="false"` 或条件挡住的按钮、`readonly` 的输入框、`visible="false"` 的元素、没声明 `action` 的标签都收不到键盘；没写 `id` 的输入框同样进不去——键盘停在它身上时没有名字可以记。 |
 | `a_damaged_bundle_entry_is_refused_and_leaves_no_copy` | 捆绑索引里的每个条目都记着构建时算出的摘要，读条目时核对：被改过一个字节的 payload 按名字报错、说明记录值与实际摘要；同一份包里没被动过的条目照旧读得到；流式复制损坏的条目报错，而且不在磁盘上留下这份副本——会拿它去解压的那一步因此无从跑起。 |
 | `a_default_log_is_named_after_the_image_the_moment_and_the_task` | 没有点名日志文件时，运行把日志写进临时目录下的 `nano-installer` 目录，文件名带上安装程序自己的名字、这一刻的时间和这次在做的事（安装还是卸载）。同一份安装包在两台机器、两个时刻各跑一次，支持人员靠这个文件名分得开，两次也不会互相覆盖。 |
 | `a_dependency_that_cannot_be_installed_stops_the_install` | 装不上的必需依赖会中止安装，而且在产品落盘之前就中止：报错点出依赖名和安装程序返回的退出码（用例那条命令返回 7），目的目录事后根本不存在。机器给不了产品需要的东西时，用户看到的是这句话，而不是一个起不来的产品。 |
 | `a_dependency_the_machine_already_has_is_not_installed_again` | 机器上已经有产品要的东西时不再装一遍：规则认得出它，安装程序就一次都不跑。用例把安装程序的参数写成一个它必然报错的命令，又把这条依赖标成必需，所以真去装了的话安装会当场失败，而不是悄悄放过去。 |
 | `a_dialog_button_answers_with_its_own_action` | 对话框里的按钮按自己声明的动作登记点击区域，确认键给出 `DialogOk`，取消键给出 `DialogCancel`。 |
 | `a_dialog_button_is_drawn_from_the_question_rather_than_the_layout` | 同一份对话框版面服务所有问题，按钮上的字来自对话框状态本身，也就是问题、确认和取消三个角色；对话框没提供文字的角色不显示内容，版面里写死的占位文字也不会顶上来。 |
+| `a_dialog_covers_the_page_without_a_focus_ring_behind_it` | 对话框开着的时候页面照旧画在它底下，但不画焦点环：这一段键盘归对话框，页面上的环会指向一个按下去不起作用的地方。比较开对话框前后的图层，少的那一层正是环。 |
 | `a_dialog_is_drawn_over_the_page_and_centred` | 对话框画在页面之上，比页面小时居中放置，它自己的版面因此可以用普通坐标系；画出来的问题文字来自对话框，而不是版面里的占位文字。 |
 | `a_disabled_button_registers_no_click_and_no_hover` | 条件不满足时按钮是惰性的，既不登记点击区域也不登记悬停区域；条件满足后恢复成它声明的动作，区域就是布局给它的那个矩形。 |
 | `a_display_scales_the_layout_by_its_own_dpi` | 开着 DPI 感知时，96 DPI 是 1.0 倍，144 和 192 DPI 分别是 1.5 和 2.0 倍，120 DPI 是 1.25 倍但仍取 1x 素材。关掉 DPI 感知的工程不管落在什么显示器上都留在 96 DPI 基准，缩放交给外壳去做。 |
@@ -291,6 +294,7 @@ Rust doc comment，再退回用例名。
 | `splits_a_url_into_what_a_request_asks_for` | URL 拆成请求要的那几段：http 与 https 各自的默认端口、写明的端口、没有路径时补 `/`、查询串留在路径里、协议名大小写不影响判断。 |
 | `startup_waits_for_project_selection` | 构建器启动后还没选工程：工程目录和输出路径都是空的，摘要、日志和结果都没有。 |
 | `status_source_replaces_placeholder_text_with_the_published_step` | `value-source="status"` 的标签在步骤发布时显示该步骤的翻译文字，没有发布的步骤时保留版面里写死的占位文字。 |
+| `tab_reaches_every_control_in_the_order_the_page_lays_them_out` | 键盘到得了的控件按版面声明它们的顺序排好，各自带着自己被放下的那个矩形，所以 Tab 走的是读页面的人看下来的顺序，版面不必另外维护一套编号；带动作的控件同时记着按下去做什么，输入框不带动作，因为那里的按键是打字。 |
 | `taptap_first_page_places_controls_at_192_dpi` | 在 2 倍缩放下加载示例工程首页：窗口是 1440×900，图层数和顺序符合版面，页面底色、语言选择框、最小化和关闭按钮的位置与透明度都按倍率算对。 |
 | `taptap_uninstaller_buttons_have_distinct_hit_regions` | 示例卸载页上卸载和取消两个按钮的点击区域不重叠，卸载键完全在取消键右侧。 |
 | `text_colors_read_as_rgb_with_or_without_an_alpha_channel` | 颜色写六位和八位都读成同一个 RGB，画文字时忽略 alpha，字节顺序是 RGB 而不是 BGR；读不懂的颜色画成白色。 |
@@ -298,6 +302,8 @@ Rust doc comment，再退回用例名。
 | `the_end_of_the_declared_order_is_an_end` | 声明的顺序走到最后一页就是尽头，报出「没有下一页」而不是绕回去；钩子这时仍可以点名一页，把向导从最后一页带走。 |
 | `the_example_dialog_places_its_message_and_both_buttons` | 示例工程自己的对话框版面能把问题文字和两个按钮都摆好：问题是一行有真实高度、宽度和位置的折行文字，两个按钮并排不重叠，问题也不被按钮盖住。 |
 | `the_example_project_matches_the_schema` | 示例工程自己的配置也要过这张表：它是别人照抄的模板，不能带着没人读的键。 |
+| `the_focus_ring_is_drawn_over_the_control_the_keyboard_is_on` | 键盘停在哪个控件上，就在那个控件的矩形上画一层一像素的点状环：有环与没环的页面只差这一层，别处一个像素都不动；颜色是页面声明的那个，边缘隔一个像素一个点，控件中间留给自己。 |
+| `the_keyboard_walks_the_page_and_acts_on_what_it_reaches` | 在真窗口里只用键盘走一遍页面：Tab 按版面顺序落在第一个控件上，环画在它身上；空格翻掉环底下的复选框（窗口里那两幅状态图换了一张）；再 Tab 两次，环依次走到输入框和按钮；从最后一个控件再按一次 Tab，环绕回第一个；回到按钮上按 Enter，窗口切到按钮指的第二页（300×150）；第二页一个控件都没有，Tab 在那里什么也不改，窗口还在。往回走（Shift+Tab）由另一条用例守着：按键消息本身不带修饰键，这条用例只发按键，发不出按住的 Shift。 |
 | `the_language_menu_answers_to_the_keyboard` | 在真窗口里用键盘走一遍语言菜单：点一下控件把菜单展开，当前语言那一行标着记号；按一次下箭头，高亮落到下一行，而当前语言那行上的记号还在；按 Escape，菜单收起，页面回到展开之前的样子，一个像素都没变；再展开、再按下箭头、按 Enter，页面上的那句话换成另一种语言写的，而且除那句话和这个控件，别处都没有被重画。 |
 | `the_log_keeps_the_lines_the_view_scrolled_past` | 日志留着视图滚过去的那些行：保存日志写下的和全部复制复制的是同一份文本，导出的应该是整份日志，而不是面板一次能显示的那几行。用例把它填到远超一屏，检查每一行都还在、措辞没变、时间戳还是自己那个。 |
 | `the_manifest_reaches_a_real_executable` | 把清单写进一个真实的 PE 映像再读回来，内容与写进去的一致：提权级别和 DPI 相关的两个元素都在，整份 XML 仍然能被解析，Windows 不会因为清单坏了而拒绝加载。 |
@@ -313,6 +319,7 @@ Rust doc comment，再退回用例名。
 | `the_summary_reports_what_the_project_declares` | 窗口显示的摘要是工程声明的内容，包括工程可以省略的那些默认值。 |
 | `the_uninstall_entry_reports_the_size_the_quiet_uninstall_and_no_repair` | 卸载项的字段是 Windows 展示给用户的全部：静默卸载命令指向部署出来的卸载程序并带上静默参数；容量以 `REG_DWORD` 存下去，数值等于磁盘上这次安装占用的千字节（连卸载程序本身一起算）；`NoModify` 与 `NoRepair` 都是 `REG_DWORD` 1，Windows 因此不会摆出这个安装器根本没有的“修改”“修复”入口。 |
 | `the_values_the_page_holds_reach_the_script` | 用户在页面上留下的取值真的走进了脚本：用例往安装包窗口的输入框里敲进一个编号、点中单选组里版面没默认选中的那一行，再按下安装键，脚本把读到的值写进安装目录，几个值逐一对得上；其中两个问的是页面上没有的 id，读成空串。安装装得完说明不了什么，脚本用常量也装得完。 |
+| `the_walk_wraps_at_both_ends_of_the_control_order` | 键盘走的两头与两个方向：Tab 往后、Shift+Tab 往前，最后一个再往后绕回第一个、第一个再往前绕到最后一个；键盘还没落在任何控件上时，从它正在走的那一头开始；页面上只有一个控件时两个方向都停在它身上。 |
 | `two_payloads_that_carry_one_file_are_refused` | 两个归档带同一个相对路径时安装失败，而不是按声明顺序互相覆盖：报错点出是哪个组件、哪个文件。用户装到的东西不该取决于工程把组件排在第几个。 |
 | `typing_coalesces_into_one_undo_step` | 连续键入只记一步撤销：一串按键共用同一份快照，Ctrl+Z 回到这串输入开始前的值，换一种编辑动作才另起一步。 |
 | `undo_remembers_the_caret_that_belongs_to_the_value` | 撤销把光标恢复到那个值对应的位置，而不是恢复前的位置；快照里的光标超出缩短后的文本时被拉回文本末尾。 |
