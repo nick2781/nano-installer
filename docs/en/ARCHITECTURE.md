@@ -112,6 +112,36 @@ built-in flow, and an operation ceiling keeps a runaway script from hanging an i
 project that ships `scripts/pages.rhai` hands the page order to its `next_page(from)`, see the
 [script API](SCRIPT_API.md).
 
+## The installer package
+
+A build can also wrap the finished setup in the package an estate deploys:
+`--msi <file>` writes a `.msi` around the setup this build wrote, and it does so
+after the project's own command has had that setup, so the image inside the
+package is the one a machine will install. The package carries the setup as a
+stream of its own and runs it from an install action queued into the installation
+script, with `--silent --dir "<location>"`; the removal action runs the
+uninstaller the setup deployed. What else the package holds is the bookkeeping
+Windows Installer needs to treat the product as installed.
+
+The package decides where the product goes, because it also has to know where to
+remove it from: `INSTALLDIR` is `%ProgramFiles%\<name>` for a setup that asks for
+administrator rights and `%LOCALAPPDATA%\Programs\<name>` otherwise, and an
+administrator can name another directory on the `msiexec` command line. The
+package writes the directory it really used into a registry value of its own and
+searches for that value when the product is removed, so a package installed into
+a directory of the caller's choosing is still removed correctly. The product's
+own registration is the entry Windows shows; the package keeps its own out of
+that list. A newer package carries the same upgrade code as the older release and
+takes the older product away before it installs the new one, which is what makes
+it an upgrade rather than a second product beside the first.
+
+Two conditions come with that. The wrapped setup has to accept a windowless run
+(`advanced.silent_mode_support` and `advanced.uninstall_mode_support`), because
+the package drives it with no window at all: a project that never declared one is
+refused a package rather than given one that cannot install. And an
+administrative install (`msiexec /a`) lays the package out without running those
+actions, so it distributes nothing by itself.
+
 ## Tooling
 
 `nano-installer-cli` and `nano-installer-gui` are thin frontends over the same core inspection and

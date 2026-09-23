@@ -877,6 +877,29 @@ impl Fixture {
         build_project(request)
     }
 
+    /// Builds this project's setup together with the installer package around it.
+    ///
+    /// The package is what an estate deploys through Windows Installer, and it
+    /// carries the setup this build finishes.
+    fn build_package(&self, package: &Path) -> anyhow::Result<BuildResult> {
+        let mut request = BuildRequest::new(&self.project);
+        request.output = Some(self.setup.clone());
+        request.stub_directory = Some(self.stubs.clone());
+        request.msi = Some(package.to_path_buf());
+        build_project(request)
+    }
+
+    /// Names this case's product something no other case uses.
+    ///
+    /// A package identifies its product by codes this build derives from the
+    /// name, so two cases sharing a name would install the same product and
+    /// fight over it when the suite runs them at once.
+    fn uniquely_named(&self) -> anyhow::Result<String> {
+        let name = format!("E2eProbeMsi{}", self.id.replace('-', ""));
+        self.edit_config(|config| config["project"]["name"] = serde_json::json!(name))?;
+        Ok(name)
+    }
+
     /// Keeps the payload archive the project ships now.
     ///
     /// An update package is built against the release it replaces, so the case
@@ -1122,6 +1145,105 @@ fn run_expecting_failure(exe: &Path, destination: Option<&Path>) -> anyhow::Resu
         exe.display()
     );
     Ok(output)
+}
+
+/// Runs the installer Windows itself ships, which is what an estate deploys a
+/// package with and what takes one away again.
+///
+/// `/qn` is the unattended mode such an estate uses and `/norestart` keeps a
+/// package from rebooting the machine running the suite. A windowless run says
+/// nothing on its streams, so the log is what a failing case is read from and
+/// what the error carries.
+///
+/// Windows runs one installation at a time on a machine, so the cases that drive
+/// it take turns and a run another installation is already holding is tried
+/// again: 1618 is the Installer saying so, and it is not a failure of the package.
+fn run_msiexec(msi: &Path, action: &str, extra: &[String], log: &Path) -> anyhow::Result<Output> {
+    const ERROR_INSTALL_ALREADY_RUNNING: i32 = 1618;
+    let _installer = the_installer();
+    for _ in 0..30 {
+        let mut command = Command::new("msiexec.exe");
+        command
+            .arg(action)
+            .arg(msi)
+            .arg("/qn")
+            .arg("/norestart")
+            .arg("/l*v")
+            .arg(log);
+        for argument in extra {
+            command.arg(argument);
+        }
+        let output = command.output()?;
+        if output.status.code() == Some(ERROR_INSTALL_ALREADY_RUNNING) {
+            std::thread::sleep(Duration::from_millis(500));
+            continue;
+        }
+        anyhow::ensure!(
+            output.status.success(),
+            "msiexec {action} exited with {:?}\n{}",
+            output.status.code(),
+            log_tail(log)
+        );
+        return Ok(output);
+    }
+    anyhow::bail!("msiexec {action} never got the machine to itself")
+}
+
+/// Runs the installer Windows itself ships and expects it to refuse, which is
+/// how a package that is no longer installed answers.
+fn run_msiexec_expecting_failure(msi: &Path, action: &str, log: &Path) -> anyhow::Result<Output> {
+    let _installer = the_installer();
+    let output = Command::new("msiexec.exe")
+        .arg(action)
+        .arg(msi)
+        .arg("/qn")
+        .arg("/norestart")
+        .arg("/l*v")
+        .arg(log)
+        .output()?;
+    anyhow::ensure!(
+        !output.status.success(),
+        "msiexec {action} unexpectedly succeeded on {}",
+        msi.display()
+    );
+    Ok(output)
+}
+
+/// The Installer the machine runs, which only runs one installation at a time.
+///
+/// Two package cases driving it at once would have the second one refused with
+/// "another installation is already in progress" rather than with anything about
+/// the package under test, so they take this in turn however the suite happens
+/// to schedule them.
+static INSTALLER: Mutex<()> = Mutex::new(());
+
+fn the_installer() -> MutexGuard<'static, ()> {
+    INSTALLER.lock().unwrap_or_else(|error| error.into_inner())
+}
+
+/// The end of an Installer log, which is where a failed action is written down.
+fn log_tail(log: &Path) -> String {
+    // The Installer writes its log in the machine's own code page, so a product
+    // name outside it would fail a strict read.
+    let text = String::from_utf8_lossy(&std::fs::read(log).unwrap_or_default()).to_string();
+    let lines: Vec<&str> = text
+        .lines()
+        .filter(|line| {
+            line.contains("Return value")
+                || line.contains("error code is")
+                || line.contains("Error ")
+                || line.contains("Product:")
+                || line.contains("NanoInstaller")
+        })
+        .collect();
+    lines
+        .iter()
+        .rev()
+        .take(20)
+        .rev()
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Parses `reg query` output into its values.
@@ -1614,6 +1736,175 @@ fn a_built_setup_installs_its_payload_and_registers_an_uninstall_entry() -> anyh
         "the uninstall entry does not name the uninstaller: {uninstall_string}"
     );
     assert_eq!(entry["DisplayName"], "E2eProbe");
+    Ok(())
+}
+
+/// A package carries the setup and drives it with no window, so an estate that
+/// deploys through Windows Installer gets the product the setup installs, and
+/// taking the package away again takes the product with it.
+///
+/// The package decides where the product goes, so the case names a directory on
+/// the command line the way an administrator would: the removal has to find the
+/// product there rather than where the package would have put it by itself.
+#[test]
+fn a_package_installs_the_product_the_setup_carries_and_removes_it_again() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    let name = fixture.uniquely_named()?;
+    let package = fixture.case_path("E2eProbe.msi");
+    fixture.build_package(&package)?;
+    assert!(package.is_file(), "no package was written");
+
+    let install_log = fixture.case_path("package-install.log");
+    run_msiexec(
+        &package,
+        "/i",
+        &[format!("INSTALLDIR={}", fixture.destination.display())],
+        &install_log,
+    )?;
+
+    let destination = &fixture.destination;
+    assert!(
+        destination.join("E2eProbe.exe").is_file(),
+        "the package did not install the product"
+    );
+    assert!(
+        destination.join("uninst.exe").is_file(),
+        "the package did not deploy the uninstaller"
+    );
+    assert!(
+        destination.join("nano-installer-manifest.json").is_file(),
+        "the package did not install the product the setup knows about"
+    );
+    let entry = fixture
+        .read_uninstall_entry()?
+        .expect("the product registered itself");
+    assert_eq!(entry["DisplayName"], serde_json::json!(name));
+    // The registration points at the directory the package really used, so a
+    // trailing separator is the only difference a comparison may forgive.
+    let location = entry["InstallLocation"].as_str().unwrap_or_default();
+    assert_eq!(
+        Path::new(location.trim_end_matches('\\')),
+        destination,
+        "the product does not say where the package put it"
+    );
+    // What the package recorded is what its removal reads, so the directory it
+    // installed into has to be there whether or not the caller named one.
+    let tracking = read_registry_string(
+        &format!(r"HKCU\Software\nano-installer e2e\{name}"),
+        "InstallLocation",
+    )?;
+    assert!(
+        tracking
+            .as_deref()
+            .is_some_and(|value| value.starts_with(&destination.display().to_string())),
+        "the package did not record where it installed the product: {tracking:?}"
+    );
+
+    let uninstall_log = fixture.case_path("package-uninstall.log");
+    run_msiexec(&package, "/x", &[], &uninstall_log)?;
+    assert!(
+        !destination.exists(),
+        "the product is still on disk after the package was removed"
+    );
+    assert!(
+        fixture.read_uninstall_entry()?.is_none(),
+        "the product is still registered after the package was removed"
+    );
+    Ok(())
+}
+
+/// A newer package replaces the older product instead of sitting beside it.
+///
+/// The two versions carry the same upgrade code, which is what lets the newer
+/// one find the older one, and the older product is taken away before the newer
+/// setup runs: the setup installs over whatever it finds, so a removal that ran
+/// afterwards would take the new product away with the old one.
+#[test]
+fn a_newer_package_upgrades_the_product_the_older_one_installed() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    let name = fixture.uniquely_named()?;
+    let first = fixture.case_path("E2eProbe-1.msi");
+    let built = fixture.build_package(&first)?;
+    let upgrade_code = built.msi.expect("a package").upgrade_code.clone();
+    let install_log = fixture.case_path("first-install.log");
+    run_msiexec(
+        &first,
+        "/i",
+        &[format!("INSTALLDIR={}", fixture.destination.display())],
+        &install_log,
+    )?;
+
+    fixture.edit_config(|config| config["project"]["version"] = serde_json::json!("1.0.1"))?;
+    let second = fixture.case_path("E2eProbe-2.msi");
+    let rebuilt = fixture.build_package(&second)?;
+    let rebuilt = rebuilt.msi.expect("a package");
+    assert_eq!(
+        rebuilt.upgrade_code, upgrade_code,
+        "a new version has to keep the code that names the product across versions"
+    );
+    let upgrade_log = fixture.case_path("second-install.log");
+    run_msiexec(
+        &second,
+        "/i",
+        &[format!("INSTALLDIR={}", fixture.destination.display())],
+        &upgrade_log,
+    )?;
+
+    let entry = fixture
+        .read_uninstall_entry()?
+        .expect("the newer product registered itself");
+    assert_eq!(
+        entry["DisplayVersion"],
+        serde_json::json!("1.0.1"),
+        "the machine still holds the older product"
+    );
+    assert_eq!(entry["DisplayName"], serde_json::json!(name));
+    // The older product is gone rather than sitting beside the newer one: a
+    // package whose product is still installed answers a removal, and one whose
+    // product was taken away has nothing to remove.
+    run_msiexec_expecting_failure(&first, "/x", &fixture.case_path("first-uninstall.log"))?;
+    run_msiexec(
+        &second,
+        "/x",
+        &[],
+        &fixture.case_path("second-uninstall.log"),
+    )?;
+    assert!(
+        !fixture.destination.exists(),
+        "the upgraded product is still on disk after the package was removed"
+    );
+    Ok(())
+}
+
+/// A package drives the setup with no window, so a project that never declared
+/// a windowless flow has nothing for the package to run.
+///
+/// Refusing the build is what keeps a project from shipping a package that
+/// cannot install: the failure names the setting the project has to turn on.
+#[test]
+fn a_project_that_cannot_run_without_a_window_is_refused_a_package() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, false, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    let error = fixture
+        .build_package(&fixture.case_path("E2eProbe.msi"))
+        .expect_err("a project without a windowless flow cannot be packaged");
+    let text = format!("{error:#}");
+    assert!(
+        text.contains("silent_mode_support"),
+        "the failure does not name what the project is missing: {text}"
+    );
+    assert!(
+        !fixture.case_path("E2eProbe.msi").exists(),
+        "a refused build left a package behind"
+    );
     Ok(())
 }
 

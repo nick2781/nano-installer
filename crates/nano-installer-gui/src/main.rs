@@ -159,6 +159,7 @@ fn tr(language: UiLanguage, key: &str) -> &str {
             "stage_stub" => "Selecting runtime stub",
             "stage_packing" => "Packing project resources",
             "stage_resources" => "Writing icon and version resources",
+            "stage_packaging" => "Wrapping the setup in an installer package",
             "native_builder" => "Native x64 builder",
             "no_project_selected" => "No project selected",
             "language" => "Language",
@@ -263,6 +264,7 @@ fn tr(language: UiLanguage, key: &str) -> &str {
             "stage_stub" => "正在选择运行时 stub",
             "stage_packing" => "正在打包项目资源",
             "stage_resources" => "正在写入图标和版本资源",
+            "stage_packaging" => "正在把安装包封装成 MSI 安装包",
             "native_builder" => "Native x64 构建器",
             "no_project_selected" => "未选择项目",
             "language" => "界面语言",
@@ -1555,6 +1557,7 @@ fn stage_progress(stage: BuildStage) -> f32 {
         BuildStage::SelectingStub => 0.28,
         BuildStage::Packing => 0.52,
         BuildStage::WritingResources => 0.82,
+        BuildStage::Packaging => 0.92,
         BuildStage::Complete => 1.0,
     }
 }
@@ -1565,6 +1568,7 @@ fn stage_status(language: UiLanguage, stage: BuildStage) -> &'static str {
         BuildStage::SelectingStub => tr(language, "stage_stub"),
         BuildStage::Packing => tr(language, "stage_packing"),
         BuildStage::WritingResources => tr(language, "stage_resources"),
+        BuildStage::Packaging => tr(language, "stage_packaging"),
         BuildStage::Complete => tr(language, "build_complete"),
     }
 }
@@ -1667,6 +1671,7 @@ mod tests {
             BuildStage::SelectingStub,
             BuildStage::Packing,
             BuildStage::WritingResources,
+            BuildStage::Packaging,
             BuildStage::Complete,
         ];
         assert!(stages
@@ -2411,6 +2416,7 @@ mod tests {
             bundle_size: 1_024,
             output_size: 4_096,
             update: None,
+            msi: None,
         });
         draw_panels(&mut app, &context);
 

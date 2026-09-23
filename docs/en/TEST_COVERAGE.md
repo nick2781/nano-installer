@@ -3,7 +3,7 @@
 Every behaviour the documentation promises, and the automated case that holds it. A row names the
 cases that fail when that behaviour breaks; a behaviour with no row is one nobody is checking.
 
-`cargo test --locked --workspace` runs 340 cases: 249 in the core library, 55 that build a real
+`cargo test --locked --workspace` runs 354 cases: 260 in the core library, 58 that build a real
 setup and run it, 5 that read a project the way the builder does, 29 in the visual builder, and 2
 in the extraction runtimes. The setup-level cases need real runtime executables built first, which
 is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `target/e2e-report.txt`.
@@ -12,11 +12,11 @@ is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `targe
 
 | Layer | Cases | Proves | Cannot prove |
 | --- | --- | --- | --- |
-| Core library | 249 | what a page becomes — layers, coordinates, hit regions, text, and which system colour each of those takes while high contrast is on — what the bundle carries, what an install writes to disk and the registry, what each script primitive does and how a service is installed and deleted, what a script reads back off the page and off the run, and how the dependencies a project declares are found, fetched, checked and installed | that a packaged setup reaches any of it, and that an installed service then runs -- the program a service runs is the product's own, and no case can ship one |
-| Setup end to end | 55 | a built setup installed on the machine, its own window driven: payload bytes (a setup whose bytes changed refuses the install before it creates anything), manifest, the uninstall entry's own fields, shortcuts, autostart, project scripts, the helpers a script runs, the wizard window, a page hook sending it past a page and Back returning the way the user came, the clicks its own pages wait for, a wheel over a list, the card a script's messages and questions are answered on, the page's values reaching the script, which components a page and a project put in, every registry type a script names and the copy of a key
+| Core library | 260 | what a page becomes — layers, coordinates, hit regions, text, and which system colour each of those takes while high contrast is on — what the bundle carries, what an install writes to disk and the registry, what each script primitive does and how a service is installed and deleted, what a script reads back off the page and off the run, and how the dependencies a project declares are found, fetched, checked and installed | that a packaged setup reaches any of it, and that an installed service then runs -- the program a service runs is the product's own, and no case can ship one |
+| Setup end to end | 58 | a built setup installed on the machine, its own window driven: payload bytes (a setup whose bytes changed refuses the install before it creates anything), manifest, the uninstall entry's own fields, shortcuts, autostart, project scripts, the helpers a script runs, the wizard window, a page hook sending it past a page and Back returning the way the user came, the clicks its own pages wait for, a wheel over a list, the card a script's messages and questions are answered on, the page's values reaching the script, which components a page and a project put in, every registry type a script names and the copy of a key
   a view name selects, what a command a script ran wrote, the command a project runs on its finished setup and its
    uninstaller (which must succeed, or the file it refused is not left behind), and what only a moving pointer and a real keyboard
-  keyboard bring about -- the bitmaps hover and press swap in, the three standard cursor shapes, Tab walking the page's controls in the order the page declares them with Enter or Space acting on the one under the ring and either end wrapping round, a wizard painted with the machine's high-contrast scheme rather than the colours its pages declare, the language menu's arrow keys with Enter and Escape, the folder picker, and the dependencies a project declares -- one the machine is missing installed, one it already has left alone, one that cannot be installed stopping the run, and a download checked against the digest the project recorded, and the service a script installed really on the machine and gone again with the uninstall, and the log a windowless run writes -- to the file it was told to,
+  keyboard bring about -- the bitmaps hover and press swap in, the three standard cursor shapes, Tab walking the page's controls in the order the page declares them with Enter or Space acting on the one under the ring and either end wrapping round, a wizard painted with the machine's high-contrast scheme rather than the colours its pages declare, the language menu's arrow keys with Enter and Escape, the folder picker, and the dependencies a project declares -- one the machine is missing installed, one it already has left alone, one that cannot be installed stopping the run, and a download checked against the digest the project recorded, and the service a script installed really on the machine and gone again with the uninstall, the installer package a build wraps the setup in -- `msiexec` installing the product from it, taking it away again, replacing an older release, and a project that cannot run windowlessly being refused a package -- and the log a windowless run writes -- to the file it was told to,
   naming itself to its caller when the run fails | the two windows an input method draws itself; which field a directory chosen in the shell's folder dialog is written to; the cursor shape on a session that is showing no pointer, where that case prints its own skip, and Shift+Tab with a held Shift, which a posted key message cannot carry -- that direction is held by the core library's walk case instead |
 | Project inspection | 5 | the summary and the warning list the builder shows before a build | |
 | Visual builder | 29 | the window's own state, parameters, log and warnings | clicking the real controls |
@@ -175,6 +175,17 @@ setup-level cases prove the `scripts` directory and the tools directory survive 
 | icons, argument quoting, archive rejection | `window_icon_uses_the_brand_asset`, `command_arguments_are_quoted`, `rejects_unsafe_7z_paths`, `zip_backend_rejects_invalid_archive` |
 | a broken project file | `a_broken_project_file_is_reported_to_the_user` |
 
+## Installer packages
+
+| Behaviour | Cases |
+| --- | --- |
+| the package's own identity, the codes that survive a rebuild, and the name the Installer stores | `a_wrapper_carries_the_identity_the_project_declares`, `codes_stay_the_same_across_a_rebuild_and_the_upgrade_code_outlives_a_version`, `a_product_name_the_database_can_hold_comes_back_unchanged` |
+| the setup image the package carries, and the actions that install and remove the product in the order they run | `the_setup_the_package_carries_is_the_image_the_build_finished`, `the_package_installs_and_removes_the_product_in_the_order_it_declares` |
+| the search for an older release, and the removal of the product this package installed | `the_package_offers_itself_as_an_upgrade_of_the_versions_before_it` |
+| what Windows reads before it opens the package's tables | `the_package_summary_names_the_platform_and_the_language` |
+| a version, a name or a directory the Installer cannot work with is refused | `a_version_the_installer_cannot_compare_is_refused`, `a_product_name_that_cannot_name_a_directory_is_refused`, `a_name_too_long_for_a_short_name_carries_one_the_file_system_can_keep`, `a_directory_written_with_a_trailing_dot_component_is_the_directory_itself` |
+| a package installed, removed and upgraded by the installer Windows ships, and a project that cannot run windowlessly | `a_package_installs_the_product_the_setup_carries_and_removes_it_again`, `a_newer_package_upgrades_the_product_the_older_one_installed`, `a_project_that_cannot_run_without_a_window_is_refused_a_package` |
+
 ## What is still not covered by an automated case
 
 - **Windows 7 SP1.** The compatibility claims need a clean Windows 7 SP1 x64 machine, which this
@@ -203,6 +214,10 @@ setup-level cases prove the `scripts` directory and the tools directory survive 
   configuration the way the build would. That proves every construct was classified; it cannot prove
   a classification is right -- a command filed as a direct setting that really needs a script is a
   guide that misleads, and only someone migrating a real installer would find that out.
+- **A package installed for the whole machine.** The cases install for one user, which needs no
+  elevation, so what an elevated per-machine install does with the same package -- and whether an
+  estate's own tooling can remove it -- rests on the same actions running in the service context.
+  A signed package is the same kind of gap: the builder signs nothing.
 - **Script primitives that cannot be undone by a test:** `run_detached` deliberately outlives the
   run; `kill_process` ends a process the test did not start; `sleep_ms` has only elapsed time to
   assert on; `is_elevated` would only mirror the implementation.

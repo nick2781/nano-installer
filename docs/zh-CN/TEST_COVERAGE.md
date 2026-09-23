@@ -3,7 +3,7 @@
 文档承诺的每一条行为，以及守住它的那条自动化用例。表格里的每一行都列出了该行为失效时会失败的
 用例；没有出现在任何一行里的行为，就是没人看住的行为。
 
-`cargo test --locked --workspace` 会跑 340 条用例：核心库 249 条，真构建并运行安装包的 55 条，
+`cargo test --locked --workspace` 会跑 354 条用例：核心库 260 条，真构建并运行安装包的 58 条，
 按构建器的方式读工程的 5 条，可视化构建器 29 条，解压运行时 2 条。安装包级用例需要真实的运行时
 可执行文件，`.\scripts\run_e2e_setup.ps1` 会先把它们构建出来再跑，并把整次运行写进
 `target/e2e-report.txt`。
@@ -12,8 +12,8 @@
 
 | 层 | 用例数 | 能证明 | 不能证明 |
 | --- | --- | --- | --- |
-| 核心库 | 249 | 一页会变成什么——图层、坐标、命中区域、文字，以及高对比打开时这些颜色换成系统配色里的哪一个；捆绑数据里装了什么；安装往磁盘和注册表写了什么；每个脚本原语做什么、一个服务怎么装上和怎么删掉；脚本从页面上取回什么、脚本读到的组件选择；工程声明的依赖怎么被查出来、下载下来、校验并装上，以及哪些情形会被拒绝 | 打包出来的安装包能走到这些代码；服务装上之后真的跑起来——服务程序是产品自己的，用例带不了 |
-| 安装包级 | 55 | 构建好的安装包在这台机器上装了一遍，它的窗口也是真的被驱动起来的：payload 字节（被改动过的安装包会连目标目录都不建就拒绝这次安装）、manifest、卸载项自己那组字段、快捷方式、自启动、项目脚本、脚本要跑的辅助程序、向导窗口、页面钩子把向导跳过一页并按来路退回、它自己页面上那些要等点击的行为、在列表上滚动滚轮、脚本的提示与提问所画的那张由点击作答的卡片、页面上的取值交到脚本手里、勾选决定这次装哪些组件、脚本按类型写下的每个注册表值以及视图名选中的是哪一份拷贝、
+| 核心库 | 260 | 一页会变成什么——图层、坐标、命中区域、文字，以及高对比打开时这些颜色换成系统配色里的哪一个；捆绑数据里装了什么；安装往磁盘和注册表写了什么；每个脚本原语做什么、一个服务怎么装上和怎么删掉；脚本从页面上取回什么、脚本读到的组件选择；工程声明的依赖怎么被查出来、下载下来、校验并装上，以及哪些情形会被拒绝 | 打包出来的安装包能走到这些代码；服务装上之后真的跑起来——服务程序是产品自己的，用例带不了 |
+| 安装包级 | 58 | 构建好的安装包在这台机器上装了一遍，它的窗口也是真的被驱动起来的：payload 字节（被改动过的安装包会连目标目录都不建就拒绝这次安装）、manifest、卸载项自己那组字段、快捷方式、自启动、项目脚本、脚本要跑的辅助程序、向导窗口、页面钩子把向导跳过一页并按来路退回、它自己页面上那些要等点击的行为、在列表上滚动滚轮、脚本的提示与提问所画的那张由点击作答的卡片、页面上的取值交到脚本手里、勾选决定这次装哪些组件、脚本按类型写下的每个注册表值以及视图名选中的是哪一份拷贝、
   脚本跑过的命令留下的退出码与两个输出流，工程自己的命令在成品上跑过一遍（它拒绝的成品不会留下），
   工程声明的依赖真的被问了一遍——缺的装上、已经有的不再装一遍、装不上的让整次安装停下、下载来的程序对不上哈希就一次都不跑——以及只有指针与键盘真的动起来才会发生的事——悬停与按下换上的状态位图、三种标准光标形状、用 Tab 按版面顺序走一遍页面上的控件并按 Enter 或空格执行环底下的那一个（环画在控件自己的矩形上，走到头绕回另一头）、开着高对比时按系统配色而不是版面声明的颜色画出来的向导、语言菜单的上下键与 Enter/Escape、选目录对话框、脚本装上的服务在机器上确实存在并随卸载消失，以及一次无窗口运行写下的日志——写到点名的文件、失败时把它的路径交回给调用方 | 输入法自己画出来的那两个窗口；在外壳的选目录对话框里选定一个目录之后会写进哪个输入框；不显示指针的会话上光标长什么样——那里这条用例打印自己的跳过理由——以及按住 Shift 的 Shift+Tab：窗口用例发的是按键消息，消息带不上修饰键，往回走那一半由核心库那条走位用例守着 |
 | 工程检查 | 5 | 构建之前窗口会显示的那份摘要与告警列表 | |
@@ -173,6 +173,17 @@
 | 图标、参数引号、归档拒绝 | `window_icon_uses_the_brand_asset`、`command_arguments_are_quoted`、`rejects_unsafe_7z_paths`、`zip_backend_rejects_invalid_archive` |
 | 坏掉的工程文件 | `a_broken_project_file_is_reported_to_the_user` |
 
+## 安装包外的 MSI
+
+| 行为 | 用例 |
+| --- | --- |
+| 包自己的身份、跨重建不变的代码，以及安装程序存下来的那个产品名 | `a_wrapper_carries_the_identity_the_project_declares`、`codes_stay_the_same_across_a_rebuild_and_the_upgrade_code_outlives_a_version`、`a_product_name_the_database_can_hold_comes_back_unchanged` |
+| 包里带的安装包镜像，以及装与卸两条动作的先后 | `the_setup_the_package_carries_is_the_image_the_build_finished`、`the_package_installs_and_removes_the_product_in_the_order_it_declares` |
+| 对旧版本的搜索，以及收回这个包装出来的那份产品 | `the_package_offers_itself_as_an_upgrade_of_the_versions_before_it` |
+| Windows 打开包里的表之前先读的那些东西 | `the_package_summary_names_the_platform_and_the_language` |
+| 读不出的版本号、不能当目录的产品名、以及目录尾随的点组件都会被处理 | `a_version_the_installer_cannot_compare_is_refused`、`a_product_name_that_cannot_name_a_directory_is_refused`、`a_name_too_long_for_a_short_name_carries_one_the_file_system_can_keep`、`a_directory_written_with_a_trailing_dot_component_is_the_directory_itself` |
+| 用 Windows 自带的安装程序装、卸、升级，以及不支持无窗口运行的工程 | `a_package_installs_the_product_the_setup_carries_and_removes_it_again`、`a_newer_package_upgrades_the_product_the_older_one_installed`、`a_project_that_cannot_run_without_a_window_is_refused_a_package` |
+
 ## 目前仍没有被自动化用例覆盖的部分
 
 - **Windows 7 SP1。** 兼容性声明需要一台干净的 Windows 7 SP1 x64 机器，本项目没有这个环境。见
@@ -193,5 +204,8 @@
   命令表，要求迁移示例用到的每条构造都有一行、点名它会变成什么，两份语言必须逐条一致；构建器那一侧
   另有一条用例，要求示例配置过一遍配置审计。这些只证明每条构造都被分过类，证明不了分类本身对不对
   ——某个命令判成了原样对应，而它其实得写成脚本，只有照着成品搬一遍的人才会发现。
+- **装给整台机器的 MSI。** 用例装的是单个用户的那条路，不需要提权，所以同一个包在提权后装给整机
+  会怎样、企业的分发工具能不能把它卸掉，靠的是同一批动作在服务上下文里跑；签名也是同一类空白：
+  构建器自己不签名。
 - **测试无法收场的脚本原语：** `run_detached` 有意活得比这次运行长；`kill_process` 会结束一个
   不是测试启动的进程；`sleep_ms` 只能拿墙上时间做断言；`is_elevated` 的期望值只能照抄实现。

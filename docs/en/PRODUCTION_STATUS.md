@@ -173,7 +173,17 @@ files and registry entries, so validate them in a disposable virtual machine onl
   runs. What the setup itself carries is checked too: every bundle entry is read against the SHA-256
   the build recorded, so a setup damaged after the build is refused by entry name and nothing is
   created on the machine at all.
-  Seventeen of its fifty-five cases open the wizard window and drive it: one measures the client
+- A build can wrap the finished setup in the installer package an estate deploys: `--msi` writes a
+  `.msi` around the setup this build wrote, and the package installs that setup with no window and
+  removes the product through the uninstaller it deployed. The package was driven with the installer
+  Windows itself ships on the machine that built it: `msiexec /i <package> /qn INSTALLDIR=<directory>`
+  exited 0 and left the product exe, the uninstaller and the manifest in that directory with the
+  product's own uninstall entry naming it; `msiexec /x <package> /qn` exited 0 and left neither the
+  directory nor the entry. A second package built from the same project at a higher version upgraded
+  what the first one installed -- the entry reported the new version, the older package had nothing
+  left to remove, and the newer one cleaned up completely. A project that never declared a windowless
+  run is refused a package, by name of the setting it is missing.
+  Seventeen of its fifty-eight cases open the wizard window and drive it: one measures the client
   area it drew, one walks the page actions a project declares, one stops a running task from a cancel
   button, one types a directory into the field a page asks for and starts the install with it, one
   clicks the row a radio group's install button waits for, one rolls the wheel over a list and
@@ -278,6 +288,10 @@ Until that run happens, the automated results are what there is: they hold on Wi
 Windows 7 SP1 nothing has been observed.
 
 ## Known limitations
+
+- The installer package is not signed either, so SmartScreen still warns about an unknown publisher;
+  installing it for the whole machine needs an elevated session, which Windows Installer refuses
+  rather than prompts for under `/qn`.
 
 - The runtime stubs embed the Rhai engine, which raised each stub from roughly 0.57-0.66 MB to
   about 1.8-1.9 MB.

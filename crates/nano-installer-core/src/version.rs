@@ -173,6 +173,17 @@ pub(crate) fn validate_version(value: &str) -> Result<()> {
     parse_version(value).map(|_| ())
 }
 
+/// The form of a version Windows Installer compares and reports.
+///
+/// An installer package carries `major.minor.build` and reads nothing else, so a
+/// release suffix and a fourth field are dropped here rather than refused: a
+/// project that versions itself `2026.9.17-r2` still has a package version, and
+/// dropping the suffix is what the PE version resource already does with it.
+pub(crate) fn installer_version(value: &str) -> Result<String> {
+    let fields = parse_version(value)?;
+    Ok(format!("{}.{}.{}", fields[0], fields[1], fields[2]))
+}
+
 fn begin_block(buffer: &mut Vec<u8>, value_length: u16, value_type: u16, key: &str) -> usize {
     let start = buffer.len();
     write_u16(buffer, 0);

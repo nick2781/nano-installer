@@ -9,6 +9,7 @@ mod icon;
 mod install;
 mod install_log;
 mod manifest;
+mod msi;
 mod net;
 mod script;
 mod service;
@@ -1098,6 +1099,13 @@ pub struct BuildRequest {
     /// release and installs over exactly it, so it is a fraction of the full
     /// setup. The project's own payload stays the source of the new version.
     pub delta_from: Option<PathBuf>,
+    /// Where to write the installer package that wraps the finished setup, when
+    /// this build is asked for one.
+    ///
+    /// The package is written after the project's own command has had the setup
+    /// -- signing is what that command is for -- so the image it carries is the
+    /// one a machine will install.
+    pub msi: Option<PathBuf>,
 }
 
 impl BuildRequest {
@@ -1107,6 +1115,7 @@ impl BuildRequest {
             output: None,
             stub_directory: None,
             delta_from: None,
+            msi: None,
         }
     }
 }
@@ -1165,6 +1174,8 @@ pub enum BuildStage {
     SelectingStub,
     Packing,
     WritingResources,
+    /// Wrapping the finished setup in the package an administrator deploys.
+    Packaging,
     Complete,
 }
 
@@ -1182,6 +1193,25 @@ pub struct BuildResult {
     pub output_size: u64,
     /// What building an update package came to, and `None` for a full setup.
     pub update: Option<UpdateSummary>,
+    /// What wrapping the setup in an installer package came to, and `None` for
+    /// a build that was not asked for one.
+    pub msi: Option<MsiSummary>,
+}
+
+/// What an installer package around a finished setup came to.
+#[derive(Clone, Debug)]
+pub struct MsiSummary {
+    pub output_path: PathBuf,
+    pub output_size: u64,
+    /// The code that names this version of the product to Windows Installer.
+    pub product_code: String,
+    /// The code that names the product across versions, which is what makes a
+    /// newer package upgrade an older one.
+    pub upgrade_code: String,
+    /// The directory the package installs into unless a caller names another.
+    pub install_directory: String,
+    /// Whether the package installs for the machine or for one user.
+    pub per_machine: bool,
 }
 
 pub fn inspect_project(project: impl AsRef<Path>) -> Result<ProjectSummary> {
@@ -1559,6 +1589,64 @@ pub fn build_project_with_progress(
         outcome?;
     }
     let output_size = std::fs::metadata(output)?.len();
+    // An installer package wraps the setup the project's own command has just
+    // had, so what it carries is the file a machine will install.
+    let mut msi = None;
+    if let Some(msi_output) = request.msi {
+        for key in ["silent_mode_support", "uninstall_mode_support"] {
+            if config["advanced"][key].as_bool() != Some(true) {
+                bail!(
+                    "an installer package drives the setup with no window, which this project does \
+                     not support: set advanced.{key} to true in installer_config.json"
+                );
+            }
+        }
+        progress(BuildEvent {
+            stage: BuildStage::Packaging,
+            message: format!("Wrapping the setup in {}", msi_output.display()),
+        });
+        let wrapped = msi::write_wrapper(&msi::Wrapper {
+            setup: output,
+            output: &msi_output,
+            product_name: &summary.project_name,
+            product_version: &summary.project_version,
+            manufacturer: config["project"]["publisher"]
+                .as_str()
+                .unwrap_or("nano-installer"),
+            locale: &summary.default_locale,
+            uninstaller_name,
+            require_admin: summary.require_admin,
+        })?;
+        progress(BuildEvent {
+            stage: BuildStage::Packaging,
+            message: format!(
+                "Installer package: {} ({}, {}, product code {})",
+                wrapped.output.display(),
+                format_build_size(wrapped.size),
+                if wrapped.per_machine {
+                    "for the machine"
+                } else {
+                    "for one user"
+                },
+                wrapped.product_code
+            ),
+        });
+        progress(BuildEvent {
+            stage: BuildStage::Packaging,
+            message: format!(
+                "The package installs into {} unless a caller names another directory",
+                wrapped.install_directory
+            ),
+        });
+        msi = Some(MsiSummary {
+            output_path: wrapped.output,
+            output_size: wrapped.size,
+            product_code: wrapped.product_code,
+            upgrade_code: wrapped.upgrade_code,
+            install_directory: wrapped.install_directory,
+            per_machine: wrapped.per_machine,
+        });
+    }
     progress(BuildEvent {
         stage: BuildStage::Complete,
         message: format!("Created {}", output.display()),
@@ -1569,6 +1657,7 @@ pub fn build_project_with_progress(
         bundle_size: bundle.len() as u64,
         output_size,
         update,
+        msi,
     })
 }
 

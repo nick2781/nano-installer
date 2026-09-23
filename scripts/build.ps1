@@ -1,7 +1,9 @@
 param(
     [string]$Project,
     [string]$Toolchain = "nightly-2025-11-08",
-    [string]$Output
+    [string]$Output,
+    # Also write the installer package an estate deploys around the setup.
+    [switch]$Msi
 )
 
 $ErrorActionPreference = "Stop"
@@ -119,8 +121,14 @@ try {
         } else {
             Join-Path (Join-Path $projectPath "dist") $config.output.installer_name
         }
+        $buildArguments = @("build", "--project", $projectPath, "--output", $outputPath)
+        $packagePath = $null
+        if ($Msi) {
+            $packagePath = [System.IO.Path]::ChangeExtension($outputPath, ".msi")
+            $buildArguments += @("--msi", $packagePath)
+        }
         Invoke-Checked {
-            & $builder build --project $projectPath --output $outputPath
+            & $builder @buildArguments
         } "Native setup build"
         & (Join-Path $PSScriptRoot "audit_embedded_uninstaller.ps1") `
             -Setup $outputPath `
@@ -135,6 +143,9 @@ try {
             -ExpectDpiAware $(if ($config.ui.dpi_aware -eq $false) { "false" } else { "true" })
         $auditFiles += $outputPath
         Write-Output "Native Win7+ setup: $outputPath"
+        if ($packagePath) {
+            Write-Output "Native Win7+ installer package: $packagePath"
+        }
     }
 
     & (Join-Path $PSScriptRoot "audit_win7_imports.ps1") -File $auditFiles

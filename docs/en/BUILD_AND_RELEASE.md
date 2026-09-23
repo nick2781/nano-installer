@@ -36,7 +36,8 @@ so a setup that silently lost its elevation requirement fails the build instead 
 
 The release workflow builds the builder, the GUI, and the runtimes, then uploads the five
 executables as separate release assets. It does not produce an archive and does not build or publish
-the TapTap example setup. Pass `-Project` locally to generate an example setup, so you can validate
+the TapTap example setup. Pass `-Project` locally to generate an example setup, and `-Msi` to also write the
+installer package an estate deploys beside it, so you can validate, so you can validate
 the payload, layout, and bundle; the script also extracts the project's `uninst.exe` and audits its
 Windows 7 imports and version resource on its own.
 
@@ -105,7 +106,7 @@ CI is where it earns its keep.
 ## Builder arguments
 
 ```text
-nano-installer-native-x64.exe build --project <dir> [--output <exe>] [--stubs <dir>] [--delta-from <archive>]
+nano-installer-native-x64.exe build --project <dir> [--output <exe>] [--stubs <dir>] [--delta-from <archive>] [--msi <package>]
 ```
 
 - `--project` is required.
@@ -113,6 +114,7 @@ nano-installer-native-x64.exe build --project <dir> [--output <exe>] [--stubs <d
 - `--stubs` points at a directory holding the three runtime executables.
 - `--delta-from` names an earlier release's payload archive and builds an update package
   instead of a full setup; see below.
+- `--msi` writes the installer package an estate deploys around the finished setup.
 - `NANO_INSTALLER_NATIVE_STUB_DIR` overrides the runtime search directory.
 
 ## Build time and memory
@@ -178,6 +180,37 @@ framework follows the same line, so there is no "check for updates" switch in th
 A project that wants automatic updates builds the loop out of the primitives it already has:
 `download_file_with_hash` fetches the new setup and checks its digest, `run_command` runs it
 without a window, and the version in the manifest says which release the machine holds.
+
+## Installer packages
+
+```text
+nano-installer-native-x64.exe build --project <dir> --msi <package.msi>
+```
+
+`--msi` wraps the setup this build finishes in the package an estate deploys
+through Windows Installer: Group Policy, Intune or Configuration Manager. The
+package is written after the project's own command has had the setup, so the
+image it carries is signed exactly when the setup is signed, and the build
+reports the package's product code and the directory it installs into.
+
+```powershell
+# Install without a window, into a directory of your choosing
+msiexec /i TapTap.msi /qn /norestart INSTALLDIR="D:\Programs\TapTap"
+# Remove it again; the package finds the product where it put it
+msiexec /x TapTap.msi /qn /norestart
+```
+
+The package installs for the whole machine when the project asks for
+administrator rights (`install.require_admin`) and for the calling user
+otherwise; with no directory of its own it installs into
+`%ProgramFiles%\<name>` or `%LOCALAPPDATA%\Programs\<name>`. A newer package
+upgrades the release an older one installed, and a project that does not support
+a windowless run is refused a package rather than given one that cannot install.
+
+An administrative install (`msiexec /a`) lays the image out without installing
+the product: the package is a delivery vehicle for the setup, not a second
+installation of it. `BuildRequest.msi` and `BuildResult.msi` are the same thing
+through the API.
 
 ## Signing
 

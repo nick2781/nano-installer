@@ -33,6 +33,10 @@ The example writes its own payload, so you get `examples/TapTap/dist/TapTap_Setu
 at `examples/TapTap/payload/app.7z` is not stored in the repository, so put a 7z archive there
 before you build.
 
+Add `--msi dist\\TapTap.msi` to the builder, or the same line without `--msi` and then a
+second build, to also get the installer package an estate deploys through Windows Installer;
+[build and release](BUILD_AND_RELEASE.md#installer-packages) says what it does.
+
 Prefer a visual workflow? Run `target/release/nano-installer-gui-x64.exe`, open the project folder,
 and press **Build setup**. You get the same result, because the GUI drives the same build engine.
 See the [visual builder](GUI.md).

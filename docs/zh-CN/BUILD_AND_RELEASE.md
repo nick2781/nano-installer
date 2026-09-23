@@ -31,7 +31,8 @@ target/release/
 DPI 行为是否与项目配置一致，所以悄悄丢掉提权声明的安装包会让构建失败。
 
 发布流程会构建构建器、GUI 和运行时，把 5 个可执行文件各自作为 release asset 上传；它不生成压缩
-包，也不构建或发布 TapTap 示例安装包。本地显式传 `-Project` 才会生成示例安装包，用于验证
+包，也不构建或发布 TapTap 示例安装包。本地显式传 `-Project` 才会生成示例安装包，再加 `-Msi` 就会在它旁边多写出一个企业按 MSI
+分发的包，用于验证
 payload、布局与 bundle；脚本还会取出项目化的 `uninst.exe`，单独审计它的 Windows 7 导入与版本
 资源。
 
@@ -90,13 +91,14 @@ release 正文。`scripts/audit_script_encoding.ps1` 会在每次构建开始时
 ## 构建器参数
 
 ```text
-nano-installer-native-x64.exe build --project <dir> [--output <exe>] [--stubs <dir>] [--delta-from <archive>]
+nano-installer-native-x64.exe build --project <dir> [--output <exe>] [--stubs <dir>] [--delta-from <archive>] [--msi <package>]
 ```
 
 - `--project` 必需。
 - `--output` 可选，默认输出到项目内的 `dist/<output.installer_name>`。
 - `--stubs` 指向包含三个运行时的目录。
 - `--delta-from` 点名上一版的 payload 归档，构建的是更新包而不是完整安装包，见下一节。
+- `--msi` 把做完的安装包封成企业分发的那个 MSI 包。
 - `NANO_INSTALLER_NATIVE_STUB_DIR` 可以覆盖运行时搜索目录。
 
 ## 构建时间与内存
@@ -152,6 +154,30 @@ nano-installer-native-x64.exe build --project <dir> --delta-from <上一版的 p
 去问新版本，然后运行一个新的安装包。这个框架照同一条线走，所以配置里没有「检查更新」的开关。
 要做自动更新的工程拿手上的原语自己搭：用 `download_file_with_hash` 取回新安装包并核对摘要，
 用 `run_command` 把它静默跑起来；manifest 里的版本号就是机器上装的是哪一版的依据。
+
+## 安装包外的 MSI
+
+```text
+nano-installer-native-x64.exe build --project <目录> --msi <安装包.msi>
+```
+
+`--msi` 把这次构建做完的安装包封成企业按 MSI 分发的那个包，域策略、Intune、Configuration Manager
+都能直接推。封包发生在工程自己的命令处理过安装包之后，所以安装包签过名，包里带的镜像就是签过名的
+那一份；构建日志会报出这个包的产品码和它默认装到哪个目录。
+
+```powershell
+# 无窗口装到指定目录
+msiexec /i TapTap.msi /qn /norestart INSTALLDIR="D:\Programs\TapTap"
+# 再卸掉；包会到它自己记下的位置去找产品
+msiexec /x TapTap.msi /qn /norestart
+```
+
+工程要求管理员权限（`install.require_admin`）时装给整台机器，否则装给调用它的那个用户；不另指目录
+时，落点是 `%ProgramFiles%\<名字>` 或 `%LOCALAPPDATA%\Programs\<名字>`。新版本的 MSI 会升级旧
+版本 MSI 装出来的那份产品；不支持无窗口运行的工程会被拒绝出包，而不是拿到一个装不上的包。
+
+管理安装（`msiexec /a`）只把包摊开、不装产品：这个 MSI 是安装包的投放载体，不是它的第二份安装。
+通过 API 用的是同一件事：`BuildRequest.msi` 与 `BuildResult.msi`。
 
 ## 签名
 

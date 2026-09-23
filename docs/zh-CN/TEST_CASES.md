@@ -37,6 +37,7 @@ Rust doc comment，再退回用例名。
 | `a_dialog_button_is_drawn_from_the_question_rather_than_the_layout` | 同一份对话框版面服务所有问题，按钮上的字来自对话框状态本身，也就是问题、确认和取消三个角色；对话框没提供文字的角色不显示内容，版面里写死的占位文字也不会顶上来。 |
 | `a_dialog_covers_the_page_without_a_focus_ring_behind_it` | 对话框开着的时候页面照旧画在它底下，但不画焦点环：这一段键盘归对话框，页面上的环会指向一个按下去不起作用的地方。比较开对话框前后的图层，少的那一层正是环。 |
 | `a_dialog_is_drawn_over_the_page_and_centred` | 对话框画在页面之上，比页面小时居中放置，它自己的版面因此可以用普通坐标系；画出来的问题文字来自对话框，而不是版面里的占位文字。 |
+| `a_directory_written_with_a_trailing_dot_component_is_the_directory_itself` | 包把目录交过来时写的是 `"<目录>\."`（目录属性格式化出来以反斜杠结尾，反斜杠加引号在命令行解析里是转义引号）：这个路径与不带点的那一个指同一个目录，运行记录下来的也是不带点的那一个；只写了空白的那种路径照旧被拒绝。 |
 | `a_disabled_button_registers_no_click_and_no_hover` | 条件不满足时按钮是惰性的，既不登记点击区域也不登记悬停区域；条件满足后恢复成它声明的动作，区域就是布局给它的那个矩形。 |
 | `a_display_scales_the_layout_by_its_own_dpi` | 开着 DPI 感知时，96 DPI 是 1.0 倍，144 和 192 DPI 分别是 1.5 和 2.0 倍，120 DPI 是 1.25 倍但仍取 1x 素材。关掉 DPI 感知的工程不管落在什么显示器上都留在 96 DPI 基准，缩放交给外壳去做。 |
 | `a_double_click_selects_the_word_under_the_pointer` | 双击选中指针下的那个词：字母和数字连成一段，路径分隔符单独一个，空白按一段算，下划线算词的一部分，点在文本之外没有东西可选。 |
@@ -64,9 +65,12 @@ Rust doc comment，再退回用例名。
 | `a_language_menu_lists_its_options_and_marks_the_one_in_use` | 展开的语言菜单按选项一行一个地画在页面之上，当前语言那一行填上选中底色，`visible="false"` 的选项不出现在列表里；点某一行会给出切换到那个语言的区域。 |
 | `a_layout_picks_the_image_density_the_display_asks_for` | 版面只点一个文件名，由运行时选版本：低密度显示器用 1x，高密度用 `@2x`。版面直接写 `@2x` 的文件名也会被归一化，只发布其中一个版本时退回另一个。 |
 | `a_link_the_project_does_not_configure_stays_plain_text` | 指南的解析顺序最后一条是解析不到目标的链接保持普通文字：字照常显示，点了什么也不发生，标签不会因此画不出来。 |
+| `a_name_too_long_for_a_short_name_carries_one_the_file_system_can_keep` | 产品名太长或不是拉丁字母时，安装目录声明成「短名|长名」：短名由名字里的 ASCII 字母数字生成、两个字符的标记取名字里的数字（没有数字就取摘要），产品名照原样跟在竖线后面；Windows 留给设备的那些名字（`CON` 等）也会拿到短名；同一个名字每次都得到同一个短名。 |
 | `a_nested_container_reports_the_extent_its_children_need` | 没声明尺寸的面板有多大由内容决定：沿自己的轴把子项和间距相加，垂直于轴取最大的子项，自己的内边距只算一次。外层容器用同样的量法放置它，版面不必给包装层声明尺寸。 |
+| `a_newer_package_upgrades_the_product_the_older_one_installed` | 新版本的包会升级旧版本装出来的产品：两个包共用同一个升级码而产品码不同，装上新版后卸载项报的是新版本号，再用旧包卸载已经什么都不做（旧产品被收走了），新包卸载后磁盘与注册表都干净。 |
 | `a_next_button_walks_to_the_page_the_project_declares` | 在真实窗口里点一次 `next`，向导要切到工程声明的第二页，再点 `back` 要回到第一页：两页声明的客户区不同，所以窗口尺寸就是证据。 |
 | `a_notice_hides_the_secondary_button` | 通知只有一个答复，版面里的取消键不画也不能点；换成提问时取消键又画回来，一份对话框版面因此可以两用。 |
+| `a_package_installs_the_product_the_setup_carries_and_removes_it_again` | 包把安装包跑起来并把它装的东西卸掉：`msiexec /i` 在命令行指定的目录里装出产品 exe、卸载程序和 manifest，产品自己的卸载项记着这个位置，包自己也记了一份；`msiexec /x` 之后目录与卸载项都不在。 |
 | `a_page_hook_sends_the_wizard_past_a_page_the_project_skips` | 在真窗口里点 `next`：钩子把向导从欢迎页直接送到选项页，中间那页许可协议（客户区 640x420）根本没出现；再点 `back` 回到的是用户来时的欢迎页，而不是钩子跳过的那一页——三页的客户区各不相同，窗口尺寸就是证据。 |
 | `a_page_hook_sends_the_wizard_to_the_page_it_names` | 钩子点名哪一页就走到哪一页，中间声明的页面跳过；钩子对这一次翻页不作声时，回到工程声明的下一页。 |
 | `a_page_hook_that_fails_is_reported_and_the_wizard_walks_on` | 钩子抛错时向导用工程自己的对话框版面把这件事报出来（用例点的是那张卡片上的按钮，进程因此退出，说明卡片确实在屏幕上），同时仍按声明的页序走到下一页：坏掉的钩子不会把人困在某一页。 |
@@ -81,8 +85,11 @@ Rust doc comment，再退回用例名。
 | `a_payload_without_the_declared_executable_is_refused` | `install.exe_name` 指明 payload 里必须有的那个可执行文件。部署一份不含它的 payload，装出来的产品启动不了，所以这次运行在写任何东西之前就停下来。 |
 | `a_placed_window_is_pulled_back_inside_its_work_area` | 建议位置已经放得下就不动它；探出工作区右边或下边的窗口被拉回来；来自左侧副显示器的负坐标不会把它顶出去；比工作区还大的窗口缩到工作区大小。 |
 | `a_plan_round_trips_through_its_json` | 更新计划写成 JSON 再读回来形状不变：来源归档名、这一版要装的版本、每条保留文件的路径、字节数和 64 位十六进制摘要都还在，路径仍按安装目录里的相对路径读。 |
+| `a_product_name_that_cannot_name_a_directory_is_refused` | 不能当目录用的产品名（空、空白、带 `/` 或 `:`）在构建期被拒绝，报出的原因说的是目录名，而不是等到装的时候失败。 |
+| `a_product_name_the_database_can_hold_comes_back_unchanged` | 产品名不在拉丁字母里时也存得住：包按工程默认语言的代码页存自己的文字，中文名写进 `Property` 表再读回来一字不差。 |
 | `a_progress_bar_paints_a_rounded_track_and_follows_the_live_value` | 进度条先画轨道，`border-radius` 把它修成胶囊形；版面里写的 `progress` 是空闲时的样子，任务上报的进度会盖住它，任务还没开始时只画轨道，没有任务时又回到版面写的值。 |
 | `a_project_bundles_the_tools_directory_it_names` | 工程把 `resources.tools_dir` 指到的目录整个打进安装包，子目录和它们的相对路径都在内：脚本拿到的是工程自己那份目录的布局，而不是一堆压平的文件名。 |
+| `a_project_that_cannot_run_without_a_window_is_refused_a_package` | 没声明无窗口运行的工程被拒绝出包：构建失败并点名 `advanced.silent_mode_support`，也不在磁盘上留下半成品包。 |
 | `a_project_that_did_not_opt_in_refuses_a_windowless_run` | 无窗口运行是工程自己的决定，从没声明过它的工程既不能被无人值守地安装，也不能被无人值守地卸载。 |
 | `a_project_that_names_no_tools_bundles_none` | 没写 `resources.tools_dir` 的工程，目录就算摆在自己的树里也不进包：安装包只带工程点名要的东西，不带碰巧放在旁边的东西。 |
 | `a_project_without_a_dialog_layout_still_opens` | 没带对话框版面的工程照样能用：页面自己画出来，调用方退回成不问直接关闭。 |
@@ -143,8 +150,10 @@ Rust doc comment，再退回用例名。
 | `a_tree_is_described_by_its_installed_paths` | 一棵目录树按它装到机器上的路径来描述，目录多深都一样，每个文件都带上自己的字节数和摘要。 |
 | `a_typed_value_wins_over_the_bound_default` | 绑定到工程文件的输入框先显示配置里的路径，但用户输入或选择过的值要一直留在屏幕上，`disk-free:` 绑定读的也是同一个输入框。 |
 | `a_validation_message_the_page_asks_for_is_reported` | 字段不合格时显示的文案也是页面文案，构建期和别的键一样逐语言比对：默认语言里有、某个语言文件里漏掉的那条会被报出来，而不是等用户看到一句没翻译好的提示。 |
+| `a_version_the_installer_cannot_compare_is_refused` | 读不出版本号的 `project.version`（空、`one.two`、`1.2.beta`）在构建期被拒绝；能读出来的部分按 Windows Installer 的三段式写进包里，发布后缀与第四段被丢掉。 |
 | `a_wheel_over_a_list_brings_the_rows_below_into_reach` | 在真实窗口里滚滚轮：先点列表下方那片本该被后面一行盖住的位置，接住点击的是页面自己放在那儿的按钮，说明被裁掉的行确实收不到点击；在列表上滚一格滚轮之后，点同一个位置落在刚滚进来的那一行上，改由它接管。滚轮消息带的是屏幕坐标，这条用例走的就是系统把消息交给窗口时的那条路。 |
 | `a_window_is_centred_and_clamped_to_its_work_area` | 窗口在工作区里居中，工作区不从原点开始时保留它自己的偏移；比桌面还大的版面被夹到桌面范围内而不是挂在边缘外，只有一个方向超出时另一个方向照常居中。 |
+| `a_wrapper_carries_the_identity_the_project_declares` | 包里的 `Property` 表写着产品名、版本、产品码、升级码与语言；不要求管理员权限的工程装给单个用户（`ALLUSERS=2`），并且把自己的登记从 Windows 的程序列表里藏起来，因为产品自己已经登记过一条。 |
 | `a_wrapping_row_gives_each_line_the_height_of_its_tallest_item` | 窗口变窄时换行行重新排布，下一行从上一行最高那个项的下方开始，再加上间距，高度不同的卡片因此不会互相压住。 |
 | `a_wrapping_row_starts_a_new_line_when_the_next_item_does_not_fit` | 放不下下一个项时换行行另起一行；整行放得下就不换；比行还宽的项自己占一行而不是被丢掉；空容器没有行。 |
 | `accepts_a_configuration_of_read_settings` | 一份只写了本项目真会读的设置的配置能通过检查：每个区块的合法键都试一遍，`links` 这种由工程自己命名的表不在管辖之内。 |
@@ -189,6 +198,7 @@ Rust doc comment，再退回用例名。
 | `bundle_index_reads_a_bundle_that_a_signature_follows` | 签过名的安装包还是安装包，而 Authenticode 把证书表追加在构建写下的所有内容之后，从文件最后几个字节读页脚的做法正好会把它报成根本没有捆绑数据。 |
 | `bundle_index_streams_entries_without_loading_the_payload` | 捆绑索引按条目读取：3MB 多的 payload 读回来和打包的字节完全一致，流式复制到磁盘的文件也逐字节相同，界面用的文件集里没有 payload，读不存在的条目报错且不留下文件。 |
 | `byte_index_walks_characters_not_bytes` | 字符下标转成字节下标时按字符边界走，多字节字符的字段里插入文字不会破坏前后字符；下标超出长度就停在末尾。 |
+| `codes_stay_the_same_across_a_rebuild_and_the_upgrade_code_outlives_a_version` | 同一个产品的两次构建得到相同的产品码与升级码（否则装过旧包的人既升不了级也卸不掉），版本变了产品码跟着变、升级码不变。 |
 | `command_arguments_are_quoted` | 命令行参数带空格时加上引号，参数里的引号被转义。 |
 | `configured_install_paths_are_expanded` | 配置里的默认路径写着环境变量，没展开的 `%LOCALAPPDATA%\Product` 不是绝对路径，跳过这一步的安装会在写下任何东西之前被拒绝。 |
 | `control_padding_insets_what_the_control_draws` | 控件上的 `padding` 把它的内容往里缩：暂停按钮写 `padding="25 0 0 0"`，标签就从自己流式槽位的顶部下移 25 像素，文字可用的高度也跟着变小。 |
@@ -315,6 +325,9 @@ Rust doc comment，再退回用例名。
 | `the_log_keeps_the_lines_the_view_scrolled_past` | 日志留着视图滚过去的那些行：保存日志写下的和全部复制复制的是同一份文本，导出的应该是整份日志，而不是面板一次能显示的那几行。用例把它填到远超一屏，检查每一行都还在、措辞没变、时间戳还是自己那个。 |
 | `the_manifest_reaches_a_real_executable` | 把清单写进一个真实的 PE 映像再读回来，内容与写进去的一致：提权级别和 DPI 相关的两个元素都在，整份 XML 仍然能被解析，Windows 不会因为清单坏了而拒绝加载。 |
 | `the_migrated_example_matches_the_schema` | 从 NSIS 迁过来的那份示例也要过这张表：读指南的人是照着它搬的，配置里留一个构建器根本不读的键，就等于教人写了一个没人理会的设置。 |
+| `the_package_installs_and_removes_the_product_in_the_order_it_declares` | `InstallExecuteSequence` 里的次序：旧版本先被收走、再 `InstallInitialize`，装产品的动作排在两者之后、`InstallFinalize` 之前，卸产品的动作在 `InstallFiles` 之后；装的动作只在不是卸载时跑，卸的动作只在卸载且包知道产品在哪时跑。 |
+| `the_package_offers_itself_as_an_upgrade_of_the_versions_before_it` | 升级表里只有一行：上限是本次构建的版本且不含等号，所以比它老的版本都会被发现；搜索写回的属性在 `SecureCustomProperties` 里，卸载那一列留空（写成空字符串会什么都不删）。 |
+| `the_package_summary_names_the_platform_and_the_language` | 摘要信息是 Windows 打开这个包时要读的东西：模板写着 `x64;1033`，标题写着产品名与版本，修订号是本次构建的包码，文件大小不为零。 |
 | `the_page_and_the_project_decide_which_components_install` | 一个组件装不装由三件事按顺序决定：写了 `required` 的一律装；页面有同名复选框就听页面的；页面没有这个复选框（静默安装也算）就听 `default`。用例把这三条各走一遍，包括用户清掉工程默认勾上的组件、以及勾不掉必需的组件。 |
 | `the_panels_draw_in_every_state_they_can_be_in` | 面板在指南说到的每种状态下都画得出来：这里没有一条用例能开窗口，状态是画在无窗口上下文里的——什么都没打开、检查过工程、构建进行中、构建失败、构建完成，两种界面语言都算。一个根本画不出来的状态会让用户看到空白窗口，而画的过程改掉要展示的状态则更糟。 |
 | `the_payload_format_selects_the_runtime_that_gets_embedded` | payload 格式决定嵌入哪个运行时。一直声称错误格式的安装包什么都装不上，因为那个 stub 读不懂归档。 |
@@ -326,6 +339,7 @@ Rust doc comment，再退回用例名。
 | `the_script_reports_the_image_it_runs_from` | 脚本报告自己运行的映像路径和它所在目录，值就是跑测试的那个可执行文件，而不是它读的捆绑数据。 |
 | `the_scheme_replaces_the_colours_a_page_declares` | 高对比把一页里声明的颜色换成系统配色：页面底色与向内长出来的描边、卡片填充与它自己的描边逐像素核对；卡片上的标签用页面文字色、按钮上的字用控件文字色，两者要分开——同一个主题可以给它们不同的颜色。 |
 | `the_setup_opens_its_wizard_window` | 不带 `--silent` 打开真实的安装包，等它的向导窗口画出来再量客户区，这是无窗口用例够不到的那道缝：版面加载失败、捆绑数据丢了资源、窗口类没注册，都可能让静默安装照样成功、让所有只读文件的检查通过。开窗口需要交互式的桌面会话，以服务方式启动的构建代理没有桌面，那种环境下用例跳过并说明原因；在本该有桌面的机器上，`NANO_INSTALLER_E2E_REQUIRE_DESKTOP` 会把这次跳过变成失败，因为从没跑过的检查不能算作跑过并通过。 |
+| `the_setup_the_package_carries_is_the_image_the_build_finished` | 包把安装包本体作为 `Binary` 表里的一个流带着，装产品的自定义动作指向这个流并带着静默参数，卸产品的动作是「按属性指路跑 exe」的那一类，另一个立即动作先把卸载程序的位置准备好。 |
 | `the_summary_reports_what_the_project_declares` | 窗口显示的摘要是工程声明的内容，包括工程可以省略的那些默认值。 |
 | `the_uninstall_entry_reports_the_size_the_quiet_uninstall_and_no_repair` | 卸载项的字段是 Windows 展示给用户的全部：静默卸载命令指向部署出来的卸载程序并带上静默参数；容量以 `REG_DWORD` 存下去，数值等于磁盘上这次安装占用的千字节（连卸载程序本身一起算）；`NoModify` 与 `NoRepair` 都是 `REG_DWORD` 1，Windows 因此不会摆出这个安装器根本没有的“修改”“修复”入口。 |
 | `the_values_the_page_holds_reach_the_script` | 用户在页面上留下的取值真的走进了脚本：用例往安装包窗口的输入框里敲进一个编号、点中单选组里版面没默认选中的那一行，再按下安装键，脚本把读到的值写进安装目录，几个值逐一对得上；其中两个问的是页面上没有的 id，读成空串。安装装得完说明不了什么，脚本用常量也装得完。 |

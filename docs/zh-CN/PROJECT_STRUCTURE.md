@@ -51,5 +51,7 @@ target/release/
     └── uninst-stub-native.exe
 ```
 
+构建时加上 `--msi`，会在安装包旁边多写出一个企业按 MSI 分发的包。
+
 `target/x86_64-win7-windows-msvc/` 只是 Cargo 的交叉编译缓存，不是另一套发布文件。示例安装包输出
 到 `examples/TapTap/dist/`，不算发布内容。

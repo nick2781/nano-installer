@@ -278,7 +278,13 @@ pub(super) fn resolve_install_destination(
         }
     };
     let expanded = shell::expand_environment(&raw.to_string_lossy())?;
-    let path = PathBuf::from(expanded.trim());
+    // A caller may name the directory with a trailing dot component, which is
+    // how a package hands one over: the text a directory property formats to
+    // ends in a backslash, and a backslash before a closing quote is an escaped
+    // quote to the command line parser, so the path arrives as `...\.`. Reading
+    // the path back from its parts drops that component, so the record of the
+    // run names the directory itself.
+    let path: PathBuf = PathBuf::from(expanded.trim()).components().collect();
     ensure!(
         !path.as_os_str().is_empty(),
         "the installation directory is empty"
@@ -3273,8 +3279,26 @@ mod tests {
         Ok(())
     }
 
-    /// A failure the wizard reports names the file the run was written to.
+    /// A directory a package hands over ends in a dot component, and it names the
+    /// same directory as one without it.
     ///
+    /// A package passes a directory as `"<path>\."`, because the text a directory
+    /// property formats to ends in a backslash and a backslash before a closing
+    /// quote is an escaped quote to the command line parser. What the run records
+    /// -- in its log, in the manifest's neighbours and in the registration Windows
+    /// reads -- should be the directory, not the way it was written.
+    #[test]
+    fn a_directory_written_with_a_trailing_dot_component_is_the_directory_itself() -> Result<()> {
+        let config = serde_json::json!({});
+        let resolved = resolve_install_destination(&config, Some(Path::new(r"D:\Install\Here\.")))?;
+        assert_eq!(resolved, PathBuf::from(r"D:\Install\Here"));
+        // A path that names nothing is still refused rather than read as the
+        // directory the program happens to run in.
+        assert!(resolve_install_destination(&config, Some(Path::new("  "))).is_err());
+        Ok(())
+    }
+
+    /// A failure the wizard reports names the file the run was written to.    ///
     /// This is the notice that stands between a user whose install failed and
     /// whoever has to explain why: the error says what went wrong, and the line
     /// under it is the one thing the user can send on. A run that succeeded is

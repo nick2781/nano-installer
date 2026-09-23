@@ -138,6 +138,14 @@
   的），两份语言对不上也失败。另有两条用例兜住示例本身：迁移工程的配置要过一遍构建器的配置审计，
   两个示例工程的脚本要能被运行时解析——它们不会被任何用例真的跑起来。
 
+- 安装包可以再封一层 MSI：构建时多给一个 `--msi <文件>`，就把刚做完的安装包封成 Windows Installer
+  的 `.msi`，域策略、Intune、SCCM 这些按 MSI 分发的环境可以直接推。MSI 里带的是这个安装包本身，
+  装的时候用静默参数把它跑起来，卸的时候跑它部署的卸载程序；装在哪个目录由 MSI 决定（要管理员权限
+  的工程装到 `%ProgramFiles%` 下，否则装到 `%LOCALAPPDATA%\Programs` 下），管理员也可以在命令行上
+  另指一个目录，卸载时 MSI 会按它自己记下的位置去卸。新版本的 MSI 先收掉旧版本再装，所以升版本是
+  升级而不是并存。工程没声明支持无窗口安装时，构建会拒绝出包并指出缺哪个设置。
+
+
 ### 改进
 
 - 构建器不再接受自己不读的配置键。以前能解析却什么都不做的设置会让构建失败，并指出该改用哪个
@@ -176,6 +184,12 @@
 ### 已知限制
 
 - 安装包尚未签名，Windows SmartScreen 仍会提示「未知发布者」。
+- MSI 的版本号只有 `主.次.构建` 三段（Windows Installer 自己只比较这三段），`project.version` 里的
+  修饰后缀与第四段在这里被丢掉，三段都必须能读成数字。
+- 装到 `%ProgramFiles%` 需要管理员权限：静默安装（`/qn`）在没有提权的会话里会被 Windows 拒绝，
+  这是 Windows Installer 的规则，不是安装包的问题。
+- `msiexec /a`（管理安装）只把 MSI 里的安装包解出来，不装产品；这个 MSI 是分发安装包的载体。
+- MSI 和安装包一样没有签名，Windows SmartScreen 仍会提示「未知发布者」。
 - 尚未在真实 Windows 7 SP1 虚拟机上完成端到端验收。
 - 脚本发出的提示与提问在没有对话框布局、静默运行或窗口还没建立时，仍旧是系统对话框。
 - 更新包只覆盖 payload 里的文件，layouts、assets、locales、scripts 始终随安装包一起走；改了页面的
@@ -187,6 +201,20 @@
 <!-- release-notes:end -->
 
 ### 技术细节
+
+- MSI 不手写复合文档，而是让 Windows Installer 自己的数据库引擎来写：`MsiOpenDatabase` 建库，包自己
+  用 `CREATE TABLE` 声明用到的那些表（创建模式建出来的库是空的，标准表并不在里面，`RegisterProduct`
+  这类标准动作会因为没有 `Media` 表而按 2228 失败），行用 `INSERT` 加参数记录写入，安装包本体作为
+  `Binary` 流用 `MsiViewModify` 放进表里，摘要信息走 `MsiGetSummaryInformation` 那组 API。安装与
+  卸载都是排进脚本的延迟动作（类型 2 与 50，各加 `+1024`；要管理员权限时再加 `+2048` 走不模拟用户
+  的系统上下文）。延迟动作拿不到任意属性，所以卸载程序的位置由一个立即动作（类型 51）从 MSI 自己
+  写下的 `InstallLocation` 值格式化出来，而那个值是安装时用 `[INSTALLDIR]` 格式化写进去的——
+  `INSTALLDIR` 在卸载时会回到包内默认值，只有记下来的位置才是产品真正所在。升级用同一张 `Upgrade`
+  表：`Remove` 列必须留空（写成空字符串会什么都不删），上限取当前版本且不含等号；`RemoveExistingProducts`
+  排在 `InstallInitialize` 之前，否则旧版本的卸载会把刚装上的新产品一起带走。产品自己那条卸载登记里
+  的 `InstallLocation` 因此不再带 `\.`：MSI 传目录时写的是 `"[INSTALLDIR]."`（目录属性格式化出来以
+  反斜杠结尾，而反斜杠加引号在命令行解析里是转义引号），运行时现在把路径按组件重读一遍去掉它。
+
 
 - 组件：配置新增 `components.items` 段（`id`、`payload`、`default`、`required` 四个键），
   `config::audit_components` 逐个条目校验，构建期报出缺 id 或 payload、重复的 id 或归档、指向
@@ -444,6 +472,23 @@
   卸载只收回这一个值、不动同一个键里别的产品；不写安装脚本的工程才由 `autostart` 配置代劳。
 
 ### 已验证
+
+- MSI 在真机上走通了整条路：探针工程构建出的 15.5 MiB 包，
+  `msiexec /i <包> /qn INSTALLDIR=<临时目录>` 退出码 0，产品落在指定目录（产品 exe、卸载程序、
+  manifest 都在），产品自己的卸载项写着 `DisplayVersion`，MSI 的跟踪值记下了真实位置；
+  `msiexec /x <包> /qn` 退出码 0，目录与卸载项都消失。
+- 升级也走通：同一工程把版本改成 `1.0.1` 再构建一个包（升级码相同、产品码不同），装完卸载项报
+  `1.0.1`，再用旧包 `msiexec /x` 已经什么都不做（旧产品确实被收走了），新包卸载后一切都清干净。
+- 不支持无窗口运行的工程被拒绝出包：构建失败并点名 `advanced.silent_mode_support`，也不留下半成品包。
+- `cargo test --locked --workspace --no-fail-fast`：354 条用例全部跑到，353 通过、0 失败、1 忽略
+  （核心库 260 含 1 忽略、安装包级 58 都在真机上装了一遍、工程检查 5、可视化构建器 29、解压运行时 2）；
+  本机桌面仍在锁屏，需要真实指针的那两条用例这次也没被选中过滤以外的失败影响到——它们与本次改动无关，
+  在解锁的会话与 CI runner 上通过。`cargo fmt --all -- --check`、
+  `cargo clippy --locked --workspace --all-targets -- -D warnings` 与六个审计脚本全部退出码 0，
+  `audit_case_descriptions.ps1` 报 `354 of 354 case(s) described`。
+- 三个端到端用例与十一条单元用例把上面这些固定下来：包的身份与自定义动作、安装包本体作为流、
+  动作顺序、升级表、库能存下的产品名与摘要信息、跨重建稳定的产品码与升级码、拒绝读不出版本的工程与
+  不能当目录的产品名、以及目录尾随 `.` 的规范化。
 
 - 迁移检查器在真脚本上跑了四种情形：`check_nsi_migration.ps1 -Script examples\nsis-migration\legacy.nsi`
   把 92 条语句判成 direct 31、script 43、manual 5、none 13、unknown 0，两份指南各 183 条命令逐条一致，

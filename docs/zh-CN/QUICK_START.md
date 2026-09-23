@@ -31,6 +31,9 @@ rustup toolchain install nightly-2025-11-08 --component rust-src,rustfmt,clippy
 示例项目会生成 `examples/TapTap/dist/TapTap_Setup.exe`。它的应用文件（payload）放在
 `examples/TapTap/payload/app.7z`，仓库里没有这个文件，构建之前你要自己放一个 7z 归档进去。
 
+在构建器上再加一个 `--msi dist\\TapTap.msi`，就能同时拿到企业按 MSI 分发的那个包；
+它做什么、怎么部署见[构建与发布](BUILD_AND_RELEASE.md#安装包外的-msi)。
+
 你也可以运行 `target/release/nano-installer-gui-x64.exe`，打开项目目录后点 **Build setup**。
 GUI 走的是同一套构建引擎，生成的安装包完全一致。详见[可视化构建](GUI.md)。
 

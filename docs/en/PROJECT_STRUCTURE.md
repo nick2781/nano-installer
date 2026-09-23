@@ -52,5 +52,8 @@ target/release/
     └── uninst-stub-native.exe
 ```
 
+A build asked for `--msi` writes the installer package an estate deploys beside the setup
+it wrapped.
+
 `target/x86_64-win7-windows-msvc/` is Cargo's cross-target cache, not a second set of release
 files. Example setups land in `examples/TapTap/dist/` and are not part of a release.

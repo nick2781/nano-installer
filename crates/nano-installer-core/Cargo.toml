@@ -46,6 +46,10 @@ features = [
     # A dependency the project cannot ship is fetched over the machine's own
     # HTTP stack, and what arrives is checked with the machine's own SHA-256.
     "Win32_Networking_WinHttp",
+    # The builder can wrap a finished setup in the installer package an
+    # administrator deploys, and a package is a database the installer's own
+    # engine writes.
+    "Win32_System_ApplicationInstallationAndServicing",
     "Win32_Security_Cryptography",
     "Win32_Security",
     "Win32_Storage_FileSystem",
