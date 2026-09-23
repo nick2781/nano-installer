@@ -61,6 +61,14 @@ when it is dispatched again, and the other job of the same wedged run is green, 
 force-cancels the in-progress and queued runs of the same branch before the build jobs start. It is
 allowed to fail: a cancel the API refuses must not turn a build that would be green into a red one.
 
+The deadline inside `run_tests.ps1` and `run_e2e_setup.ps1` is what ends a step whose command never
+ends, and it lists the processes still alive before it takes the tree down, so a hang leaves a record
+of what it hung on. That list is read from the process table rather than from WMI: a
+`Get-CimInstance Win32_Process` can itself block for as long as the machine is unwell, and a
+diagnosis that hangs the step it is diagnosing leaves no log at all -- which is how a branch meant to
+end a wedged step became part of the wedge. Command lines, which only WMI has, are given up for that;
+a pid, a name, a start time and a window title are enough to name a holder.
+
 Every job also runs `scripts/audit_test_targets.ps1`, which asks Cargo which packages the workspace
 has and fails if a `tests/*.rs` file sits outside all of them. A `tests/` directory next to the
 virtual manifest looks like an integration suite but is never compiled, so its cases never run; that

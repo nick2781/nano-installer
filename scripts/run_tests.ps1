@@ -150,9 +150,27 @@ function Invoke-NativeStep {
             # What is still alive is usually what the command was waiting on, so
             # it is written down before the tree is taken down: a killed tree that
             # left no record of the process it hung on is a hang nobody can read.
-            Write-Output "the processes still alive while it waited, with what started them:"
-            foreach ($row in (Get-CimInstance Win32_Process | Sort-Object ParentProcessId)) {
-                Write-Output ("  | pid {0} <- {1}  {2}  ::  {3}" -f $row.ProcessId, $row.ParentProcessId, $row.Name, $row.CommandLine)
+            #
+            # The list comes from the process table rather than from WMI. A
+            # `Get-CimInstance Win32_Process` here can block for as long as the
+            # machine is unwell, and a diagnosis that hangs the step it is
+            # diagnosing leaves no log at all: this branch is what ends a step the
+            # suite wedged, so it must not be able to wedge itself, and the
+            # command lines WMI would add are not worth that. A pid, a name, when
+            # it started and any window it owns is enough to name a holder.
+            Write-Output "the processes still alive while it waited:"
+            foreach ($row in (Get-Process | Sort-Object Id)) {
+                $detail = ""
+                try {
+                    $detail = "  started {0}  cpu {1:N1}s" -f $row.StartTime.ToUniversalTime().ToString("HH:mm:ssZ"), $row.CPU
+                    if ($row.MainWindowTitle) {
+                        $detail += "  ::  " + $row.MainWindowTitle
+                    }
+                }
+                catch {
+                    $detail = ""
+                }
+                Write-Output ("  | pid {0}  {1}{2}" -f $row.Id, $row.ProcessName, $detail)
             }
             foreach ($line in (& taskkill /PID $process.Id /T /F 2>&1)) {
                 Write-Output "  | $line"
