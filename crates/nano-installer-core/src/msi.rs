@@ -731,18 +731,26 @@ fn write_summary_information(
         },
         "open the summary information of the package",
     )?;
-    let code_page = summary_code_page(wrapper.locale);
-    let subject = format!("{} {}", wrapper.product_name, version);
-    let comments = format!(
-        "This package installs {} with the setup image it carries.",
-        wrapper.product_name
+    let code_page = summary_code_page(
+        wrapper.locale,
+        &[wrapper.product_name, wrapper.manufacturer, version],
     );
+    // The summary is stored in the package's ANSI code page, and text that code
+    // page cannot hold arrives as blanks rather than as an error. What Windows'
+    // own list of installed programs shows is the `Property` table, which keeps
+    // the name whole, so a name the summary cannot carry is left out rather than
+    // stored as a row of placeholders.
+    let summary_code_page = locale_code_page(wrapper.locale);
+    let product = summarised_text(summary_code_page, wrapper.product_name, "The product");
+    let author = summarised_text(summary_code_page, wrapper.manufacturer, "nano-installer");
+    let subject = format!("{product} {version}");
+    let comments = format!("This package installs {product} with the setup image it carries.");
     // The code page goes first: it is the one the package's own text is stored
     // in, and everything written after it is stored in that code page.
     write_summary_number(&summary, summary_property::CODE_PAGE, code_page as i32)?;
     write_summary_text(&summary, summary_property::TITLE, "Installation Database")?;
     write_summary_text(&summary, summary_property::SUBJECT, &subject)?;
-    write_summary_text(&summary, summary_property::AUTHOR, wrapper.manufacturer)?;
+    write_summary_text(&summary, summary_property::AUTHOR, &author)?;
     write_summary_text(&summary, summary_property::KEYWORDS, "Installer")?;
     write_summary_text(&summary, summary_property::COMMENTS, &comments)?;
     // The template names the platform and the language of the package.
@@ -838,9 +846,24 @@ fn write_summary_time(summary: &MSIHANDLE, property: u32, value: FILETIME) -> Re
 /// The code page a package's own text is stored in.
 ///
 /// The product's default locale decides it, the way an installation authoring
-/// tool picks the code page of the language the package is written for; a
-/// locale the installer has no code page for falls back to the Latin one.
-fn summary_code_page(locale: &str) -> u16 {
+/// tool picks the code page of the language the package is written for. That is
+/// only true while the machine building the package can encode the text: the
+/// installer converts the product's name into the package's code page as it
+/// stores it, and a build machine without that code page -- a server image with
+/// no East Asian support, say -- would store a Chinese name as question marks
+/// nobody could read back. Text the code page cannot hold therefore goes into
+/// the package as UTF-8, which every machine can store and the installer reads
+/// back by the code page the package declares.
+fn summary_code_page(locale: &str, texts: &[&str]) -> u16 {
+    let code_page = locale_code_page(locale);
+    if texts.iter().all(|text| code_page_holds(code_page, text)) {
+        return code_page;
+    }
+    UTF8_CODE_PAGE
+}
+
+/// The code page an installation authoring tool would pick for a locale.
+fn locale_code_page(locale: &str) -> u16 {
     match locale.to_ascii_lowercase().as_str() {
         "zh-cn" => 936,
         "zh-tw" => 950,
@@ -856,6 +879,44 @@ fn summary_code_page(locale: &str) -> u16 {
         "vi" | "vi-vn" => 1258,
         _ => 1252,
     }
+}
+
+/// The code page that holds every character there is.
+const UTF8_CODE_PAGE: u16 = 65001;
+
+/// The text a summary-information string carries when the package's ANSI code
+/// page cannot hold the real one.
+fn summarised_text(code_page: u16, text: &str, instead: &'static str) -> String {
+    if code_page_holds(code_page, text) {
+        text.to_string()
+    } else {
+        instead.to_string()
+    }
+}
+
+/// Whether a code page can hold every character of a text.
+///
+/// Windows answers this while converting: a character the code page has no room
+/// for is replaced by a default character, and the conversion says whether it had
+/// to do that. A code page the machine does not have at all cannot hold anything.
+fn code_page_holds(code_page: u16, text: &str) -> bool {
+    use windows::Win32::Globalization::WideCharToMultiByte;
+    if text.is_ascii() {
+        return true;
+    }
+    let wide: Vec<u16> = text.encode_utf16().collect();
+    let mut substituted = windows::Win32::Foundation::BOOL(0);
+    let written = unsafe {
+        WideCharToMultiByte(
+            u32::from(code_page),
+            0,
+            &wide,
+            None,
+            windows::core::PCSTR::null(),
+            Some(&mut substituted as *mut _),
+        )
+    };
+    written > 0 && !substituted.as_bool()
 }
 
 /// A directory name the installer can use for the product's own folder.
@@ -1537,6 +1598,20 @@ mod tests {
         // An empty removal list would take nothing away, so the column is null.
         let removal = read_rows(&package, "SELECT `Remove` FROM `Upgrade`", 1)?;
         assert_eq!(removal[0][0], "");
+        Ok(())
+    }
+
+    #[test]
+    fn a_name_the_build_machines_code_page_cannot_hold_goes_into_the_package_as_utf8() -> Result<()>
+    {
+        // A Latin code page can never hold a Chinese name, whatever the machine
+        // building the package has installed; a project that declares English
+        // and names itself in Chinese therefore gets a package whose own text is
+        // UTF-8 rather than a name stored as question marks.
+        assert!(!code_page_holds(1252, "易玩安装器"));
+        assert!(code_page_holds(1252, "Widget Factory"));
+        assert_eq!(summary_code_page("en-US", &["易玩安装器"]), UTF8_CODE_PAGE);
+        assert_eq!(summary_code_page("en-US", &["Widget"]), 1252);
         Ok(())
     }
 

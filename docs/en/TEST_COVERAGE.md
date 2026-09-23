@@ -3,7 +3,7 @@
 Every behaviour the documentation promises, and the automated case that holds it. A row names the
 cases that fail when that behaviour breaks; a behaviour with no row is one nobody is checking.
 
-`cargo test --locked --workspace` runs 354 cases: 260 in the core library, 58 that build a real
+`cargo test --locked --workspace` runs 355 cases: 261 in the core library, 58 that build a real
 setup and run it, 5 that read a project the way the builder does, 29 in the visual builder, and 2
 in the extraction runtimes. The setup-level cases need real runtime executables built first, which
 is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `target/e2e-report.txt`.
@@ -12,7 +12,7 @@ is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `targe
 
 | Layer | Cases | Proves | Cannot prove |
 | --- | --- | --- | --- |
-| Core library | 260 | what a page becomes — layers, coordinates, hit regions, text, and which system colour each of those takes while high contrast is on — what the bundle carries, what an install writes to disk and the registry, what each script primitive does and how a service is installed and deleted, what a script reads back off the page and off the run, and how the dependencies a project declares are found, fetched, checked and installed | that a packaged setup reaches any of it, and that an installed service then runs -- the program a service runs is the product's own, and no case can ship one |
+| Core library | 261 | what a page becomes — layers, coordinates, hit regions, text, and which system colour each of those takes while high contrast is on — what the bundle carries, what an install writes to disk and the registry, what each script primitive does and how a service is installed and deleted, what a script reads back off the page and off the run, and how the dependencies a project declares are found, fetched, checked and installed | that a packaged setup reaches any of it, and that an installed service then runs -- the program a service runs is the product's own, and no case can ship one |
 | Setup end to end | 58 | a built setup installed on the machine, its own window driven: payload bytes (a setup whose bytes changed refuses the install before it creates anything), manifest, the uninstall entry's own fields, shortcuts, autostart, project scripts, the helpers a script runs, the wizard window, a page hook sending it past a page and Back returning the way the user came, the clicks its own pages wait for, a wheel over a list, the card a script's messages and questions are answered on, the page's values reaching the script, which components a page and a project put in, every registry type a script names and the copy of a key
   a view name selects, what a command a script ran wrote, the command a project runs on its finished setup and its
    uninstaller (which must succeed, or the file it refused is not left behind), and what only a moving pointer and a real keyboard
@@ -179,7 +179,7 @@ setup-level cases prove the `scripts` directory and the tools directory survive 
 
 | Behaviour | Cases |
 | --- | --- |
-| the package's own identity, the codes that survive a rebuild, and the name the Installer stores | `a_wrapper_carries_the_identity_the_project_declares`, `codes_stay_the_same_across_a_rebuild_and_the_upgrade_code_outlives_a_version`, `a_product_name_the_database_can_hold_comes_back_unchanged` |
+| the package's own identity, the codes that survive a rebuild, and the name the Installer stores | `a_wrapper_carries_the_identity_the_project_declares`, `codes_stay_the_same_across_a_rebuild_and_the_upgrade_code_outlives_a_version`, `a_product_name_the_database_can_hold_comes_back_unchanged`, `a_name_the_build_machines_code_page_cannot_hold_goes_into_the_package_as_utf8` |
 | the setup image the package carries, and the actions that install and remove the product in the order they run | `the_setup_the_package_carries_is_the_image_the_build_finished`, `the_package_installs_and_removes_the_product_in_the_order_it_declares` |
 | the search for an older release, and the removal of the product this package installed | `the_package_offers_itself_as_an_upgrade_of_the_versions_before_it` |
 | what Windows reads before it opens the package's tables | `the_package_summary_names_the_platform_and_the_language` |
