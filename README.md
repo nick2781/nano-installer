@@ -86,12 +86,16 @@ quickest start is to copy `examples/TapTap` and replace what is inside.
   into a hand over anything clickable.
 - When the built-in steps are not enough, a small script file can drive install and uninstall. A
   failing script rolls back and never leaves a half-installed product.
+- A build can also wrap the finished setup in the package a larger estate deploys: `--msi <file>`
+  writes a `.msi` that installs the product with no window through Windows Installer and removes it
+  again, and a newer package upgrades the release an older one installed.
 - The visual builder for Windows 10 and later produces byte-for-byte the same result as the command
   line.
 
 ## Not there yet
 
-- Setups are not code-signed, so Windows SmartScreen warns about an unknown publisher.
+- Neither a setup nor the installer package around it is code-signed, so Windows SmartScreen warns
+  about an unknown publisher; installing the package for the whole machine needs an elevated session.
 - Windows 7 support is checked automatically against the system calls each build uses, but has not
   yet been signed off on a real Windows 7 SP1 machine.
 
