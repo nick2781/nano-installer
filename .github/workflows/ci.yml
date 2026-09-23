@@ -8,13 +8,57 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
+  # The suite's own step occasionally never ends, and the reason is the build
+  # agent rather than this repository: a step is finished once its output has
+  # closed, something the step started sometimes holds that output open, and
+  # nothing on the runner's side reaches such a step -- not the step's timeout,
+  # not the job's, and not `gh run cancel` either. It has stayed in_progress past
+  # an hour, archived no log at all, and blocked every step after it. Two
+  # measurements say it is not the commit: the same commit passes when it is
+  # dispatched again, and the other job of the same wedged run is green. A
+  # `runs/<id>/force-cancel` does end it, within a minute, and the run that
+  # replaces a wedged one can ask for that itself -- so this job does, and the
+  # concurrency group that used to leave the next push waiting behind a wedged
+  # run is gone. This job is deliberately allowed to fail: a cancel the API
+  # refuses must not stop a build that would otherwise be green.
+  supersede:
+    name: Supersede older runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+
+    steps:
+      - name: End the runs this one replaces
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          # A pull request's ref is `<number>/merge` while its runs carry the
+          # branch they came from, so the branch is read from the event.
+          branch="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          echo "superseding older runs of $GITHUB_WORKFLOW on $branch"
+          for status in in_progress queued; do
+            runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?status=$status&per_page=100" \
+              --jq ".workflow_runs[] | select(.name == \"$GITHUB_WORKFLOW\") | select(.head_branch == \"$branch\") | select(.id != $GITHUB_RUN_ID) | .id")
+            for id in $runs; do
+              echo "  $status run $id"
+              # An in-progress run is the one that can be wedged, and only the
+              # forceful cancel ends that; a queued one is cancelled normally.
+              if [ "$status" = "in_progress" ]; then
+                gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$id/force-cancel" || true
+              else
+                gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$id/cancel" || true
+              fi
+            done
+          done
+
   native-win7-build:
     name: Native Win7+ Build
+    needs: supersede
     runs-on: windows-latest
     timeout-minutes: 60
 
@@ -112,6 +156,12 @@ jobs:
       # waited on with a deadline, which prints the last lines it wrote and the
       # processes it was waiting on, so a suite that hangs fails this step with a
       # log that says where, instead of hanging for hours.
+      #
+      # None of that bounds the runner-side wedge described above the supersede
+      # job: a step whose output something else is holding stays in_progress past
+      # every deadline, archives no log at all, and blocks the steps after it.
+      # That is why a run which replaces a wedged one ends it up front instead of
+      # waiting for the group it was holding.
       - name: Test workspace
         shell: powershell
         run: .\scripts\run_tests.ps1
@@ -161,6 +211,7 @@ jobs:
 
   setup-end-to-end:
     name: Setup End to End
+    needs: supersede
     runs-on: windows-latest
     timeout-minutes: 60
 

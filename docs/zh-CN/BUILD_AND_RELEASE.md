@@ -31,10 +31,9 @@ target/release/
 DPI 行为是否与项目配置一致，所以悄悄丢掉提权声明的安装包会让构建失败。
 
 发布流程会构建构建器、GUI 和运行时，把 5 个可执行文件各自作为 release asset 上传；它不生成压缩
-包，也不构建或发布 TapTap 示例安装包。本地显式传 `-Project` 才会生成示例安装包，再加 `-Msi` 就会在它旁边多写出一个企业按 MSI
-分发的包，用于验证
-payload、布局与 bundle；脚本还会取出项目化的 `uninst.exe`，单独审计它的 Windows 7 导入与版本
-资源。
+包，也不构建或发布 TapTap 示例安装包。本地显式传 `-Project` 才会生成示例安装包，再加 `-Msi` 就会在
+它旁边多写出一个企业按 MSI 分发的包，用来验证 payload、布局与 bundle；脚本还会取出项目化的
+`uninst.exe`，单独审计它的 Windows 7 导入与版本资源。
 
 示例 payload `examples/TapTap/payload/app.7z` 未存入仓库，所以上面的 CI job 只构建工具链。
 安装包级验证放在独立的 `setup-end-to-end` job：`crates/nano-installer-core/tests/e2e_setup.rs`
@@ -44,6 +43,13 @@ payload、布局与 bundle；脚本还会取出项目化的 `uninst.exe`，单�
 
 这个 job 会设置 `NANO_INSTALLER_E2E_REQUIRE_STUBS=1`，把「运行时 stub 缺失」从跳过改为失败；
 否则一个什么都没构建的 job 会把所有用例都记为跳过，却依然显示通过。
+
+每次运行还会先结束自己被替代的那些运行，这一步就是 `supersede` job，两个构建 job 都要等它。
+`Test workspace` 偶尔会永远不结束，原因在构建机上而不在某个提交：步骤要等自己的输出关闭才算结束，
+而这一步启动的某个进程有时会一直握着那份输出，构建机上任何超时都够不着这样一步；它待在那里的同时
+也占着流水线的并发组，于是下一次推送只会在它后面排队，而不是开始构建。同一个提交重新派发就能通过、
+同一次运行里另一个 job 是全绿的，所以这个 job 会在两个构建 job 之前，把同一分支上还在进行和排队的
+运行强制取消掉。它允许失败：取消被 API 拒绝，不能让一次本来全绿的构建变成红的。
 
 每个 job 还会执行 `scripts/audit_test_targets.ps1`：它向 Cargo 询问工作区包含哪些包，只要有
 `tests/*.rs` 落在所有包之外就失败。虚拟清单旁边的 `tests/` 目录看起来像集成测试，却永远进不了

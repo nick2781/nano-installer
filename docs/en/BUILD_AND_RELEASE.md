@@ -36,10 +36,10 @@ so a setup that silently lost its elevation requirement fails the build instead 
 
 The release workflow builds the builder, the GUI, and the runtimes, then uploads the five
 executables as separate release assets. It does not produce an archive and does not build or publish
-the TapTap example setup. Pass `-Project` locally to generate an example setup, and `-Msi` to also write the
-installer package an estate deploys beside it, so you can validate, so you can validate
-the payload, layout, and bundle; the script also extracts the project's `uninst.exe` and audits its
-Windows 7 imports and version resource on its own.
+the TapTap example setup. Pass `-Project` locally to generate an example setup, and `-Msi` to also write
+the installer package an estate deploys beside it, so you can validate the payload, layout, and
+bundle; the script also extracts the project's `uninst.exe` and audits its Windows 7 imports and
+version resource on its own.
 
 The example payload `examples/TapTap/payload/app.7z` is not stored in the repository, so the CI job
 above builds only the toolchain. Setup-level validation runs in its own `setup-end-to-end` job:
@@ -51,6 +51,15 @@ so the job needs no VM and touches no shared state.
 That job sets `NANO_INSTALLER_E2E_REQUIRE_STUBS=1`, which turns "the runtime stubs are missing" from
 a skip into a failure. Without it a job that built nothing would report every case as skipped and
 still pass.
+
+A run also ends the runs it replaces, in the `supersede` job that both build jobs need. `Test
+workspace` occasionally never finishes, and the cause is the build agent rather than a commit: a step
+is over once its output has closed, something the step started sometimes holds that output open, and
+no timeout on the runner's side reaches such a step -- while it sits there it also holds the
+pipeline's concurrency, so the next push waits behind it rather than building. The same commit passes
+when it is dispatched again, and the other job of the same wedged run is green, so the job
+force-cancels the in-progress and queued runs of the same branch before the build jobs start. It is
+allowed to fail: a cancel the API refuses must not turn a build that would be green into a red one.
 
 Every job also runs `scripts/audit_test_targets.ps1`, which asks Cargo which packages the workspace
 has and fails if a `tests/*.rs` file sits outside all of them. A `tests/` directory next to the
