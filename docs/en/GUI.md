@@ -14,9 +14,11 @@ It opens with an empty workspace and does not load any example for you.
 1. **Open project** and pick the folder containing `installer_config.json`.
 2. **Refresh** re-reads the JSON, XML, assets, and payload. It never overwrites an output path you
    customised for the same project.
-3. **Parameters** sets the project folder, the output exe, and an optional runtime directory.
-   **Reset output** restores `dist/<output.installer_name>`; **Use automatic stub search** restores
-   automatic lookup.
+3. **Parameters** sets the project folder, the output exe, an optional runtime directory, and,
+   when the build should also hand an estate a package, the `.msi` to wrap the setup in.
+   **Reset output** restores `dist/<output.installer_name>`; **Use automatic stub search**
+   restores automatic lookup. The package path follows the setup's name until you type one
+   of your own, and the preview line below the fields shows the `--msi` the build will get.
 4. **Build setup** builds asynchronously. The build re-validates the project in a worker thread, so
    the summary on screen can never affect the result.
 5. **Save log...** exports the full log and **Open output** reveals the setup in Explorer. The

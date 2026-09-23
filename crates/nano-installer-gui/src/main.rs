@@ -169,6 +169,12 @@ fn tr(language: UiLanguage, key: &str) -> &str {
             "text_file" => "Text file",
             "output_empty" => "Output executable path is empty",
             "output_extension" => "Output path must use the .exe extension",
+            "installer_package" => "Installer package",
+            "package_installer" => "Also write the installer package an estate deploys",
+            "package_empty" => "Installer package path is empty",
+            "package_extension" => "Installer package path must use the .msi extension",
+            "package_size" => "package",
+            "tip_package" => "Wrap the finished setup in the .msi an estate deploys through Windows Installer; the project has to support a windowless run",
             "stub_missing" => "Stub directory does not exist",
             "tip_open_project" => "Choose a directory containing installer_config.json",
             "tip_refresh" => "Re-read project configuration, layouts, assets, and payload metadata",
@@ -274,6 +280,12 @@ fn tr(language: UiLanguage, key: &str) -> &str {
             "text_file" => "文本文件",
             "output_empty" => "输出程序路径不能为空",
             "output_extension" => "输出路径必须使用 .exe 扩展名",
+            "installer_package" => "MSI 安装包",
+            "package_installer" => "同时写出企业分发用的 MSI 安装包",
+            "package_empty" => "MSI 安装包路径不能为空",
+            "package_extension" => "MSI 安装包路径必须使用 .msi 扩展名",
+            "package_size" => "MSI 包",
+            "tip_package" => "把做完的安装包封成企业按 Windows Installer 分发的 .msi；工程需要支持无窗口运行",
             "stub_missing" => "Stub 目录不存在",
             "tip_open_project" => "选择包含 installer_config.json 的目录",
             "tip_refresh" => "重新读取项目配置、布局、资源和 payload 信息",
@@ -323,6 +335,11 @@ struct BuilderApp {
     output_path: String,
     stub_directory: String,
     output_custom: bool,
+    /// Whether this build also writes the installer package an estate deploys.
+    package_wanted: bool,
+    /// Where that package goes, which follows the setup until it is typed over.
+    package_path: String,
+    package_custom: bool,
     project_dirty: bool,
     reveal_after_build: bool,
     tab: WorkspaceTab,
@@ -356,6 +373,9 @@ impl BuilderApp {
             output_path: String::new(),
             stub_directory,
             output_custom: false,
+            package_wanted: false,
+            package_path: String::new(),
+            package_custom: false,
             project_dirty: false,
             reveal_after_build: true,
             tab: WorkspaceTab::Build,
@@ -406,6 +426,17 @@ impl BuilderApp {
         self.status = self.text(key).to_string();
     }
 
+    /// Keeps the package path beside the setup path while it is the setup's own.
+    ///
+    /// An estate deploys the package, and it is usually written next to the
+    /// setup it wraps with the same name, so the field follows the setup until
+    /// the user names a package of their own.
+    fn follow_package_path(&mut self) {
+        if !self.package_custom {
+            self.package_path = package_path_for(&self.output_path);
+        }
+    }
+
     fn validate_project(&mut self) {
         if self.building {
             return;
@@ -425,6 +456,10 @@ impl BuilderApp {
                 if replace_output {
                     self.output_path = summary.output_path.display().to_string();
                     self.output_custom = false;
+                    // A package named for the project that was open is not a
+                    // package for this one, so the field follows the new setup.
+                    self.package_custom = false;
+                    self.follow_package_path();
                 }
                 self.summary = Some(summary.clone());
                 self.last_inspected = Some(inspection_time());
@@ -456,6 +491,9 @@ impl BuilderApp {
         let mut request = BuildRequest::new(PathBuf::from(self.project_dir.trim()));
         if !self.output_path.trim().is_empty() {
             request.output = Some(PathBuf::from(self.output_path.trim()));
+        }
+        if self.package_wanted && !self.package_path.trim().is_empty() {
+            request.msi = Some(PathBuf::from(self.package_path.trim()));
         }
         if !self.stub_directory.trim().is_empty() {
             request.stub_directory = Some(PathBuf::from(self.stub_directory.trim()));
@@ -552,6 +590,13 @@ impl BuilderApp {
                                 result.summary.output_path.display(),
                                 format_bytes(result.output_size)
                             ));
+                            if let Some(package) = &result.msi {
+                                self.append_log(format!(
+                                    "Installer package: {} ({})",
+                                    package.output_path.display(),
+                                    format_bytes(package.output_size)
+                                ));
+                            }
                             self.result = Some(result);
                             if self.reveal_after_build {
                                 self.reveal_output();
@@ -686,6 +731,19 @@ impl BuilderApp {
         {
             return Some(tr(language, "output_extension").to_string());
         }
+        if self.package_wanted {
+            if self.package_path.trim().is_empty() {
+                return Some(tr(language, "package_empty").to_string());
+            }
+            if Path::new(self.package_path.trim())
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .map(|extension| !extension.eq_ignore_ascii_case("msi"))
+                .unwrap_or(true)
+            {
+                return Some(tr(language, "package_extension").to_string());
+            }
+        }
         if !self.stub_directory.trim().is_empty() && !Path::new(self.stub_directory.trim()).is_dir()
         {
             return Some(tr(language, "stub_missing").to_string());
@@ -699,6 +757,10 @@ impl BuilderApp {
             quote_arg(self.project_dir.trim()),
             quote_arg(self.output_path.trim())
         );
+        if self.package_wanted && !self.package_path.trim().is_empty() {
+            command.push_str(" --msi ");
+            command.push_str(&quote_arg(self.package_path.trim()));
+        }
         if !self.stub_directory.trim().is_empty() {
             command.push_str(" --stubs ");
             command.push_str(&quote_arg(self.stub_directory.trim()));
@@ -1158,6 +1220,18 @@ impl BuilderApp {
                 .size(12.0)
                 .color(MUTED),
             );
+            if let Some(package) = &result.msi {
+                ui.label(
+                    egui::RichText::new(format!(
+                        "{} {} | {}",
+                        self.text("package_size"),
+                        format_bytes(package.output_size),
+                        package.output_path.display()
+                    ))
+                    .size(12.0)
+                    .color(MUTED),
+                );
+            }
         }
     }
 
@@ -1209,6 +1283,7 @@ impl BuilderApp {
             if response.changed() {
                 self.output_custom = true;
                 self.result = None;
+                self.follow_package_path();
             }
             if ui
                 .add_enabled_ui(!self.building, |ui| {
@@ -1223,6 +1298,41 @@ impl BuilderApp {
                 self.browse_output();
             }
         });
+        ui.add_space(8.0);
+        // The package an estate deploys is a second output of the same build, so
+        // it sits beside the setup path and follows it until it is named.
+        let package_label = self.text("package_installer");
+        let package_tip = self.text("tip_package");
+        let wanted = ui
+            .add_enabled(
+                !self.building,
+                egui::Checkbox::new(&mut self.package_wanted, package_label),
+            )
+            .on_hover_text(package_tip);
+        if wanted.changed() {
+            self.result = None;
+            if self.package_wanted && self.package_path.trim().is_empty() {
+                self.package_path = package_path_for(&self.output_path);
+            }
+        }
+        if self.package_wanted {
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                parameter_label(ui, self.text("installer_package"));
+                let response = ui
+                    .add_enabled_ui(!self.building, |ui| {
+                        ui.add_sized(
+                            [field_width, 30.0],
+                            egui::TextEdit::singleline(&mut self.package_path),
+                        )
+                    })
+                    .inner;
+                if response.changed() {
+                    self.package_custom = true;
+                    self.result = None;
+                }
+            });
+        }
         ui.add_space(8.0);
         ui.horizontal(|ui| {
             parameter_label(ui, self.text("stub_directory"));
@@ -1260,6 +1370,7 @@ impl BuilderApp {
                 if let Some(summary) = &self.summary {
                     self.output_path = summary.output_path.display().to_string();
                     self.output_custom = false;
+                    self.follow_package_path();
                     self.result = None;
                 }
             }
@@ -1549,6 +1660,22 @@ fn compact_path(path: &Path, tail_components: usize) -> String {
         .collect::<Vec<_>>()
         .join("\\");
     format!("{}\\...\\{tail}", prefix.as_os_str().to_string_lossy())
+}
+
+/// The package path that belongs to a setup path.
+///
+/// The installer's own extension on the setup's own name, in the same directory:
+/// a project that writes `dist\TapTap_Setup.exe` writes `dist\TapTap_Setup.msi`
+/// beside it until the user names another file.
+fn package_path_for(output: &str) -> String {
+    let trimmed = output.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    Path::new(trimmed)
+        .with_extension("msi")
+        .display()
+        .to_string()
 }
 
 fn stage_progress(stage: BuildStage) -> f32 {
@@ -2051,6 +2178,103 @@ mod tests {
                 project.path.join("stubs").display()
             )
         );
+    }
+
+    /// The package the user asks for reaches the request and the preview.
+    ///
+    /// It is a second output of the same build, so it travels the way the setup
+    /// path does: a path that stayed on screen would leave the release without
+    /// the package the operator asked for, and nobody would see why.
+    #[test]
+    fn parameters_carry_the_package_the_user_asked_for_into_the_request() {
+        let project = TestProject::create("package-request");
+        let mut app = headless_app();
+        app.language = UiLanguage::English;
+        app.project_dir = project.display();
+        app.output_path = project.output_path("Probe_Setup.exe").display().to_string();
+        app.validate_project();
+
+        // Untouched, the package stays out of the request and the preview.
+        assert!(app.make_request().expect("request").msi.is_none());
+        assert!(!app.command_preview().contains("--msi"));
+
+        app.package_wanted = true;
+        app.package_path = format!(" {} ", app.package_path);
+        let request = app.make_request().expect("request with a package");
+        assert_eq!(request.msi, Some(project.output_path("Probe_Setup.msi")));
+        assert!(
+            app.command_preview().contains("--msi"),
+            "the preview does not offer the package: {}",
+            app.command_preview()
+        );
+    }
+
+    /// The package path follows the setup path until the user names one.
+    ///
+    /// The two outputs usually sit side by side under one name, so the field
+    /// tracks the setup; a path the operator typed is theirs to keep.
+    #[test]
+    fn the_package_path_follows_the_setup_until_it_is_named() {
+        let project = TestProject::create("package-follow");
+        let mut app = headless_app();
+        app.language = UiLanguage::English;
+        app.project_dir = project.display();
+        app.validate_project();
+        assert_eq!(
+            app.package_path,
+            project.output_path("Probe_Setup.msi").display().to_string()
+        );
+
+        app.output_path = project.output_path("Other_Setup.exe").display().to_string();
+        app.follow_package_path();
+        assert_eq!(
+            app.package_path,
+            project.output_path("Other_Setup.msi").display().to_string()
+        );
+
+        app.package_path = "C:\\builds\\Named.msi".to_string();
+        app.package_custom = true;
+        app.output_path = project.output_path("Third_Setup.exe").display().to_string();
+        app.follow_package_path();
+        assert_eq!(
+            app.package_path, "C:\\builds\\Named.msi",
+            "a path the user named was overwritten"
+        );
+
+        // Another project is another build: the name that was typed belonged to
+        // the project that is no longer open, so the field follows the new one.
+        let other = TestProject::create("package-follow-other");
+        app.project_dir = other.display();
+        app.validate_project();
+        assert_eq!(
+            app.package_path,
+            other.output_path("Probe_Setup.msi").display().to_string(),
+            "a package named for the previous project followed the user over"
+        );
+    }
+
+    /// A package path that is not a package is refused before the build starts.
+    ///
+    /// The builder writes what it is given, so the window is where a `.zip` or an
+    /// empty field has to be caught.
+    #[test]
+    fn a_package_path_that_is_not_an_msi_is_refused() {
+        let project = TestProject::create("package-extension");
+        let mut app = headless_app();
+        app.language = UiLanguage::English;
+        app.project_dir = project.display();
+        app.output_path = project.output_path("Probe_Setup.exe").display().to_string();
+        app.validate_project();
+        app.package_wanted = true;
+        app.package_path = project.output_path("Probe.zip").display().to_string();
+        let error = app
+            .make_request()
+            .expect_err("a package that is not an MSI");
+        assert!(error.contains(".msi"), "{error}");
+
+        app.package_path.clear();
+        let error = app.make_request().expect_err("an empty package path");
+        assert!(error.to_lowercase().contains("empty"), "{error}");
     }
 
     /// An empty runtime directory leaves the stub search automatic.

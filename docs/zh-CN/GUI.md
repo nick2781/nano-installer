@@ -12,9 +12,11 @@
 
 1. **Open project** 选择包含 `installer_config.json` 的项目目录。
 2. **Refresh** 重新读一遍 JSON、XML、资源和 payload，但不会覆盖同一个项目里你已经改过的输出路径。
-3. **Parameters** 设置项目目录、输出 exe 和可选的运行时目录。
+3. **Parameters** 设置项目目录、输出 exe、可选的运行时目录，以及这次构建要不要顺手交出一个
+   企业分发的包（要的话填那份包住安装包的 `.msi`）。
    **Reset output** 把输出路径恢复成 `dist/<output.installer_name>`；
-   **Use automatic stub search** 恢复自动查找。
+   **Use automatic stub search** 恢复自动查找。包路径默认跟着输出 exe 的名字走，
+   你自己敲过之后就不再跟；下面那行等价命令行会显示这次构建拿到的 `--msi`。
 4. **Build setup** 异步构建。构建时会在 worker 线程里重新校验项目，结果不受界面当前摘要的影响。
 5. **Save log...** 导出完整日志，**Open output** 在资源管理器里定位生成的安装包；
    **After build** 控制构建成功后要不要自动定位。

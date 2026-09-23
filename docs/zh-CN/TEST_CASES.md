@@ -73,6 +73,7 @@ Rust doc comment，再退回用例名。
 | `a_next_button_walks_to_the_page_the_project_declares` | 在真实窗口里点一次 `next`，向导要切到工程声明的第二页，再点 `back` 要回到第一页：两页声明的客户区不同，所以窗口尺寸就是证据。 |
 | `a_notice_hides_the_secondary_button` | 通知只有一个答复，版面里的取消键不画也不能点；换成提问时取消键又画回来，一份对话框版面因此可以两用。 |
 | `a_package_installs_the_product_the_setup_carries_and_removes_it_again` | 包把安装包跑起来并把它装的东西卸掉：`msiexec /i` 在命令行指定的目录里装出产品 exe、卸载程序和 manifest，产品自己的卸载项记着这个位置，包自己也记了一份；`msiexec /x` 之后目录与卸载项都不在。 |
+| `a_package_path_that_is_not_an_msi_is_refused` | 窗口是拦住坏包路径的唯一一道关：勾了包却把路径留空、或者路径不是 `.msi`，都在构建开始前被拒绝，构建器不会照着这个路径写出去。 |
 | `a_page_hook_sends_the_wizard_past_a_page_the_project_skips` | 在真窗口里点 `next`：钩子把向导从欢迎页直接送到选项页，中间那页许可协议（客户区 640x420）根本没出现；再点 `back` 回到的是用户来时的欢迎页，而不是钩子跳过的那一页——三页的客户区各不相同，窗口尺寸就是证据。 |
 | `a_page_hook_sends_the_wizard_to_the_page_it_names` | 钩子点名哪一页就走到哪一页，中间声明的页面跳过；钩子对这一次翻页不作声时，回到工程声明的下一页。 |
 | `a_page_hook_that_fails_is_reported_and_the_wizard_walks_on` | 钩子抛错时向导用工程自己的对话框版面把这件事报出来（用例点的是那张卡片上的按钮，进程因此退出，说明卡片确实在屏幕上），同时仍按声明的页序走到下一页：坏掉的钩子不会把人困在某一页。 |
@@ -249,6 +250,7 @@ Rust doc comment，再退回用例名。
 | `out_of_range_progress_and_both_status_forms_do_not_disturb_the_install` | 进度设成负数、超过 100 或非数字，以及两种形式的状态文字，都不会打断安装：部署照常完成，manifest 写好，模式和取消状态也照常读得到。 |
 | `padding_and_margin_take_one_to_four_values_and_their_single_side_forms` | `padding` 和 `margin` 接受一到四个值，按 CSS 的写法分到四边；单边写法独立生效并覆盖简写里那一边，两个属性互不干扰，所有值都按 96 DPI 计算并随显示缩放。 |
 | `parameter_fields_use_the_available_work_area` | 参数面板里的输入框宽度按可用工作区算出来，扣掉标签、浏览按钮和两处间距，宽度不够时保底 120。 |
+| `parameters_carry_the_package_the_user_asked_for_into_the_request` | 勾上包之后它真的进了构建请求，也出现在等价命令行预览里；没勾时请求里没有它、预览里也没有 `--msi`——路径留在界面上而没进请求，等于这次发布没有包，而且没人看得出来。 |
 | `parameters_carry_the_project_output_and_runtime_directory_into_the_request` | 参数把工程、输出和运行时这三个路径带进构建请求，工作线程只能看到这份请求。留在屏幕上的路径会让构建走到构建器自己的默认值上，所以每个字段都必须写进去。 |
 | `parses_ico_and_creates_group_directory` | 解析 ico 文件并生成图标组目录数据，只有一张图的 ico 生成的组头字节符合格式。 |
 | `parses_numeric_windows_versions` | 版本号解析成四个数字：`1.2.3` 补成 `[1,2,3,0]`，带字母的、多于四段的、只有后缀的都算错误；带 `-r2` 或 `+notes` 的 CalVer 仍旧接受，只取数字部分。 |
@@ -327,6 +329,7 @@ Rust doc comment，再退回用例名。
 | `the_manifest_reaches_a_real_executable` | 把清单写进一个真实的 PE 映像再读回来，内容与写进去的一致：提权级别和 DPI 相关的两个元素都在，整份 XML 仍然能被解析，Windows 不会因为清单坏了而拒绝加载。 |
 | `the_migrated_example_matches_the_schema` | 从 NSIS 迁过来的那份示例也要过这张表：读指南的人是照着它搬的，配置里留一个构建器根本不读的键，就等于教人写了一个没人理会的设置。 |
 | `the_package_installs_and_removes_the_product_in_the_order_it_declares` | `InstallExecuteSequence` 里的次序：旧版本先被收走、再 `InstallInitialize`，装产品的动作排在两者之后、`InstallFinalize` 之前，卸产品的动作在 `InstallFiles` 之后；装的动作只在不是卸载时跑，卸的动作只在卸载且包知道产品在哪时跑。 |
+| `the_package_path_follows_the_setup_until_it_is_named` | MSI 路径默认跟着输出 exe 走（同名 `.msi`），换一个输出 exe 就跟着换；用户自己敲过包路径之后就不再跟，免得覆盖掉他写下的那个文件；换开另一个工程时它重新跟着新工程的输出走，上个工程那个名字不会跟过来。 |
 | `the_package_offers_itself_as_an_upgrade_of_the_versions_before_it` | 升级表里只有一行：上限是本次构建的版本且不含等号，所以比它老的版本都会被发现；搜索写回的属性在 `SecureCustomProperties` 里，卸载那一列留空（写成空字符串会什么都不删）。 |
 | `the_package_summary_names_the_platform_and_the_language` | 摘要信息是 Windows 打开这个包时要读的东西：模板写着 `x64;1033`，标题写着产品名与版本，修订号是本次构建的包码，文件大小不为零。 |
 | `the_page_and_the_project_decide_which_components_install` | 一个组件装不装由三件事按顺序决定：写了 `required` 的一律装；页面有同名复选框就听页面的；页面没有这个复选框（静默安装也算）就听 `default`。用例把这三条各走一遍，包括用户清掉工程默认勾上的组件、以及勾不掉必需的组件。 |

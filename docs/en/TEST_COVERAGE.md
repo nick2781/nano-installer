@@ -3,8 +3,8 @@
 Every behaviour the documentation promises, and the automated case that holds it. A row names the
 cases that fail when that behaviour breaks; a behaviour with no row is one nobody is checking.
 
-`cargo test --locked --workspace` runs 355 cases: 261 in the core library, 58 that build a real
-setup and run it, 5 that read a project the way the builder does, 29 in the visual builder, and 2
+`cargo test --locked --workspace` runs 358 cases: 261 in the core library, 58 that build a real
+setup and run it, 5 that read a project the way the builder does, 32 in the visual builder, and 2
 in the extraction runtimes. The setup-level cases need real runtime executables built first, which
 is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `target/e2e-report.txt`.
 
@@ -19,7 +19,7 @@ is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `targe
   keyboard bring about -- the bitmaps hover and press swap in, the three standard cursor shapes, Tab walking the page's controls in the order the page declares them with Enter or Space acting on the one under the ring and either end wrapping round, a wizard painted with the machine's high-contrast scheme rather than the colours its pages declare, the language menu's arrow keys with Enter and Escape, the folder picker, and the dependencies a project declares -- one the machine is missing installed, one it already has left alone, one that cannot be installed stopping the run, and a download checked against the digest the project recorded, and the service a script installed really on the machine and gone again with the uninstall, the installer package a build wraps the setup in -- `msiexec` installing the product from it, taking it away again, replacing an older release, and a project that cannot run windowlessly being refused a package -- and the log a windowless run writes -- to the file it was told to,
   naming itself to its caller when the run fails | the two windows an input method draws itself; which field a directory chosen in the shell's folder dialog is written to; the cursor shape on a session that is showing no pointer, where that case prints its own skip, and Shift+Tab with a held Shift, which a posted key message cannot carry -- that direction is held by the core library's walk case instead |
 | Project inspection | 5 | the summary and the warning list the builder shows before a build | |
-| Visual builder | 29 | the window's own state, parameters, log and warnings | clicking the real controls |
+| Visual builder | 32 | the window's own state, parameters -- including the package it asks the build for -- log and warnings | clicking the real controls |
 | Extraction runtimes | 2 | a broken archive, and an unsafe path inside one, are refused | extracting an archive that is sound -- the setup-level cases run a real runtime over a real payload |
 | Snapshots | 6 pages | what every page of the example actually looks like, measured rather than judged | whether a glyph reads correctly, and what happens once the flow reaches a page |
 
