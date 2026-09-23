@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MUI_PAGE_WELCOME: a page of its own in the project's own words. The licence
+     page NSIS inserts next is a link here instead, so a reader who wants one
+     page fewer declares one page fewer. -->
+<Page width="720" height="450" background="#FF1B1F27"
+      border-radius="12" border-color="#33FFFFFF" border-width="1">
+
+  <Button id="btnMinimize" action="minimize" text="@minimize_button"
+          position="absolute" left="560" top="12" width="80" height="28"
+          background="#1AFFFFFF" border-radius="8" font-size="12"
+          color="#FFFFFFFF" cursor="hand" />
+
+  <Button id="btnClose" action="close_confirm" text="@close_button"
+          position="absolute" left="652" top="12" width="56" height="28"
+          background="#1AFFFFFF" border-radius="8" font-size="12"
+          color="#FFFFFFFF" cursor="hand" />
+
+  <Label id="lblTitle" position="absolute" left="40" top="72" width="640" height="38"
+         text="@welcome_title" font-size="24" font-weight="bold" color="#FFFFFFFF" />
+
+  <Label id="lblBody" position="absolute" left="40" top="126" width="640" height="72"
+         text="@welcome_body" font-size="14" color="#B8C0CC" wrap="true" />
+
+  <Label id="lblLicense" position="absolute" left="40" top="206" width="640" height="24"
+         text="@license_link" font-size="14" color="#7FB2FF" linkcolor="#7FB2FF" />
+
+  <Button id="btnNext" action="next" text="@next_button"
+          position="absolute" left="496" top="382" width="184" height="40"
+          background="#FF1F6FEB" border-radius="10" font-size="14"
+          font-weight="bold" color="#FFFFFFFF" cursor="hand" />
+</Page>

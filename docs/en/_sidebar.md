@@ -6,6 +6,7 @@
   * [Page layout](XML_LAYOUT_GUIDE.md)
   * [Languages](LOCALIZATION.md)
   * [Custom steps](SCRIPT_API.md)
+  * [Migrating from NSIS](MIGRATION_FROM_NSIS.md)
 * Technical notes
   * [Architecture](ARCHITECTURE.md)
   * [Project layout](PROJECT_STRUCTURE.md)

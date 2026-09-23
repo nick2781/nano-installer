@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MUI_PAGE_COMPONENTS plus MUI_PAGE_DIRECTORY: the scrollable list is the
+     section list, and the boxes on it are the components the project declares.
+     A required component needs no box: it installs whatever the page shows. -->
+<Page width="720" height="450" background="#FF1B1F27"
+      border-radius="12" border-color="#33FFFFFF" border-width="1">
+
+  <Button id="btnMinimize" action="minimize" text="@minimize_button"
+          position="absolute" left="560" top="12" width="80" height="28"
+          background="#1AFFFFFF" border-radius="8" font-size="12"
+          color="#FFFFFFFF" cursor="hand" />
+
+  <Button id="btnClose" action="close_confirm" text="@close_button"
+          position="absolute" left="652" top="12" width="56" height="28"
+          background="#1AFFFFFF" border-radius="8" font-size="12"
+          color="#FFFFFFFF" cursor="hand" />
+
+  <Label id="lblTitle" position="absolute" left="40" top="64" width="640" height="30"
+         text="@options_title" font-size="22" font-weight="bold" color="#FFFFFFFF" />
+
+  <Label id="lblComponents" position="absolute" left="40" top="108" width="640" height="22"
+         text="@components_heading" font-size="13" color="#B8C0CC" />
+
+  <VBox id="components" scrollable="true"
+        position="absolute" left="40" top="136" width="640" height="88"
+        item-spacing="8">
+    <Checkbox id="docs" text="@component_docs" width="640" height="24"
+              font-size="13" color="#FFFFFFFF" />
+    <Checkbox id="samples" text="@component_samples" width="640" height="24"
+              font-size="13" color="#FFFFFFFF" />
+  </VBox>
+
+  <Label id="lblDir" position="absolute" left="40" top="240" width="640" height="20"
+         text="@install_dir" font-size="13" color="#B8C0CC" />
+
+  <TextInput id="editDir" required="true" required-message="@dir_required"
+             position="absolute" left="40" top="264" width="512" height="32"
+             padding="6 12 6 12"
+             value-source="config:install.default_path"
+             background="#1AFFFFFF" border-radius="8" border-color="#33FFFFFF" border-width="1"
+             font-size="13" color="#FFFFFFFF" cursor="text" />
+
+  <Button id="btnBrowse" action="pick_directory" target="editDir" text="@browse"
+          position="absolute" left="560" top="264" width="120" height="32"
+          background="#1AFFFFFF" border-radius="8" font-size="13"
+          color="#FFFFFFFF" cursor="hand" />
+
+  <Label id="lblRequiredSpace" position="absolute" left="40" top="304" width="512" height="20"
+         text="@required_space" value-source="config:install.required_space_mb"
+         value-format="size-mb" font-size="12" color="#8A93A0" />
+
+  <Label id="local_space" position="absolute" left="40" top="324" width="512" height="20"
+         text="@available_space" value-source="disk-free:editDir"
+         value-format="size" font-size="12" color="#8A93A0" />
+
+  <Checkbox id="chkShotcut" position="absolute" left="40" top="356" width="300" height="24"
+            text="@shortcut_checkbox" font-size="13" color="#FFFFFFFF" checked="true" />
+
+  <Checkbox id="chkAutoRun" position="absolute" left="380" top="356" width="300" height="24"
+            text="@autorun_checkbox" font-size="13" color="#FFFFFFFF" checked="false" />
+
+  <Button id="btnBack" action="back" text="@back_button"
+          position="absolute" left="296" top="382" width="160" height="40"
+          background="#1AFFFFFF" border-radius="10" font-size="14"
+          color="#FFFFFFFF" cursor="hand" />
+
+  <Button id="btnInstall" action="install" text="@install_button"
+          enabled-when="editDir:valid"
+          position="absolute" left="472" top="382" width="208" height="40"
+          background="#FF1F6FEB" border-radius="10" font-size="14"
+          font-weight="bold" color="#FFFFFFFF" cursor="hand" />
+</Page>

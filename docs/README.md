@@ -32,6 +32,7 @@ blocks a release.
 | [页面布局](zh-CN/XML_LAYOUT_GUIDE.md) | [Page layout](en/XML_LAYOUT_GUIDE.md) |
 | [多语言](zh-CN/LOCALIZATION.md) | [Languages](en/LOCALIZATION.md) |
 | [自定义步骤](zh-CN/SCRIPT_API.md) | [Custom steps](en/SCRIPT_API.md) |
+| [从 NSIS 迁移](zh-CN/MIGRATION_FROM_NSIS.md) | [Migrating from NSIS](en/MIGRATION_FROM_NSIS.md) |
 | [当前生产状态](zh-CN/PRODUCTION_STATUS.md) | [Production status](en/PRODUCTION_STATUS.md) |
 
 ## 技术说明 / Technical notes

@@ -77,6 +77,14 @@ jobs:
         shell: powershell
         run: .\scripts\audit_case_descriptions.ps1
 
+      # The migration guide's tables are the table the checker classifies with,
+      # and both languages have to carry the same rows. Running the check over
+      # the example that carries one of every NSIS construct keeps both honest:
+      # a row nothing reads, and a construct with no row at all, fail here.
+      - name: Check the NSIS migration table
+        shell: powershell
+        run: .\scripts\check_nsi_migration.ps1 -Script .\examples\nsis-migration\legacy.nsi -FailOnUnknown
+
       - name: Check formatting
         run: cargo fmt --all -- --check
 

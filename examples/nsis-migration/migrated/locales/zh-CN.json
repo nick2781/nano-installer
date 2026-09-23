@@ -1,0 +1,53 @@
+{
+  "minimize_button": "最小化",
+  "close_button": "关闭",
+  "back_button": "上一步",
+  "next_button": "下一步",
+  "cancel_button": "取消安装",
+  "ok": "确定",
+
+  "welcome_title": "欢迎安装 LegacyApp",
+  "welcome_body": "这个安装包会把这台机器上的 LegacyApp 换到 3.4.1。安装目录里原有的文件会被覆盖，用户数据保持不动。",
+  "license_link": "安装即表示同意[《许可协议》](license)。",
+
+  "options_title": "安装选项",
+  "components_heading": "要安装的内容",
+  "component_docs": "文档",
+  "component_samples": "示例工程",
+  "install_dir": "安装目录",
+  "browse": "浏览...",
+  "dir_required": "请填写安装目录",
+  "required_space": "所需空间：",
+  "available_space": "可用空间：",
+  "shortcut_checkbox": "创建桌面快捷方式",
+  "autorun_checkbox": "开机时启动",
+  "install_button": "安装",
+
+  "installing_title": "正在安装",
+  "installing_text": "准备开始...",
+
+  "install_complete": "安装完成",
+  "version_info": "版本 ",
+  "launch_button": "立即运行",
+  "finish_button": "关闭",
+
+  "uninstall_confirm": "确定要从这台机器上移除 LegacyApp 吗？",
+  "keep_data": "保留本地数据",
+  "uninstall_button": "卸载",
+  "not_now": "暂不卸载",
+  "uninstall_complete": "LegacyApp 已移除",
+  "uninstall_done": "关闭",
+
+  "close_confirm_message": "安装尚未完成，确定要退出吗？",
+
+  "status.checking_processes": "正在关闭正在运行的 LegacyApp...",
+  "status.extracting": "正在展开应用文件...",
+  "status.dependencies": "正在准备运行库...",
+  "status.migrating": "正在迁移已有设置...",
+  "status.shortcuts": "正在创建快捷方式...",
+  "status.registry": "正在写入设置...",
+  "status.install_complete": "安装完成",
+  "status.uninstalling": "正在移除应用文件...",
+  "status.cleaning": "正在清理快捷方式与设置...",
+  "status.uninstall_complete": "卸载完成"
+}

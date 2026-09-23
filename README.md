@@ -102,7 +102,8 @@ Product guides: [Quick start](docs/en/QUICK_START.md) &middot;
 [Configuration](docs/en/CONFIG_REFERENCE.md) &middot;
 [Page layout](docs/en/XML_LAYOUT_GUIDE.md) &middot;
 [Languages](docs/en/LOCALIZATION.md) &middot;
-[Custom steps](docs/en/SCRIPT_API.md)
+[Custom steps](docs/en/SCRIPT_API.md) &middot;
+[Migrating from NSIS](docs/en/MIGRATION_FROM_NSIS.md)
 
 Technical notes: [Architecture](docs/en/ARCHITECTURE.md) &middot;
 [Build and release](docs/en/BUILD_AND_RELEASE.md) &middot;

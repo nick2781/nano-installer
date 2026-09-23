@@ -1,0 +1,150 @@
+{
+  "project": {
+    "name": "LegacyApp",
+    "version": "3.4.1",
+    "file_version": "3.4.1.0",
+    "publisher": "Example Company",
+    "copyright": "Copyright 2026 Example Company",
+    "description": "LegacyApp Installer"
+  },
+  "output": {
+    "installer_name": "LegacyApp_Setup.exe",
+    "installer_icon": "assets/app.ico",
+    "uninstaller_name": "uninst.exe",
+    "uninstaller_icon": "assets/uninst.ico"
+  },
+  "install": {
+    "exe_name": "LegacyApp.exe",
+    "default_path": "C:\\Program Files\\LegacyApp",
+    "required_space_mb": 120,
+    "require_admin": true,
+    "detect_running_process": true,
+    "kill_process_on_install": true,
+    "kill_process_on_uninstall": true
+  },
+  "registry": {
+    "uninstall_key": "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\LegacyApp"
+  },
+  "shortcuts": {
+    "desktop_shortcut": true,
+    "desktop_default": true,
+    "start_menu": true,
+    "start_menu_folder": "LegacyApp"
+  },
+  "autostart": {
+    "enabled": true,
+    "default": false
+  },
+  "localization": {
+    "default_locale": "zh-CN",
+    "supported_locales": [
+      "zh-CN",
+      "en-US"
+    ]
+  },
+  "links": {
+    "license": "https://example.test/legacyapp/license"
+  },
+  "resources": {
+    "layouts_dir": "layouts",
+    "locales_dir": "locales",
+    "payload_file": "payload/app.zip"
+  },
+  "ui": {
+    "dpi_aware": true,
+    "dpi_threshold": 144,
+    "dialog_layout": "layouts/msgBox.xml"
+  },
+  "wizard": {
+    "pages": [
+      {
+        "id": "welcome",
+        "layout": "layouts/welcomepage.xml",
+        "title": "Welcome"
+      },
+      {
+        "id": "options",
+        "layout": "layouts/optionspage.xml",
+        "title": "Options"
+      },
+      {
+        "id": "installing",
+        "layout": "layouts/installingpage.xml",
+        "title": "Installing",
+        "role": "progress"
+      },
+      {
+        "id": "finish",
+        "layout": "layouts/finishpage.xml",
+        "title": "Finished",
+        "role": "finish"
+      }
+    ],
+    "uninstall_pages": [
+      {
+        "id": "uninstall_confirm",
+        "layout": "layouts/uninstallpage.xml",
+        "title": "Uninstall"
+      },
+      {
+        "id": "uninstall_progress",
+        "layout": "layouts/installingpage.xml",
+        "title": "Uninstalling",
+        "role": "progress"
+      },
+      {
+        "id": "uninstall_finish",
+        "layout": "layouts/uninstallfinishpage.xml",
+        "title": "Uninstalled",
+        "role": "finish"
+      }
+    ]
+  },
+  "components": {
+    "items": [
+      {
+        "id": "core",
+        "payload": "payload/core.zip",
+        "required": true
+      },
+      {
+        "id": "docs",
+        "payload": "payload/docs.zip"
+      },
+      {
+        "id": "samples",
+        "payload": "payload/samples.zip"
+      }
+    ]
+  },
+  "dependencies": {
+    "items": [
+      {
+        "id": "vcredist_x64",
+        "detect": {
+          "registry": {
+            "key": "HKLM\\SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\x64",
+            "name": "Installed",
+            "equals": "1"
+          }
+        },
+        "payload": "payload/vc_redist.x64.exe",
+        "arguments": [
+          "/install",
+          "/quiet",
+          "/norestart"
+        ],
+        "required": true
+      }
+    ]
+  },
+  "uninstall": {
+    "data_paths": [
+      "%APPDATA%\\LegacyApp"
+    ]
+  },
+  "advanced": {
+    "silent_mode_support": true,
+    "uninstall_mode_support": true
+  }
+}

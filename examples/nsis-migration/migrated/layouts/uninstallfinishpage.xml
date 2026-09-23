@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MUI_UNPAGE_FINISH. The uninstaller holds its own page list, so this page is
+     named in wizard.uninstall_pages rather than shared with the installer's. -->
+<Page width="720" height="450" background="#FF1B1F27"
+      border-radius="12" border-color="#33FFFFFF" border-width="1">
+
+  <Label id="lblDone" position="absolute" left="40" top="164" width="640" height="36"
+         text="@uninstall_complete" font-size="24" font-weight="bold"
+         color="#FFFFFFFF" textalign="center" />
+
+  <Button id="btnUninstalled" action="close" text="@uninstall_done"
+          position="absolute" left="256" top="252" width="208" height="40"
+          background="#FF1F6FEB" border-radius="10" font-size="14"
+          font-weight="bold" color="#FFFFFFFF" cursor="hand" />
+</Page>

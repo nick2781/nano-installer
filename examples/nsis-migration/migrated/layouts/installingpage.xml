@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MUI_PAGE_INSTFILES: the page the task reports on. `role: "progress"` in the
+     configuration is what puts it there. The bar's filled part is the project's
+     own artwork (`bar-image`, a full-width sprite it clips); this example ships
+     no artwork, so it draws the track and reports the step in words. -->
+<Page width="720" height="450" background="#FF1B1F27"
+      border-radius="12" border-color="#33FFFFFF" border-width="1">
+
+  <Label id="lblTitle" position="absolute" left="40" top="72" width="640" height="30"
+         text="@installing_title" font-size="22" font-weight="bold" color="#FFFFFFFF" />
+
+  <ProgressBar id="slrProgress" position="absolute" left="72" top="228"
+               width="576" height="10" progress="0" border-radius="5"
+               background="#FF334155" />
+
+  <Label id="lblStatus" position="absolute" left="72" top="252" width="576" height="22"
+         text="@installing_text" value-source="status" font-size="13"
+         color="#B8C0CC" textalign="center" />
+
+  <Button id="btnCancel" action="cancel" text="@cancel_button"
+          position="absolute" left="520" top="382" width="160" height="40"
+          background="#1AFFFFFF" border-radius="10" font-size="14"
+          color="#FFFFFFFF" cursor="hand" />
+</Page>

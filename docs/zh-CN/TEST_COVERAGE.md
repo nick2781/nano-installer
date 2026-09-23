@@ -3,7 +3,7 @@
 文档承诺的每一条行为，以及守住它的那条自动化用例。表格里的每一行都列出了该行为失效时会失败的
 用例；没有出现在任何一行里的行为，就是没人看住的行为。
 
-`cargo test --locked --workspace` 会跑 338 条用例：核心库 247 条，真构建并运行安装包的 55 条，
+`cargo test --locked --workspace` 会跑 340 条用例：核心库 249 条，真构建并运行安装包的 55 条，
 按构建器的方式读工程的 5 条，可视化构建器 29 条，解压运行时 2 条。安装包级用例需要真实的运行时
 可执行文件，`.\scripts\run_e2e_setup.ps1` 会先把它们构建出来再跑，并把整次运行写进
 `target/e2e-report.txt`。
@@ -12,7 +12,7 @@
 
 | 层 | 用例数 | 能证明 | 不能证明 |
 | --- | --- | --- | --- |
-| 核心库 | 247 | 一页会变成什么——图层、坐标、命中区域、文字，以及高对比打开时这些颜色换成系统配色里的哪一个；捆绑数据里装了什么；安装往磁盘和注册表写了什么；每个脚本原语做什么、一个服务怎么装上和怎么删掉；脚本从页面上取回什么、脚本读到的组件选择；工程声明的依赖怎么被查出来、下载下来、校验并装上，以及哪些情形会被拒绝 | 打包出来的安装包能走到这些代码；服务装上之后真的跑起来——服务程序是产品自己的，用例带不了 |
+| 核心库 | 249 | 一页会变成什么——图层、坐标、命中区域、文字，以及高对比打开时这些颜色换成系统配色里的哪一个；捆绑数据里装了什么；安装往磁盘和注册表写了什么；每个脚本原语做什么、一个服务怎么装上和怎么删掉；脚本从页面上取回什么、脚本读到的组件选择；工程声明的依赖怎么被查出来、下载下来、校验并装上，以及哪些情形会被拒绝 | 打包出来的安装包能走到这些代码；服务装上之后真的跑起来——服务程序是产品自己的，用例带不了 |
 | 安装包级 | 55 | 构建好的安装包在这台机器上装了一遍，它的窗口也是真的被驱动起来的：payload 字节（被改动过的安装包会连目标目录都不建就拒绝这次安装）、manifest、卸载项自己那组字段、快捷方式、自启动、项目脚本、脚本要跑的辅助程序、向导窗口、页面钩子把向导跳过一页并按来路退回、它自己页面上那些要等点击的行为、在列表上滚动滚轮、脚本的提示与提问所画的那张由点击作答的卡片、页面上的取值交到脚本手里、勾选决定这次装哪些组件、脚本按类型写下的每个注册表值以及视图名选中的是哪一份拷贝、
   脚本跑过的命令留下的退出码与两个输出流，工程自己的命令在成品上跑过一遍（它拒绝的成品不会留下），
   工程声明的依赖真的被问了一遍——缺的装上、已经有的不再装一遍、装不上的让整次安装停下、下载来的程序对不上哈希就一次都不跑——以及只有指针与键盘真的动起来才会发生的事——悬停与按下换上的状态位图、三种标准光标形状、用 Tab 按版面顺序走一遍页面上的控件并按 Enter 或空格执行环底下的那一个（环画在控件自己的矩形上，走到头绕回另一头）、开着高对比时按系统配色而不是版面声明的颜色画出来的向导、语言菜单的上下键与 Enter/Escape、选目录对话框、脚本装上的服务在机器上确实存在并随卸载消失，以及一次无窗口运行写下的日志——写到点名的文件、失败时把它的路径交回给调用方 | 输入法自己画出来的那两个窗口；在外壳的选目录对话框里选定一个目录之后会写进哪个输入框；不显示指针的会话上光标长什么样——那里这条用例打印自己的跳过理由——以及按住 Shift 的 Shift+Tab：窗口用例发的是按键消息，消息带不上修饰键，往回走那一半由核心库那条走位用例守着 |
@@ -54,7 +54,7 @@
 | `uninstall.data_paths` | `only_expands_data_paths_inside_a_user_profile`、`ignores_data_paths_when_the_project_declares_none`、`uninstalling_below_appdata_removes_the_data_only_when_the_box_is_cleared` |
 | `advanced.silent_mode_support`、`advanced.uninstall_mode_support` | `a_project_without_silent_support_refuses_a_windowless_install`、`a_project_without_silent_support_refuses_a_windowless_uninstall`、`a_project_that_did_not_opt_in_refuses_a_windowless_run` |
 | payload 格式判定 | `the_payload_format_selects_the_runtime_that_gets_embedded`、`zip_backend_rejects_invalid_archive`、`rejects_unsafe_7z_paths` |
-| `installer_config.json` 里自己不读的键 | `accepts_a_configuration_of_read_settings`、`leaves_a_section_of_the_projects_own_alone`、`refuses_a_setting_that_does_nothing`、`refuses_a_misspelled_setting`、`refuses_a_section_that_does_nothing`、`refuses_an_unknown_page_key`、`refuses_a_page_role_the_runtime_does_not_run`、`refuses_two_pages_claiming_one_role`、`reports_every_problem_at_once`、`the_example_project_matches_the_schema` |
+| `installer_config.json` 里自己不读的键 | `accepts_a_configuration_of_read_settings`、`leaves_a_section_of_the_projects_own_alone`、`refuses_a_setting_that_does_nothing`、`refuses_a_misspelled_setting`、`refuses_a_section_that_does_nothing`、`refuses_an_unknown_page_key`、`refuses_a_page_role_the_runtime_does_not_run`、`refuses_two_pages_claiming_one_role`、`reports_every_problem_at_once`、`the_example_project_matches_the_schema`、`the_migrated_example_matches_the_schema` |
 | 构建告警 | `an_asset_without_its_density_pair_is_reported`、`a_translation_missing_page_text_is_reported`、`a_supported_locale_without_a_file_is_reported`、`inspects_taptap_project_without_dpi_warnings`、`a_validation_message_the_page_asks_for_is_reported` |
 
 ## 页面与控件
@@ -129,6 +129,7 @@
 | `scripts` 目录进入构建好的安装包 | `a_setup_runs_the_projects_own_install_and_uninstall_scripts` |
 | `scripts/pages.rhai` 进入构建好的安装包，并在用户翻页时被调用 | `a_page_hook_sends_the_wizard_past_a_page_the_project_skips`、`a_page_hook_that_fails_is_reported_and_the_wizard_walks_on` |
 | 脚本发出的提示、报错与提问画在向导里、由点击作答 | `a_question_a_script_asks_is_drawn_with_both_of_its_answers`、`a_script_dialog_is_drawn_in_the_wizard` |
+| 示例工程自己的脚本交给运行时解析 | `the_example_projects_scripts_parse` |
 
 ## 安装、升级与卸载
 
@@ -185,5 +186,12 @@
   用例守住的是「Windows 拒绝、而且机器上没有留下任何服务」；整套装上再删掉的往返只能在提权环境里跑到。
   两条报告（`run_tests.ps1` 与 `run_e2e_setup.ps1`）都会写明本次是不是提权运行，所以这种运行的结果不会被
   当成人人都跑过的结果。至于服务装上以后是否正常运行，这条路谁也走不到：服务程序是产品自己的。
+- **示例工程的脚本没有被真的跑过。** 它们只被解析（`the_example_projects_scripts_parse`），
+  所以一个名字写错的原语、一个读了页面上不存在控件的 id 照样能过——这两种写法在运行时都只是
+  安静地返回一个值，要真的装一次这个示例才会暴露。
+- **从 NSIS 搬过来的建议是不是真的成立。** `scripts/check_nsi_migration.ps1` 在 CI 上读两份指南的
+  命令表，要求迁移示例用到的每条构造都有一行、点名它会变成什么，两份语言必须逐条一致；构建器那一侧
+  另有一条用例，要求示例配置过一遍配置审计。这些只证明每条构造都被分过类，证明不了分类本身对不对
+  ——某个命令判成了原样对应，而它其实得写成脚本，只有照着成品搬一遍的人才会发现。
 - **测试无法收场的脚本原语：** `run_detached` 有意活得比这次运行长；`kill_process` 会结束一个
   不是测试启动的进程；`sleep_ms` 只能拿墙上时间做断言；`is_elevated` 的期望值只能照抄实现。

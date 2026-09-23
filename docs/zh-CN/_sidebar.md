@@ -6,6 +6,7 @@
   * [页面布局](XML_LAYOUT_GUIDE.md)
   * [多语言](LOCALIZATION.md)
   * [自定义步骤](SCRIPT_API.md)
+  * [从 NSIS 迁移](MIGRATION_FROM_NSIS.md)
 * 技术说明
   * [架构](ARCHITECTURE.md)
   * [项目结构](PROJECT_STRUCTURE.md)

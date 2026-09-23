@@ -14,11 +14,15 @@ docs/
 ├── en/                         # English documentation
 └── zh-CN/                      # Chinese documentation
 examples/TapTap/                # validation project
+examples/nsis-migration/        # a project migrated off NSIS, with the script that checks it
 scripts/                        # build, smoke test, PE audit
 ```
 
 The raw runtime stubs carry no product resources. The builder injects icons, version info, and
 branding from your project configuration, so one runtime can produce setups for any product.
+
+A project leaving NSIS starts at [Migrating from NSIS](MIGRATION_FROM_NSIS.md), which says what every
+construct becomes here; `examples/nsis-migration/migrated/` is a buildable project written to it.
 
 ## A product project
 

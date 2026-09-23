@@ -3,7 +3,7 @@
 Every behaviour the documentation promises, and the automated case that holds it. A row names the
 cases that fail when that behaviour breaks; a behaviour with no row is one nobody is checking.
 
-`cargo test --locked --workspace` runs 338 cases: 247 in the core library, 55 that build a real
+`cargo test --locked --workspace` runs 340 cases: 249 in the core library, 55 that build a real
 setup and run it, 5 that read a project the way the builder does, 29 in the visual builder, and 2
 in the extraction runtimes. The setup-level cases need real runtime executables built first, which
 is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `target/e2e-report.txt`.
@@ -12,7 +12,7 @@ is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `targe
 
 | Layer | Cases | Proves | Cannot prove |
 | --- | --- | --- | --- |
-| Core library | 247 | what a page becomes — layers, coordinates, hit regions, text, and which system colour each of those takes while high contrast is on — what the bundle carries, what an install writes to disk and the registry, what each script primitive does and how a service is installed and deleted, what a script reads back off the page and off the run, and how the dependencies a project declares are found, fetched, checked and installed | that a packaged setup reaches any of it, and that an installed service then runs -- the program a service runs is the product's own, and no case can ship one |
+| Core library | 249 | what a page becomes — layers, coordinates, hit regions, text, and which system colour each of those takes while high contrast is on — what the bundle carries, what an install writes to disk and the registry, what each script primitive does and how a service is installed and deleted, what a script reads back off the page and off the run, and how the dependencies a project declares are found, fetched, checked and installed | that a packaged setup reaches any of it, and that an installed service then runs -- the program a service runs is the product's own, and no case can ship one |
 | Setup end to end | 55 | a built setup installed on the machine, its own window driven: payload bytes (a setup whose bytes changed refuses the install before it creates anything), manifest, the uninstall entry's own fields, shortcuts, autostart, project scripts, the helpers a script runs, the wizard window, a page hook sending it past a page and Back returning the way the user came, the clicks its own pages wait for, a wheel over a list, the card a script's messages and questions are answered on, the page's values reaching the script, which components a page and a project put in, every registry type a script names and the copy of a key
   a view name selects, what a command a script ran wrote, the command a project runs on its finished setup and its
    uninstaller (which must succeed, or the file it refused is not left behind), and what only a moving pointer and a real keyboard
@@ -57,7 +57,7 @@ is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `targe
 | `advanced.silent_mode_support`, `advanced.uninstall_mode_support` | `a_project_without_silent_support_refuses_a_windowless_install`, `a_project_without_silent_support_refuses_a_windowless_uninstall`, `a_project_that_did_not_opt_in_refuses_a_windowless_run` |
 | payload format detection | `the_payload_format_selects_the_runtime_that_gets_embedded`, `zip_backend_rejects_invalid_archive`, `rejects_unsafe_7z_paths` |
 | build warnings | `an_asset_without_its_density_pair_is_reported`, `a_translation_missing_page_text_is_reported`, `a_supported_locale_without_a_file_is_reported`, `inspects_taptap_project_without_dpi_warnings`, `a_validation_message_the_page_asks_for_is_reported` |
-| `installer_config.json` keys this build does not read | `accepts_a_configuration_of_read_settings`, `leaves_a_section_of_the_projects_own_alone`, `refuses_a_setting_that_does_nothing`, `refuses_a_misspelled_setting`, `refuses_a_section_that_does_nothing`, `refuses_an_unknown_page_key`, `refuses_a_page_role_the_runtime_does_not_run`, `refuses_two_pages_claiming_one_role`, `reports_every_problem_at_once`, `the_example_project_matches_the_schema` |
+| `installer_config.json` keys this build does not read | `accepts_a_configuration_of_read_settings`, `leaves_a_section_of_the_projects_own_alone`, `refuses_a_setting_that_does_nothing`, `refuses_a_misspelled_setting`, `refuses_a_section_that_does_nothing`, `refuses_an_unknown_page_key`, `refuses_a_page_role_the_runtime_does_not_run`, `refuses_two_pages_claiming_one_role`, `reports_every_problem_at_once`, `the_example_project_matches_the_schema`, `the_migrated_example_matches_the_schema` |
 
 ## Pages and controls
 
@@ -131,6 +131,7 @@ setup-level cases prove the `scripts` directory and the tools directory survive 
 | the `scripts` directory reaching a built setup | `a_setup_runs_the_projects_own_install_and_uninstall_scripts` |
 | `scripts/pages.rhai` reaching a built setup, and being called as the user turns a page | `a_page_hook_sends_the_wizard_past_a_page_the_project_skips`, `a_page_hook_that_fails_is_reported_and_the_wizard_walks_on` |
 | a message, an error and a question a script raises, drawn in the wizard and answered by a click | `a_question_a_script_asks_is_drawn_with_both_of_its_answers`, `a_script_dialog_is_drawn_in_the_wizard` |
+| the example projects' own scripts reaching the runtime's parser | `the_example_projects_scripts_parse` |
 
 ## Install, upgrade and uninstall
 
@@ -192,6 +193,16 @@ setup-level cases prove the `scripts` directory and the tools directory survive 
   reports (`run_tests.ps1` and `run_e2e_setup.ps1`) name whether the run was elevated, so such a run is never
   read as one everybody has made. Whether an installed service then runs is out of reach either way: the
   program a service runs is the product's own.
+- **The example projects' scripts are never run.** They are parsed
+  (`the_example_projects_scripts_parse`), so a mistyped primitive or a read of a control the page does
+  not declare passes just the same -- both are a value handed back quietly at run time, and only
+  installing the example would show either one up.
+- **Whether the migration advice holds at all.** `scripts/check_nsi_migration.ps1` reads the command
+  tables of both guides on CI and holds every construct the migrated example uses to a row that says
+  what it becomes, with the two languages agreeing line for line, and a case audits the example
+  configuration the way the build would. That proves every construct was classified; it cannot prove
+  a classification is right -- a command filed as a direct setting that really needs a script is a
+  guide that misleads, and only someone migrating a real installer would find that out.
 - **Script primitives that cannot be undone by a test:** `run_detached` deliberately outlives the
   run; `kill_process` ends a process the test did not start; `sleep_ms` has only elapsed time to
   assert on; `is_elevated` would only mirror the implementation.

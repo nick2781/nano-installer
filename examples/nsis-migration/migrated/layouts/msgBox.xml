@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What NSIS draws with MessageBox: a card inside the window, in the project's
+     own skin, used by the close button and by show_message / show_error /
+     ask_yes_no. A project without this file loses the close confirmation
+     entirely, so the file is named in ui.dialog_layout rather than left out. -->
+<Page width="420" height="200" background="#FF222834"
+      border-radius="12" border-color="#33FFFFFF" border-width="1">
+
+  <Label id="lblMsg" position="absolute" left="24" top="48" width="372" height="64"
+         text="@close_confirm_message" value-source="dialog:message"
+         font-size="15" font-weight="bold" color="#FFFFFFFF"
+         wrap="true" textalign="center" />
+
+  <Button id="btnCancel" action="dialog_cancel" visible-with="dismiss"
+          text="@cancel" value-source="dialog:dismiss"
+          position="absolute" left="32" top="140" width="168" height="40"
+          background="#1AFFFFFF" border-radius="10" font-size="14"
+          color="#FFFFFFFF" cursor="hand" />
+
+  <Button id="btnOK" action="dialog_ok" text="@ok" value-source="dialog:accept"
+          position="absolute" left="220" top="140" width="168" height="40"
+          background="#FF1F6FEB" border-radius="10" font-size="14"
+          font-weight="bold" color="#FFFFFFFF" cursor="hand" />
+</Page>

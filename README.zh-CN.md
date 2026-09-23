@@ -91,7 +91,8 @@ MyApp/
 [配置参考](docs/zh-CN/CONFIG_REFERENCE.md) &middot;
 [页面布局](docs/zh-CN/XML_LAYOUT_GUIDE.md) &middot;
 [多语言](docs/zh-CN/LOCALIZATION.md) &middot;
-[自定义步骤](docs/zh-CN/SCRIPT_API.md)
+[自定义步骤](docs/zh-CN/SCRIPT_API.md) &middot;
+[从 NSIS 迁移](docs/zh-CN/MIGRATION_FROM_NSIS.md)
 
 技术说明：[架构](docs/zh-CN/ARCHITECTURE.md) &middot;
 [构建与发布](docs/zh-CN/BUILD_AND_RELEASE.md) &middot;

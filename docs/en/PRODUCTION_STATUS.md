@@ -236,7 +236,14 @@ files and registry entries, so validate them in a disposable virtual machine onl
   builds against an empty archive of the same format. A page is drawn rather than reached: the
   uninstaller's pages are in the pictures without an uninstall having run.
 
-## Signing
+- Moving off NSIS is written down and checked: `docs/{zh-CN,en}/MIGRATION_FROM_NSIS.md` sorts every
+  NSIS command, directive and `${...}` variable into four answers -- it maps onto a setting, it needs a
+  script, only a person can do it, or NSIS ships it and this build has no counterpart -- and says what
+  each of them becomes. `examples/nsis-migration/` is a project written to that guide: a configuration,
+  seven pages of layout, two languages and both scripts, which the real builder turns into a setup that
+  installs. `scripts/check_nsi_migration.ps1` reads the two guides' tables on CI and holds every
+  construct the example uses to a row, with both languages agreeing line for line, and the example
+  configuration passes the builder's own configuration audit.
 
 ## Signing
 

@@ -364,6 +364,27 @@ mod tests {
         REG_QWORD, REG_SZ,
     };
 
+    /// The examples are what a project copies from, and nothing here ever runs
+    /// their scripts: a syntax error in one would first be met by whoever
+    /// installs that project. Parsing them costs nothing and catches exactly
+    /// that, in both the reference project and the one migrated off NSIS.
+    #[test]
+    fn the_example_projects_scripts_parse() {
+        for relative in [
+            "../../examples/TapTap/scripts/install.rhai",
+            "../../examples/TapTap/scripts/uninstall.rhai",
+            "../../examples/nsis-migration/migrated/scripts/install.rhai",
+            "../../examples/nsis-migration/migrated/scripts/uninstall.rhai",
+        ] {
+            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(relative);
+            let source = std::fs::read_to_string(&path)
+                .unwrap_or_else(|error| panic!("{relative} is unreadable: {error}"));
+            Engine::new()
+                .compile(&source)
+                .unwrap_or_else(|error| panic!("{relative} does not parse: {error}"));
+        }
+    }
+
     /// One registry key per test, so tests running in parallel never share one.
     fn unique_registry_key() -> String {
         static NEXT: AtomicUsize = AtomicUsize::new(0);

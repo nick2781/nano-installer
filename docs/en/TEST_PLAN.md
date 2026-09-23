@@ -61,6 +61,14 @@ output are shown as they are written.
 Every behaviour these documents promise sits next to the case that holds it in
 [Test coverage](TEST_COVERAGE.md), layer by layer, including what no automated case reaches yet.
 
+The migration guide has an automated check of its own: `scripts/check_nsi_migration.ps1` reads the
+tables in `docs/en/MIGRATION_FROM_NSIS.md` and `docs/zh-CN/MIGRATION_FROM_NSIS.md` and holds every
+NSIS command, directive and `${...}` variable used by `examples/nsis-migration/legacy.nsi` to a row
+that names what it becomes; the two languages have to agree command for command and answer for
+answer, and a disagreement fails outright. With `-FailOnUnknown`, which is how CI runs it, a construct
+with no row fails too, so an example using something new cannot slip through. What it checks is that
+every construct was classified, not that a classification is right.
+
 Unit tests cover bundle roundtrip, entry digest checking, payload embedding, button hit testing,
 temporary-directory deployment, manifest writing, refusing to overwrite an existing directory,
 upgrades and stale-file cleanup, failure rollback, and uninstall rules for shortcuts and user data.

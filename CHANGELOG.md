@@ -128,6 +128,16 @@
   工程画的图片保留自己的像素；展开的菜单补一条描边，不然它和页面同色、看不出从哪儿开始；用户开关
   开关或者换一套配色时，窗口重新排一遍版面再重画。
 
+- 从 NSIS 搬过来这件事有了自己的文档、示例和检查。`docs/{en,zh-CN}/MIGRATION_FROM_NSIS.md` 把 NSIS 的
+  命令、指令与 `${...}` 变量逐条归成四类——原样对应一条配置或一个原语、要写一段脚本、只能人工处理、
+  NSIS 自带而这里没有对应——并写明每条变成什么，两份语言必须是同一张表。
+  `examples/nsis-migration/legacy.nsi` 是一份用遍这些构造的老脚本，
+  `examples/nsis-migration/migrated/` 是照指南写出来的同一个产品：配置、七页版面、两种语言、安装与
+  卸载脚本，一张图片素材都不用。指南里的表就是检查器读的那张表：`scripts/check_nsi_migration.ps1`
+  把老脚本逐条判定，示例用到的构造少一行就报 `unknown`，`-FailOnUnknown` 直接失败（CI 就是这么跑
+  的），两份语言对不上也失败。另有两条用例兜住示例本身：迁移工程的配置要过一遍构建器的配置审计，
+  两个示例工程的脚本要能被运行时解析——它们不会被任何用例真的跑起来。
+
 ### 改进
 
 - 构建器不再接受自己不读的配置键。以前能解析却什么都不做的设置会让构建失败，并指出该改用哪个
@@ -426,7 +436,35 @@
   因为 Windows 自带的高对比主题会给两个角色同一个颜色，那样就分不清运行时问的是哪一格。菜单那条描边
   只在有方案时才画：菜单是画在页面之上的，而方案把页面与列表画成同一个颜色。
 
+- 迁移示例的两个脚本写的是运行时真正的行为，有两处容易写反，指南、示例与检查器现在说的是同一件事。
+  卸载脚本读「保留数据」这个答案用的是 `keep_data`：运行时自己看的是版面上的 `chkReserveData`，
+  但它交给脚本的是这个答案本身，脚本若照抄版面 id 去读，读到的是一个这次运行从没填过的复选框，
+  而读不到的复选框一律答 `false`——正好把用户要留的数据删掉。另一处是装了 `install.rhai` 的工程，
+  安装步骤由它自己负责：`chkAutoRun` 这条自启动记录由脚本写进 Run 共享键，manifest 记下这个值，
+  卸载只收回这一个值、不动同一个键里别的产品；不写安装脚本的工程才由 `autostart` 配置代劳。
+
 ### 已验证
+
+- 迁移检查器在真脚本上跑了四种情形：`check_nsi_migration.ps1 -Script examples\nsis-migration\legacy.nsi`
+  把 92 条语句判成 direct 31、script 43、manual 5、none 13、unknown 0，两份指南各 183 条命令逐条一致，
+  退出码 0；把英文指南删掉一行（`GetLabelAddress`）后两份语言对不上，退出码 1 并报出缺的是哪条；
+  `-FailOnUnknown` 对一条含 `Frobnicate` 的脚本给出 1；脚本文件不存在时退出码 1 并说明找不到哪个文件。
+- 迁移示例真的能构建：把合成的 payload（`LegacyApp.exe`、core/docs/samples 三个组件归档、
+  `vc_redist.x64.exe`）与一个手工构造的 16×16 ICO 放进示例目录的一个副本，
+  `nano-installer-native-x64.exe build --project <副本> --output <安装包> --stubs target\debug`
+  退出码 0，日志收下 config、7 份版面、2 份语言、2 个脚本、3 个组件与依赖，写出 VERSIONINFO 3.4.1.0、
+  申请提权、声明 DPI aware，产出一个真实的安装包。
+- `cargo test --locked --workspace --no-fail-fast`：340 条用例全部跑到，337 通过、2 失败、1 忽略
+  （核心库 249 含 1 忽略、安装包级 55、工程检查 5、可视化构建器 29、解压运行时 2）。两条失败的正是
+  需要真实指针的那两条：这次跑的时候桌面停在锁屏界面（`LogonUI` 与 `LockApp` 都在跑），同一份源码在
+  解锁的会话里通过，与本版无关。报告在 `target/test-report.txt` 与 `target/test-report.html`。
+- 安装包级的 55 条另按一次一条（`--test-threads=1`）跑了一遍，701.88 秒，53 通过、2 失败，失败的仍是
+  那两条指针用例；并行跑时还另有一条偶发失败（一次是下载那条，一次是快捷方式那条），谁单跑都通过，
+  是一张真桌面被十几个窗口用例共用带来的干扰。
+- 迁移那两条新用例都跑通：`the_migrated_example_matches_the_schema` 与
+  `the_example_projects_scripts_parse`。六个审计、`cargo fmt --all -- --check` 与
+  `cargo clippy --locked --workspace --all-targets -- -D warnings` 全部退出码 0；
+  `audit_case_descriptions.ps1` 报 `340 of 340 case(s) described`。
 
 - `cargo test --locked --workspace --no-fail-fast`：共 338 条用例，337 通过、0 失败、1 忽略，退出码 0
   （核心库 247 含 1 忽略、安装包级 55、工程检查 5、可视化构建器 29、解压运行时 2）。报告在
@@ -518,6 +556,7 @@
 
 - 发布流水线尚未接入签名；`scripts/sign.ps1` 已就绪，但构建与发布都不调用它。
 - 未通过真实 Windows 7 SP1 虚拟机端到端验收。
+- 迁移指南的判定还没人照着真成品搬过一遍：检查器只证明每条构造都被分过类，证明不了分类对不对。
 
 ## [2026.9.17-r2]
 

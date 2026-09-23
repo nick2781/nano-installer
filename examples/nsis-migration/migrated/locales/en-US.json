@@ -1,0 +1,53 @@
+{
+  "minimize_button": "Minimize",
+  "close_button": "Close",
+  "back_button": "Back",
+  "next_button": "Next",
+  "cancel_button": "Cancel",
+  "ok": "OK",
+
+  "welcome_title": "Welcome to LegacyApp",
+  "welcome_body": "This setup brings LegacyApp on this machine up to 3.4.1. Files of the previous version are replaced; your own data is left alone.",
+  "license_link": "Installing means you accept the [licence](license).",
+
+  "options_title": "Installation options",
+  "components_heading": "What to install",
+  "component_docs": "Documentation",
+  "component_samples": "Sample projects",
+  "install_dir": "Installation folder",
+  "browse": "Browse...",
+  "dir_required": "Choose an installation folder",
+  "required_space": "Required:",
+  "available_space": "Available:",
+  "shortcut_checkbox": "Create a desktop shortcut",
+  "autorun_checkbox": "Start when Windows starts",
+  "install_button": "Install",
+
+  "installing_title": "Installing",
+  "installing_text": "Getting ready...",
+
+  "install_complete": "Installation complete",
+  "version_info": "Version ",
+  "launch_button": "Run it now",
+  "finish_button": "Close",
+
+  "uninstall_confirm": "Remove LegacyApp from this machine?",
+  "keep_data": "Keep my data",
+  "uninstall_button": "Uninstall",
+  "not_now": "Not now",
+  "uninstall_complete": "LegacyApp has been removed",
+  "uninstall_done": "Close",
+
+  "close_confirm_message": "The installation has not finished. Leave anyway?",
+
+  "status.checking_processes": "Closing the running copy of LegacyApp...",
+  "status.extracting": "Unpacking the application files...",
+  "status.dependencies": "Preparing the runtime libraries...",
+  "status.migrating": "Migrating the settings already on this machine...",
+  "status.shortcuts": "Creating shortcuts...",
+  "status.registry": "Writing the settings...",
+  "status.install_complete": "Installation complete",
+  "status.uninstalling": "Removing the application files...",
+  "status.cleaning": "Removing shortcuts and settings...",
+  "status.uninstall_complete": "Uninstalled"
+}

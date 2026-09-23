@@ -49,6 +49,12 @@ cargo test --locked --workspace
 这几份文档承诺的每一条行为，以及守住它的那条用例，都按层列在[测试覆盖](TEST_COVERAGE.md)里，
 也包括目前还没有自动化用例覆盖的部分。
 
+迁移指南自己也有一道自动检查：`scripts/check_nsi_migration.ps1` 读 `docs/en/MIGRATION_FROM_NSIS.md`
+与 `docs/zh-CN/MIGRATION_FROM_NSIS.md` 里那几张表，逐条核对 `examples/nsis-migration/legacy.nsi`
+用到的每个 NSIS 命令、指令与 `${...}` 变量都有一行、并且点名了它变成什么；两份语言的命令集与判定
+必须逐条一致，不一致就直接失败。加上 `-FailOnUnknown` 之后，表里没有收录的构造也算失败，CI 就是这么
+跑的，所以一份用了新构造的示例不会悄悄溜过去。它检查的是「每条构造都被分类过」，不是分类对不对。
+
 单元测试覆盖 bundle 往返、条目摘要核对、payload 打包、按钮命中测试、临时目录部署、manifest
 写入、拒绝覆盖已有目录、升级与旧文件清理、失败回滚，以及卸载时的快捷方式与用户数据规则。布局测试覆盖嵌套流式容器
 与间距、百分比尺寸、进度条裁剪、越界页面回退，以及进度页与状态文案的绑定。脚本测试覆盖脚本部署

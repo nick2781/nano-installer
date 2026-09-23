@@ -639,6 +639,19 @@ mod tests {
         audit(&config).expect("the example configuration holds settings the build reads");
     }
 
+    /// The migrated example is what a reader copies when they move an installer
+    /// off NSIS, so it has to be a project this build would accept: a key it
+    /// does not read would be a guide teaching a setting nothing honours.
+    #[test]
+    fn the_migrated_example_matches_the_schema() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/nsis-migration/migrated/installer_config.json");
+        let data = std::fs::read(&path).expect("the migrated example ships a configuration");
+        let config: Value =
+            serde_json::from_slice(&data).expect("the migrated configuration parses");
+        audit(&config).expect("the migrated configuration holds settings the build reads");
+    }
+
     #[test]
     fn refuses_a_setting_that_does_nothing() {
         let text = audit_text(&json!({ "install": { "append_to_path": "MyApp" } }));

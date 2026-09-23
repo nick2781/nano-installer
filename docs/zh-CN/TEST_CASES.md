@@ -308,11 +308,13 @@ Rust doc comment，再退回用例名。
 | `the_end_of_the_declared_order_is_an_end` | 声明的顺序走到最后一页就是尽头，报出「没有下一页」而不是绕回去；钩子这时仍可以点名一页，把向导从最后一页带走。 |
 | `the_example_dialog_places_its_message_and_both_buttons` | 示例工程自己的对话框版面能把问题文字和两个按钮都摆好：问题是一行有真实高度、宽度和位置的折行文字，两个按钮并排不重叠，问题也不被按钮盖住。 |
 | `the_example_project_matches_the_schema` | 示例工程自己的配置也要过这张表：它是别人照抄的模板，不能带着没人读的键。 |
+| `the_example_projects_scripts_parse` | 两个示例工程的脚本至少得能解析：参考工程与从 NSIS 迁过来的那份都不会被任何用例真的跑起来，写坏一个括号只有等谁装上这个示例才会有人发现。 |
 | `the_focus_ring_is_drawn_over_the_control_the_keyboard_is_on` | 键盘停在哪个控件上，就在那个控件的矩形上画一层一像素的点状环：有环与没环的页面只差这一层，别处一个像素都不动；颜色是页面声明的那个，边缘隔一个像素一个点，控件中间留给自己。 |
 | `the_keyboard_walks_the_page_and_acts_on_what_it_reaches` | 在真窗口里只用键盘走一遍页面：Tab 按版面顺序落在第一个控件上，环画在它身上；空格翻掉环底下的复选框（窗口里那两幅状态图换了一张）；再 Tab 两次，环依次走到输入框和按钮；从最后一个控件再按一次 Tab，环绕回第一个；回到按钮上按 Enter，窗口切到按钮指的第二页（300×150）；第二页一个控件都没有，Tab 在那里什么也不改，窗口还在。往回走（Shift+Tab）由另一条用例守着：按键消息本身不带修饰键，这条用例只发按键，发不出按住的 Shift。 |
 | `the_language_menu_answers_to_the_keyboard` | 在真窗口里用键盘走一遍语言菜单：点一下控件把菜单展开，当前语言那一行标着记号；按一次下箭头，高亮落到下一行，而当前语言那行上的记号还在；按 Escape，菜单收起，页面回到展开之前的样子，一个像素都没变；再展开、再按下箭头、按 Enter，页面上的那句话换成另一种语言写的，而且除那句话和这个控件，别处都没有被重画。 |
 | `the_log_keeps_the_lines_the_view_scrolled_past` | 日志留着视图滚过去的那些行：保存日志写下的和全部复制复制的是同一份文本，导出的应该是整份日志，而不是面板一次能显示的那几行。用例把它填到远超一屏，检查每一行都还在、措辞没变、时间戳还是自己那个。 |
 | `the_manifest_reaches_a_real_executable` | 把清单写进一个真实的 PE 映像再读回来，内容与写进去的一致：提权级别和 DPI 相关的两个元素都在，整份 XML 仍然能被解析，Windows 不会因为清单坏了而拒绝加载。 |
+| `the_migrated_example_matches_the_schema` | 从 NSIS 迁过来的那份示例也要过这张表：读指南的人是照着它搬的，配置里留一个构建器根本不读的键，就等于教人写了一个没人理会的设置。 |
 | `the_page_and_the_project_decide_which_components_install` | 一个组件装不装由三件事按顺序决定：写了 `required` 的一律装；页面有同名复选框就听页面的；页面没有这个复选框（静默安装也算）就听 `default`。用例把这三条各走一遍，包括用户清掉工程默认勾上的组件、以及勾不掉必需的组件。 |
 | `the_panels_draw_in_every_state_they_can_be_in` | 面板在指南说到的每种状态下都画得出来：这里没有一条用例能开窗口，状态是画在无窗口上下文里的——什么都没打开、检查过工程、构建进行中、构建失败、构建完成，两种界面语言都算。一个根本画不出来的状态会让用户看到空白窗口，而画的过程改掉要展示的状态则更糟。 |
 | `the_payload_format_selects_the_runtime_that_gets_embedded` | payload 格式决定嵌入哪个运行时。一直声称错误格式的安装包什么都装不上，因为那个 stub 读不懂归档。 |

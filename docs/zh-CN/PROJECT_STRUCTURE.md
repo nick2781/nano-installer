@@ -14,11 +14,15 @@ docs/
 ├── en/                         # 英文文档
 └── zh-CN/                      # 中文文档
 examples/TapTap/                # 校验项目
+examples/nsis-migration/        # 从 NSIS 迁过来的示例与它的对照脚本
 scripts/                        # 构建、冒烟测试、PE 审计
 ```
 
 原始运行时不带任何产品资源：图标、版本信息和品牌素材都靠构建器按你的项目配置注入，
 所以同一套运行时可以为任意产品生成安装包。
+
+从 NSIS 搬过来的项目看[从 NSIS 迁移](MIGRATION_FROM_NSIS.md)：那里逐条写着每个构造在这里变成什么，
+`examples/nsis-migration/migrated/` 就是照它写出来的一份可以构建的工程。
 
 ## 产品项目
 
