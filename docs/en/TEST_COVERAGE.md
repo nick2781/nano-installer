@@ -179,10 +179,11 @@ setup-level cases prove the `scripts` directory and the tools directory survive 
 
 | Behaviour | Cases |
 | --- | --- |
-| the package's own identity, the codes that survive a rebuild, and the name the Installer stores | `a_wrapper_carries_the_identity_the_project_declares`, `codes_stay_the_same_across_a_rebuild_and_the_upgrade_code_outlives_a_version`, `a_product_name_the_database_can_hold_comes_back_unchanged`, `a_name_the_build_machines_code_page_cannot_hold_goes_into_the_package_as_utf8` |
+| the package's own identity, the codes that survive a rebuild, and the name the Installer stores | `a_wrapper_carries_the_identity_the_project_declares`, `codes_stay_the_same_across_a_rebuild_and_the_upgrade_code_outlives_a_version`, `a_product_name_is_stored_whole_or_the_build_is_refused`, `a_latin_code_page_cannot_hold_a_chinese_name` |
 | the setup image the package carries, and the actions that install and remove the product in the order they run | `the_setup_the_package_carries_is_the_image_the_build_finished`, `the_package_installs_and_removes_the_product_in_the_order_it_declares` |
 | the search for an older release, and the removal of the product this package installed | `the_package_offers_itself_as_an_upgrade_of_the_versions_before_it` |
 | what Windows reads before it opens the package's tables | `the_package_summary_names_the_platform_and_the_language` |
+| the code page a package stores its tables in, and a name it cannot hold | `a_product_name_is_stored_whole_or_the_build_is_refused`, `a_latin_code_page_cannot_hold_a_chinese_name` |
 | a version, a name or a directory the Installer cannot work with is refused | `a_version_the_installer_cannot_compare_is_refused`, `a_product_name_that_cannot_name_a_directory_is_refused`, `a_name_too_long_for_a_short_name_carries_one_the_file_system_can_keep`, `a_directory_written_with_a_trailing_dot_component_is_the_directory_itself` |
 | a package installed, removed and upgraded by the installer Windows ships, and a project that cannot run windowlessly | `a_package_installs_the_product_the_setup_carries_and_removes_it_again`, `a_newer_package_upgrades_the_product_the_older_one_installed`, `a_project_that_cannot_run_without_a_window_is_refused_a_package` |
 

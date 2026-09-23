@@ -177,7 +177,7 @@
 
 | 行为 | 用例 |
 | --- | --- |
-| 包自己的身份、跨重建不变的代码，以及安装程序存下来的那个产品名 | `a_wrapper_carries_the_identity_the_project_declares`、`codes_stay_the_same_across_a_rebuild_and_the_upgrade_code_outlives_a_version`、`a_product_name_the_database_can_hold_comes_back_unchanged`、`a_name_the_build_machines_code_page_cannot_hold_goes_into_the_package_as_utf8` |
+| 包自己的身份、跨重建不变的代码，以及安装程序存下来的那个产品名 | `a_wrapper_carries_the_identity_the_project_declares`、`codes_stay_the_same_across_a_rebuild_and_the_upgrade_code_outlives_a_version`、`a_product_name_is_stored_whole_or_the_build_is_refused`、`a_latin_code_page_cannot_hold_a_chinese_name` |
 | 包里带的安装包镜像，以及装与卸两条动作的先后 | `the_setup_the_package_carries_is_the_image_the_build_finished`、`the_package_installs_and_removes_the_product_in_the_order_it_declares` |
 | 对旧版本的搜索，以及收回这个包装出来的那份产品 | `the_package_offers_itself_as_an_upgrade_of_the_versions_before_it` |
 | Windows 打开包里的表之前先读的那些东西 | `the_package_summary_names_the_platform_and_the_language` |

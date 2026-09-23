@@ -183,6 +183,36 @@ pub(crate) struct WrapperSummary {
     pub per_machine: bool,
 }
 
+/// Refuses a project whose text this machine cannot store in a package.
+///
+/// The tables of a package are stored in the machine's ANSI code page, so a
+/// product whose name that code page cannot hold would arrive as replacement
+/// characters on every machine that opens the package. The check runs before a
+/// build writes anything, so a project that cannot be packaged is told so
+/// instead of being left with a setup nobody can deploy.
+pub(crate) fn ensure_text_is_storable(
+    product_name: &str,
+    manufacturer: &str,
+    uninstaller_name: &str,
+) -> Result<()> {
+    let code_page = machine_code_page();
+    for (what, text) in [
+        ("product name", product_name),
+        ("publisher", manufacturer),
+        ("uninstaller name", uninstaller_name),
+    ] {
+        if !code_page_holds(code_page, text) {
+            bail!(
+                "this build machine stores an installer package in code page {code_page}, which \
+                 cannot hold the {what} \"{text}\"; build the package on a machine whose code page \
+                 matches the product's language, or on one with the \"Beta: Use Unicode UTF-8 for \
+                 worldwide language support\" option turned on"
+            );
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn write_wrapper(wrapper: &Wrapper<'_>) -> Result<WrapperSummary> {
     let version = version::installer_version(wrapper.product_version)?;
     let per_machine = wrapper.require_admin;
@@ -225,6 +255,15 @@ pub(crate) fn write_wrapper(wrapper: &Wrapper<'_>) -> Result<WrapperSummary> {
     // written as the directory itself plus a dot rather than ending in one.
     let setup_arguments = "--silent --dir \"[INSTALLDIR].\"".to_string();
 
+    // The package's tables are stored in this machine's ANSI code page, so text
+    // the machine cannot store would arrive as replacement characters. Refusing
+    // is the only honest answer: the name would be unreadable on every machine
+    // that opens the package.
+    ensure_text_is_storable(
+        wrapper.product_name,
+        wrapper.manufacturer,
+        wrapper.uninstaller_name,
+    )?;
     let database = Database::create(wrapper.output)?;
     // The code page the package's own text is stored in is written before
     // anything is stored in it.
@@ -733,24 +772,23 @@ fn write_summary_information(
     )?;
     let code_page = summary_code_page(
         wrapper.locale,
-        &[wrapper.product_name, wrapper.manufacturer, version],
+        &[wrapper.product_name, wrapper.manufacturer],
     );
-    // The summary is stored in the package's ANSI code page, and text that code
-    // page cannot hold arrives as blanks rather than as an error. What Windows'
-    // own list of installed programs shows is the `Property` table, which keeps
-    // the name whole, so a name the summary cannot carry is left out rather than
-    // stored as a row of placeholders.
-    let summary_code_page = locale_code_page(wrapper.locale);
-    let product = summarised_text(summary_code_page, wrapper.product_name, "The product");
-    let author = summarised_text(summary_code_page, wrapper.manufacturer, "nano-installer");
-    let subject = format!("{product} {version}");
-    let comments = format!("This package installs {product} with the setup image it carries.");
+    // The summary is what a file listing shows; the product's own name lives in
+    // the `Property` table, which is what Windows' list of installed programs
+    // reads. The package therefore declares the code page its tables are stored
+    // in, and the summary follows it.
+    let subject = format!("{} {version}", wrapper.product_name);
+    let comments = format!(
+        "This package installs {} with the setup image it carries.",
+        wrapper.product_name
+    );
     // The code page goes first: it is the one the package's own text is stored
     // in, and everything written after it is stored in that code page.
     write_summary_number(&summary, summary_property::CODE_PAGE, code_page as i32)?;
     write_summary_text(&summary, summary_property::TITLE, "Installation Database")?;
     write_summary_text(&summary, summary_property::SUBJECT, &subject)?;
-    write_summary_text(&summary, summary_property::AUTHOR, &author)?;
+    write_summary_text(&summary, summary_property::AUTHOR, wrapper.manufacturer)?;
     write_summary_text(&summary, summary_property::KEYWORDS, "Installer")?;
     write_summary_text(&summary, summary_property::COMMENTS, &comments)?;
     // The template names the platform and the language of the package.
@@ -845,24 +883,36 @@ fn write_summary_time(summary: &MSIHANDLE, property: u32, value: FILETIME) -> Re
 
 /// The code page a package's own text is stored in.
 ///
-/// The product's default locale decides it, the way an installation authoring
-/// tool picks the code page of the language the package is written for. That is
-/// only true while the machine building the package can encode the text: the
-/// installer converts the product's name into the package's code page as it
-/// stores it, and a build machine without that code page -- a server image with
-/// no East Asian support, say -- would store a Chinese name as question marks
-/// nobody could read back. Text the code page cannot hold therefore goes into
-/// the package as UTF-8, which every machine can store and the installer reads
-/// back by the code page the package declares.
+/// Not the one the package declares: this is what Windows Installer measured
+/// here. A database created by this build stores its strings in the machine's
+/// ANSI code page whatever code page the summary information names -- a package
+/// written on a machine with the UTF-8 option turned on held a Chinese name as
+/// UTF-8 while its summary said 936, and a `_ForceCodepage` row naming another
+/// code page changed nothing. The package therefore declares the code page its
+/// strings really are in, and a name that code page cannot hold is refused
+/// rather than stored as one replacement character per character, which is what
+/// the Installer writes and what nobody can read back.
+fn machine_code_page() -> u16 {
+    use windows::Win32::Globalization::GetACP;
+    unsafe { GetACP() as u16 }
+}
+
+/// The code page the summary information is stored in.
+///
+/// It is the locale's own code page where the machine can put this package's
+/// words into it, and the Latin one otherwise -- never UTF-8: the Installer
+/// refuses a summary-information string written in 65001, and the template that
+/// says which platform the package is for is one of them.
 fn summary_code_page(locale: &str, texts: &[&str]) -> u16 {
     let code_page = locale_code_page(locale);
     if texts.iter().all(|text| code_page_holds(code_page, text)) {
-        return code_page;
+        code_page
+    } else {
+        1252
     }
-    UTF8_CODE_PAGE
 }
 
-/// The code page an installation authoring tool would pick for a locale.
+/// A code page an installation authoring tool would pick for a locale.
 fn locale_code_page(locale: &str) -> u16 {
     match locale.to_ascii_lowercase().as_str() {
         "zh-cn" => 936,
@@ -878,19 +928,6 @@ fn locale_code_page(locale: &str) -> u16 {
         "th" | "th-th" => 874,
         "vi" | "vi-vn" => 1258,
         _ => 1252,
-    }
-}
-
-/// The code page that holds every character there is.
-const UTF8_CODE_PAGE: u16 = 65001;
-
-/// The text a summary-information string carries when the package's ANSI code
-/// page cannot hold the real one.
-fn summarised_text(code_page: u16, text: &str, instead: &'static str) -> String {
-    if code_page_holds(code_page, text) {
-        text.to_string()
-    } else {
-        instead.to_string()
     }
 }
 
@@ -1601,38 +1638,54 @@ mod tests {
         Ok(())
     }
 
+    /// A code page without room for a name cannot be talked into holding it.
+    ///
+    /// This is the fact the build's own check rests on, and it does not depend on
+    /// what the machine running the case has installed.
     #[test]
-    fn a_name_the_build_machines_code_page_cannot_hold_goes_into_the_package_as_utf8() -> Result<()>
-    {
-        // A Latin code page can never hold a Chinese name, whatever the machine
-        // building the package has installed; a project that declares English
-        // and names itself in Chinese therefore gets a package whose own text is
-        // UTF-8 rather than a name stored as question marks.
+    fn a_latin_code_page_cannot_hold_a_chinese_name() {
         assert!(!code_page_holds(1252, "易玩安装器"));
         assert!(code_page_holds(1252, "Widget Factory"));
-        assert_eq!(summary_code_page("en-US", &["易玩安装器"]), UTF8_CODE_PAGE);
-        assert_eq!(summary_code_page("en-US", &["Widget"]), 1252);
-        Ok(())
     }
 
+    /// The product's own name is what Windows' list of installed programs shows,
+    /// so the package either stores it whole or refuses to be built at all.
+    ///
+    /// Which of the two happens depends on the code page this machine stores a
+    /// package in, and the case holds the build to the one that applies here: a
+    /// machine that can store the name stores it unchanged, and one that cannot
+    /// is refused rather than handed a package whose name is a row of replacement
+    /// characters.
     #[test]
-    fn a_product_name_the_database_can_hold_comes_back_unchanged() -> Result<()> {
+    fn a_product_name_is_stored_whole_or_the_build_is_refused() -> Result<()> {
         let directory = scratch("unicode");
         let setup = setup_image(&directory);
         let package = directory.join("Probe.msi");
         let mut wrapper = wrapper(&setup, &package, "易玩安装器", "2026.9.22");
         wrapper.locale = "zh-CN";
-        write_wrapper(&wrapper)?;
-
-        // The product's own name is what Windows' list of installed programs
-        // shows, so it has to survive the package's code page.
-        assert_eq!(
-            single_value(
-                &package,
-                "SELECT `Value` FROM `Property` WHERE `Property`='ProductName'"
-            )?,
-            "易玩安装器"
-        );
+        let storable = code_page_holds(machine_code_page(), "易玩安装器");
+        let built = write_wrapper(&wrapper);
+        match (built, storable) {
+            (Ok(_), true) => assert_eq!(
+                single_value(
+                    &package,
+                    "SELECT `Value` FROM `Property` WHERE `Property`='ProductName'"
+                )?,
+                "易玩安装器",
+                "the name the machine can store did not come back"
+            ),
+            (Err(error), false) => {
+                let text = format!("{error:#}");
+                assert!(
+                    text.contains("code page"),
+                    "the refusal does not say what the machine stores: {text}"
+                );
+            }
+            (Ok(_), false) => panic!("a machine that cannot store the name stored it anyway"),
+            (Err(error), true) => {
+                panic!("a name the machine can store was refused: {error:#}")
+            }
+        }
         Ok(())
     }
 

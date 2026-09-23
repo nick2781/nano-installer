@@ -65,7 +65,8 @@ Rust doc comment，再退回用例名。
 | `a_language_menu_lists_its_options_and_marks_the_one_in_use` | 展开的语言菜单按选项一行一个地画在页面之上，当前语言那一行填上选中底色，`visible="false"` 的选项不出现在列表里；点某一行会给出切换到那个语言的区域。 |
 | `a_layout_picks_the_image_density_the_display_asks_for` | 版面只点一个文件名，由运行时选版本：低密度显示器用 1x，高密度用 `@2x`。版面直接写 `@2x` 的文件名也会被归一化，只发布其中一个版本时退回另一个。 |
 | `a_link_the_project_does_not_configure_stays_plain_text` | 指南的解析顺序最后一条是解析不到目标的链接保持普通文字：字照常显示，点了什么也不发生，标签不会因此画不出来。 |
-| `a_name_the_build_machines_code_page_cannot_hold_goes_into_the_package_as_utf8` | 构建机的代码页装不下产品名时（比如一台没有东亚语言支持的服务器上跑中文名的工程），包自己的文字改用 UTF-8 存：装不下就没法照原样存进去，装成问号的话谁都读不回来；测试按固定的事实判定——拉丁代码页永远装不下中文名，而英文名照旧用 1252。 |
+| `a_latin_code_page_cannot_hold_a_chinese_name` | 拉丁代码页永远装不下中文名这一条事实：构建期的判断就建立在它上面，而它与机器上装了什么无关。 |
+| `a_product_name_is_stored_whole_or_the_build_is_refused` | 包里的表按构建机的 ANSI 代码页存（实测如此，声明哪个代码页都改不了它），所以产品名要么原样存进去、要么这次构建就被拒绝——绝不允许存成一串替换字符。用例按这台机器能做什么来要求：能存就要求读回原样，不能存就要求报错并点出机器用的代码页。 |
 | `a_name_too_long_for_a_short_name_carries_one_the_file_system_can_keep` | 产品名太长或不是拉丁字母时，安装目录声明成「短名|长名」：短名由名字里的 ASCII 字母数字生成、两个字符的标记取名字里的数字（没有数字就取摘要），产品名照原样跟在竖线后面；Windows 留给设备的那些名字（`CON` 等）也会拿到短名；同一个名字每次都得到同一个短名。 |
 | `a_nested_container_reports_the_extent_its_children_need` | 没声明尺寸的面板有多大由内容决定：沿自己的轴把子项和间距相加，垂直于轴取最大的子项，自己的内边距只算一次。外层容器用同样的量法放置它，版面不必给包装层声明尺寸。 |
 | `a_newer_package_upgrades_the_product_the_older_one_installed` | 新版本的包会升级旧版本装出来的产品：两个包共用同一个升级码而产品码不同，装上新版后卸载项报的是新版本号，再用旧包卸载已经什么都不做（旧产品被收走了），新包卸载后磁盘与注册表都干净。 |
@@ -87,7 +88,6 @@ Rust doc comment，再退回用例名。
 | `a_placed_window_is_pulled_back_inside_its_work_area` | 建议位置已经放得下就不动它；探出工作区右边或下边的窗口被拉回来；来自左侧副显示器的负坐标不会把它顶出去；比工作区还大的窗口缩到工作区大小。 |
 | `a_plan_round_trips_through_its_json` | 更新计划写成 JSON 再读回来形状不变：来源归档名、这一版要装的版本、每条保留文件的路径、字节数和 64 位十六进制摘要都还在，路径仍按安装目录里的相对路径读。 |
 | `a_product_name_that_cannot_name_a_directory_is_refused` | 不能当目录用的产品名（空、空白、带 `/` 或 `:`）在构建期被拒绝，报出的原因说的是目录名，而不是等到装的时候失败。 |
-| `a_product_name_the_database_can_hold_comes_back_unchanged` | 产品名不在拉丁字母里时也存得住：包按工程默认语言的代码页存自己的文字，中文名写进 `Property` 表再读回来一字不差。 |
 | `a_progress_bar_paints_a_rounded_track_and_follows_the_live_value` | 进度条先画轨道，`border-radius` 把它修成胶囊形；版面里写的 `progress` 是空闲时的样子，任务上报的进度会盖住它，任务还没开始时只画轨道，没有任务时又回到版面写的值。 |
 | `a_project_bundles_the_tools_directory_it_names` | 工程把 `resources.tools_dir` 指到的目录整个打进安装包，子目录和它们的相对路径都在内：脚本拿到的是工程自己那份目录的布局，而不是一堆压平的文件名。 |
 | `a_project_that_cannot_run_without_a_window_is_refused_a_package` | 没声明无窗口运行的工程被拒绝出包：构建失败并点名 `advanced.silent_mode_support`，也不在磁盘上留下半成品包。 |

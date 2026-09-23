@@ -1464,6 +1464,17 @@ pub fn build_project_with_progress(
         .as_str()
         .unwrap_or("uninst.exe");
     validate_output_filename(uninstaller_name, "output.uninstaller_name")?;
+    // A package stores its text in this machine's code page, which is worth
+    // knowing before the build spends anything on a setup nobody can package.
+    if request.msi.is_some() {
+        msi::ensure_text_is_storable(
+            &summary.project_name,
+            config["project"]["publisher"]
+                .as_str()
+                .unwrap_or("nano-installer"),
+            uninstaller_name,
+        )?;
+    }
     progress(BuildEvent {
         stage: BuildStage::SelectingStub,
         message: format!("Building self-contained uninstaller: {uninstaller_name}"),
