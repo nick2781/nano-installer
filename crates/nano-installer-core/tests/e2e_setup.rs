@@ -24,8 +24,9 @@ use nano_installer_core::{
 use windows::Win32::Foundation::{BOOL, HANDLE, HWND, LPARAM, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     ClientToScreen, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC,
-    GetDIBits, ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HDC,
-    HGDIOBJ,
+    GetDIBits, GetSysColor, ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
+    COLOR_BTNFACE, COLOR_HIGHLIGHT, COLOR_WINDOW, COLOR_WINDOWFRAME, COLOR_WINDOWTEXT,
+    DIB_RGB_COLORS, HDC, HGDIOBJ, SYS_COLOR_INDEX,
 };
 use windows::Win32::Storage::Xps::{PrintWindow, PRINT_WINDOW_FLAGS};
 use windows::Win32::System::Com::CoTaskMemFree;
@@ -40,8 +41,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
     GetSystemMetrics, GetWindowRect, GetWindowThreadProcessId, IsWindow, IsWindowVisible,
     LoadCursorW, PostMessageW, SetCursorPos, SetForegroundWindow, SetProcessDPIAware, SetWindowPos,
     CURSORINFO, HCURSOR, HTCLIENT, HWND_NOTOPMOST, HWND_TOPMOST, IDC_ARROW, IDC_HAND, IDC_IBEAM,
-    SM_CYSCREEN, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, WM_CHAR, WM_CLOSE, WM_KEYDOWN,
-    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_SETCURSOR,
+    SM_CYSCREEN, SPI_SETHIGHCONTRAST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, WM_CHAR, WM_CLOSE,
+    WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_SETCURSOR,
+    WM_SETTINGCHANGE,
 };
 
 /// The key Windows starts a program from at sign-in.
@@ -706,6 +708,46 @@ impl Fixture {
             config["wizard"]["pages"] = serde_json::json!([
                 {"id": "config", "title": "Options", "layout": "layouts/configpage.xml"},
                 {"id": "second", "title": "Second", "layout": "layouts/secondpage.xml"}
+            ]);
+        })
+    }
+
+    /// Declares a page whose colours are the machine's own, swapped.
+    ///
+    /// The page is declared in the colour of the machine's text and the card on
+    /// it in the machine's highlight, while the ring is declared in the colour
+    /// of the machine's page. A runtime that paints the layout as it was written
+    /// shows that swap; one that hands the page over to the scheme the user
+    /// picked shows the colours the scheme keeps instead, and a scheme never
+    /// names one colour for a page and for the text on it, so the two frames can
+    /// never be confused.
+    ///
+    /// The checkbox carries a picture of its own, which is there to say that
+    /// artwork is not a colour the scheme has a name for.
+    fn contrast_project(&self) -> anyhow::Result<()> {
+        let page = layout_colour(system_colour(COLOR_WINDOW));
+        let text = layout_colour(system_colour(COLOR_WINDOWTEXT));
+        let highlight = layout_colour(system_colour(COLOR_HIGHLIGHT));
+        std::fs::write(
+            self.project.join("layouts/configpage.xml"),
+            format!(
+                r##"<Page width="400" height="200" background="{text}" focus-color="{page}">
+  <Checkbox id="terms" position="absolute" left="40" top="20" width="24" height="24"
+            unchecked-image="assets/off.png" checked-image="assets/on.png" />
+  <Box id="card" position="absolute" left="40" top="60" width="200" height="40"
+       background="{highlight}" border-color="{highlight}" border-width="1" />
+</Page>"##
+            ),
+        )?;
+        for (name, colour) in [("off.png", UNCHECKED_BOX), ("on.png", CHECKED_BOX)] {
+            std::fs::write(
+                self.project.join("assets").join(name),
+                solid_png(4, 4, colour),
+            )?;
+        }
+        self.edit_config(|config| {
+            config["wizard"]["pages"] = serde_json::json!([
+                {"id": "config", "title": "Options", "layout": "layouts/configpage.xml"}
             ]);
         })
     }
@@ -4992,6 +5034,179 @@ fn the_keyboard_walks_the_page_and_acts_on_what_it_reaches() -> anyhow::Result<(
     Ok(())
 }
 
+/// The colour the machine keeps for one part of a page, in the order a frame
+/// reads a pixel.
+///
+/// The values belong to whoever is sitting at the machine, so a case about high
+/// contrast asks the machine for them instead of naming them: what it can hold
+/// the runtime to is that the frame shows the same colours Windows reports.
+fn system_colour(index: SYS_COLOR_INDEX) -> (u8, u8, u8) {
+    let colour = unsafe { GetSysColor(index) };
+    (
+        (colour & 0xFF) as u8,
+        ((colour >> 8) & 0xFF) as u8,
+        ((colour >> 16) & 0xFF) as u8,
+    )
+}
+
+/// The same colour written the way a layout declares one.
+fn layout_colour(colour: (u8, u8, u8)) -> String {
+    format!("#FF{:02X}{:02X}{:02X}", colour.0, colour.1, colour.2)
+}
+
+/// Waits for the window of a setup that was just started.
+///
+/// It is the wait every window case makes, with the leaving in one place: a
+/// machine whose desktop cannot hold a window skips the case, and a window that
+/// was required is the reason it failed.
+fn wait_for_a_window(setup: &mut SetupGuard) -> anyhow::Result<Option<HWND>> {
+    let waited = wait_for_runtime_window(setup, Instant::now() + Duration::from_secs(30));
+    let reason = match waited {
+        WindowWait::Found(window) => return Ok(Some(window)),
+        WindowWait::Exited(status) => format!("the setup {status} instead of opening a window"),
+        WindowWait::Timeout => "no window appeared within 30 seconds".to_string(),
+    };
+    let _ = setup.kill();
+    let _ = setup.wait();
+    skip_missing_desktop(&reason)?;
+    Ok(None)
+}
+
+/// A machine whose user has high contrast on gets the scheme that user picked
+/// instead of the colours the page declares.
+///
+/// A page this runtime paints is a picture, so nothing in it follows the setting
+/// on its own: a surface, a line, a word, and the ring around the focused
+/// control all have to be painted with the colour the machine names for them,
+/// and a theme is free to give two of those roles one colour. The fixture
+/// declares the machine's own colours swapped, so the frame says which set was
+/// painted with, and the same fixture is run with the answer stated each way --
+/// the setting belongs to whoever is at the machine, so a case asks the runtime
+/// to paint as such a machine would rather than turning it on for them.
+#[test]
+fn a_high_contrast_machine_gets_the_colours_the_scheme_keeps() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.contrast_project()?;
+    fixture.build()?;
+
+    // What the machine keeps, and what the page declares in its place: a scheme
+    // never names one colour for a page and for the text on it, so a frame can
+    // only show one of the two sets.
+    let page = system_colour(COLOR_WINDOW);
+    let text = system_colour(COLOR_WINDOWTEXT);
+    let face = system_colour(COLOR_BTNFACE);
+    let edge = system_colour(COLOR_WINDOWFRAME);
+    let band = system_colour(COLOR_HIGHLIGHT);
+
+    // Where the case reads: the page away from everything on it, the middle of
+    // the card, the card's own edge, and the picture the checkbox carries.
+    let empty = (350, 170);
+    let card = (140, 80);
+    let card_edge = (40, 60);
+    let picture = (52, 32);
+    let terms = (40, 20);
+
+    let _ = unsafe { SetProcessDPIAware() };
+
+    // With the setting off, the page is painted the way it was written.
+    let mut off = SetupGuard::spawn_stating_contrast(&fixture.setup, false)?;
+    let Some(window) = wait_for_a_window(&mut off)? else {
+        return Ok(());
+    };
+    let declared = wait_for_frame(window, Instant::now() + Duration::from_secs(20), |frame| {
+        frame.colour_at(empty.0, empty.1) == text
+            && frame.colour_at(card.0, card.1) == band
+            && frame.colour_at(card_edge.0, card_edge.1) == band
+    });
+    assert!(
+        declared.is_some(),
+        "the page was not painted as it was declared: page {} card {} edge {}",
+        colour_at_window(window, empty),
+        colour_at_window(window, card),
+        colour_at_window(window, card_edge)
+    );
+    let declared = declared.expect("checked just above");
+
+    // The picture the checkbox carries is the product's artwork rather than a
+    // colour the scheme has a name for, so it is the one thing the setting
+    // cannot move.
+    assert_eq!(
+        declared.colour_at(picture.0, picture.1),
+        UNCHECKED_BOX,
+        "the artwork was not painted the way it was drawn"
+    );
+
+    // With the setting on, the same page is painted with the scheme: the page in
+    // the colour of a page, the card in the colour of a control face, and its
+    // line in the colour of a frame.
+    let mut on = SetupGuard::spawn_stating_contrast(&fixture.setup, true)?;
+    let Some(window) = wait_for_a_window(&mut on)? else {
+        return Ok(());
+    };
+    let painted = wait_for_frame(window, Instant::now() + Duration::from_secs(20), |frame| {
+        frame.colour_at(empty.0, empty.1) == page
+            && frame.colour_at(card.0, card.1) == face
+            && frame.colour_at(card_edge.0, card_edge.1) == edge
+    });
+    assert!(
+        painted.is_some(),
+        "the page was not painted with the scheme: page {} card {} edge {}",
+        colour_at_window(window, empty),
+        colour_at_window(window, card),
+        colour_at_window(window, card_edge)
+    );
+    assert_eq!(
+        painted
+            .expect("checked just above")
+            .colour_at(picture.0, picture.1),
+        UNCHECKED_BOX,
+        "the scheme painted over the artwork the page carries"
+    );
+
+    // The ring is the one thing the keyboard brings, and under the setting it
+    // takes the colour the user picked to be seen rather than the page's own.
+    let deadline = Instant::now() + Duration::from_secs(20);
+    press_key(window, VK_TAB);
+    let ring = wait_for_frame(window, deadline, |frame| {
+        frame.colour_at(terms.0, terms.1) == band
+    });
+    assert!(
+        ring.is_some(),
+        "the ring was not painted with the scheme's highlight: {}",
+        colour_at_window(window, terms)
+    );
+
+    // Windows tells every window when the user turns the setting on or off, or
+    // picks another scheme, and the page is laid out again for it. The answer
+    // cannot change under a case, which states it for the process, but the
+    // window has to take the message and keep painting what it was painted with.
+    let before = capture_frame(window)?;
+    let _ = unsafe {
+        PostMessageW(
+            window,
+            WM_SETTINGCHANGE,
+            WPARAM(SPI_SETHIGHCONTRAST.0 as usize),
+            LPARAM(0),
+        )
+    };
+    std::thread::sleep(Duration::from_millis(200));
+    let after = capture_frame(window)?;
+    assert_eq!(
+        after.differing_pixels(&before),
+        0,
+        "the page changed under a message that had nothing to change"
+    );
+    assert!(
+        unsafe { IsWindow(window) }.as_bool(),
+        "the window went away when the machine said the setting changed"
+    );
+
+    Ok(())
+}
+
 /// The button that fills a field in opens Windows' own folder picker, and
 /// leaving the picker undecided leaves the wizard as it was.
 ///
@@ -5637,6 +5852,24 @@ impl SetupGuard {
         Ok(Self(
             Command::new(setup)
                 .env("NANO_INSTALLER_TEST_DPI", "96")
+                .spawn()?,
+        ))
+    }
+
+    /// Starts the built setup with the answer the machine gives about high
+    /// contrast stated instead.
+    ///
+    /// Whether the user has the setting on belongs to the user, so a case may
+    /// not turn it on for them: it tells the runtime which answer to paint with
+    /// and reads both frames of the same page that way.
+    fn spawn_stating_contrast(setup: &Path, on: bool) -> anyhow::Result<Self> {
+        Ok(Self(
+            Command::new(setup)
+                .env("NANO_INSTALLER_TEST_DPI", "96")
+                .env(
+                    "NANO_INSTALLER_TEST_HIGH_CONTRAST",
+                    if on { "1" } else { "0" },
+                )
                 .spawn()?,
         ))
     }

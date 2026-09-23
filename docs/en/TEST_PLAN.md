@@ -107,6 +107,14 @@ that setup and the uninstaller it deployed.
   no control leaves the keyboard nothing to do. Only one direction sits in this case: a key message
   the suite posts carries no modifier and the runtime asks Windows for it, so walking backwards is
   held still by a unit case instead.
+- High contrast: with the setting on, the page, the card, the card's edge and the focus ring are painted
+  with the colours the machine keeps for a window, a control face, a frame and a highlight rather than
+  with the ones the pages declare, while the picture a checkbox carries stays the pixels the project
+  drew. The setting belongs to whoever is at the machine, so the case states the answer for the run
+  instead of turning it on, and drives both answers itself. Past that only the message is covered:
+  Windows tells the window when the user turns the setting on or off or picks another scheme, and the
+  case checks that the window takes such a message and keeps painting the frame it already had -- that
+  answer cannot change underneath it.
 - Signed setup: a certificate table appended behind the bundle, which is what Authenticode writes
   when the release pipeline signs the file, keeps the runtime able to find its own resources.
 

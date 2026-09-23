@@ -425,6 +425,40 @@ A control that cannot be reached is never marked: a button held back by `enabled
 a field the layout gives no `id` to -- there would be no name to remember it by. While a menu or a
 dialog is open, `Tab` leaves the page's ring alone: the keyboard belongs to them.
 
+## High-contrast themes
+
+While the user has high contrast on, the colours a layout declares give way to the ones the scheme
+keeps for what they paint. A page this runtime produces is a picture -- Windows never draws one of
+its own controls into it -- so nothing in it follows the setting on its own; a colour is handed over
+by role instead, by what it paints:
+
+| Colour in a layout | System colour |
+| --- | --- |
+| the page's `background`, a popup's `popup-background` | `COLOR_WINDOW` |
+| a `Box`'s `background`, a control's own `background`, the open `Select` popup, a progress bar's track, a scrollbar's thumb | `COLOR_BTNFACE` |
+| the focus ring, the menu row the keyboard is on | `COLOR_HIGHLIGHT` |
+| words on the page, such as a `Label` | `COLOR_WINDOWTEXT` |
+| words on a button or a select | `COLOR_BTNTEXT` |
+| words on the highlighted menu row | `COLOR_HIGHLIGHTTEXT` |
+| a `border-color` outline | `COLOR_WINDOWFRAME` |
+| a scrollbar's track | `COLOR_SCROLLBAR` |
+
+Eight roles are kept apart on purpose. In the high contrast themes that ship with Windows the page
+colour and the control face are often the same, while the words on a button and the words on the
+page usually are not, and a scrollbar's track has a colour of its own; painting all of them alike
+would lose part of the scheme the user picked.
+
+Artwork keeps the colours it was drawn with: `background-image`, `Image`, and the two pictures a
+button swaps in while the pointer hovers or presses it are the project's own pixels, and a scheme
+has no name for them. `linkcolor`, and the links inside text, are drawn in the highlight colour.
+
+An open menu gains a line under high contrast: it is drawn over the page, and a scheme paints a page
+and a list in the same colour, so without that line there is nothing to say where the menu starts.
+
+When the user turns high contrast on or off, or picks another scheme (`WM_SETTINGCHANGE`,
+`WM_SYSCOLORCHANGE`, `WM_THEMECHANGED`), the window lays the page out again and repaints it. A
+message asking for the colours already on screen lays nothing out.
+
 ## Click targets and the pointer
 
 Buttons, selects, checkboxes and radio buttons, and any element that declares an `action` respond to
@@ -450,8 +484,7 @@ bindings that read the same control pick up the new path immediately.
 ## Not implemented yet
 
 - Implicit minimum sizes beyond `min-width`/`min-height`, and `min-height` on a flow container.
-- Screen readers and high-contrast themes: controls expose no role or state to UI Automation or
-  MSAA, and the system's high-contrast palette does not replace the colours a layout declares.
+- Screen readers: controls expose no role or state to UI Automation or MSAA.
 - The composition window is repositioned when focus or the caret moves, but not while the user is
   scrolling the page under an active composition.
 - An item's cross-axis size is still the container's extent unless the item declares one; there is

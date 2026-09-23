@@ -2,6 +2,7 @@
 compile_error!("nano-installer-native-x64 must be built for x86_64");
 
 mod config;
+mod contrast;
 mod delta;
 mod dependency;
 mod icon;
@@ -17,6 +18,7 @@ mod version;
 pub use delta::UpdateSummary;
 
 use anyhow::{bail, Context, Result};
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -74,7 +76,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     IDC_ARROW, IDC_HAND, MB_ICONERROR, MB_OK, MSG, SWP_NOACTIVATE, SWP_NOZORDER, SW_MINIMIZE,
     SW_SHOW, SW_SHOWNORMAL, WM_CHAR, WM_CLOSE, WM_DESTROY, WM_DPICHANGED, WM_ERASEBKGND,
     WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_NCLBUTTONDOWN,
-    WM_PAINT, WM_SETCURSOR, WM_SETICON, WM_TIMER, WNDCLASSEXW, WS_EX_APPWINDOW, WS_POPUP,
+    WM_PAINT, WM_SETCURSOR, WM_SETICON, WM_SETTINGCHANGE, WM_SYSCOLORCHANGE, WM_THEMECHANGED,
+    WM_TIMER, WNDCLASSEXW, WS_EX_APPWINDOW, WS_POPUP,
 };
 use windows::Win32::UI::WindowsAndMessaging::{SetCursor, IDC_IBEAM};
 
@@ -269,6 +272,9 @@ struct RuntimeState {
     dpi: DpiContext,
     /// The scaling a project asked for, kept so a new context can be derived.
     dpi_settings: DpiSettings,
+    /// The colours the current frame was painted with, which is how a change to
+    /// the machine's contrast setting is told from a setting that stayed put.
+    contrast: Option<contrast::Palette>,
     locale: String,
     /// `Select` whose menu is open, if any. A page shows one menu at a time,
     /// and the id names the control that drew it.
@@ -733,6 +739,28 @@ struct LayoutContext<'a> {
     fields: HashMap<String, FieldState>,
     /// `Select` whose menu this render draws open, if any.
     open_select: Option<&'a str>,
+    /// What the machine asks for while the user has high contrast on, read
+    /// before the page was laid out. `None` paints the page as it was written.
+    contrast: Option<contrast::Palette>,
+}
+
+impl LayoutContext<'_> {
+    /// The colour to paint `role` with.
+    ///
+    /// What the layout declares, unless the user has high contrast on, where the
+    /// scheme names the colour instead. The declared colour is borrowed as it
+    /// was written while no scheme is asked for, so a page that says nothing
+    /// about the setting is rendered exactly as it always was.
+    fn colour<'declared>(
+        &self,
+        role: contrast::Role,
+        declared: &'declared str,
+    ) -> Cow<'declared, str> {
+        match &self.contrast {
+            Some(palette) => Cow::Owned(palette.colour(role)),
+            None => Cow::Borrowed(declared),
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -2629,13 +2657,18 @@ fn run_embedded(bundle: BundleIndex, mode: RuntimeMode) -> Result<()> {
     let (dpi_settings, dpi) = configure_dpi(&files)?;
     let locale = initial_locale(&files)?;
     let interaction = initial_interaction(&files, mode)?;
-    let ui = load_layout(&files, dpi, &locale, None, &interaction, mode)?;
+    // The machine is asked once here, and again whenever it says the setting
+    // changed: a page is a picture, so it only follows a new scheme when it is
+    // laid out again.
+    let palette = contrast::palette();
+    let ui = load_layout(&files, dpi, &locale, None, &interaction, mode, palette)?;
     let (width, height) = (ui.width, ui.height);
     UI.set(Mutex::new(RuntimeState {
         files,
         page_hook,
         dpi,
         dpi_settings,
+        contrast: palette,
         locale,
         open_select: None,
         interaction,
@@ -2819,6 +2852,12 @@ fn system_dpi() -> u32 {
     }
 }
 
+/// Lays one page of the wizard out into the layers the window paints.
+///
+/// Everything the page is measured against is handed in rather than read here:
+/// the display it is measured for, the language it is read in, and the colours
+/// the machine asks for. A render is therefore the same wherever it runs, which
+/// is what lets a case state a scheme of its own.
 fn load_layout(
     files: &HashMap<String, Vec<u8>>,
     dpi: DpiContext,
@@ -2826,6 +2865,7 @@ fn load_layout(
     open_select: Option<&str>,
     interaction: &InteractionState,
     mode: RuntimeMode,
+    contrast: Option<contrast::Palette>,
 ) -> Result<RuntimeUi> {
     let config: serde_json::Value = serde_json::from_slice(
         files
@@ -2865,6 +2905,7 @@ fn load_layout(
         interaction,
         fields: collect_field_states(page, interaction, &config),
         open_select,
+        contrast,
     };
     let active_panel = interaction
         .panel_visibility
@@ -2900,7 +2941,7 @@ fn load_layout(
     // The ring says which control the keyboard is on. A dialog owns the keyboard
     // while it is open, so it covers the page without a ring behind it.
     if interaction.dialog.is_none() {
-        push_focus_ring(&mut output, interaction, page)?;
+        push_focus_ring(&mut output, page, &context)?;
     }
     // The caret and the selection follow the focused field, so they are built
     // here where the font measurement helpers are available.
@@ -2922,6 +2963,7 @@ fn load_layout(
         interaction,
         width,
         height,
+        contrast,
         &mut output,
     )?;
     Ok(RuntimeUi {
@@ -2989,6 +3031,7 @@ fn render_layout_content(
     let files = context.files;
     let dpi = context.dpi;
     if let Some(background) = page.attribute("background") {
+        let background = context.colour(contrast::Role::Surface, background);
         push_solid_layer(
             &mut output.layers,
             LayerRect {
@@ -2997,11 +3040,14 @@ fn render_layout_content(
                 width,
                 height,
             },
-            background,
+            &background,
             corner_radius,
         )?;
     }
     if let Some(path) = page.attribute("background-image") {
+        // The artwork keeps the colours it was drawn with: a picture is not a
+        // colour the scheme has a name for, so what a page lays over its fill
+        // stays as the project painted it.
         push_layer(
             files,
             &mut output.layers,
@@ -3136,6 +3182,7 @@ fn render_dialog_overlay(
     interaction: &InteractionState,
     page_width: i32,
     page_height: i32,
+    contrast: Option<contrast::Palette>,
     output: &mut LayoutOutput,
 ) -> Result<Option<DialogUi>> {
     if interaction.dialog.is_none() {
@@ -3173,6 +3220,7 @@ fn render_dialog_overlay(
         interaction,
         fields: HashMap::new(),
         open_select: None,
+        contrast,
     };
     // The declared height is a minimum: the question comes from the product's
     // own translations, so a longer sentence needs a taller card rather than a
@@ -4134,7 +4182,8 @@ fn render_select(
         context.dpi.scale,
     );
     if let Some(background) = node.attribute("background") {
-        push_solid_layer(&mut output.layers, rect, background, radius)?;
+        let background = context.colour(contrast::Role::Control, background);
+        push_solid_layer(&mut output.layers, rect, &background, radius)?;
     }
     push_node_border(node, rect, context, &mut output.layers)?;
     let arrow_source = if menu_open {
@@ -4201,7 +4250,10 @@ fn render_select(
     push_solid_layer(
         &mut output.overlay_layers,
         popup,
-        node.attribute("popup-background").unwrap_or("#FF303F4B"),
+        &context.colour(
+            contrast::Role::Surface,
+            node.attribute("popup-background").unwrap_or("#FF303F4B"),
+        ),
         scale_value(4, context.dpi.scale),
     )?;
     for (index, option) in options.into_iter().enumerate() {
@@ -4212,33 +4264,56 @@ fn render_select(
             height: row_height,
         };
         let value = option.attribute("value").unwrap_or_default();
+        let highlighted = context.interaction.highlighted_option == Some(index);
         // A keyboard highlight wins over the current choice, so arrow keys stay
         // visible while they walk past the selected entry.
-        let background = if context.interaction.highlighted_option == Some(index) {
-            node.attribute("popup-highlight-background")
-                .or_else(|| node.attribute("popup-selected-background"))
-                .unwrap_or("#FF495A68")
+        //
+        // A scheme names one colour for both, so the two are told apart by what
+        // they are: the row the keyboard is on is where the user is, and takes
+        // the highlight, while the row in use is a state of the control and
+        // takes the colour of a control face.
+        let (background, role) = if highlighted {
+            (
+                node.attribute("popup-highlight-background")
+                    .or_else(|| node.attribute("popup-selected-background"))
+                    .unwrap_or("#FF495A68"),
+                contrast::Role::Highlight,
+            )
         } else if chosen.as_deref() == Some(value) {
-            node.attribute("popup-selected-background")
-                .unwrap_or("#FF42515E")
+            (
+                node.attribute("popup-selected-background")
+                    .unwrap_or("#FF42515E"),
+                contrast::Role::Control,
+            )
         } else {
-            ""
+            ("", contrast::Role::Control)
         };
         if !background.is_empty() {
+            let background = context.colour(role, background);
             push_solid_layer(
                 &mut output.overlay_layers,
                 row,
-                background,
+                &background,
                 scale_value(3, context.dpi.scale),
             )?;
         }
+        // Text on the row the keyboard is on stands on the highlight, so it
+        // takes the colour the scheme keeps for that, or it would be drawn in
+        // the background's own colour and disappear into the band.
+        let text_role = if highlighted {
+            contrast::Role::HighlightText
+        } else {
+            contrast::Role::Text
+        };
         output.overlay_texts.push(TextLayer {
             runs: vec![TextRun {
                 text: option
                     .attribute("text")
                     .map(|text| resolve_text(text, context.translations))
                     .unwrap_or_else(|| value.to_string()),
-                color: parse_color(node.attribute("color").unwrap_or("#FFFFFFFF")),
+                color: parse_color(
+                    &context.colour(text_role, node.attribute("color").unwrap_or("#FFFFFFFF")),
+                ),
                 link: None,
             }],
             left: row.left + scale_value(10, context.dpi.scale),
@@ -4271,6 +4346,19 @@ fn render_select(
             bottom: row.top + row.height,
         });
     }
+    // A menu is drawn over the page rather than inside the control, and Windows
+    // draws a line around a list of its own. A layout names no line for a popup,
+    // so under a scheme the line is drawn here: without it the menu would sit
+    // unseen on a page the scheme paints in the same colour.
+    if let Some(palette) = &context.contrast {
+        push_border_layer(
+            &mut output.overlay_layers,
+            popup,
+            &palette.colour(contrast::Role::Line),
+            scale_value(1, context.dpi.scale),
+            scale_value(4, context.dpi.scale),
+        )?;
+    }
     // What the window needs to walk these rows with the keyboard, kept beside
     // the pixels the menu just drew.
     let chosen_row = chosen
@@ -4285,6 +4373,20 @@ fn render_select(
     Ok(())
 }
 
+/// Which colour the words of a node belong to.
+///
+/// A label stands on the page itself, while the words of a button or a select
+/// stand on the control's own face, and a scheme is free to name a colour for
+/// each: the high contrast themes that ship with Windows draw a button's label
+/// in a colour of its own.
+fn text_role(node: roxmltree::Node<'_, '_>) -> contrast::Role {
+    if node.has_tag_name("Button") || node.has_tag_name("Select") {
+        contrast::Role::ControlText
+    } else {
+        contrast::Role::Text
+    }
+}
+
 fn push_node_text(
     node: roxmltree::Node<'_, '_>,
     rect: LayerRect,
@@ -4294,8 +4396,16 @@ fn push_node_text(
     let Some((text, alignment)) = resolved_text_for_node(node, context) else {
         return;
     };
-    let color = parse_color(node.attribute("color").unwrap_or("#FFFFFFFF"));
-    let link_color = node.attribute("linkcolor").map(parse_color);
+    let color = parse_color(&context.colour(
+        text_role(node),
+        node.attribute("color").unwrap_or("#FFFFFFFF"),
+    ));
+    // A link is the one run of text that has to stand out from the words around
+    // it, so it takes the highlight colour the scheme keeps for the one thing
+    // the user is meant to pick out.
+    let link_color = node
+        .attribute("linkcolor")
+        .map(|declared| parse_color(&context.colour(contrast::Role::Highlight, declared)));
     output.texts.push(TextLayer {
         runs: parse_text_runs(&text, color, link_color),
         left: rect.left,
@@ -4358,7 +4468,12 @@ fn push_text_input(
     output.text_inputs.push(TextInputRegion {
         id,
         text: text_input_value(node, context.interaction, context.config).unwrap_or_default(),
-        color: parse_color(node.attribute("color").unwrap_or("#FFFFFFFF")),
+        // What a user types is read on the page like any other words, and the
+        // caret is drawn in the same colour so it is never lost in the text.
+        color: parse_color(&context.colour(
+            contrast::Role::Text,
+            node.attribute("color").unwrap_or("#FFFFFFFF"),
+        )),
         font_size: scale_value(
             int_attribute(node, "font-size").unwrap_or(12),
             context.dpi.scale,
@@ -5052,6 +5167,15 @@ fn render_flow(
         // Everything the children drew is cut to the view the container shows,
         // so a row the user scrolled past is neither drawn nor clicked.
         output.clip_since(marks, content);
+        // A container may name the colours of its own bar; Windows keeps a
+        // colour for a scrollbar's track as well, which is what a scheme names
+        // in place of either.
+        let track_colour = node
+            .attribute("scrollbar-background")
+            .unwrap_or(SCROLLBAR_TRACK_COLOR);
+        let thumb_colour = node
+            .attribute("scrollbar-thumb-background")
+            .unwrap_or(SCROLLBAR_THUMB_COLOR);
         let track = (held > room).then(|| scrollbar_track(axis, content, context.dpi.scale));
         let thumb =
             track.map(|track| scrollbar_thumb(axis, track, room, held, offset, context.dpi.scale));
@@ -5059,15 +5183,13 @@ fn render_flow(
             push_solid_layer(
                 &mut output.overlay_layers,
                 track,
-                node.attribute("scrollbar-background")
-                    .unwrap_or(SCROLLBAR_TRACK_COLOR),
+                &context.colour(contrast::Role::Scrollbar, track_colour),
                 scale_value(3, context.dpi.scale),
             )?;
             push_solid_layer(
                 &mut output.overlay_layers,
                 thumb,
-                node.attribute("scrollbar-thumb-background")
-                    .unwrap_or(SCROLLBAR_THUMB_COLOR),
+                &context.colour(contrast::Role::Control, thumb_colour),
                 scale_value(3, context.dpi.scale),
             )?;
             // A click on the track outside the thumb moves the view by one of
@@ -5817,10 +5939,13 @@ fn render_box_contents(
     output: &mut LayoutOutput,
 ) -> Result<()> {
     if let Some(background) = node.attribute("background") {
+        // A box is a surface a page lays a control or a card onto, so it is
+        // painted with the colour a scheme keeps for a control face.
+        let background = context.colour(contrast::Role::Control, background);
         push_solid_layer(
             &mut output.layers,
             rect,
-            background,
+            &background,
             scale_value(
                 int_attribute(node, "border-radius").unwrap_or(0),
                 context.dpi.scale,
@@ -6368,10 +6493,11 @@ fn push_node_border(
         int_attribute(node, "border-radius").unwrap_or(0),
         context.dpi.scale,
     );
+    let color = context.colour(contrast::Role::Line, color);
     push_border_layer(
         layers,
         rect,
-        color,
+        &color,
         scale_value(width, context.dpi.scale),
         radius,
     )
@@ -6453,13 +6579,15 @@ fn push_border_layer(
 /// The ring is drawn over the control's own rectangle, so it follows the layout
 /// at any scale and needs no room of its own. It is dotted rather than solid
 /// because a control can draw a border of its own, and a second solid line laid
-/// over the first says nothing about where the keyboard is.
+/// over the first says nothing about where the keyboard is. Under a scheme it
+/// takes the highlight colour, which is the one a user is sure to have picked to
+/// be seen against their own background.
 fn push_focus_ring(
     output: &mut LayoutOutput,
-    interaction: &InteractionState,
     page: roxmltree::Node<'_, '_>,
+    context: &LayoutContext<'_>,
 ) -> Result<()> {
-    let Some(focused) = interaction.focused_control.as_deref() else {
+    let Some(focused) = context.interaction.focused_control.as_deref() else {
         return Ok(());
     };
     // The page is laid out again whenever the ring moves, so the regions on
@@ -6480,7 +6608,11 @@ fn push_focus_ring(
             height: region.bottom - region.top,
         }
     };
-    push_focus_ring_layer(&mut output.layers, rect, &focus_ring_color(page, focused))
+    push_focus_ring_layer(
+        &mut output.layers,
+        rect,
+        &context.colour(contrast::Role::Highlight, &focus_ring_color(page, focused)),
+    )
 }
 
 /// The colour of the ring: what the focused control asks for, then what the page
@@ -6571,7 +6703,10 @@ fn render_progress_bar(
         context.dpi.scale,
     );
     if let Some(background) = node.attribute("background") {
-        push_solid_layer(&mut output.layers, rect, background, radius)?;
+        // The track is the control's own face; the part that is filled is the
+        // project's artwork, which keeps the colours it was drawn with.
+        let background = context.colour(contrast::Role::Control, background);
+        push_solid_layer(&mut output.layers, rect, &background, radius)?;
     }
     let authored = int_attribute(node, "progress").unwrap_or(0).clamp(0, 100) as u8;
     let progress = context.interaction.progress_for(authored);
@@ -6903,6 +7038,33 @@ unsafe fn handle_dpi_changed(window: HWND, dpi: u32, suggested: *const RECT) {
     let _ = UpdateWindow(window);
 }
 
+/// Lays the page out again when the machine asks for different colours.
+///
+/// Windows tells every window when the user turns high contrast on or off, or
+/// picks another scheme, and a page this runtime paints follows that only when
+/// it is laid out again. The rebuild is skipped while the machine asks for what
+/// the current frame was already painted with, which is what makes it cheap to
+/// answer the messages that are not about colours at all.
+unsafe fn refresh_contrast(window: HWND) {
+    let Some(runtime) = UI.get() else {
+        return;
+    };
+    let Ok(mut state) = runtime.lock() else {
+        return;
+    };
+    let palette = contrast::palette();
+    if palette == state.contrast {
+        return;
+    }
+    state.contrast = palette;
+    if rebuild_runtime_ui(&mut state).is_err() {
+        return;
+    }
+    drop(state);
+    let _ = InvalidateRect(window, None, false);
+    let _ = UpdateWindow(window);
+}
+
 /// The `(left, top, right, bottom)` of the work area of the monitor a window is
 /// on. A window that does not exist yet falls back to the primary monitor.
 unsafe fn monitor_work_area(window: HWND) -> Option<(i32, i32, i32, i32)> {
@@ -7176,6 +7338,15 @@ unsafe extern "system" fn window_proc(
             // reports, and the scale is derived from one number.
             let dpi = u32::from(wparam.0 as u16);
             handle_dpi_changed(window, dpi, lparam.0 as *const RECT);
+            LRESULT(0)
+        }
+        // The user turned high contrast on or off, or picked another scheme.
+        // Windows says so to every window, and a page is a picture, so it only
+        // follows the new colours when it is laid out again. The other two
+        // messages say the same thing in a different way, and the rebuild they
+        // ask for is skipped unless the colours really changed.
+        WM_SETTINGCHANGE | WM_SYSCOLORCHANGE | WM_THEMECHANGED => {
+            refresh_contrast(window);
             LRESULT(0)
         }
         WM_APP_REFRESH => {
@@ -8719,6 +8890,7 @@ fn rebuild_runtime_ui(state: &mut RuntimeState) -> Result<()> {
         state.open_select.as_deref(),
         &state.interaction,
         state.mode,
+        state.contrast,
     )?;
     Ok(())
 }
@@ -9419,7 +9591,7 @@ unsafe fn draw_layer(destination: HDC, layer: &ImageLayer) {
 mod tests {
     use super::{
         anchored_left, anchored_top, button_enabled, button_image, byte_index, caret_layer,
-        centered_bounds, clamped_bounds, composition_points, container_intrinsic_size,
+        centered_bounds, clamped_bounds, composition_points, container_intrinsic_size, contrast,
         cross_alignment, cross_alignment_for_item, disk_free_bytes, disk_root, field_state,
         flow_axis, flow_item_for_node, flow_widths, format_size_bytes, forward_page,
         initial_interaction, insets_for_node, inspect_project, installer_version_info, load_layout,
@@ -9907,6 +10079,7 @@ mod tests {
             interaction: &interaction,
             fields: HashMap::new(),
             open_select: None,
+            contrast: None,
         };
         let mut layers = Vec::new();
         push_node_border(
@@ -10015,6 +10188,7 @@ mod tests {
             None,
             &interaction_with_dialog(close_question()),
             RuntimeMode::Installer,
+            None,
         )?;
         let dialog = ui.dialog.expect("the layout reported a dialog");
 
@@ -10068,6 +10242,7 @@ mod tests {
             None,
             &interaction_with_dialog(question),
             RuntimeMode::Installer,
+            None,
         )?;
         let dialog = ui.dialog.expect("the layout reported a dialog");
         let yes = dialog
@@ -10109,6 +10284,7 @@ mod tests {
             None,
             &interaction_with_dialog(close_question()),
             RuntimeMode::Installer,
+            None,
         )?;
         let dialog = ui.dialog.expect("the layout reported a dialog");
         assert!(dialog
@@ -10138,6 +10314,7 @@ mod tests {
             None,
             &interaction_with_dialog(notice()),
             RuntimeMode::Installer,
+            None,
         )?;
         let dialog = ui.dialog.expect("the layout reported a dialog");
         assert!(!dialog
@@ -10160,6 +10337,7 @@ mod tests {
             None,
             &interaction_with_dialog(close_question()),
             RuntimeMode::Installer,
+            None,
         )?;
         let dialog = ui.dialog.expect("the layout reported a dialog");
         assert!(dialog
@@ -10182,6 +10360,7 @@ mod tests {
             None,
             &InteractionState::default(),
             RuntimeMode::Installer,
+            None,
         )?;
         assert!(ui.dialog.is_none());
         assert!(ui.overlay_layers.is_empty());
@@ -10205,6 +10384,7 @@ mod tests {
             None,
             &interaction_with_dialog(close_question()),
             RuntimeMode::Installer,
+            None,
         )?;
         assert!(ui.dialog.is_none());
         assert!(ui.overlay_layers.is_empty());
@@ -10258,6 +10438,7 @@ mod tests {
             None,
             &interaction_with_dialog(dialog),
             RuntimeMode::Installer,
+            None,
         )?;
 
         // The question is one wrapped line with real height, not a collapsed
@@ -10363,6 +10544,7 @@ mod tests {
                 None,
                 &interaction_with_dialog(dialog),
                 RuntimeMode::Installer,
+                None,
             )?;
 
             let question = ui
@@ -10556,6 +10738,7 @@ mod tests {
             interaction: &interaction,
             fields: HashMap::new(),
             open_select: None,
+            contrast: None,
         };
         let action_for = |id: &str| {
             let node = document
@@ -10618,6 +10801,7 @@ mod tests {
             interaction: &interaction,
             fields: HashMap::new(),
             open_select: None,
+            contrast: None,
         };
         // The example locales name their links `agreement` and `policy`, so both
         // spellings must reach the configured URLs.
@@ -10715,6 +10899,7 @@ mod tests {
             interaction: &interaction,
             fields: HashMap::new(),
             open_select: None,
+            contrast: None,
         };
         let document = roxmltree::Document::parse(
             r##"<Page width="400" height="200">
@@ -10861,6 +11046,7 @@ mod tests {
             None,
             &default_interaction,
             RuntimeMode::Installer,
+            None,
         )?;
 
         assert_eq!((ui.width, ui.height), (1440, 900));
@@ -10975,6 +11161,7 @@ mod tests {
             Some("langSelect"),
             &default_interaction,
             RuntimeMode::Installer,
+            None,
         )?;
         assert_eq!(open_menu.overlay_layers.len(), 2);
         // The rows the keyboard walks are the layout's own option order.
@@ -10997,6 +11184,7 @@ mod tests {
             None,
             &default_interaction,
             RuntimeMode::Installer,
+            None,
         )?;
         assert_eq!(visible_text(&english.texts[0]), "English");
         assert_eq!(visible_text(&english.texts[1]), "Install Now");
@@ -11019,6 +11207,7 @@ mod tests {
             None,
             &interaction,
             RuntimeMode::Installer,
+            None,
         )?;
         assert!(expanded.actions.iter().any(|region| matches!(
             region.action,
@@ -11074,6 +11263,7 @@ mod tests {
             None,
             &interaction,
             RuntimeMode::Installer,
+            None,
         )?;
         let agreement = russian
             .texts
@@ -11382,6 +11572,7 @@ mod tests {
             None,
             &interaction,
             RuntimeMode::Uninstaller,
+            None,
         )?;
         let uninstall = ui
             .actions
@@ -11418,6 +11609,7 @@ mod tests {
             None,
             &interaction,
             mode,
+            None,
         )
     }
 
@@ -11447,6 +11639,7 @@ mod tests {
             interaction: &InteractionState::default(),
             fields: HashMap::new(),
             open_select: None,
+            contrast: None,
         };
         let mut output = LayoutOutput::default();
         for node in page.children().filter(|node| node.is_element()) {
@@ -11821,6 +12014,7 @@ mod tests {
             interaction: &InteractionState::default(),
             fields: HashMap::new(),
             open_select: None,
+            contrast: None,
         };
         let mut output = LayoutOutput::default();
         for node in page.children().filter(|node| node.is_element()) {
@@ -11912,6 +12106,7 @@ mod tests {
             interaction: &InteractionState::default(),
             fields: HashMap::new(),
             open_select: None,
+            contrast: None,
         };
         let mut output = LayoutOutput::default();
         render_flow(
@@ -11978,6 +12173,7 @@ mod tests {
             interaction: &InteractionState::default(),
             fields: HashMap::new(),
             open_select: None,
+            contrast: None,
         };
         let mut output = LayoutOutput::default();
         render_flow_item(
@@ -12023,6 +12219,7 @@ mod tests {
             interaction: &InteractionState::default(),
             fields: HashMap::new(),
             open_select: None,
+            contrast: None,
         };
         let node = page
             .descendants()
@@ -12085,6 +12282,7 @@ mod tests {
             interaction: &interaction,
             fields: HashMap::new(),
             open_select: None,
+            contrast: None,
         };
         let mut output = LayoutOutput::default();
         // The track paints first, then the clipped sprite on top of it.
@@ -12222,6 +12420,7 @@ mod tests {
             interaction: &interaction,
             fields: HashMap::new(),
             open_select: None,
+            contrast: None,
         };
         let (text, _) = resolved_text_for_node(node, &context).context("label text missing")?;
         assert_eq!(text, "正在解压文件...");
@@ -12278,6 +12477,7 @@ mod tests {
             interaction: &interaction,
             fields: HashMap::new(),
             open_select: None,
+            contrast: None,
         };
         let (text, _) = resolved_text_for_node(node, &context).context("label text missing")?;
         assert_eq!(text, "Extracting archive files");
@@ -12417,6 +12617,7 @@ mod tests {
             None,
             interaction,
             RuntimeMode::Installer,
+            None,
         )
     }
 
@@ -12445,6 +12646,7 @@ mod tests {
             Some(select),
             interaction,
             RuntimeMode::Installer,
+            None,
         )
     }
 
@@ -12468,6 +12670,7 @@ mod tests {
             interaction,
             fields: HashMap::new(),
             open_select: None,
+            contrast: None,
         }
     }
 
@@ -14683,6 +14886,7 @@ mod tests {
             Some("lang"),
             &InteractionState::default(),
             RuntimeMode::Installer,
+            None,
         )?;
         let arrow = &open.layers[2];
         let up = super::decode_image(&example_asset("select-arrow-up.png"))?;
@@ -14709,6 +14913,7 @@ mod tests {
             None,
             &InteractionState::default(),
             RuntimeMode::Installer,
+            None,
         )
     }
 
@@ -14763,6 +14968,7 @@ mod tests {
                 Some("lang"),
                 interaction,
                 RuntimeMode::Installer,
+                None,
             )
         };
 
@@ -14860,6 +15066,7 @@ mod tests {
             None,
             &interaction_with_dialog(question),
             RuntimeMode::Installer,
+            None,
         )?;
         let texts: Vec<String> = ui.overlay_texts.iter().map(visible_text).collect();
 
@@ -15149,6 +15356,69 @@ mod tests {
         ]
     }
 
+    // The eight colours a case gives the scheme of its own, all different so a
+    // claim about which role a colour was painted with can be checked. The
+    // themes that ship with Windows paint a page and a control face in the same
+    // colour, which would leave a case unable to tell the two apart.
+    const SCHEME_SURFACE: u32 = 0x0001_0203;
+    const SCHEME_CONTROL: u32 = 0x0004_0506;
+    const SCHEME_HIGHLIGHT: u32 = 0x0007_0809;
+    const SCHEME_TEXT: u32 = 0x000A_0B0C;
+    const SCHEME_CONTROL_TEXT: u32 = 0x000D_0E0F;
+    const SCHEME_HIGHLIGHT_TEXT: u32 = 0x0010_1112;
+    const SCHEME_LINE: u32 = 0x0013_1415;
+    const SCHEME_SCROLLBAR: u32 = 0x0016_1718;
+
+    /// The scheme a case states instead of the machine's own.
+    fn scheme() -> contrast::Palette {
+        contrast::Palette::named(
+            SCHEME_SURFACE,
+            SCHEME_CONTROL,
+            SCHEME_HIGHLIGHT,
+            SCHEME_TEXT,
+            SCHEME_CONTROL_TEXT,
+            SCHEME_HIGHLIGHT_TEXT,
+            SCHEME_LINE,
+            SCHEME_SCROLLBAR,
+        )
+    }
+
+    /// The colour the scheme names for a role, read the way the renderer reads
+    /// it, so a case can compare text colours as well as pixels.
+    fn scheme_colour(role: contrast::Role) -> COLORREF {
+        parse_color(&scheme().colour(role))
+    }
+
+    /// The pixel a colour the machine reports paints, in the order a layer holds
+    /// its components.
+    fn pixel(colour: u32) -> [u8; 4] {
+        [
+            (colour >> 16) as u8,
+            (colour >> 8) as u8,
+            colour as u8,
+            0xFF,
+        ]
+    }
+
+    /// Every colour painted over one rectangle, read at one pixel of it, in the
+    /// order it was painted, so a case can say what a surface was drawn with
+    /// without depending on where in the layer list it landed.
+    ///
+    /// The pixel is named because a rectangle carries two layers at once: a fill
+    /// is read at the middle of the rectangle, where a rounded corner does not
+    /// reach, and a line where it runs along an edge.
+    fn painted_over(
+        layers: &[ImageLayer],
+        rect: (i32, i32, i32, i32),
+        at: (usize, usize),
+    ) -> Vec<[u8; 4]> {
+        layers
+            .iter()
+            .filter(|layer| (layer.left, layer.top, layer.width, layer.height) == rect)
+            .map(|layer| layer_pixel(layer, at.0, at.1))
+            .collect()
+    }
+
     /// The keyboard walks the page the way the page is written: the controls it
     /// can reach are recorded in the order the layout lays them out, each over
     /// the rectangle it was placed at, so Tab follows the order a reader reads
@@ -15334,6 +15604,224 @@ mod tests {
         );
         // The ring is the layer the dialog takes away, and nothing else.
         assert_eq!(without.layers.len(), with_dialog.layers.len() + 1);
+        Ok(())
+    }
+
+    /// A page that declares one colour per role: the page's own fill and the
+    /// line around it, a card laid on the page with a line of its own, a label
+    /// whose words stand on the page, and a button whose words stand on a
+    /// control's own face.
+    const CONTRAST_PAGE: &str = r##"<Page width="400" height="200" background="#FF101010"
+                                       border-color="#FF202020" focus-color="#FF303030">
+                  <Box id="card" position="absolute" left="20" top="20" width="200" height="60"
+                       background="#FF404040" border-color="#FF505050">
+                    <Label text="Words" color="#FF606060"
+                           position="absolute" left="8" top="8" width="180" height="24" />
+                  </Box>
+                  <Button id="next" action="next" text="Next" color="#FF707070"
+                          border-color="#FF808080"
+                          position="absolute" left="20" top="120" width="120" height="30" />
+                </Page>"##;
+
+    /// Draws a project at 96 DPI with the colours a case states, which is what a
+    /// machine whose user turned high contrast on hands the renderer.
+    fn drawn_in_contrast(
+        files: &HashMap<String, Vec<u8>>,
+        interaction: &InteractionState,
+        palette: Option<contrast::Palette>,
+    ) -> anyhow::Result<RuntimeUi> {
+        load_layout(
+            files,
+            DpiContext {
+                scale: 1.0,
+                use_2x: false,
+            },
+            "zh-CN",
+            None,
+            interaction,
+            RuntimeMode::Installer,
+            palette,
+        )
+    }
+
+    /// High contrast replaces the colours a page declares with the ones the
+    /// scheme keeps for what they paint.
+    ///
+    /// A page this runtime draws is a picture, so nothing in it follows the
+    /// user's scheme on its own: every surface, line, and word has to be painted
+    /// with the colour the machine names for it -- and by role, because a theme
+    /// may paint a page and a control face alike and still draw the words on a
+    /// control in a colour of their own.
+    #[test]
+    fn the_scheme_replaces_the_colours_a_page_declares() -> anyhow::Result<()> {
+        let files = one_page_project(CONTRAST_PAGE, "{}");
+        let ui = drawn_in_contrast(&files, &InteractionState::default(), Some(scheme()))?;
+
+        // The page: its fill, and the line grown inwards from its edge.
+        assert_eq!(
+            painted_over(&ui.layers, (0, 0, 400, 200), (0, 0)),
+            [pixel(SCHEME_SURFACE), pixel(SCHEME_LINE)]
+        );
+        // The card laid on the page, with the line around its own edge.
+        assert_eq!(
+            painted_over(&ui.layers, (20, 20, 200, 60), (0, 0)),
+            [pixel(SCHEME_CONTROL), pixel(SCHEME_LINE)]
+        );
+        // The words of the label stand on the page and those of the button on
+        // the control's face, which a scheme is free to colour apart.
+        assert_eq!(ui.texts.len(), 2, "the page drew the words it declares");
+        assert_eq!(
+            ui.texts[0].runs[0].color,
+            scheme_colour(contrast::Role::Text)
+        );
+        assert_eq!(
+            ui.texts[1].runs[0].color,
+            scheme_colour(contrast::Role::ControlText)
+        );
+        Ok(())
+    }
+
+    /// A machine that is not in high contrast paints the page it was given.
+    ///
+    /// The setting belongs to the user, so the colours a project declared have
+    /// to come back the moment it is off: nothing about a page may depend on
+    /// what the machine happened to be set to.
+    #[test]
+    fn a_page_keeps_the_colours_it_declares_while_no_scheme_is_asked_for() -> anyhow::Result<()> {
+        let files = one_page_project(CONTRAST_PAGE, "{}");
+        let ui = drawn_in_contrast(&files, &InteractionState::default(), None)?;
+        assert_eq!(
+            painted_over(&ui.layers, (0, 0, 400, 200), (0, 0)),
+            [pixel(0x0010_1010), pixel(0x0020_2020)]
+        );
+        assert_eq!(
+            painted_over(&ui.layers, (20, 20, 200, 60), (0, 0)),
+            [pixel(0x0040_4040), pixel(0x0050_5050)]
+        );
+        assert_eq!(ui.texts[0].runs[0].color, parse_color("#FF606060"));
+        assert_eq!(ui.texts[1].runs[0].color, parse_color("#FF707070"));
+        Ok(())
+    }
+
+    /// The ring around the control the keyboard is on takes the colour the
+    /// scheme keeps for where the user is.
+    ///
+    /// A project's own ring colour is what it chose against its own artwork, and
+    /// under a scheme the page behind the ring is the scheme's own colour, so
+    /// the ring has to be the one the user picked to be seen.
+    #[test]
+    fn the_ring_follows_the_scheme_under_high_contrast() -> anyhow::Result<()> {
+        let files = one_page_project(CONTRAST_PAGE, "{}");
+        let interaction = InteractionState {
+            focused_control: Some("next".to_string()),
+            ..Default::default()
+        };
+        let ui = drawn_in_contrast(&files, &interaction, Some(scheme()))?;
+        let ring = ui.layers.last().expect("the ring was drawn");
+        assert_eq!((ring.left, ring.top), (20, 120));
+        assert_eq!(ring_corner(ring), pixel(SCHEME_HIGHLIGHT));
+
+        // The page without a scheme keeps the ring colour it declared, which is
+        // the one the page and the control would each have asked for.
+        let plain = drawn_in_contrast(&files, &interaction, None)?;
+        assert_eq!(
+            ring_corner(plain.layers.last().expect("the ring was drawn")),
+            pixel(0x0030_3030)
+        );
+        Ok(())
+    }
+
+    /// An open menu under a scheme says where the keyboard is and what the user
+    /// chose, tells the two apart, and keeps a line of its own.
+    ///
+    /// The popup is drawn over the page rather than inside the control, and a
+    /// scheme paints both in its window colour: without a line around the menu
+    /// the rows would lie on the page with nothing to say where the list starts.
+    #[test]
+    fn an_open_menu_marks_the_keyboard_and_the_choice_under_a_scheme() -> anyhow::Result<()> {
+        let files = one_page_project(
+            r##"<Page width="400" height="200" background="#FF101010">
+                  <Select id="edition" position="absolute" left="20" top="20"
+                          width="180" height="26" background="#FF303030" color="#FF606060"
+                          popup-background="#FF42515E" popup-selected-background="#FF495A68"
+                          popup-highlight-background="#FF7050B0"
+                          popup-row-height="26" popup-padding="2">
+                    <Option value="one" text="One" />
+                    <Option value="two" text="Two" />
+                  </Select>
+                </Page>"##,
+            "{}",
+        );
+        let mut interaction = InteractionState::default();
+        interaction
+            .choices
+            .insert("edition".to_string(), "two".to_string());
+        interaction.highlighted_option = Some(0);
+        let ui = load_layout(
+            &files,
+            DpiContext {
+                scale: 1.0,
+                use_2x: false,
+            },
+            "zh-CN",
+            Some("edition"),
+            &interaction,
+            RuntimeMode::Installer,
+            Some(scheme()),
+        )?;
+
+        // The control's own face is a control face, and the menu it drops is a
+        // list of its own: the fill of the popup, and the line drawn around it
+        // where that line runs along the top edge.
+        assert_eq!(
+            painted_over(&ui.layers, (20, 20, 180, 26), (0, 0)),
+            [pixel(SCHEME_CONTROL)]
+        );
+        assert_eq!(
+            painted_over(&ui.overlay_layers, (20, 50, 180, 56), (90, 0)),
+            [pixel(SCHEME_SURFACE), pixel(SCHEME_LINE)]
+        );
+        // The row the keyboard is on is where the user is, and the row in use is
+        // a state of the control, so the two are still told apart.
+        assert_eq!(
+            painted_over(&ui.overlay_layers, (22, 52, 176, 26), (88, 0)),
+            [pixel(SCHEME_HIGHLIGHT)]
+        );
+        assert_eq!(
+            painted_over(&ui.overlay_layers, (22, 78, 176, 26), (88, 0)),
+            [pixel(SCHEME_CONTROL)]
+        );
+        // Words on the highlight take the colour the scheme keeps for that, or
+        // they would be drawn in the background's own colour and vanish.
+        assert_eq!(ui.overlay_texts.len(), 2);
+        assert_eq!(
+            ui.overlay_texts[0].runs[0].color,
+            scheme_colour(contrast::Role::HighlightText)
+        );
+        assert_eq!(
+            ui.overlay_texts[1].runs[0].color,
+            scheme_colour(contrast::Role::Text)
+        );
+        Ok(())
+    }
+
+    /// A scrollbar takes the two colours the scheme keeps for it: the track has
+    /// a colour of its own in Windows, and the thumb is a control.
+    #[test]
+    fn a_scrollbar_takes_the_colours_the_scheme_keeps_for_it() -> anyhow::Result<()> {
+        let ui = drawn_in_contrast(
+            &scrollable_project(6),
+            &InteractionState::default(),
+            Some(scheme()),
+        )?;
+        assert_eq!(
+            painted_over(&ui.overlay_layers, (202, 10, 8, 100), (4, 50)),
+            [pixel(SCHEME_SCROLLBAR)]
+        );
+        assert_eq!(
+            painted_over(&ui.overlay_layers, (202, 10, 8, 56), (4, 28)),
+            [pixel(SCHEME_CONTROL)]
+        );
         Ok(())
     }
 }

@@ -53,6 +53,7 @@ Rust doc comment，再退回用例名。
 | `a_finalize_command_runs_on_the_finished_setup_and_uninstaller` | 工程自己的命令跑在成品上：卸载程序还是独立文件、尚未嵌进安装包时被处理一遍，标记因此落在安装包里那个条目上；安装包写完、页脚也写完之后再处理一遍，标记落在文件末尾，也就是签名会长出来的地方。两条命令拿到的是各自的文件（卸载程序在前、安装包在后），被处理过的安装包照常安装、注册卸载项。 |
 | `a_finalize_command_that_fails_stops_the_build` | 命令拒绝这个文件就中止构建：错误里点名是哪个设置、命令返回了什么退出码，命令自己写下的那行也进了构建日志；那份没签成的安装包不会留在磁盘上。 |
 | `a_hidden_element_takes_its_whole_subtree_with_it` | 祖先上的 `visible="false"` 把底下整个子树都藏起来：子控件的动作、文字和面板自己的底色都不画，页面上别的地方不受影响。把属性改回 `true` 后这个分支又完整画出来。 |
+| `a_high_contrast_machine_gets_the_colours_the_scheme_keeps` | 真窗口里把两种答案各跑一遍：夹具把机器自己的颜色对调着声明（页面底色写的是 `COLOR_WINDOWTEXT`、焦点环写的是 `COLOR_WINDOW`、卡片的填充与描边写的是 `COLOR_HIGHLIGHT`），关掉那次读到的正是声明的这些颜色，复选框那张图两种情形下都不变；打开那次页面底色、卡片、卡片边分别变成机器的 `COLOR_WINDOW`、`COLOR_BTNFACE`、`COLOR_WINDOWFRAME`，按一次 Tab 之后环换成 `COLOR_HIGHLIGHT` 而不是声明的那一色；最后给窗口发一条 `WM_SETTINGCHANGE`，逐像素对比前后两帧，窗口一个像素都没动、也还在。开关本身属于用户，用例只把答案写进进程，不去动这台机器的设置。 |
 | `a_hint_shows_the_rule_the_value_breaks` | 绑 `value-source="field-error:<字段 id>"` 的标签画出那条被破坏的规矩写下的文案：字段空着时报 `required` 那句，值不合格时报 `pattern` 那句，文案按工程自己的语言查表；值合格时这个标签什么都不画，点名页面上没有的字段也一样。 |
 | `a_hook_must_answer_with_page_text` | 页面钩子的 `next_page` 必须用文本回答：返回布尔、数字之类的东西会被当场拒绝并说明该返回什么，而不是被当成某一页的名字。 |
 | `a_hook_names_the_page_the_wizard_goes_to` | 页面钩子按 `from` 决定下一页：点名一页就照它走，回答空串就把顺序交还给工程声明的页序；钩子没提到的那一页同样按声明的顺序走。 |
@@ -71,6 +72,7 @@ Rust doc comment，再退回用例名。
 | `a_page_hook_that_fails_is_reported_and_the_wizard_walks_on` | 钩子抛错时向导用工程自己的对话框版面把这件事报出来（用例点的是那张卡片上的按钮，进程因此退出，说明卡片确实在屏幕上），同时仍按声明的页序走到下一页：坏掉的钩子不会把人困在某一页。 |
 | `a_page_hook_that_names_no_page_keeps_the_declared_order` | 钩子点名工程没有声明的页、点名向导当前的这一页、或者干脆失败，三种情况都退回声明的下一页并各报一条原因，而不是把用户留在原地。 |
 | `a_page_id_finds_the_page_that_carries_it` | 页面 id 找到它所在的那一页；工程没给 id 的页面读成空串，钩子也就点不到它。 |
+| `a_page_keeps_the_colours_it_declares_while_no_scheme_is_asked_for` | 机器没要求高对比时，版面声明的颜色原样画出来：页面底色与沿边缘向内的描边、卡片填充与它自己的描边、卡片上标签的字色与按钮上的字色，逐像素核对声明值。这个开关是用户的，关掉之后工程写的颜色必须一模一样地回来。 |
 | `a_page_list_without_roles_keeps_its_positions` | 没有写 `role` 的页面列表保持老规矩：第二页汇报进度、最后一页收尾；只有一页的列表既没有可汇报的页也没有可收尾的页。 |
 | `a_page_paints_its_fill_under_its_image_and_its_outline_over_them` | 页面的装饰按指南的顺序落层：底色、铺在它上面的背景图、从边缘向内画的描边，`border-radius` 转成窗口区域上报而不是画进图层，倍率放大时圆角跟着放大。完全没写尺寸的页面退回文档里的默认客户区大小。 |
 | `a_page_role_finds_the_page_that_holds_it` | 页面用 `role` 声明自己的职责时，任务报到写 `progress` 的那一页，而不是第二页；收尾同样按 `finish` 走，工程因此可以自由排页。 |
@@ -112,6 +114,7 @@ Rust doc comment，再退回用例名。
 | `a_script_without_the_hook_says_nothing` | 没有 `next_page` 这个函数的脚本（或干脆解析不了的脚本）不改变页序：前者当作没说话，后者报出「解析不了」。 |
 | `a_scrollable_container_shows_the_part_it_is_scrolled_to` | 装不下容器的那部分内容只从窗口里露出一块：偏移量把各行整体推上去，推出容器边缘的那一行既不画出来也不再登记点击，偏移量超出列表末尾时停在末尾，不会露出底下的空白。列表有多长由各行自己声明的高度决定，跟容器拿到多少地方无关，这正是「能滚」与「被压扁」的分界。 |
 | `a_scrollbar_says_where_the_list_stands` | 滚动条画在视口尾部那条 8 像素宽的轨道上，滑块的长度是列表露出来的那部分所占的比例，位置跟着偏移量走；点轨道上滑块之外的两段各把视图挪动一页（一页就是视口本身的大小），所以不拖滑块也能翻。列表装得下时不画轨道、也不登记翻页区域；声明了 `scrollable` 却没有 `id` 的容器不开滚动，免得页面上的无名列表共用一个位置。 |
+| `a_scrollbar_takes_the_colours_the_scheme_keeps_for_it` | 高对比下的滚动条取两个颜色：轨道用 `COLOR_SCROLLBAR`，滑块按控件面色 `COLOR_BTNFACE` 画，而不是版面里写的那两个。 |
 | `a_select_offers_the_options_the_page_declares` | 下拉框是页面提供的一种选择，不只是语言控件：关闭时显示当前选项的文字（没人点过时是第一个），点击它要的是自己的菜单而不是语言列表，展开的选项按版面顺序排列、各用各的文字，隐藏的选项不出现；被选中的值决定旁边按钮是否可点。 |
 | `a_selection_band_covers_the_characters_it_selects` | 选中区域画出一条色带盖住选中的字符：没选中的范围什么都不画，色带始终停在输入框内，纵向也留出与文字高度匹配的位置。 |
 | `a_selection_is_ordered_from_whichever_end_the_caret_is_at` | 选区按两端排好序，从哪头拖都得到同一段区间；光标和锚点重合不算选区，清空后也没有选区。 |
@@ -135,6 +138,7 @@ Rust doc comment，再退回用例名。
 | `a_spacer_takes_what_the_fixed_items_leave` | `Spacer` 自己不画东西，它把后面的项推到另一端：两个定宽按钮之间剩下的 200 像素全被它吸收。 |
 | `a_styled_image_draws_into_a_sub_rectangle_at_the_opacity_it_declares` | `file='...' dest='...' fade='...'` 这种写法把图片画进控件内的一个子矩形，并按 `fade` 给透明度；目标矩形相对控件而不是页面，跟着控件一起被缩放。 |
 | `a_supported_locale_without_a_file_is_reported` | 工程声明支持、却没有对应语言文件的语言会被报告出来，因为别的环节不会报：运行时会退回默认语言，产品只是显示成另一种语言而已。 |
+| `a_system_colour_reads_as_an_opaque_layout_colour` | 机器报出来的系统颜色是 `0x00BBGGRR`，转成版面的写法要把字节反过来并补上不透明的 `FF`：`0x00112233` 读成 `#FF332211`，黑与白两个端点也各对一次。 |
 | `a_translation_missing_page_text_is_reported` | 默认语言能回答的页面文案键，凡是某个语言漏掉的都要报出来，没漏的不报。 |
 | `a_tree_is_described_by_its_installed_paths` | 一棵目录树按它装到机器上的路径来描述，目录多深都一样，每个文件都带上自己的字节数和摘要。 |
 | `a_typed_value_wins_over_the_bound_default` | 绑定到工程文件的输入框先显示配置里的路径，但用户输入或选择过的值要一直留在屏幕上，`disk-free:` 绑定读的也是同一个输入框。 |
@@ -165,6 +169,7 @@ Rust doc comment，再退回用例名。
 | `an_install_script_removes_a_variable_it_no_longer_wants` | `remove_env` 删掉机器上本来就有的那个变量，返回 `true`；它同时把这条记录从待撤销清单里去掉，所以卸载不会再去删一个已经不在的值，也不会把 `Environment` 这个键当成自己的删掉。 |
 | `an_install_script_sets_a_variable_the_uninstall_takes_back` | `set_env` 把变量写进 Windows 读环境变量的那个键，装完之后新进程就能读到；脚本自己的进程仍保留启动时的环境，这与 Windows 对写入者的行为一致。manifest 只记这个值（不记键），卸载把值撤回去，`Environment` 键连同里面的 PATH 都留着。 |
 | `an_install_script_that_never_deploys_the_executable_is_refused` | 脚本没部署 `install.exe_name` 指定的可执行文件时安装被拒绝，错误里点名缺的是哪个文件；失败的一次不会留下写了一半的目录。 |
+| `an_open_menu_marks_the_keyboard_and_the_choice_under_a_scheme` | 高对比下展开的下拉菜单：控件自己的面是控件面色；弹出层是页面色，另外补一条 `COLOR_WINDOWFRAME` 的描边（没有它就分不出菜单从哪儿开始）；键盘当前所在一行画成 `COLOR_HIGHLIGHT`、字用 `COLOR_HIGHLIGHTTEXT`，当前选中的一行画成控件面色、字用 `COLOR_WINDOWTEXT`——系统配色可以把两者配成同一个颜色，运行时仍旧分得开。 |
 | `an_unchanged_file_is_kept_rather_than_carried` | 新版本没动过的文件记进保留清单、不放进更新包，记下的是机器上那份的字节数和 SHA-256，而不是一句承诺。 |
 | `an_uninstall_script_replays_the_manifest_it_asks_for` | 卸载脚本调用 `run_tracked_uninstall` 后，manifest 记下的文件和注册表值都被清掉，manifest 自己也不在了。 |
 | `an_uninstall_script_sees_the_uninstall_mode_and_the_keep_data_checkbox` | 卸载脚本在两种勾选状态下都看得到 `get_mode()` 返回 uninstall，`get_checkbox_value("keep_data")` 如实反映复选框，没登记过的复选框返回 false，`is_cancelled()` 返回 false。 |
@@ -191,6 +196,7 @@ Rust doc comment，再退回用例名。
 | `dpi_scaling_rounds_layout_coordinates` | 布局坐标按缩放倍率换算并取整，负坐标同样处理。 |
 | `drops_the_shortcut_folder_once_it_is_empty` | 快捷方式删掉后，开始菜单里那个产品文件夹空了就被删掉，而共享的开始菜单根目录永远不动。 |
 | `each_container_tag_accepts_the_alignment_spelling_it_documents` | 每种容器标签接受指南里写的对齐写法：`HBox` 横排、`VBox` 纵排，`Content` 只有写了 `layout` 才决定方向；`horizontal-align`、`vertical-align` 指的是该标签的主轴和十字轴，`align-self` 让单项脱离容器的对齐。 |
+| `each_role_reads_the_colour_the_scheme_keeps_for_it` | 八个角色各自读自己那一格：用例给八格八个互不相同的颜色，逐个核对读回来的正是自己那个。系统完全可以把两个角色配成同一个颜色（Windows 自带的高对比主题就是这样），运行时仍然分别去问每一个。 |
 | `editable_text_fields_are_recorded_and_readonly_ones_are_not` | 只有能输入的 `TextInput` 被记成可编辑字段，带 `readonly="true"` 的那个不记，但两个都把值画出来。 |
 | `every_action_in_the_table_answers_with_its_own_window_action` | 动作表里的每一行都映射到它点名的窗口动作：最小化、关闭、确认关闭、选目录、开链接、安装、卸载、启动应用、完成、切换语言、显示或隐藏面板、对话框确认与取消。表里没有的名字让控件保持惰性，不会误关向导。 |
 | `every_log_level_reaches_the_failure_the_wizard_shows` | 脚本失败时，info、warn、error 三种级别的日志都跟着错误一起报出来，作者能从向导的错误框里看出是哪一步失败、为什么。 |
@@ -312,9 +318,11 @@ Rust doc comment，再退回用例名。
 | `the_payload_format_selects_the_runtime_that_gets_embedded` | payload 格式决定嵌入哪个运行时。一直声称错误格式的安装包什么都装不上，因为那个 stub 读不懂归档。 |
 | `the_pointer_decides_which_cursor_the_wizard_shows` | 指针在向导上是什么形状，由它底下那个控件说了算：按钮上是手型，可以输入的文本框上是工字光标，落在页面空白处则是普通箭头；指针再挪回按钮，形状跟着回去。三种标准光标必须先能彼此区分（句柄互不相同），否则这条用例不管窗口做什么都会通过。 |
 | `the_reported_size_counts_every_owned_file` | 卸载项里的容量按磁盘上的字节数算：安装占用的每个文件都算进去，卸载程序本身也算，不是文件的条目（比如同名目录）不算；不足 1 KiB 的产品报 1 而不是 0，因为 0 在 Windows 那里读作「大小未知」。 |
+| `the_ring_follows_the_scheme_under_high_contrast` | 高对比下的焦点环按 `COLOR_HIGHLIGHT` 画在控件自己的矩形上，而不是版面声明的 `focus-color`；同一个页面关掉高对比，环还是声明的那个颜色。 |
 | `the_script_queries_fixed_disks_and_notifies_the_shell` | 脚本列出的固定磁盘都是 `C:\` 这样的根目录，测试所在的盘也在里面；取到的可用空间是正数且不超过总容量；`shell_notify` 之后脚本继续往下走。 |
 | `the_script_reads_the_environment_and_the_project_configuration` | 脚本读环境变量拿到真实值，机器上没有的变量读成空字符串而不是报错；读工程配置拿到产品名和可执行文件名，不存在的配置路径类型是 unit，对象是 map，脚本因此分得清写错和空值。 |
 | `the_script_reports_the_image_it_runs_from` | 脚本报告自己运行的映像路径和它所在目录，值就是跑测试的那个可执行文件，而不是它读的捆绑数据。 |
+| `the_scheme_replaces_the_colours_a_page_declares` | 高对比把一页里声明的颜色换成系统配色：页面底色与向内长出来的描边、卡片填充与它自己的描边逐像素核对；卡片上的标签用页面文字色、按钮上的字用控件文字色，两者要分开——同一个主题可以给它们不同的颜色。 |
 | `the_setup_opens_its_wizard_window` | 不带 `--silent` 打开真实的安装包，等它的向导窗口画出来再量客户区，这是无窗口用例够不到的那道缝：版面加载失败、捆绑数据丢了资源、窗口类没注册，都可能让静默安装照样成功、让所有只读文件的检查通过。开窗口需要交互式的桌面会话，以服务方式启动的构建代理没有桌面，那种环境下用例跳过并说明原因；在本该有桌面的机器上，`NANO_INSTALLER_E2E_REQUIRE_DESKTOP` 会把这次跳过变成失败，因为从没跑过的检查不能算作跑过并通过。 |
 | `the_summary_reports_what_the_project_declares` | 窗口显示的摘要是工程声明的内容，包括工程可以省略的那些默认值。 |
 | `the_uninstall_entry_reports_the_size_the_quiet_uninstall_and_no_repair` | 卸载项的字段是 Windows 展示给用户的全部：静默卸载命令指向部署出来的卸载程序并带上静默参数；容量以 `REG_DWORD` 存下去，数值等于磁盘上这次安装占用的千字节（连卸载程序本身一起算）；`NoModify` 与 `NoRepair` 都是 `REG_DWORD` 1，Windows 因此不会摆出这个安装器根本没有的“修改”“修复”入口。 |
