@@ -172,9 +172,9 @@ function Invoke-NativeStep {
                 }
                 Write-Output ("  | pid {0}  {1}{2}" -f $row.Id, $row.ProcessName, $detail)
             }
-            foreach ($line in (& taskkill /PID $process.Id /T /F 2>&1)) {
-                Write-Output "  | $line"
-            }
+            # The tree is taken down with a deadline of its own: this branch
+            # exists to end a step, so nothing in it may wait without one.
+            Stop-ProcessTree -ProcessId $process.Id
             Write-Output "everything this step started ends with it now, so the step can end and keep this log"
             exit 124
         }

@@ -126,3 +126,50 @@ else {
     $script:StepJobHandle = $job
     Write-Output "step job: everything this step starts ends with it"
 }
+
+<#
+    Ends a process and everything it started, with a deadline of its own.
+
+    `run_tests.ps1` and `run_e2e_setup.ps1` take a command that never ended down
+    from their deadline branch, and that branch exists to end a step: nothing in
+    it may wait without a bound of its own, or the branch that ends a wedged step
+    becomes part of the wedge. `taskkill /T` is the one call there that waits on
+    something else -- it walks a tree that may include the very process that is
+    holding everything up -- so it is given a deadline here. A tree it could not
+    finish off is left to the job above, which ends it when this script's own
+    process does.
+#>
+function Stop-ProcessTree {
+    param([int]$ProcessId, [int]$DeadlineSeconds = 120)
+
+    $killer = New-Object System.Diagnostics.ProcessStartInfo
+    $killer.FileName = "taskkill.exe"
+    $killer.Arguments = "/PID $ProcessId /T /F"
+    $killer.UseShellExecute = $false
+    $killer.CreateNoWindow = $true
+    $killer.RedirectStandardOutput = $true
+    $killer.RedirectStandardError = $true
+    try {
+        $victim = [System.Diagnostics.Process]::Start($killer)
+    }
+    catch {
+        Write-Output ("  | the process tree could not be taken down: {0}" -f $_.Exception.Message)
+        return
+    }
+    $ended = $victim.WaitForExit($DeadlineSeconds * 1000)
+    $said = ""
+    try {
+        $said = $victim.StandardOutput.ReadToEnd() + $victim.StandardError.ReadToEnd()
+    }
+    catch {
+        $said = ""
+    }
+    foreach ($line in @($said -split "\r?\n")) {
+        if ($line) {
+            Write-Output ("  | {0}" -f $line)
+        }
+    }
+    if (-not $ended) {
+        Write-Output ("  | taskkill did not end within {0} second(s); the job this step joined ends the tree" -f $DeadlineSeconds)
+    }
+}
