@@ -174,28 +174,43 @@ function Invoke-NativeStep {
 # A command that is still running holds its output file open for writing, so
 # the tail is read with sharing allowed: what a command that never ends has
 # said so far is the only record of where it stopped.
+#
+# What is read is what the file holds at this moment, and not a byte more. A
+# reader that waits for the end of the file waits for the command: a suite with a
+# test that never returns prints a line a minute for as long as it runs, so the
+# file never ends, and the branch that exists to end a wedged step sits in the
+# wedge with it. That is what a step still in progress nineteen minutes after its
+# own fifteen-minute deadline is.
 function Get-CapturedTail {
     param([string]$Path, [int]$Count)
 
     if (-not (Test-Path -LiteralPath $Path)) {
         return @()
     }
-    $lines = New-Object System.Collections.Generic.List[string]
+    $text = ""
     $stream = $null
-    $reader = $null
     try {
         $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
-        $reader = New-Object System.IO.StreamReader($stream)
-        while (-not $reader.EndOfStream) {
-            $lines.Add($reader.ReadLine())
+        $length = $stream.Length
+        if ($length -gt 0) {
+            $buffer = New-Object byte[] $length
+            $read = 0
+            while ($read -lt $length) {
+                $got = $stream.Read($buffer, $read, [int]($length - $read))
+                if ($got -le 0) {
+                    break
+                }
+                $read += $got
+            }
+            $text = [System.Text.Encoding]::UTF8.GetString($buffer, 0, $read)
         }
     }
     finally {
-        if ($null -ne $reader) { $reader.Dispose() }
-        elseif ($null -ne $stream) { $stream.Dispose() }
+        if ($null -ne $stream) { $stream.Dispose() }
     }
+    $lines = @($text -split "\r?\n")
     if ($lines.Count -le $Count) {
-        return @($lines)
+        return $lines
     }
     return @($lines[($lines.Count - $Count)..($lines.Count - 1)])
 }
