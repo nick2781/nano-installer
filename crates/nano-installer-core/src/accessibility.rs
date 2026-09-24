@@ -29,15 +29,19 @@ use windows::Win32::System::Ole::{IOleWindow, IOleWindow_Impl};
 use windows::Win32::UI::Accessibility::{
     AccessibleObjectFromWindow, IAccessible, IAccessible_Impl, LresultFromObject, NotifyWinEvent,
     NAVDIR_FIRSTCHILD, NAVDIR_LASTCHILD, NAVDIR_NEXT, NAVDIR_PREVIOUS, ROLE_SYSTEM_CHECKBUTTON,
-    ROLE_SYSTEM_COMBOBOX, ROLE_SYSTEM_DIALOG, ROLE_SYSTEM_LINK, ROLE_SYSTEM_PUSHBUTTON,
-    ROLE_SYSTEM_RADIOBUTTON, ROLE_SYSTEM_TEXT, ROLE_SYSTEM_WINDOW, SELFLAG_TAKEFOCUS,
+    ROLE_SYSTEM_COMBOBOX, ROLE_SYSTEM_DIALOG, ROLE_SYSTEM_LINK, ROLE_SYSTEM_PROGRESSBAR,
+    ROLE_SYSTEM_PUSHBUTTON, ROLE_SYSTEM_RADIOBUTTON, ROLE_SYSTEM_STATICTEXT, ROLE_SYSTEM_TEXT,
+    ROLE_SYSTEM_WINDOW, SELFLAG_TAKEFOCUS,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetClientRect, CHILDID_SELF, EVENT_OBJECT_FOCUS, EVENT_OBJECT_REORDER,
-    EVENT_OBJECT_STATECHANGE, EVENT_OBJECT_VALUECHANGE, OBJID_CLIENT, OBJID_WINDOW,
+    GetClientRect, CHILDID_SELF, EVENT_OBJECT_FOCUS, EVENT_OBJECT_LIVEREGIONCHANGED,
+    EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_REORDER, EVENT_OBJECT_STATECHANGE,
+    EVENT_OBJECT_VALUECHANGE, OBJID_CLIENT, OBJID_WINDOW,
 };
 
-use crate::{ControlKind, LayerRect, RuntimeState, WindowAction, UI};
+use crate::{
+    AnnouncedLive, ControlKind, LayerRect, LiveRegionKind, RuntimeState, WindowAction, UI,
+};
 
 /// Accessibility states, spelled here so the module imports what it actually
 /// uses. The values are the ones `oleacc.h` declares, and a state is a bit
@@ -62,6 +66,17 @@ fn role_of(kind: ControlKind) -> u32 {
     }
 }
 
+/// What the page shows about a task that is running, in the same terms.
+///
+/// These are not controls, so the role is all a client needs to say what they
+/// are: words to read out, or a bar whose value is a percentage.
+fn live_role(kind: LiveRegionKind) -> u32 {
+    match kind {
+        LiveRegionKind::Progress => ROLE_SYSTEM_PROGRESSBAR,
+        LiveRegionKind::Status => ROLE_SYSTEM_STATICTEXT,
+    }
+}
+
 /// One control the wizard is showing, described the way a client asks for it.
 struct Control {
     /// The number a client names this control by in an `IAccessible` call.
@@ -77,6 +92,10 @@ struct Control {
     role: u32,
     name: String,
     value: String,
+    /// Whether the keyboard can land on it. The words and the bar a running task
+    /// publishes are described but never focused, so a client is not told they
+    /// can be reached.
+    focusable: bool,
     focused: bool,
     /// Whether a box or a row is filled in. `None` for everything that is not
     /// a choice: a button is never checked either way.
@@ -123,6 +142,7 @@ fn dialog_controls(state: &RuntimeState) -> Vec<Control> {
             role: ROLE_SYSTEM_PUSHBUTTON,
             name,
             value: String::new(),
+            focusable: true,
             focused: false,
             checked: None,
             rect: LayerRect {
@@ -137,10 +157,14 @@ fn dialog_controls(state: &RuntimeState) -> Vec<Control> {
     controls
 }
 
-/// The controls of the page, in the order the layout recorded them.
+/// The controls of the page, in the order the layout recorded them, and then
+/// what the page says about a task that is running.
 ///
 /// That order is the page's own: it is the order Tab walks, so a client that
 /// walks the same list hears the controls in the order the user reaches them.
+/// The words and the bar a task publishes come after them, because they are what
+/// a user listens to while there is nothing left to reach: a progress page is
+/// usually one bar and one line with no control on it at all.
 fn page_controls(state: &RuntimeState) -> Vec<Control> {
     let mut controls = Vec::new();
     for region in &state.ui.focus_regions {
@@ -156,6 +180,7 @@ fn page_controls(state: &RuntimeState) -> Vec<Control> {
             role: role_of(region.kind),
             name: region.name.clone(),
             value: String::new(),
+            focusable: true,
             focused: state.interaction.focused_control.as_deref() == Some(region.id.as_str()),
             checked: None,
             rect,
@@ -203,6 +228,34 @@ fn page_controls(state: &RuntimeState) -> Vec<Control> {
             ControlKind::Button | ControlKind::Link => {}
         }
         controls.push(control);
+    }
+    for region in &state.ui.live_regions {
+        controls.push(Control {
+            id: controls.len() as i32 + 1,
+            layout_id: None,
+            role: live_role(region.kind),
+            // A bar's own words are the percentage it shows, which is the value
+            // a client reads off it; the line of status words is the name, the
+            // way any other static text on the page is.
+            name: match region.kind {
+                LiveRegionKind::Status => region.text.clone(),
+                LiveRegionKind::Progress => String::new(),
+            },
+            value: match region.kind {
+                LiveRegionKind::Progress => region.text.clone(),
+                LiveRegionKind::Status => String::new(),
+            },
+            focusable: false,
+            focused: false,
+            checked: None,
+            rect: LayerRect {
+                left: region.left,
+                top: region.top,
+                width: region.right - region.left,
+                height: region.bottom - region.top,
+            },
+            action: None,
+        });
     }
     controls
 }
@@ -351,6 +404,79 @@ pub(crate) unsafe fn announce_page(window: HWND) {
     if focused != CHILDID_SELF as i32 {
         NotifyWinEvent(EVENT_OBJECT_FOCUS, window, OBJID_CLIENT.0, focused);
     }
+}
+
+/// Tells a client what a task that is running has just published.
+///
+/// A user who cannot see the page has nothing else to go on: an install has no
+/// control left to reach while it runs, and whether anything has changed is
+/// exactly the question they cannot answer by looking. The announcement is made
+/// once per new status or percentage rather than once per frame, because a page
+/// is repainted far more often than a task reports progress.
+pub(crate) unsafe fn announce_live(window: HWND) {
+    let Some(runtime) = UI.get() else {
+        return;
+    };
+    let Ok(mut state) = runtime.lock() else {
+        return;
+    };
+    let live = live_values(&state);
+    let Some(previous) = state.announced_live.replace(live.clone()) else {
+        // The first frame is what a reader finds when it opens the window: it is
+        // recorded rather than read out, so nothing is heard twice.
+        return;
+    };
+    if previous == live {
+        return;
+    }
+    // The words a task publishes are the part worth reading out, so the status
+    // line changes as a live region: a client announces it without being asked,
+    // which is what a user listening for it needs. Its name is what it says, so
+    // the change is a name change as well.
+    if previous.status != live.status {
+        if let Some(child) = live_child(&state, LiveRegionKind::Status) {
+            NotifyWinEvent(EVENT_OBJECT_NAMECHANGE, window, OBJID_CLIENT.0, child);
+            NotifyWinEvent(
+                EVENT_OBJECT_LIVEREGIONCHANGED,
+                window,
+                OBJID_CLIENT.0,
+                child,
+            );
+        }
+    }
+    // The bar is not read out on its own -- a reader asked to announce every
+    // percentage would never stop -- so what changes about it is its value.
+    if previous.progress != live.progress {
+        if let Some(child) = live_child(&state, LiveRegionKind::Progress) {
+            NotifyWinEvent(EVENT_OBJECT_VALUECHANGE, window, OBJID_CLIENT.0, child);
+        }
+    }
+}
+
+/// What a page says about the task that is running, as the values a client is
+/// told about: the percentage a bar shows and the words a status line shows.
+fn live_values(state: &RuntimeState) -> AnnouncedLive {
+    let text = |kind: LiveRegionKind| {
+        state
+            .ui
+            .live_regions
+            .iter()
+            .find(|region| region.kind == kind)
+            .map(|region| region.text.clone())
+    };
+    AnnouncedLive {
+        progress: text(LiveRegionKind::Progress),
+        status: text(LiveRegionKind::Status),
+    }
+}
+
+/// The number of the child that shows what a task is doing, while the page is
+/// showing one.
+fn live_child(state: &RuntimeState, kind: LiveRegionKind) -> Option<i32> {
+    controls(state)
+        .into_iter()
+        .find(|control| control.role == live_role(kind))
+        .map(|control| control.id)
 }
 
 /// Whether a control is one of the controls an id names.
@@ -508,7 +634,13 @@ impl IAccessible_Impl for WizardAccessible_Impl {
     fn get_accState(&self, varchild: &VARIANT) -> windows::core::Result<VARIANT> {
         let state = match self.child(varchild)? {
             Some(control) => {
-                let mut state = STATE_SYSTEM_FOCUSABLE;
+                // What a running task publishes is described, not offered: a
+                // client is not told it can be reached or focused.
+                let mut state = if control.focusable {
+                    STATE_SYSTEM_FOCUSABLE
+                } else {
+                    0
+                };
                 if control.focused {
                     state |= STATE_SYSTEM_FOCUSED;
                 }
@@ -582,8 +714,11 @@ impl IAccessible_Impl for WizardAccessible_Impl {
             ROLE_SYSTEM_RADIOBUTTON => "Select",
             ROLE_SYSTEM_COMBOBOX => "Open",
             // A field's default action is to take the caret, which a client
-            // does by focusing it, and a link or a button is pressed.
-            ROLE_SYSTEM_TEXT => return Ok(BSTR::new()),
+            // does by focusing it, and a link or a button is pressed. What a
+            // running task publishes answers nothing at all.
+            ROLE_SYSTEM_TEXT | ROLE_SYSTEM_STATICTEXT | ROLE_SYSTEM_PROGRESSBAR => {
+                return Ok(BSTR::new())
+            }
             _ => "Press",
         };
         Ok(BSTR::from(action))
@@ -814,5 +949,9 @@ mod tests {
         assert_eq!(role_of(ControlKind::Radio), ROLE_SYSTEM_RADIOBUTTON);
         assert_eq!(role_of(ControlKind::Select), ROLE_SYSTEM_COMBOBOX);
         assert_eq!(role_of(ControlKind::TextInput), ROLE_SYSTEM_TEXT);
+        // What a running task publishes is described with the rest, and a client
+        // says different things about a percentage and about a line of words.
+        assert_eq!(live_role(LiveRegionKind::Progress), ROLE_SYSTEM_PROGRESSBAR);
+        assert_eq!(live_role(LiveRegionKind::Status), ROLE_SYSTEM_STATICTEXT);
     }
 }

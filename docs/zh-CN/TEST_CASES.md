@@ -79,6 +79,7 @@ Rust doc comment，再退回用例名。
 | `a_package_installs_the_product_the_setup_carries_and_removes_it_again` | 包把安装包跑起来并把它装的东西卸掉：`msiexec /i` 在命令行指定的目录里装出产品 exe、卸载程序和 manifest，产品自己的卸载项记着这个位置，包自己也记了一份；`msiexec /x` 之后目录与卸载项都不在。 |
 | `a_package_path_that_is_not_an_msi_is_refused` | 窗口是拦住坏包路径的唯一一道关：勾了包却把路径留空、或者路径不是 `.msi`，都在构建开始前被拒绝，构建器不会照着这个路径写出去。 |
 | `a_package_released_again_on_the_same_day_replaces_what_it_installed` | 同一天再发的包（版本从 `1.0.0` 改成 `1.0.0-r2`，三段数字没变）装得上，而且是把上一版收掉再装：两版共用升级码但产品码不同，装完后机器上是第二版（`DisplayVersion` 写着 `1.0.0-r2`、第二版才有的 payload 文件在），第一版那个包已经卸不动了（它的产品被收走了），第二版卸载后目录与登记都不在。 |
+| `a_page_describes_what_a_running_task_publishes` | 任务报出来的两样东西各自被记成「被描述的对象」：绑定 `value-source="status"` 的那行文字按当时的值记成一行状态文字，`ProgressBar` 记成进度条并把画出来的百分比当它的取值；两者的位置都来自排版给它们的矩形，而且它们都不进焦点清单——键盘到不了的东西不该被说成能到达。 |
 | `a_page_hook_sends_the_wizard_past_a_page_the_project_skips` | 在真窗口里点 `next`：钩子把向导从欢迎页直接送到选项页，中间那页许可协议（客户区 640x420）根本没出现；再点 `back` 回到的是用户来时的欢迎页，而不是钩子跳过的那一页——三页的客户区各不相同，窗口尺寸就是证据。 |
 | `a_page_hook_sends_the_wizard_to_the_page_it_names` | 钩子点名哪一页就走到哪一页，中间声明的页面跳过；钩子对这一次翻页不作声时，回到工程声明的下一页。 |
 | `a_page_hook_that_fails_is_reported_and_the_wizard_walks_on` | 钩子抛错时向导用工程自己的对话框版面把这件事报出来（用例点的是那张卡片上的按钮，进程因此退出，说明卡片确实在屏幕上），同时仍按声明的页序走到下一页：坏掉的钩子不会把人困在某一页。 |
@@ -366,6 +367,7 @@ Rust doc comment，再退回用例名。
 | `uninstalling_below_appdata_removes_the_data_only_when_the_box_is_cleared` | `uninstall.data_paths` 下的数据目录只有在保留数据没有被勾上时才删；勾上时用户的文件原样留在配置目录里。 |
 | `uninstalling_removes_the_product_the_registration_and_the_directory` | 卸载删掉自己部署的东西、删掉注册项，也删掉安装目录本身。 |
 | `validation_preserves_custom_output_for_same_project` | 校验时同一个工程保留自定义输出路径，输入框为空则重新给出工程的默认路径，换了工程才替换掉自定义路径。 |
+| `what_a_running_task_publishes_is_what_a_screen_reader_hears` | 真窗口里跑一个自己报进度的安装脚本（`set_status`/`set_progress`，每一步停 1.5 秒）：另一个进程的客户程序读得到那行状态文字（角色是静态文字、名字就是那句话）和进度条（角色是进度条、取值是百分比），读到 30% 与「Copying files」；挂上的事件钩子同时听到状态文字的名字变化与活动区域变化、以及进度条的取值变化；脚本走到第二步时页面读出来是 70% 与「Finishing up」，事件也随之再来一轮。 |
 | `value_sources_read_the_config_the_disk_and_the_running_step` | 三种取值来源都读得对：`config:` 走工程文件并把数字按格式变成文字，`disk-free:` 问 Windows 那个输入框指向的卷还剩多少空间，认不出的来源和不存在的路径都解析不出值。 |
 | `vbox_stacks_children_vertically_with_padding_and_margins` | 纵向容器按顺序堆叠子项：内边距把内容框往里缩，标签紧跟 60 像素的 `Spacer`，`align-items="center"` 让它在内容框里水平居中，按钮被 `margin-top` 推到标签下面而不是压在上面，没有图的按钮也登记点击区域。 |
 | `window_icon_uses_the_brand_asset` | 构建器窗口的图标来自仓库里的品牌 PNG，解码成 512×512 的 RGBA 位图。 |

@@ -63,7 +63,10 @@ order the layout recorded the controls: role, name (the words the layout wrote -
 named by the label above it, a select by the option it shows), value, state, and screen coordinates,
 and asking for a control's default action runs the same action a press runs. The window announces
 focus moves, state and value changes, and page changes on its own, and while a dialog is up the tree
-becomes the card's two answers and the window is named by the question. The bridge lives in
+becomes the card's two answers and the window is named by the question. **While a task runs** there is
+no control left to reach, so what the task publishes and the bar beside it are described with the
+rest -- the bar's value being the percentage it draws -- and each change of either is announced as it
+happens: the status words as a live region, the bar as a value change. The bridge lives in
 `crates/nano-installer-core/src/accessibility.rs` and builds its description from the runtime's
 shared state on every call, so there is no second table to keep in step with the page.
 

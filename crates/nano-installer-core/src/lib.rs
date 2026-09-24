@@ -186,6 +186,10 @@ struct RuntimeUi {
     hover_regions: Vec<HoverRegion>,
     /// Controls the keyboard can reach, in the order the page lays them out.
     focus_regions: Vec<FocusRegion>,
+    /// What the page shows about a task that is running, in the order it is laid
+    /// out: the words and the bar a client hears about while nothing can be
+    /// clicked.
+    live_regions: Vec<LiveRegion>,
     /// Containers the page lets the user scroll, with what the window needs to
     /// move them.
     scroll_views: Vec<ScrollView>,
@@ -292,6 +296,22 @@ struct RuntimeState {
     window_size: (i32, i32),
     /// Executable an install deployed, launched from the finish page.
     installed_app: Option<PathBuf>,
+    /// What the last frame told a client about the task that is running.
+    ///
+    /// A page that reports progress reports it over and over, and what a client
+    /// needs is the change: this is what the frame before it said, so an
+    /// announcement is made once per new status or percentage. `None` is a frame
+    /// no client has been told about yet, which is the first one: what it shows
+    /// is what a reader finds when it opens the window, so it is recorded rather
+    /// than read out.
+    announced_live: Option<AnnouncedLive>,
+}
+
+/// What a client was last told about a task that is running.
+#[derive(Clone, PartialEq, Eq)]
+struct AnnouncedLive {
+    progress: Option<String>,
+    status: Option<String>,
 }
 
 #[derive(Clone, Copy)]
@@ -617,6 +637,31 @@ enum ControlKind {
     TextInput,
 }
 
+/// Something a page shows that no key can reach, and that changes while a task
+/// runs.
+///
+/// A status line and a progress bar are not controls: the keyboard never lands
+/// on them and nothing happens when they are clicked. They are also the only
+/// part of the wizard a user cannot see has any use for while an install runs,
+/// so they are described to a client and announced when they change.
+struct LiveRegion {
+    kind: LiveRegionKind,
+    /// The words it shows, or the percentage for a bar, already resolved.
+    text: String,
+    left: i32,
+    top: i32,
+    right: i32,
+    bottom: i32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LiveRegionKind {
+    /// How far the task has come, as the percentage it draws.
+    Progress,
+    /// What the task is doing, in the words the page shows.
+    Status,
+}
+
 #[derive(Clone)]
 enum WindowAction {
     Close,
@@ -726,6 +771,11 @@ struct LayoutOutput {
     hover_regions: Vec<HoverRegion>,
     /// Controls the keyboard can reach, in the order they are laid out.
     focus_regions: Vec<FocusRegion>,
+    /// What the page shows about a task that is running, in the order it is laid
+    /// out. These are not controls: a client cannot reach them with the
+    /// keyboard, and they are exactly what a user who cannot see the page has to
+    /// be told, so they are described and they are announced when they change.
+    live_regions: Vec<LiveRegion>,
     /// Containers this render found scrollable, with the view each one shows.
     scroll_views: Vec<ScrollView>,
     /// Menu a `Select` drew open while this layout was rendered.
@@ -2821,6 +2871,7 @@ fn run_embedded(bundle: BundleIndex, mode: RuntimeMode) -> Result<()> {
         window: 0,
         window_size: (0, 0),
         installed_app: None,
+        announced_live: None,
     }))
     .map_err(|_| anyhow::anyhow!("native UI was already initialized"))?;
     run_window(width, height)
@@ -3123,6 +3174,7 @@ fn load_layout(
         text_hits: output.text_hits,
         hover_regions: output.hover_regions,
         focus_regions: output.focus_regions,
+        live_regions: output.live_regions,
         scroll_views: output.scroll_views,
         text_inputs: output.text_inputs,
         caret,
@@ -4613,6 +4665,20 @@ fn push_node_text(
     }
     let layer = output.texts.last().expect("text layer was just pushed");
     output.text_hits.extend(unsafe { text_layer_hits(layer) });
+    // A label bound to `status` is the words of the task that is running, which
+    // is the one thing on the page a user who cannot see it needs while an
+    // install runs. It is recorded as something to announce, not as a control:
+    // nothing about it answers the keyboard.
+    if node.attribute("value-source") == Some("status") {
+        output.live_regions.push(LiveRegion {
+            kind: LiveRegionKind::Status,
+            text,
+            left: rect.left,
+            top: rect.top,
+            right: rect.left + rect.width,
+            bottom: rect.top + rect.height,
+        });
+    }
 }
 
 /// Records a writable text field, so a click can put the caret in it.
@@ -6894,6 +6960,16 @@ fn render_progress_bar(
     }
     let authored = int_attribute(node, "progress").unwrap_or(0).clamp(0, 100) as u8;
     let progress = context.interaction.progress_for(authored);
+    // How far the task has come is what a client reads off this bar, and the
+    // percentage is what it says: the bar itself is a sprite.
+    output.live_regions.push(LiveRegion {
+        kind: LiveRegionKind::Progress,
+        text: progress.to_string(),
+        left: rect.left,
+        top: rect.top,
+        right: rect.left + rect.width,
+        bottom: rect.top + rect.height,
+    });
     let filled = (rect.width as i64 * progress as i64 / 100) as i32;
     if filled <= 0 {
         return Ok(());
@@ -7549,6 +7625,10 @@ unsafe extern "system" fn window_proc(
             // page change can bring a differently sized layout, and the window
             // follows it so the wizard is never left off-centre.
             center_window(window);
+            // A task that is running reports what it is doing between frames,
+            // and this is where a client is told: the announcement belongs on
+            // the thread that owns the window, next to the repaint it goes with.
+            accessibility::announce_live(window);
             let _ = InvalidateRect(window, None, false);
             // A worker may have moved the caret, and an input method is only
             // repositioned from the thread that owns the window.
@@ -9819,16 +9899,16 @@ mod tests {
         main_alignment, mask_matches, measure_layout_text_width, next_focus_index, pack_project,
         pack_project_with_progress, page_id, page_index_of_id, parse_bundle, parse_color,
         parse_image_style, parse_text_runs, pick_directory_target, push_action, push_border_layer,
-        push_hover_region, push_node_border, query_disk_free_bytes, render_flow, render_flow_item,
-        render_progress_bar, resolve_asset_path, resolve_link_target, resolve_value_source,
-        resolved_text_for_node, restore_snapshot, runtime_layout_path_at, runtime_page_count,
-        runtime_page_index_for_role, scale_value, selection_layers, size_attribute,
-        uninstaller_version_info, validate_output_filename, word_end_after, word_range,
-        word_start_before, wrap_lines, wraps, BundleIndex, DialogKind, DialogState, DpiContext,
-        DpiSettings, FlowAxis, FlowItem, ImageLayer, Insets, InteractionState, LayerRect,
-        LayoutContext, LayoutOutput, MoveTrouble, PayloadFormat, RuntimeMode, RuntimeUi,
-        TextAlignment, TextHit, TextInputRegion, TextSnapshot, WindowAction, BUNDLE_MAGIC,
-        BUNDLE_VERSION, COLORREF, FOOTER_MAGIC, POINT,
+        push_hover_region, push_node_border, push_node_text, query_disk_free_bytes, render_flow,
+        render_flow_item, render_progress_bar, resolve_asset_path, resolve_link_target,
+        resolve_value_source, resolved_text_for_node, restore_snapshot, runtime_layout_path_at,
+        runtime_page_count, runtime_page_index_for_role, scale_value, selection_layers,
+        size_attribute, uninstaller_version_info, validate_output_filename, word_end_after,
+        word_range, word_start_before, wrap_lines, wraps, BundleIndex, DialogKind, DialogState,
+        DpiContext, DpiSettings, FlowAxis, FlowItem, ImageLayer, Insets, InteractionState,
+        LayerRect, LayoutContext, LayoutOutput, LiveRegionKind, MoveTrouble, PayloadFormat,
+        RuntimeMode, RuntimeUi, TextAlignment, TextHit, TextInputRegion, TextSnapshot,
+        WindowAction, BUNDLE_MAGIC, BUNDLE_VERSION, COLORREF, FOOTER_MAGIC, POINT,
     };
     use anyhow::Context;
     use std::collections::HashMap;
@@ -12525,6 +12605,93 @@ mod tests {
         assert_eq!((fill.left, fill.width), (10, 150));
         let source = fill.source.context("fill must clip the sprite")?;
         assert_eq!((source.left, source.width), (0, 15));
+        Ok(())
+    }
+
+    /// What a running task publishes is described as what it is, and never as a
+    /// control: a user who cannot see the page listens to these two while there
+    /// is nothing left to reach, and neither of them answers the keyboard.
+    #[test]
+    fn a_page_describes_what_a_running_task_publishes() -> anyhow::Result<()> {
+        let files: HashMap<String, Vec<u8>> = HashMap::new();
+        let config = serde_json::json!({});
+        let document = roxmltree::Document::parse(
+            r##"<Page width="600" height="100">
+                  <Label id="status" text="Working" value-source="status"
+                         position="absolute" left="10" top="10" width="580" height="20" />
+                  <ProgressBar id="bar" position="absolute" left="10" top="40"
+                               width="580" height="10" progress="0" />
+                </Page>"##,
+        )?;
+        let page = document
+            .descendants()
+            .find(|node| node.has_tag_name("Page"))
+            .context("page missing")?;
+        let interaction = InteractionState {
+            progress: Some(40),
+            status_text: Some("Copying files".to_string()),
+            ..Default::default()
+        };
+        let context = LayoutContext {
+            dpi: DpiContext {
+                scale: 1.0,
+                use_2x: false,
+            },
+            files: &files,
+            config: &config,
+            locale: "zh-CN",
+            translations: &HashMap::new(),
+            interaction: &interaction,
+            fields: HashMap::new(),
+            open_select: None,
+            contrast: None,
+        };
+        let mut output = LayoutOutput::default();
+        let label = page
+            .descendants()
+            .find(|node| node.has_tag_name("Label"))
+            .context("status label missing")?;
+        push_node_text(
+            label,
+            LayerRect {
+                left: 10,
+                top: 10,
+                width: 580,
+                height: 20,
+            },
+            &context,
+            &mut output,
+        );
+        let bar = page
+            .descendants()
+            .find(|node| node.has_tag_name("ProgressBar"))
+            .context("progress bar missing")?;
+        render_progress_bar(
+            bar,
+            LayerRect {
+                left: 10,
+                top: 40,
+                width: 580,
+                height: 10,
+            },
+            &context,
+            &mut output,
+        )?;
+        let described: Vec<_> = output
+            .live_regions
+            .iter()
+            .map(|region| (region.kind, region.text.clone(), region.left, region.top))
+            .collect();
+        assert_eq!(
+            described,
+            vec![
+                (LiveRegionKind::Status, "Copying files".to_string(), 10, 10),
+                (LiveRegionKind::Progress, "40".to_string(), 10, 40),
+            ]
+        );
+        // Neither of them is a control: what a user cannot click is not a place
+        // the keyboard can reach either.
+        assert!(output.focus_regions.is_empty());
         Ok(())
     }
 

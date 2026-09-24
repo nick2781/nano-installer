@@ -33,8 +33,9 @@ use windows::Win32::Storage::Xps::{PrintWindow, PRINT_WINDOW_FLAGS};
 use windows::Win32::System::Com::{CoInitializeEx, CoTaskMemFree, COINIT_APARTMENTTHREADED};
 use windows::Win32::UI::Accessibility::{
     AccessibleObjectFromWindow, IAccessible, SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK,
-    ROLE_SYSTEM_CHECKBUTTON, ROLE_SYSTEM_COMBOBOX, ROLE_SYSTEM_DIALOG, ROLE_SYSTEM_PUSHBUTTON,
-    ROLE_SYSTEM_RADIOBUTTON, ROLE_SYSTEM_TEXT, ROLE_SYSTEM_WINDOW, SELFLAG_TAKEFOCUS,
+    ROLE_SYSTEM_CHECKBUTTON, ROLE_SYSTEM_COMBOBOX, ROLE_SYSTEM_DIALOG, ROLE_SYSTEM_PROGRESSBAR,
+    ROLE_SYSTEM_PUSHBUTTON, ROLE_SYSTEM_RADIOBUTTON, ROLE_SYSTEM_STATICTEXT, ROLE_SYSTEM_TEXT,
+    ROLE_SYSTEM_WINDOW, SELFLAG_TAKEFOCUS,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     VIRTUAL_KEY, VK_DOWN, VK_ESCAPE, VK_RETURN, VK_SPACE, VK_TAB,
@@ -46,7 +47,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, EnumWindows, GetClassNameW, GetClientRect, GetCursorInfo, GetCursorPos,
     GetForegroundWindow, GetSystemMetrics, GetWindowRect, GetWindowThreadProcessId, IsWindow,
     IsWindowVisible, LoadCursorW, PeekMessageW, PostMessageW, SetCursorPos, SetForegroundWindow,
-    SetProcessDPIAware, SetWindowPos, TranslateMessage, CURSORINFO, EVENT_OBJECT_FOCUS, HCURSOR,
+    SetProcessDPIAware, SetWindowPos, TranslateMessage, CURSORINFO, EVENT_OBJECT_FOCUS,
+    EVENT_OBJECT_LIVEREGIONCHANGED, EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_VALUECHANGE, HCURSOR,
     HTCLIENT, HWND_NOTOPMOST, HWND_TOPMOST, IDC_ARROW, IDC_HAND, IDC_IBEAM, MSG, OBJID_CLIENT,
     PM_REMOVE, SM_CYSCREEN, SPI_SETHIGHCONTRAST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
     WINEVENT_OUTOFCONTEXT, WM_CHAR, WM_CLOSE, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP,
@@ -584,6 +586,60 @@ impl Fixture {
                 sleep_ms(20);
                 waited += 20;
             }
+            "#,
+        )?;
+        self.edit_config(|config| {
+            config["install"]["default_path"] =
+                serde_json::Value::from(self.destination.display().to_string());
+            config["wizard"]["pages"] = serde_json::json!([
+                {"id": "config", "title": "Options", "layout": "layouts/configpage.xml"},
+                {"id": "tasks", "layout": "layouts/taskspage.xml", "role": "progress"},
+                {"id": "done", "layout": "layouts/donepage.xml", "role": "finish"}
+            ]);
+        })
+    }
+
+    /// Declares a wizard whose progress page says what the task is doing: the
+    /// words it publishes and a bar for how far it has come.
+    ///
+    /// The script sets both by hand, one step at a time with a pause between
+    /// them, which is what lets a case read each step back off the page: what a
+    /// real install reports arrives whenever the work reaches the next checkpoint
+    /// and would be gone before a case could look.
+    fn progress_project(&self) -> anyhow::Result<()> {
+        std::fs::write(
+            self.project.join("layouts/configpage.xml"),
+            r##"<Page width="720" height="450" background="#FF101010">
+  <Button id="install" action="install" text="Install" position="absolute" left="560" top="390" width="120" height="36" />
+</Page>"##,
+        )?;
+        std::fs::write(
+            self.project.join("layouts/taskspage.xml"),
+            r##"<Page width="500" height="300" background="#FF202020">
+  <Label id="status" text="Working" value-source="status"
+         position="absolute" left="20" top="20" width="460" height="24" />
+  <ProgressBar id="bar" position="absolute" left="20" top="60" width="460" height="18"
+               progress="0" background="#FF303030" />
+  <Button id="cancel" action="cancel" text="Cancel" position="absolute" left="20" top="240" width="120" height="36" />
+</Page>"##,
+        )?;
+        std::fs::write(
+            self.project.join("layouts/donepage.xml"),
+            r##"<Page width="400" height="200" background="#FF303030" />"##,
+        )?;
+        self.write_script(
+            "install.rhai",
+            r#"
+            let install_path = get_install_path();
+            copy_uninstaller();
+            write_file(path_join(install_path, "E2eProbe.exe"), "app");
+            // Two steps, each held long enough for a case to read the page back.
+            set_status("Copying files");
+            set_progress(30.0);
+            sleep_ms(1500);
+            set_status("Finishing up");
+            set_progress(70.0);
+            sleep_ms(1500);
             "#,
         )?;
         self.edit_config(|config| {
@@ -5698,6 +5754,39 @@ fn accessible_hit(object: &IAccessible, x: i32, y: i32) -> Option<i32> {
     i32::try_from(&hit).ok()
 }
 
+/// The number of the child that plays a role, while the page is showing one.
+///
+/// A case that is about one control asks for it by what it is rather than by the
+/// number it happens to sit at, so a page that grows a control does not move the
+/// case onto another one.
+fn child_with_role(object: &IAccessible, role: u32) -> Option<i32> {
+    let count = unsafe { object.accChildCount() }.ok()?;
+    (1..=count).find(|id| accessible_role(object, *id) == role)
+}
+
+/// Pumps this thread's messages until the client has heard `wanted` reports
+/// about the task that is running.
+fn pump_until_live(wanted: usize, deadline: Instant) -> Vec<(u32, i32)> {
+    let mut message = MSG::default();
+    while Instant::now() < deadline {
+        while unsafe { PeekMessageW(&mut message, None, 0, 0, PM_REMOVE) }.as_bool() {
+            let _ = unsafe { TranslateMessage(&message) };
+            unsafe { DispatchMessageW(&message) };
+        }
+        {
+            let heard = HEARD_LIVE.lock().unwrap_or_else(|error| error.into_inner());
+            if heard.len() >= wanted {
+                return heard.clone();
+            }
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    HEARD_LIVE
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .clone()
+}
+
 /// Every child of the object, written out as a client reads it.
 ///
 /// A case that fails on one control prints the whole page this way, because
@@ -5988,11 +6077,162 @@ fn describe_page(window: HWND) -> Vec<String> {
     }
 }
 
+/// A user who cannot see the page is told what the task is doing while it runs,
+/// without asking and without a control to reach.
+///
+/// An install has nothing left to click once it starts, so the words the page
+/// publishes and the bar beside them are the whole of what such a user has to go
+/// on: the case reads both off the page as a client does, and listens for the
+/// announcements that carry them while nobody is asking.
+#[test]
+fn what_a_running_task_publishes_is_what_a_screen_reader_hears() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.progress_project()?;
+    fixture.build()?;
+
+    let _ = unsafe { SetProcessDPIAware() };
+    let mut setup = SetupGuard::spawn(&fixture.setup)?;
+    let Some(window) = wait_for_a_window(&mut setup)? else {
+        return Ok(());
+    };
+
+    HEARD_LIVE
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .clear();
+    LISTENED_WINDOW.store(window.0 as usize, Ordering::SeqCst);
+    // The range covers the events a page's own reports are sent as: the words as
+    // a name and a live region, the bar as a value.
+    let hook = unsafe {
+        SetWinEventHook(
+            EVENT_OBJECT_NAMECHANGE,
+            EVENT_OBJECT_LIVEREGIONCHANGED,
+            None,
+            Some(heard_live),
+            setup.id(),
+            0,
+            WINEVENT_OUTOFCONTEXT,
+        )
+    };
+    if hook.is_invalid() {
+        let _ = setup.kill();
+        let _ = setup.wait();
+        anyhow::bail!("the case could not listen for what the wizard announces");
+    }
+
+    // The install button the first page places at 560,390.
+    click_client_point(window, 620, 408);
+    let object = screen_reader(window)?;
+
+    // The first step the script publishes, read off the page: the words are the
+    // status line's own name and the percentage is the bar's value.
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut described = (String::new(), String::new());
+    while Instant::now() < deadline {
+        let status = child_with_role(&object, ROLE_SYSTEM_STATICTEXT);
+        let progress = child_with_role(&object, ROLE_SYSTEM_PROGRESSBAR);
+        if let (Some(status), Some(progress)) = (status, progress) {
+            described = (
+                accessible_name(&object, status),
+                accessible_value(&object, progress),
+            );
+            if described == ("Copying files".to_string(), "30".to_string()) {
+                break;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(
+        described,
+        ("Copying files".to_string(), "30".to_string()),
+        "the page does not say what the task published"
+    );
+
+    // A client that listens hears it too, which is what a reader needs: nobody
+    // is going to ask whether anything changed while an install runs.
+    let heard = pump_until_live(3, Instant::now() + Duration::from_secs(20));
+    let status = child_with_role(&object, ROLE_SYSTEM_STATICTEXT);
+    let progress = child_with_role(&object, ROLE_SYSTEM_PROGRESSBAR);
+    assert!(
+        heard.contains(&(EVENT_OBJECT_NAMECHANGE, status.unwrap_or_default())),
+        "the words the task published were not announced: {heard:?}"
+    );
+    assert!(
+        heard.contains(&(EVENT_OBJECT_LIVEREGIONCHANGED, status.unwrap_or_default())),
+        "the words the task published were not announced as a live region: {heard:?}"
+    );
+    assert!(
+        heard.contains(&(EVENT_OBJECT_VALUECHANGE, progress.unwrap_or_default())),
+        "the value of the bar was not announced: {heard:?}"
+    );
+
+    // And the second step arrives the same way, so what a user hears is the task
+    // moving on rather than one reading of it.
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut later = (String::new(), String::new());
+    while Instant::now() < deadline {
+        if let (Some(status), Some(progress)) = (
+            child_with_role(&object, ROLE_SYSTEM_STATICTEXT),
+            child_with_role(&object, ROLE_SYSTEM_PROGRESSBAR),
+        ) {
+            later = (
+                accessible_name(&object, status),
+                accessible_value(&object, progress),
+            );
+            if later == ("Finishing up".to_string(), "70".to_string()) {
+                break;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(
+        later,
+        ("Finishing up".to_string(), "70".to_string()),
+        "the page did not follow the task to its second step"
+    );
+    let heard = pump_until_live(6, Instant::now() + Duration::from_secs(20));
+    assert!(
+        heard.len() >= 6,
+        "the second step was not announced: {heard:?}"
+    );
+
+    let _ = unsafe { UnhookWinEvent(hook) };
+    let _ = setup.kill();
+    let _ = setup.wait();
+    Ok(())
+}
+
 /// The focus events a client listening for them has heard.
 ///
 /// The callback runs on the thread that installed the hook, while the case
 /// below pumps that thread's message queue.
 static HEARD: Mutex<Vec<i32>> = Mutex::new(Vec::new());
+
+/// What a client listening for the task's own reports has heard, as the event
+/// and the child it was about.
+static HEARD_LIVE: Mutex<Vec<(u32, i32)>> = Mutex::new(Vec::new());
+
+/// What a listening client hears about the task that is running: the words a
+/// page publishes and the value of the bar beside them.
+unsafe extern "system" fn heard_live(
+    _hook: HWINEVENTHOOK,
+    event: u32,
+    window: HWND,
+    object: i32,
+    child: i32,
+    _thread: u32,
+    _time: u32,
+) {
+    if object != OBJID_CLIENT.0 || window.0 as usize != LISTENED_WINDOW.load(Ordering::SeqCst) {
+        return;
+    }
+    if let Ok(mut heard) = HEARD_LIVE.lock() {
+        heard.push((event, child));
+    }
+}
 
 /// The window the case is listening for, as the integer a static can hold.
 static LISTENED_WINDOW: AtomicUsize = AtomicUsize::new(0);
