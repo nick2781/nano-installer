@@ -12,7 +12,7 @@ name: CI janitor
 
 on:
   schedule:
-    - cron: "17,47 * * * *"
+    - cron: "*/15 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -37,8 +37,8 @@ jobs:
           set -uo pipefail
           # A run of this pipeline takes about eight minutes when its caches are
           # warm and half an hour when they are cold, so a run that has been going
-          # for three quarters of an hour is not working on anything.
-          threshold=45
+          # for twice that is not working on anything.
+          threshold=30
           now=$(date -u +%s)
           gh api "repos/$GITHUB_REPOSITORY/actions/runs?status=in_progress&per_page=100" \
             --jq '.workflow_runs[] | select(.name == "CI") | "\(.id)\t\(.head_branch)\t\(.run_started_at)"' > runs.txt
