@@ -1816,6 +1816,113 @@ fn a_package_installs_the_product_the_setup_carries_and_removes_it_again() -> an
     Ok(())
 }
 
+/// A package re-released on the same day replaces what the earlier one put
+/// there.
+///
+/// Windows Installer compares three version fields, so `1.0.0-r2` ships the same
+/// package version as `1.0.0`. What has to happen is that installing it leaves
+/// the release it carries on the machine: the Installer refuses a package whose
+/// product code and version are ones it already has (1638), so the re-release is
+/// a product of its own and the search in its own tables is what takes the
+/// release it replaces away. Nothing here may end with two products, a refusal,
+/// or the first release still installed.
+#[test]
+fn a_package_released_again_on_the_same_day_replaces_what_it_installed() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    let name = fixture.uniquely_named()?;
+    let first = fixture.case_path("E2eProbe-rebuild-1.msi");
+    let built = fixture.build_package(&first)?;
+    let built = built.msi.expect("a package");
+    let product_code = built.product_code.clone();
+    let upgrade_code = built.upgrade_code.clone();
+    run_msiexec(
+        &first,
+        "/i",
+        &[format!("INSTALLDIR={}", fixture.destination.display())],
+        &fixture.case_path("rebuild-first.log"),
+    )?;
+    let entry = fixture
+        .read_uninstall_entry()?
+        .expect("the product registered itself");
+    assert_eq!(
+        entry["DisplayVersion"],
+        serde_json::json!("1.0.0"),
+        "the first release did not register itself"
+    );
+
+    // The second release of the same day carries one more file and its version
+    // suffix, which is the only part of the version Windows Installer cannot
+    // compare.
+    fixture.archive_with(
+        PayloadFormat::Zip,
+        true,
+        &[("data/second.txt", b"second release\r\n")],
+    )?;
+    fixture.edit_config(|config| {
+        config["project"]["version"] = serde_json::json!("1.0.0-r2");
+    })?;
+    let second = fixture.case_path("E2eProbe-rebuild-2.msi");
+    let rebuilt = fixture.build_package(&second)?;
+    let rebuilt = rebuilt.msi.expect("a package");
+    assert_ne!(
+        rebuilt.product_code, product_code,
+        "a release with a version of its own cannot share a product code with the one it re-releases"
+    );
+    assert_eq!(
+        rebuilt.upgrade_code, upgrade_code,
+        "a re-release has to stay findable by the code that names the product"
+    );
+    run_msiexec(
+        &second,
+        "/i",
+        &[format!("INSTALLDIR={}", fixture.destination.display())],
+        &fixture.case_path("rebuild-second.log"),
+    )?;
+
+    assert!(
+        fixture.destination.join("data/second.txt").is_file(),
+        "the re-release did not install its own payload"
+    );
+    let entry = fixture
+        .read_uninstall_entry()?
+        .expect("the product registered itself again");
+    assert_eq!(entry["DisplayName"], serde_json::json!(name));
+    assert_eq!(
+        entry["DisplayVersion"],
+        serde_json::json!("1.0.0-r2"),
+        "the release on the machine is not the one that was installed last"
+    );
+    // The release it replaces is gone rather than sitting beside it: a package
+    // whose product is still installed answers a removal, and one whose product
+    // was taken away has nothing to remove.
+    run_msiexec_expecting_failure(
+        &first,
+        "/x",
+        &fixture.case_path("rebuild-first-uninstall.log"),
+    )?;
+
+    // One product, so one removal: what the re-release left behind is what the
+    // machine gives up.
+    run_msiexec(
+        &second,
+        "/x",
+        &[],
+        &fixture.case_path("rebuild-uninstall.log"),
+    )?;
+    assert!(
+        !fixture.destination.exists(),
+        "the product is still on disk after the package was removed"
+    );
+    assert!(
+        fixture.read_uninstall_entry()?.is_none(),
+        "the product is still registered after the package was removed"
+    );
+    Ok(())
+}
+
 /// A newer package replaces the older product instead of sitting beside it.
 ///
 /// The two versions carry the same upgrade code, which is what lets the newer

@@ -226,6 +226,16 @@ otherwise; with no directory of its own it installs into
 upgrades the release an older one installed, and a project that does not support
 a windowless run is refused a package rather than given one that cannot install.
 
+A second release of the same day -- the version written `2026.9.17-r2`, as
+[Version numbers](#version-numbers) describes -- is the same version as far as Windows
+Installer is concerned, because it compares three fields: a package whose product code and
+version are already on the machine cannot be installed again, and the Installer refuses it
+with 1638, "another version of this product is already installed". Such a release is
+therefore a product of its own: the product code follows the version as written, and the
+package's own upgrade search counts the version it names among those to take away, so the
+second release removes the first and then installs itself. One product is left on the
+machine, and removing it is an ordinary removal.
+
 An administrative install (`msiexec /a`) lays the image out without installing
 the product: the package is a delivery vehicle for the setup, not a second
 installation of it. `BuildRequest.msi` and `BuildResult.msi` are the same thing

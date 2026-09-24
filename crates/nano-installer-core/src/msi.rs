@@ -216,9 +216,17 @@ pub(crate) fn ensure_text_is_storable(
 pub(crate) fn write_wrapper(wrapper: &Wrapper<'_>) -> Result<WrapperSummary> {
     let version = version::installer_version(wrapper.product_version)?;
     let per_machine = wrapper.require_admin;
+    // The product code names this release. It is derived from the version as the
+    // project writes it, not from the three fields the Installer compares, so a
+    // project that re-releases a version -- `2026.9.17-r2` after `2026.9.17` --
+    // ships a product of its own instead of one the Installer would refuse as
+    // "another version of this product is already installed" (1638), and the
+    // upgrade search is what takes the release it replaces away. A rebuild of the
+    // same version string keeps the code, so the machine can still repair or
+    // remove what it installed.
     let product_code = derive_guid(&format!(
         "nano-installer product|{}|{}|{}",
-        wrapper.manufacturer, wrapper.product_name, version
+        wrapper.manufacturer, wrapper.product_name, wrapper.product_version
     ))?;
     // The upgrade code names the product across versions, so a newer package
     // finds the older one; the product code names this version alone.
@@ -715,18 +723,30 @@ fn write_sequence_tables(database: &Database) -> Result<()> {
     Ok(())
 }
 
-/// The search that finds an older release of the same product.
+/// The search that finds the release this package replaces.
 ///
-/// Every version below the one being installed matches, so installing a newer
-/// package replaces the older product rather than sitting beside it. The three
-/// nullable columns are left null rather than empty: an empty `Remove` field
-/// removes no features at all, while a null one is what makes the Installer take
-/// the whole older product away, and a null lower bound is what makes the search
-/// cover every earlier version.
+/// The upper bound is the version being installed and **includes** it. Windows
+/// Installer compares three fields, so a project that re-releases a version --
+/// `2026.9.17-r2` after `2026.9.17` -- ships a package whose three fields are the
+/// ones already on the machine; a bound that excluded them would leave that
+/// release installed and let this one sit beside it, or, because two packages
+/// that share a product code may not differ in version, have the Installer refuse
+/// the second one with "another version of this product is already installed".
+/// A re-release is a product of its own (the product code is derived from the
+/// version as written), so the row cannot match the product being installed, and
+/// the removal happens before this setup runs.
+///
+/// The three nullable columns are left null rather than empty: an empty `Remove`
+/// field removes no features at all, while a null one is what makes the Installer
+/// take the whole older product away, and a null lower bound is what makes the
+/// search cover every earlier version.
 fn write_upgrade_table(database: &Database, upgrade_code: &str, version: &str) -> Result<()> {
-    // 1 migrates feature states, which an older release of this wrapper has
-    // none of; 256 would include an explicit lower bound, and there is none.
+    // 1 migrates feature states, which an older release of this wrapper has none
+    // of; 512 is the inclusive upper bound (2 would be detect-only, which finds
+    // the product and takes nothing away); 256 would include an explicit lower
+    // bound, and there is none.
     const MIGRATE_FEATURES: i32 = 1;
+    const VERSION_MAX_INCLUSIVE: i32 = 512;
     database.insert(
         "Upgrade",
         &[
@@ -743,7 +763,7 @@ fn write_upgrade_table(database: &Database, upgrade_code: &str, version: &str) -
             Field::Null,
             Field::Text(version),
             Field::Null,
-            Field::Number(MIGRATE_FEATURES),
+            Field::Number(MIGRATE_FEATURES | VERSION_MAX_INCLUSIVE),
             Field::Null,
             Field::Text(UPGRADE_PROPERTY),
         ],
@@ -1618,12 +1638,16 @@ mod tests {
 
         let rows = read_rows(
             &package,
-            "SELECT `UpgradeCode`, `VersionMax`, `ActionProperty` FROM `Upgrade`",
-            3,
+            "SELECT `UpgradeCode`, `VersionMax`, `Attributes`, `ActionProperty` FROM `Upgrade`",
+            4,
         )?;
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0][1], "3.4.1");
-        assert_eq!(rows[0][2], UPGRADE_PROPERTY);
+        // The bound includes the version it names: a re-release of one day
+        // carries the three fields already on the machine, and a bound that
+        // excluded them would leave that release installed.
+        assert_eq!(rows[0][2], "513");
+        assert_eq!(rows[0][3], UPGRADE_PROPERTY);
         // The search fills a property the script carries into the server side,
         // which only happens for a property named as secure.
         let secure = single_value(
@@ -1735,6 +1759,15 @@ mod tests {
             "Probe",
             "1.0.1",
         ))?;
+        // A re-release of one day keeps the three fields Windows Installer
+        // compares and is a product of its own, which is what lets it replace
+        // the release it re-releases instead of being refused by the Installer.
+        let re_release = write_wrapper(&wrapper(
+            &setup,
+            &directory.join("Four.msi"),
+            "Probe",
+            "1.0.0-r2",
+        ))?;
 
         // A machine that installed one package has to be able to upgrade or
         // remove what a rebuild wrote, so the codes cannot be random.
@@ -1743,6 +1776,8 @@ mod tests {
         // A new version is a new product that upgrades the old one.
         assert_ne!(first.product_code, next.product_code);
         assert_eq!(first.upgrade_code, next.upgrade_code);
+        assert_ne!(first.product_code, re_release.product_code);
+        assert_eq!(first.upgrade_code, re_release.upgrade_code);
         Ok(())
     }
 

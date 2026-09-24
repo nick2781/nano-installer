@@ -133,7 +133,12 @@ a directory of the caller's choosing is still removed correctly. The product's
 own registration is the entry Windows shows; the package keeps its own out of
 that list. A newer package carries the same upgrade code as the older release and
 takes the older product away before it installs the new one, which is what makes
-it an upgrade rather than a second product beside the first.
+it an upgrade rather than a second product beside the first. A release cut again on
+the same day keeps those three fields, and Windows Installer does not allow a package
+with a product code and a version it already has to be installed again: that release
+is a product code of its own, and its upgrade search counts the version it names among
+those to take away, so it removes the release before it and installs itself rather
+than sitting beside it.
 
 Two conditions come with that. The wrapped setup has to accept a windowless run
 (`advanced.silent_mode_support` and `advanced.uninstall_mode_support`), because

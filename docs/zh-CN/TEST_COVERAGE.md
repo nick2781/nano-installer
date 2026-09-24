@@ -3,7 +3,7 @@
 文档承诺的每一条行为，以及守住它的那条自动化用例。表格里的每一行都列出了该行为失效时会失败的
 用例；没有出现在任何一行里的行为，就是没人看住的行为。
 
-`cargo test --locked --workspace` 会跑 358 条用例：核心库 261 条，真构建并运行安装包的 58 条，
+`cargo test --locked --workspace` 会跑 359 条用例：核心库 261 条，真构建并运行安装包的 59 条，
 按构建器的方式读工程的 5 条，可视化构建器 32 条，解压运行时 2 条。安装包级用例需要真实的运行时
 可执行文件，`.\scripts\run_e2e_setup.ps1` 会先把它们构建出来再跑，并把整次运行写进
 `target/e2e-report.txt`。
@@ -182,7 +182,7 @@
 | 对旧版本的搜索，以及收回这个包装出来的那份产品 | `the_package_offers_itself_as_an_upgrade_of_the_versions_before_it` |
 | Windows 打开包里的表之前先读的那些东西 | `the_package_summary_names_the_platform_and_the_language` |
 | 读不出的版本号、不能当目录的产品名、以及目录尾随的点组件都会被处理 | `a_version_the_installer_cannot_compare_is_refused`、`a_product_name_that_cannot_name_a_directory_is_refused`、`a_name_too_long_for_a_short_name_carries_one_the_file_system_can_keep`、`a_directory_written_with_a_trailing_dot_component_is_the_directory_itself` |
-| 用 Windows 自带的安装程序装、卸、升级，以及不支持无窗口运行的工程 | `a_package_installs_the_product_the_setup_carries_and_removes_it_again`、`a_newer_package_upgrades_the_product_the_older_one_installed`、`a_project_that_cannot_run_without_a_window_is_refused_a_package` |
+| 用 Windows 自带的安装程序装、卸、升级、同一天再发一版，以及不支持无窗口运行的工程 | `a_package_installs_the_product_the_setup_carries_and_removes_it_again`、`a_newer_package_upgrades_the_product_the_older_one_installed`、`a_package_released_again_on_the_same_day_replaces_what_it_installed`、`a_project_that_cannot_run_without_a_window_is_refused_a_package` |
 
 ## 目前仍没有被自动化用例覆盖的部分
 
