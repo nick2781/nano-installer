@@ -1,0 +1,56 @@
+name: CI janitor
+
+# A step of this pipeline occasionally stops answering: it never ends, the run
+# stays `in_progress` for as long as the agent is willing to wait, and nothing on
+# the runner's side reaches it -- not the step's timeout, not the job's. The
+# `supersede` job in ci.yml cancels such a run when a new one replaces it, but that
+# needs a new run to exist, and nobody wants to push a commit to get one.
+#
+# This starts one on a schedule for any run of this pipeline that has been going
+# longer than a whole run ever needs. The fresh run's own `supersede` job is what
+# ends the wedged one, so nothing here has to cancel anything.
+
+on:
+  schedule:
+    - cron: "17,47 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: ci-janitor
+  cancel-in-progress: false
+
+jobs:
+  restart:
+    name: Start a run where one stopped answering
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Restart the runs that are past their time
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          # A run of this pipeline takes about eight minutes when its caches are
+          # warm and half an hour when they are cold, so a run that has been going
+          # for three quarters of an hour is not working on anything.
+          threshold=45
+          now=$(date -u +%s)
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs?status=in_progress&per_page=100" \
+            --jq '.workflow_runs[] | select(.name == "CI") | "\(.id)\t\(.head_branch)\t\(.run_started_at)"' > runs.txt
+          while IFS=$'\t' read -r id branch started; do
+            if [ -z "${id:-}" ] || [ -z "${branch:-}" ]; then
+              continue
+            fi
+            age=$(( (now - $(date -u -d "$started" +%s)) / 60 ))
+            if [ "$age" -lt "$threshold" ]; then
+              echo "run $id on $branch has been going ${age}m: leaving it alone"
+              continue
+            fi
+            echo "run $id on $branch has been going ${age}m: starting the pipeline again on $branch"
+            gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$branch" || true
+          done < runs.txt

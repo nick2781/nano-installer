@@ -70,6 +70,9 @@ end a wedged step became part of the wedge. Command lines, which only WMI has, a
 a pid, a name, a start time and a window title are enough to name a holder. The takedown itself is
 bounded too, in `Stop-ProcessTree`: `taskkill /T` waits on the very tree that may be holding
 everything up, so a tree it cannot finish off within two minutes is left to the job the step joined.
+If a run does stop answering, the `CI janitor` workflow checks twice an hour: a CI run that has been
+going for more than 45 minutes gets a fresh run dispatched on its own branch, whose `supersede` job
+ends the wedged one, so the pipeline recovers without anyone watching it or pushing a commit.
 Commands are started differently as well: `NanoStepCommand` in `scripts/step_job.ps1` creates the
 process with `CreateProcess`, passes it **none** of this process's handles, and gives it no console
 at all -- the shell redirects the command's output to a file. A build agent gives its step a pipe for
