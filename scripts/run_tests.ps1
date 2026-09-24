@@ -194,27 +194,48 @@ function Invoke-NativeStep {
             "cmd.exe /c `"$Command > `"$log`" 2>&1`"",
             (Get-Location).ProviderPath)
         try {
-            $finished = [NanoStepCommand]::Wait($process, $(if ($DeadlineMinutes -gt 0) { $DeadlineMinutes * 60 * 1000 } else { 0 }))
+            # The wait is taken in slices, so a command that never ends can still
+            # say what it is doing while it does not end: what it has written so
+            # far goes out as a commit status, and a commit status survives the
+            # step whose log does not.
+            $deadline = if ($DeadlineMinutes -gt 0) { (Get-Date).AddMinutes($DeadlineMinutes) } else { $null }
+            $finished = $false
+            $next = (Get-Date).AddSeconds(60)
+            while (-not $finished) {
+                $finished = [NanoStepCommand]::Wait($process, 5000)
+                if ($finished) {
+                    break
+                }
+                if ($null -ne $deadline -and (Get-Date) -ge $deadline) {
+                    break
+                }
+                if ((Get-Date) -ge $next) {
+                    $line = @(Get-CapturedTail -Path $log -Count 1) | Select-Object -Last 1
+                    Update-PhaseStatus ("${Command}: " + $(if ($line) { $line.Trim() } else { "no output yet" }))
+                    $next = (Get-Date).AddSeconds(60)
+                }
+            }
         }
         catch {
             [NanoStepCommand]::Release($process)
             throw
         }
         if (-not $finished) {
-            Write-Output "::error title=command deadline::$Command did not end within $DeadlineMinutes minute(s); what it wrote so far follows"
             $tail = @(Get-CapturedTail -Path $log -Count 40)
+            $last = @($tail | Where-Object { $_.Trim() }) | Select-Object -Last 1
+            # Posted before anything else is printed. Everything printed below
+            # goes into the step's own output, and a step whose output nobody
+            # reads is one of the ways a step stops answering: the record of where
+            # the command stopped has to leave before that can happen.
+            #
+            # The last line is the one that matters: a test harness writes a
+            # test's name before running it and its verdict after, so the last
+            # line names the test that never answered.
+            Update-PhaseStatus ("$Command stopped at: " + $(if ($last) { $last.Trim() } else { "nothing was written" }))
+            Write-Output "::error title=command deadline::$Command did not end within $DeadlineMinutes minute(s); what it wrote so far follows"
             foreach ($line in $tail) {
                 Write-Output "  | $line"
             }
-            # Everything printed above goes into a step log, and a step log is
-            # only archived once the step ends -- which is exactly what a command
-            # that left a process behind prevents. What the command said before it
-            # stopped is therefore also posted where it survives the run, and the
-            # last line it wrote is the one that matters: a test harness writes a
-            # test's name before running it and its verdict after, so the last
-            # line names the test that never answered.
-            $last = @($tail | Where-Object { $_.Trim() }) | Select-Object -Last 1
-            Update-PhaseStatus ("$Command stopped at: " + $(if ($last) { $last.Trim() } else { "nothing was written" }))
             # The command is taken down here rather than left to the job the step
             # joined, which is best effort -- scripts/step_job.ps1 says so and prints
             # which of the two happened. /T takes what the command started with it,
