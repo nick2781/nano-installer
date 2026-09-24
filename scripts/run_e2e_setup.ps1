@@ -251,6 +251,12 @@ if ($RequireDesktop) {
 }
 $elevated = Get-ReportPhrase -Text $text -Key $(if (Test-Elevated) { "elevated.yes" } else { "elevated.no" })
 
+# A step that stops answering ends anyway: the watchdog is outside this process
+# and ends it once its deadline has passed. A step is finished when its output
+# closes, and a step that never answers never closes it, so nothing inside the
+# step can end it -- not the deadline below, not the runner's own timeouts.
+Start-StepWatchdog -Minutes ($SuiteDeadlineMinutes + 4)
+
 Write-Output (Get-ReportPhrase -Text $text -Key "console.buildingstubs")
 $stubs = Invoke-NativeStep $stubCommand -DeadlineMinutes $SuiteDeadlineMinutes
 

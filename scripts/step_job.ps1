@@ -276,6 +276,32 @@ else {
 }
 
 <#
+    Ends this step from outside it if the step is still there when its time is up.
+
+    A step is finished when its output closes, and a step that stops answering
+    never closes it: nothing on the runner's side reaches such a step, and the
+    branch inside the scripts that is supposed to end a command which never ends
+    is itself inside the step. This is a process of its own that ends the step
+    anyway, so a step that stops answering costs its deadline and not the whole
+    hour the agent would otherwise wait.
+
+    It is started with the launcher above, so it inherits none of this process's
+    handles and cannot hold this step's output open itself; it is in the step's
+    job, so it goes away with the step when the step ends on its own.
+#>
+function Start-StepWatchdog {
+    param([int]$Minutes, [int]$StepProcessId = $PID)
+
+    $seconds = [Math]::Max(60, $Minutes * 60)
+    $body = "Start-Sleep -Seconds $seconds; if (Get-Process -Id $StepProcessId -ErrorAction SilentlyContinue) { Stop-Process -Id $StepProcessId -Force }"
+    $handle = [NanoStepCommand]::Start(
+        "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `"$body`"",
+        (Get-Location).ProviderPath)
+    [NanoStepCommand]::Release($handle)
+    Write-Output "step watchdog: this step ends in $Minutes minute(s) whether it answers or not"
+}
+
+<#
     Ends a process and everything it started, with a deadline of its own.
 
     `run_tests.ps1` and `run_e2e_setup.ps1` take a command that never ended down

@@ -271,6 +271,11 @@ $commit = Get-CommitDescription
 $runAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 
 Write-Phase "script started"
+# A step that stops answering ends anyway: the watchdog is outside this process
+# and ends it once its deadline has passed. A step is finished when its output
+# closes, and a step that never answers never closes it, so nothing inside the
+# step can end it -- not the deadline below, not the runner's own timeouts.
+Start-StepWatchdog -Minutes ($SuiteDeadlineMinutes + 4)
 Write-Output (Get-ReportPhrase -Text $text -Key "console.runningsuite" -Values @($suiteCommand))
 $suite = Invoke-NativeStep $suiteCommand -DeadlineMinutes $SuiteDeadlineMinutes
 

@@ -193,6 +193,9 @@ jobs:
         run: |
           . .\scripts\step_job.ps1
           New-Item -ItemType Directory -Force -Path target | Out-Null
+          # A build that stops answering ends anyway: this is outside the step and
+          # ends it once its own deadline has passed.
+          Start-StepWatchdog -Minutes 34
           # The launcher in scripts/step_job.ps1 creates the process with none of
           # this step's handles and no console at all, so a helper the
           # linker leaves behind cannot hold this step's output open after the
