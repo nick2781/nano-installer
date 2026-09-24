@@ -85,6 +85,13 @@ jobs:
 
       - name: Restore Cargo cache
         uses: Swatinem/rust-cache@v2
+        with:
+          # A run that is cancelled never saves the cache, and the runs that
+          # wedged were cancelled one after another; a cache a half-finished save
+          # left behind is one the next run unpacks into `target/` and builds on.
+          # This key throws the old ones away once, so the next run works from a
+          # tree nobody has interrupted.
+          key: ci-v2
 
       # Runs first and on its own so a script that would be decoded with the
       # ANSI code page fails clearly instead of surfacing as corrupted text in
@@ -239,6 +246,13 @@ jobs:
 
       - name: Restore Cargo cache
         uses: Swatinem/rust-cache@v2
+        with:
+          # A run that is cancelled never saves the cache, and the runs that
+          # wedged were cancelled one after another; a cache a half-finished save
+          # left behind is one the next run unpacks into `target/` and builds on.
+          # This key throws the old ones away once, so the next run works from a
+          # tree nobody has interrupted.
+          key: ci-v2
 
       # The suite writes its own project, builds a setup, runs it, and then runs
       # the uninstaller it deployed. It installs below the temporary directory
