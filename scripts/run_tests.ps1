@@ -120,13 +120,14 @@ function Invoke-NativeStep {
     $previous = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     try {
-        # A console of its own and no inherited handles: a build agent gives its
-        # step a pipe for output and calls the step finished when that pipe
-        # closes, so a process that inherits the pipe and outlives the command
-        # keeps the step open however the agent is asked to end it.
-        # scripts/step_job.ps1's launcher is what creates the process that way --
-        # `Start-Process` and `Process.Start` both hand the child every
-        # inheritable handle this process holds.
+        # No inherited handles and no console: a build agent gives its step a pipe
+        # for output and calls the step finished when that pipe closes, so a
+        # process that inherits the pipe and outlives the command keeps the step
+        # open however the agent is asked to end it. scripts/step_job.ps1's
+        # launcher is what creates the process that way -- `Start-Process` and
+        # `Process.Start` both hand the child every inheritable handle this process
+        # holds, and the console a command of its own would need is one more thing
+        # the step can stop inside.
         $process = [NanoStepCommand]::Start(
             "cmd.exe /c `"$Command > `"$log`" 2>&1`"",
             (Get-Location).ProviderPath)

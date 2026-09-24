@@ -193,8 +193,8 @@ jobs:
         run: |
           . .\scripts\step_job.ps1
           New-Item -ItemType Directory -Force -Path target | Out-Null
-          # The launcher in scripts/step_job.ps1 creates the process with a
-          # console of its own and none of this step's handles, so a helper the
+          # The launcher in scripts/step_job.ps1 creates the process with none of
+          # this step's handles and no console at all, so a helper the
           # linker leaves behind cannot hold this step's output open after the
           # build has ended: a step is finished when its output closes.
           $handle = [NanoStepCommand]::Start(

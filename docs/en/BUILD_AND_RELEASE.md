@@ -71,8 +71,9 @@ a pid, a name, a start time and a window title are enough to name a holder. The 
 bounded too, in `Stop-ProcessTree`: `taskkill /T` waits on the very tree that may be holding
 everything up, so a tree it cannot finish off within two minutes is left to the job the step joined.
 Commands are started differently as well: `NanoStepCommand` in `scripts/step_job.ps1` creates the
-process with `CreateProcess` and a console of its own, and passes it **none** of this process's
-handles. A build agent gives its step a pipe for output and calls the step finished when that pipe
+process with `CreateProcess`, passes it **none** of this process's handles, and gives it no console
+at all -- the shell redirects the command's output to a file. A build agent gives its step a pipe for
+output and calls the step finished when that pipe
 closes, while `Process.Start` hands every inheritable handle to the child -- so one process that
 outlives the command would keep the step open however long it lives.
 

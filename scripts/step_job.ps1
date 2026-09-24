@@ -150,7 +150,7 @@ public static class NanoStepCommand
         public int ThreadId;
     }
 
-    private const uint CreateNewConsole = 0x00000010;
+    private const uint CreateNoWindow = 0x08000000;
     private const uint StartfUseShowWindow = 0x00000001;
     private const short SwHide = 0;
     private const uint WaitTimeout = 0x00000102;
@@ -183,18 +183,23 @@ public static class NanoStepCommand
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool CloseHandle(IntPtr handle);
 
-    // Starts a command line with a console of its own and *without* handing this
+    // Starts a command line with no console of its own and *without* handing this
     // process's handles to it.
     //
-    // That second part is the whole point. A build agent gives its step a pipe
-    // for standard output and standard error, and the step is finished when that
-    // pipe closes -- so every handle a descendant inherits is a chance for the
-    // step never to end: `Process.Start`, whichever of its two paths is used,
-    // creates the process with handle inheritance on, and one process that
-    // outlives the command then keeps the step's output open for as long as it
-    // lives. Measured on this machine with a grandchild living eight seconds:
-    // started the ordinary way, the caller's output stayed open 7.5 s after the
-    // step's own process had gone; started this way, it closed at once.
+    // Both halves matter. A build agent gives its step a pipe for standard output
+    // and standard error and calls the step finished when that pipe closes, so
+    // every handle a descendant inherits is a chance for the step never to end:
+    // `Process.Start`, whichever of its two paths is used, creates the process
+    // with handle inheritance on, and one process that outlives the command then
+    // keeps the step's output open for as long as it lives. Measured on this
+    // machine with a grandchild living eight seconds: started the ordinary way,
+    // the caller's output stayed open 7.5 s after the step's own process had
+    // gone; started this way, it closed at once.
+    //
+    // The command is given no console at all rather than one of its own. A
+    // console has to be created by the system before the process can run, and
+    // that handshake is one more thing a step can stop inside; the command writes
+    // its output to a file the shell opens for it, so it needs no console.
     public static IntPtr Start(string commandLine, string currentDirectory)
     {
         StartupInfo startup = new StartupInfo();
@@ -202,7 +207,7 @@ public static class NanoStepCommand
         startup.Flags = (int)StartfUseShowWindow;
         startup.ShowWindow = SwHide;
         ProcessInformation information;
-        if (!CreateProcessW(null, commandLine, IntPtr.Zero, IntPtr.Zero, false, CreateNewConsole, IntPtr.Zero, currentDirectory, ref startup, out information))
+        if (!CreateProcessW(null, commandLine, IntPtr.Zero, IntPtr.Zero, false, CreateNoWindow, IntPtr.Zero, currentDirectory, ref startup, out information))
         {
             throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
         }
@@ -252,24 +257,6 @@ public static class NanoStepCommand
     }
 }
 "@
-}
-
-# `Add-Type` starts a compiler the ordinary way -- with handle inheritance on --
-# so that compiler holds this step's output while it runs, and anything the
-# compiler leaves behind holds it afterwards. The two helpers the Microsoft
-# toolchain leaves running are the same kind of thing: a step is finished when its
-# output closes, so one of them outliving the step is a step that never ends. They
-# are caches that come back when a build wants them, so ending them here costs
-# nothing, and the runner ends the telemetry helper itself at the end of the job,
-# which is too late for the step that is waiting on it.
-foreach ($name in @("vctip", "mspdbsrv")) {
-    foreach ($row in @(Get-Process -Name $name -ErrorAction SilentlyContinue)) {
-        try {
-            Stop-Process -Id $row.Id -Force -ErrorAction SilentlyContinue
-        }
-        catch {
-        }
-    }
 }
 
 # The handle is kept for the whole life of the script: the job is over once the
