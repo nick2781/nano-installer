@@ -90,11 +90,57 @@ $text = Get-ReportText -Language $Language
 # What the script is doing goes to the build agent as a notice as well as into
 # the reports: a step that never ends is archived with no log at all, and the
 # last notice it sent still says how far the script got.
+#
+# A notice is not enough on its own, because the build agent only keeps the ones
+# a step sent once that step ends -- and the step this suite runs in is exactly
+# the one that stops ending. The phase therefore also goes out as a commit
+# status, which the commit keeps whether the run ends or not: a run that was
+# cancelled while wedged then still says which command it stopped on, which is
+# the one thing its missing log cannot say.
 function Write-Phase {
     param([string]$Message)
 
     $stamp = (Get-Date).ToUniversalTime().ToString("HH:mm:ss")
     Write-Output "::notice title=suite phase::$stamp $Message"
+    Update-PhaseStatus "$stamp $Message"
+}
+
+# The commit status is a noticeboard rather than a verdict, so it is written as
+# a success whatever the suite is doing: its text is what a wedged run leaves
+# behind, and a status left pending would read as a check that never passed. The
+# verdict on the commit is the job's own conclusion.
+function Update-PhaseStatus {
+    param([string]$Message)
+
+    # A local run has no token and nowhere to post, and needs none of this: the
+    # phases are already in front of whoever started it.
+    $token = $env:GH_TOKEN
+    $repository = $env:GITHUB_REPOSITORY
+    $sha = $env:GITHUB_SHA
+    if (-not $token -or -not $repository -or -not $sha) {
+        return
+    }
+    $body = @{
+        state       = "success"
+        context     = "suite phase"
+        description = $Message.Substring(0, [Math]::Min(140, $Message.Length))
+        target_url  = "$env:GITHUB_SERVER_URL/$repository/actions/runs/$env:GITHUB_RUN_ID"
+    } | ConvertTo-Json -Compress
+    $headers = @{
+        Authorization           = "Bearer $token"
+        Accept                  = "application/vnd.github+json"
+        "X-GitHub-Api-Version"  = "2022-11-28"
+    }
+    # Posting a phase may not hold the suite, and a phase that could not be
+    # posted is not a reason to stop a run: the call has a deadline of its own.
+    try {
+        Invoke-RestMethod -Method Post -TimeoutSec 10 `
+            -Uri "https://api.github.com/repos/$repository/statuses/$sha" `
+            -Headers $headers -Body $body -ContentType "application/json" | Out-Null
+    }
+    catch {
+        Write-Output ("  | the phase could not be posted: {0}" -f $_.Exception.Message)
+    }
 }
 
 # The command's output goes into a file the operating system opens for it, and
@@ -307,6 +353,9 @@ $commandText = $SuiteCommand -join "; "
 $printed = New-Object System.Collections.Generic.List[string]
 $code = 0
 foreach ($command in $SuiteCommand) {
+    # Which target is running is the phase that matters most: a suite that stops
+    # answering stops inside one of these, and this is what names it.
+    Write-Phase "target: $command"
     Write-Output (Get-ReportPhrase -Text $text -Key "console.runningsuite" -Values @($command))
     $part = Invoke-NativeStep $command -DeadlineMinutes $SuiteDeadlineMinutes
     foreach ($line in @($part.Output)) {
