@@ -33,27 +33,32 @@ You write these paths relative to the project folder.
 
 ## Commands that run on the finished build
 
-Once the setup and the embedded uninstaller are written, the builder can hand each file to a command
-of the project's own before it is done with it. Signing is what that is usually for; these are NSIS's
-`!finalize` and `!uninstfinalize`.
+Once the setup, the embedded uninstaller, and (when the build was asked for one) the installer package
+an estate deploys are written, the builder can hand each file to a command of the project's own before
+it is done with it. Signing is what that is usually for; the first two are NSIS's `!finalize` and
+`!uninstfinalize`, and the package is the file Group Policy, Intune and Configuration Manager deploy --
+the one whose signature a machine checks.
 
 | Setting | Type | Effect |
 | --- | --- | --- |
 | `finalize.uninstaller` | string | Command to run on the uninstaller while it is still a file of its own, before the setup embeds it |
 | `finalize.installer` | string | Command to run on the setup once it is complete |
+| `finalize.package` | string | Command to run on the installer package once it is written (only a build asked for `--msi` writes one) |
 
 `%1` in the command stands for the full path of that file:
 
 ```json
 "finalize": {
   "uninstaller": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sign.ps1 -File \"%1\"",
-  "installer": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sign.ps1 -File \"%1\""
+  "installer": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sign.ps1 -File \"%1\"",
+  "package": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sign.ps1 -File \"%1\""
 }
 ```
 
 Each command runs on its own, and every line it prints goes into the build log. A non-zero exit code
-stops the build: a refused uninstaller never reaches the setup, and a refused setup is removed from
-disk rather than left for the next step of a pipeline to pick up.
+stops the build: a refused uninstaller never reaches the setup, a refused setup is removed from disk,
+and a refused package is removed too, rather than left for the next step of a pipeline to pick up.
+Signing rewrites the file, so the package size the build reports is measured on disk after the command.
 
 The builder signs nothing itself and touches no certificate: the certificate, the timestamp service,
 and the key ring belong to the pipeline. A setting holding nothing but whitespace is refused, or a

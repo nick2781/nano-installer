@@ -52,7 +52,9 @@ Rust doc comment，再退回用例名。
 | `a_file_that_moved_in_size_travels` | 尺寸挪过的文件照样随更新包走：先看尺寸再看摘要，尺寸变了就不算没变，哪怕摘要是同一个。 |
 | `a_file_type_that_would_write_outside_the_classes_tree_is_refused` | 文件类型的两个名字先查再用：扩展名或程序 id 里带路径分隔符、或其中任何一个为空，调用直接返回 `false`；命令行空着的调用同样被拒绝，因为那样的文件类型打不开任何东西。五种被拒的调用一个字节都没写进注册表，manifest 里也没有记录。 |
 | `a_finalize_command_runs_on_the_finished_setup_and_uninstaller` | 工程自己的命令跑在成品上：卸载程序还是独立文件、尚未嵌进安装包时被处理一遍，标记因此落在安装包里那个条目上；安装包写完、页脚也写完之后再处理一遍，标记落在文件末尾，也就是签名会长出来的地方。两条命令拿到的是各自的文件（卸载程序在前、安装包在后），被处理过的安装包照常安装、注册卸载项。 |
+| `a_finalize_command_runs_on_the_package_a_build_writes` | 构建要了 `--msi` 时，工程自己的命令也能拿到那个企业分发的包：它被交给的是 `.msi` 本身（用例记下命令收到的路径），而且构建报出的包大小是命令跑完之后从磁盘上量的——签名会改写文件，报错的大小就等于发出去的包和记录对不上。 |
 | `a_finalize_command_that_fails_stops_the_build` | 命令拒绝这个文件就中止构建：错误里点名是哪个设置、命令返回了什么退出码，命令自己写下的那行也进了构建日志；那份没签成的安装包不会留在磁盘上。 |
+| `a_finalize_command_that_refuses_the_package_stops_the_build` | 拒绝这份 `.msi` 的命令会中止构建，而且那份包不会留在磁盘上：流水线的下一步不会捡到一个没人签过的包。 |
 | `a_hidden_element_takes_its_whole_subtree_with_it` | 祖先上的 `visible="false"` 把底下整个子树都藏起来：子控件的动作、文字和面板自己的底色都不画，页面上别的地方不受影响。把属性改回 `true` 后这个分支又完整画出来。 |
 | `a_high_contrast_machine_gets_the_colours_the_scheme_keeps` | 真窗口里把两种答案各跑一遍：夹具把机器自己的颜色对调着声明（页面底色写的是 `COLOR_WINDOWTEXT`、焦点环写的是 `COLOR_WINDOW`、卡片的填充与描边写的是 `COLOR_HIGHLIGHT`），关掉那次读到的正是声明的这些颜色，复选框那张图两种情形下都不变；打开那次页面底色、卡片、卡片边分别变成机器的 `COLOR_WINDOW`、`COLOR_BTNFACE`、`COLOR_WINDOWFRAME`，按一次 Tab 之后环换成 `COLOR_HIGHLIGHT` 而不是声明的那一色；最后给窗口发一条 `WM_SETTINGCHANGE`，逐像素对比前后两帧，窗口一个像素都没动、也还在。开关本身属于用户，用例只把答案写进进程，不去动这台机器的设置。 |
 | `a_hint_shows_the_rule_the_value_breaks` | 绑 `value-source="field-error:<字段 id>"` 的标签画出那条被破坏的规矩写下的文案：字段空着时报 `required` 那句，值不合格时报 `pattern` 那句，文案按工程自己的语言查表；值合格时这个标签什么都不画，点名页面上没有的字段也一样。 |

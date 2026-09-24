@@ -261,10 +261,12 @@ through the API.
 ## Signing
 
 The builder signs nothing itself; it hands the finished files to a command of the project's own. The
-setup triggers `finalize.installer` after the icon, version resources, and bundle are written, and the
-uninstaller triggers `finalize.uninstaller` while it is still a file of its own, before the setup
-embeds it. The [configuration
-reference](CONFIG_REFERENCE.md#commands-that-run-on-the-finished-build) spells the two settings out.
+setup triggers `finalize.installer` after the icon, version resources, and bundle are written, the
+uninstaller triggers `finalize.uninstaller` while it is still a file of its own and before the setup
+embeds it, and the installer package triggers `finalize.package` once it is written -- only a build
+asked for `--msi` writes one, and that package is what Group Policy and Intune deploy, so it is the
+file whose signature a machine checks. The [configuration
+reference](CONFIG_REFERENCE.md#commands-that-run-on-the-finished-build) spells the settings out.
 A command that exits non-zero stops the build, and the file it refused is not left on disk.
 
 `scripts/sign.ps1` is what a pipeline usually writes there: it signs with the certificate

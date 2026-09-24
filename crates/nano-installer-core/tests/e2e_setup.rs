@@ -1669,6 +1669,90 @@ fn a_finalize_command_that_fails_stops_the_build() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// A project signs the package it deploys, and not only the setup inside it.
+///
+/// The package is a file this build finished too: an estate deploys the `.msi`,
+/// so that is the file whose signature a machine checks. The command here stands
+/// in for a signer -- it records which file it was handed and rewrites it, which
+/// is what signing does -- and the case holds the build to handing over the
+/// package and to reporting the package that is really on disk afterwards.
+#[test]
+fn a_finalize_command_runs_on_the_package_a_build_writes() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    let log = fixture.case_path("package-finalize.log");
+    let signer = fixture.case_path("package-finalize.cmd");
+    std::fs::write(
+        &signer,
+        format!(
+            "@echo off\r\n>>\"{log}\" echo package %~1\r\n>>\"%~1\" echo package-finalize-mark\r\n",
+            log = log.display()
+        ),
+    )?;
+    fixture.edit_config(|config| {
+        config["finalize"] = serde_json::json!({
+            "package": format!("\"{}\" \"%1\"", signer.display()),
+        });
+    })?;
+
+    let package = fixture.case_path("E2eProbe-Package.msi");
+    let built = fixture
+        .build_package(&package)?
+        .msi
+        .expect("a package was written");
+
+    let text = std::fs::read_to_string(&log)?;
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines.len(), 1, "the command should have run once: {text}");
+    assert!(lines[0].starts_with("package "), "{text}");
+    assert!(
+        lines[0].ends_with(&package.display().to_string()),
+        "the command was handed something other than the package: {text}"
+    );
+    // What the command wrote into the file is the file that ships, so the size
+    // the build reports has to be read after it rather than from the wrapper this
+    // build wrote first.
+    let on_disk = std::fs::metadata(&package)?.len();
+    assert!(on_disk > 0);
+    assert_eq!(
+        built.output_size, on_disk,
+        "the build reports a package size that is not the file the command left"
+    );
+    Ok(())
+}
+
+/// A command that refuses the package stops the build, and the package it refused
+/// is not left where the next step of a pipeline would pick it up and deploy a
+/// package nobody signed.
+#[test]
+fn a_finalize_command_that_refuses_the_package_stops_the_build() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.edit_config(|config| {
+        config["finalize"] = serde_json::json!({
+            "package": "echo the signer refused this package& exit /b 9"
+        });
+    })?;
+
+    let package = fixture.case_path("E2eProbe-Package.msi");
+    let error = fixture
+        .build_package(&package)
+        .expect_err("a command that refused the package stops the build");
+    let error = format!("{error:#}");
+    assert!(error.contains("finalize.package"), "{error}");
+    assert!(error.contains("exit code 9"), "{error}");
+    assert!(
+        !package.exists(),
+        "a package the project's own command refused stayed at {}",
+        package.display()
+    );
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Install
 // ---------------------------------------------------------------------------

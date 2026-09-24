@@ -3,8 +3,8 @@
 文档承诺的每一条行为，以及守住它的那条自动化用例。表格里的每一行都列出了该行为失效时会失败的
 用例；没有出现在任何一行里的行为，就是没人看住的行为。
 
-`\scripts\run_tests.ps1` 会跑 359 条用例，一条命令一个 target：核心库 261 条，真构建并运行安装包的
-59 条，按构建器的方式读工程的 5 条，可视化构建器 32 条，解压运行时 2 条。每个 target 都有自己的期限，
+`\scripts\run_tests.ps1` 会跑 361 条用例，一条命令一个 target：核心库 261 条，真构建并运行安装包的
+61 条，按构建器的方式读工程的 5 条，可视化构建器 32 条，解压运行时 2 条。每个 target 都有自己的期限，
 所以停住的那个会由「没结束的那条命令」点名，而不是让整个套件悄悄停在那里。安装包级用例需要真实的运行时
 可执行文件，`.\scripts\run_e2e_setup.ps1` 会先把它们构建出来再跑，并把整次运行写进
 `target/e2e-report.txt`。
@@ -33,7 +33,7 @@
 | `output.installer_icon` | `window_icon_uses_the_brand_asset`、`icon::tests::parses_ico_and_creates_group_directory`、`icon::tests::rejects_ico_image_outside_file` |
 | `output.uninstaller_name` | `uninstaller_name_rejects_directory_components`、`uninstaller_metadata_uses_project_version_and_configured_name` |
 | `output.uninstaller_icon` | `inspects_taptap_project_without_dpi_warnings` |
-| `finalize.installer`、`finalize.uninstaller` | `a_finalize_command_runs_on_the_finished_setup_and_uninstaller`、`a_finalize_command_that_fails_stops_the_build`、`refuses_a_finalize_command_that_is_not_there` |
+| `finalize.installer`、`finalize.uninstaller`、`finalize.package` | `a_finalize_command_runs_on_the_finished_setup_and_uninstaller`、`a_finalize_command_that_fails_stops_the_build`、`a_finalize_command_runs_on_the_package_a_build_writes`、`a_finalize_command_that_refuses_the_package_stops_the_build`、`refuses_a_finalize_command_that_is_not_there` |
 | `install.default_path` | `configured_install_paths_are_expanded`、`an_explicit_install_path_wins_over_the_configured_one`、`a_run_without_any_install_path_is_refused`、`a_configured_percent_path_is_expanded_and_used`、`an_explicit_directory_wins_over_the_configured_one` |
 | `install.exe_name` | `a_payload_without_the_declared_executable_is_refused`、`an_install_script_that_never_deploys_the_executable_is_refused` |
 | `install.required_space_mb` | `value_sources_read_the_config_the_disk_and_the_running_step`、`formats_bound_disk_sizes`、`refuses_an_install_when_the_drive_holds_less_space_than_the_project_asks_for` |
@@ -154,7 +154,7 @@
 | 无窗口运行，以及允许它的开关 | `silent_arguments_read_the_directory_and_reject_anything_else`、`an_unknown_silent_option_is_refused`、`a_project_that_did_not_opt_in_refuses_a_windowless_run` |
 | 运行日志：整次运行写到磁盘，失败时这份日志就是交出去的诊断 | `a_setup_writes_the_log_of_its_run_where_a_windowless_run_asks_for_it`、`a_failing_run_leaves_its_log_behind_and_names_it`、`a_run_that_fails_leaves_a_log_that_names_it_and_what_happened`、`a_failure_notice_points_at_the_log_of_the_run`、`a_default_log_is_named_after_the_image_the_moment_and_the_task` |
 | 安装包带的捆绑数据、它记录并核对的条目摘要，以及追加在它之后的签名 | `project_bundle_roundtrips_layout_assets_and_locales`、`bundle_index_streams_entries_without_loading_the_payload`、`a_damaged_bundle_entry_is_refused_and_leaves_no_copy`、`bundle_index_ignores_images_without_a_footer`、`bundle_index_reads_a_bundle_that_a_signature_follows`、`a_setup_whose_payload_was_damaged_in_transit_installs_nothing`、`a_setup_with_a_signature_appended_still_installs` |
-| 工程自己的命令在成品上跑一遍，被拒就不出成品 | `a_finalize_command_runs_on_the_finished_setup_and_uninstaller`、`a_finalize_command_that_fails_stops_the_build` |
+| 工程自己的命令在成品（含企业分发的 `.msi`）上跑一遍，被拒就不出成品 | `a_finalize_command_runs_on_the_finished_setup_and_uninstaller`、`a_finalize_command_that_fails_stops_the_build`、`a_finalize_command_runs_on_the_package_a_build_writes`、`a_finalize_command_that_refuses_the_package_stops_the_build` |
 | 向导窗口按工程声明的尺寸打开 | `the_setup_opens_its_wizard_window` |
 | Windows 在进程启动前读的那份资源 | `a_built_setup_carries_a_readable_bundle_and_real_resources`、`manifest::tests::the_manifest_reaches_a_real_executable` |
 

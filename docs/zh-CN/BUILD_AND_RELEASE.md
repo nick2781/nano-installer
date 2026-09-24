@@ -213,7 +213,9 @@ Installer 那边看到的版本号仍是 `2026.9.17`：它只比较三段，而�
 ## 签名
 
 构建器自己不签名，它把成品交给工程自己的命令去签：安装包在图标、版本资源和 bundle 全部写入之后
-触发 `finalize.installer`，卸载程序在嵌进安装包之前、还是独立文件的时候触发 `finalize.uninstaller`。
+触发 `finalize.installer`，卸载程序在嵌进安装包之前、还是独立文件的时候触发 `finalize.uninstaller`，
+企业分发的 `.msi` 在写完之后触发 `finalize.package`（这次构建要了 `--msi` 才会跑）——域策略、Intune 推
+的是那个包，机器上校验签名的也是它。
 两个字段的写法见[配置参考](CONFIG_REFERENCE.md#构建完成后的命令)；命令返回非零就中止构建，那个没签成的
 文件也不会留在磁盘上。
 

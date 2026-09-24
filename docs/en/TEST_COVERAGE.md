@@ -3,7 +3,7 @@
 Every behaviour the documentation promises, and the automated case that holds it. A row names the
 cases that fail when that behaviour breaks; a behaviour with no row is one nobody is checking.
 
-`\scripts\run_tests.ps1` runs 359 cases, one command per target: 261 in the core library, 59 that
+`\scripts\run_tests.ps1` runs 361 cases, one command per target: 261 in the core library, 61 that
 build a real setup and run it, 5 that read a project the way the builder does, 32 in the visual
 builder, and 2 in the extraction runtimes. Every target has a deadline of its own, so a target that
 stops answering is named by the command that never ended instead of stopping the suite silently. The setup-level cases need real runtime executables built first, which
@@ -35,7 +35,7 @@ is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `targe
 | `output.installer_icon` | `window_icon_uses_the_brand_asset`, `icon::tests::parses_ico_and_creates_group_directory`, `icon::tests::rejects_ico_image_outside_file` |
 | `output.uninstaller_name` | `uninstaller_name_rejects_directory_components`, `uninstaller_metadata_uses_project_version_and_configured_name` |
 | `output.uninstaller_icon` | `inspects_taptap_project_without_dpi_warnings` |
-| `finalize.installer`, `finalize.uninstaller` | `a_finalize_command_runs_on_the_finished_setup_and_uninstaller`, `a_finalize_command_that_fails_stops_the_build`, `refuses_a_finalize_command_that_is_not_there` |
+| `finalize.installer`, `finalize.uninstaller`, `finalize.package` | `a_finalize_command_runs_on_the_finished_setup_and_uninstaller`, `a_finalize_command_that_fails_stops_the_build`, `a_finalize_command_runs_on_the_package_a_build_writes`, `a_finalize_command_that_refuses_the_package_stops_the_build`, `refuses_a_finalize_command_that_is_not_there` |
 | `install.default_path` | `configured_install_paths_are_expanded`, `an_explicit_install_path_wins_over_the_configured_one`, `a_run_without_any_install_path_is_refused`, `a_configured_percent_path_is_expanded_and_used`, `an_explicit_directory_wins_over_the_configured_one` |
 | `install.exe_name` | `a_payload_without_the_declared_executable_is_refused`, `an_install_script_that_never_deploys_the_executable_is_refused` |
 | `install.required_space_mb` | `value_sources_read_the_config_the_disk_and_the_running_step`, `formats_bound_disk_sizes`, `refuses_an_install_when_the_drive_holds_less_space_than_the_project_asks_for` |
@@ -156,7 +156,7 @@ setup-level cases prove the `scripts` directory and the tools directory survive 
 | windowless runs and the switches that allow them | `silent_arguments_read_the_directory_and_reject_anything_else`, `an_unknown_silent_option_is_refused`, `a_project_that_did_not_opt_in_refuses_a_windowless_run` |
 | the run log: every run writes one to disk, and a failed run leaves it as the report that leaves the machine | `a_setup_writes_the_log_of_its_run_where_a_windowless_run_asks_for_it`, `a_failing_run_leaves_its_log_behind_and_names_it`, `a_run_that_fails_leaves_a_log_that_names_it_and_what_happened`, `a_failure_notice_points_at_the_log_of_the_run`, `a_default_log_is_named_after_the_image_the_moment_and_the_task` |
 | the bundle the setup carries, the entry digests it records and checks, and a signature appended behind it | `project_bundle_roundtrips_layout_assets_and_locales`, `bundle_index_streams_entries_without_loading_the_payload`, `a_damaged_bundle_entry_is_refused_and_leaves_no_copy`, `bundle_index_ignores_images_without_a_footer`, `bundle_index_reads_a_bundle_that_a_signature_follows`, `a_setup_whose_payload_was_damaged_in_transit_installs_nothing`, `a_setup_with_a_signature_appended_still_installs` |
-| A project's own command runs on the finished files, and a refused file is not shipped | `a_finalize_command_runs_on_the_finished_setup_and_uninstaller`, `a_finalize_command_that_fails_stops_the_build` |
+| A project's own command runs on the finished files, the installer package included, and a refused file is not shipped | `a_finalize_command_runs_on_the_finished_setup_and_uninstaller`, `a_finalize_command_that_fails_stops_the_build`, `a_finalize_command_runs_on_the_package_a_build_writes`, `a_finalize_command_that_refuses_the_package_stops_the_build` |
 | the wizard window opens at the size the project declares | `the_setup_opens_its_wizard_window` |
 | the resources Windows reads before the process starts | `a_built_setup_carries_a_readable_bundle_and_real_resources`, `manifest::tests::the_manifest_reaches_a_real_executable` |
 

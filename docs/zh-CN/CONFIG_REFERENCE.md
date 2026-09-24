@@ -30,25 +30,29 @@
 
 ## 构建完成后的命令
 
-安装包和内嵌卸载程序写完后，构建器可以把这两个文件交给工程自己的命令再处理一遍。签名是最常见的
-用途，这两个字段就是 NSIS 的 `!finalize` 与 `!uninstfinalize`。
+安装包、内嵌卸载程序和（构建要了 `--msi` 时的）企业分发的 `.msi` 写完后，构建器可以把这些文件交给工程
+自己的命令再处理一遍。签名是最常见的用途，前两个字段就是 NSIS 的 `!finalize` 与 `!uninstfinalize`；
+`.msi` 也要签，因为域策略、Intune 这些环境推的是那个包，机器上校验签名的也是它。
 
 | 字段 | 类型 | 作用 |
 | --- | --- | --- |
 | `finalize.uninstaller` | string | 卸载程序还是独立文件、尚未嵌进安装包时执行的命令 |
 | `finalize.installer` | string | 安装包全部写完后执行的命令 |
+| `finalize.package` | string | 企业分发的 `.msi` 写完后执行的命令（这次构建要了 `--msi` 才会跑） |
 
 命令里的 `%1` 换成那个文件的完整路径：
 
 ```json
 "finalize": {
   "uninstaller": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sign.ps1 -File \"%1\"",
-  "installer": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sign.ps1 -File \"%1\""
+  "installer": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sign.ps1 -File \"%1\"",
+  "package": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sign.ps1 -File \"%1\""
 }
 ```
 
-两条命令各自运行，写出的每一行都进构建日志。退出码非零就中止构建：卸载程序被拒时不会做出安装包，
-安装包被拒时磁盘上也不留那份成品，免得流水线的下一步把它捡走。
+各条命令各自运行，写出的每一行都进构建日志。退出码非零就中止构建：卸载程序被拒时不会做出安装包，安装包
+被拒时磁盘上也不留那份成品，`.msi` 被拒时那份包同样被删掉，免得流水线的下一步把它捡走。签名会改写文件，
+所以构建日志里报的包大小是命令跑完之后从磁盘上量的。
 
 构建器自己不签名，也不碰证书：证书、时间戳服务与密钥环都属于流水线。设置写成空串会被拒绝，否则
 工程会以为自己签过名。

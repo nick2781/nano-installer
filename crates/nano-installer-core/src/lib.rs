@@ -1628,12 +1628,33 @@ pub fn build_project_with_progress(
             uninstaller_name,
             require_admin: summary.require_admin,
         })?;
+        // The package is a file this build finished, so a project's own command
+        // gets it the same way the setup does: an estate signs the package it
+        // deploys, and the package is what a machine really sees. Signing an MSI
+        // rewrites it, so what the build reports about the package is read from
+        // disk after the command rather than from the wrapper that was written.
+        if let Some(command) = finalize_command(&config, "package") {
+            let outcome = run_finalize("finalize.package", command, &wrapped.output, |message| {
+                progress(BuildEvent {
+                    stage: BuildStage::Packaging,
+                    message,
+                })
+            });
+            if outcome.is_err() {
+                // A package the project's own command refused is not one to leave
+                // lying about: the next step of a pipeline would deploy a package
+                // nobody signed.
+                let _ = std::fs::remove_file(&wrapped.output);
+            }
+            outcome?;
+        }
+        let package_size = std::fs::metadata(&wrapped.output)?.len();
         progress(BuildEvent {
             stage: BuildStage::Packaging,
             message: format!(
                 "Installer package: {} ({}, {}, product code {})",
                 wrapped.output.display(),
-                format_build_size(wrapped.size),
+                format_build_size(package_size),
                 if wrapped.per_machine {
                     "for the machine"
                 } else {
@@ -1651,7 +1672,7 @@ pub fn build_project_with_progress(
         });
         msi = Some(MsiSummary {
             output_path: wrapped.output,
-            output_size: wrapped.size,
+            output_size: package_size,
             product_code: wrapped.product_code,
             upgrade_code: wrapped.upgrade_code,
             install_directory: wrapped.install_directory,

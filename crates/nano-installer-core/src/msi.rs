@@ -171,10 +171,13 @@ pub(crate) struct Wrapper<'a> {
 }
 
 /// What writing the package came to, for the build log and the caller.
+///
+/// The size is not part of this: the package is measured where it is read, because
+/// a project's own command may sign the file -- and signing rewrites it -- before
+/// anybody reports how big it is.
 #[derive(Debug)]
 pub(crate) struct WrapperSummary {
     pub output: PathBuf,
-    pub size: u64,
     pub product_code: String,
     pub upgrade_code: String,
     /// The directory the package installs into unless a caller names another.
@@ -323,12 +326,8 @@ pub(crate) fn write_wrapper(wrapper: &Wrapper<'_>) -> Result<WrapperSummary> {
     )?;
     database.commit()?;
     drop(database);
-    let size = std::fs::metadata(wrapper.output)
-        .with_context(|| format!("failed to measure {}", wrapper.output.display()))?
-        .len();
     Ok(WrapperSummary {
         output: wrapper.output.to_path_buf(),
-        size,
         product_code,
         upgrade_code,
         install_directory,
@@ -1732,7 +1731,8 @@ mod tests {
         // does; a package Windows cannot read the summary of is not one it will
         // open at all.
         assert!(summary_text(&package, summary_property::REVISION)?.starts_with('{'));
-        assert!(summary.size > 0);
+        assert!(std::fs::metadata(&package)?.len() > 0);
+        assert_eq!(summary.output, package);
         Ok(())
     }
 

@@ -79,7 +79,7 @@ const SECTIONS: &[(&str, &[&str])] = &[
         "advanced",
         &["silent_mode_support", "uninstall_mode_support"],
     ),
-    ("finalize", &["installer", "uninstaller"]),
+    ("finalize", &["installer", "uninstaller", "package"]),
 ];
 
 /// Tables whose keys the project itself chooses: `links` names its own URLs, and a layout opens
@@ -235,7 +235,7 @@ pub(super) fn audit(config: &Value) -> Result<()> {
                     audit_components(&path, entry, base_payload, &mut problems)
                 }
                 ("dependencies", "items") => audit_dependencies(&path, entry, &mut problems),
-                ("finalize", "installer" | "uninstaller") => {
+                ("finalize", "installer" | "uninstaller" | "package") => {
                     // A command that is not there would leave the author
                     // believing their setup is signed when it is not.
                     if entry.as_str().unwrap_or_default().trim().is_empty() {
