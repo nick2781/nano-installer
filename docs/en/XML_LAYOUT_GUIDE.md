@@ -484,7 +484,10 @@ bindings that read the same control pick up the new path immediately.
 ## Not implemented yet
 
 - Implicit minimum sizes beyond `min-width`/`min-height`, and `min-height` on a flow container.
-- Screen readers: controls expose no role or state to UI Automation or MSAA.
+- Screen readers: the window describes the page's controls over MSAA (role, name, value, state and
+  place for each of them), and announces focus, state, value and page changes on its own. It does not
+  announce progress while a task runs, it does not announce each character typed into a field, and it
+  does not serve a client that reaches it through `IDispatch` late binding.
 - The composition window is repositioned when focus or the caret moves, but not while the user is
   scrolling the page under an active composition.
 - An item's cross-axis size is still the container's extent unless the item declares one; there is

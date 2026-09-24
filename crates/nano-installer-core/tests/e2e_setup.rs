@@ -21,6 +21,7 @@ use anyhow::Context;
 use nano_installer_core::{
     build_project, build_project_with_progress, BuildRequest, BuildResult, PayloadFormat,
 };
+use windows::core::{Interface, VARIANT};
 use windows::Win32::Foundation::{BOOL, HANDLE, HWND, LPARAM, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     ClientToScreen, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC,
@@ -29,7 +30,12 @@ use windows::Win32::Graphics::Gdi::{
     DIB_RGB_COLORS, HDC, HGDIOBJ, SYS_COLOR_INDEX,
 };
 use windows::Win32::Storage::Xps::{PrintWindow, PRINT_WINDOW_FLAGS};
-use windows::Win32::System::Com::CoTaskMemFree;
+use windows::Win32::System::Com::{CoInitializeEx, CoTaskMemFree, COINIT_APARTMENTTHREADED};
+use windows::Win32::UI::Accessibility::{
+    AccessibleObjectFromWindow, IAccessible, SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK,
+    ROLE_SYSTEM_CHECKBUTTON, ROLE_SYSTEM_COMBOBOX, ROLE_SYSTEM_DIALOG, ROLE_SYSTEM_PUSHBUTTON,
+    ROLE_SYSTEM_RADIOBUTTON, ROLE_SYSTEM_TEXT, ROLE_SYSTEM_WINDOW, SELFLAG_TAKEFOCUS,
+};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     VIRTUAL_KEY, VK_DOWN, VK_ESCAPE, VK_RETURN, VK_SPACE, VK_TAB,
 };
@@ -37,14 +43,21 @@ use windows::Win32::UI::Shell::{
     FOLDERID_Desktop, FOLDERID_Programs, SHGetKnownFolderPath, KF_FLAG_DEFAULT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetClassNameW, GetClientRect, GetCursorInfo, GetCursorPos, GetForegroundWindow,
-    GetSystemMetrics, GetWindowRect, GetWindowThreadProcessId, IsWindow, IsWindowVisible,
-    LoadCursorW, PostMessageW, SetCursorPos, SetForegroundWindow, SetProcessDPIAware, SetWindowPos,
-    CURSORINFO, HCURSOR, HTCLIENT, HWND_NOTOPMOST, HWND_TOPMOST, IDC_ARROW, IDC_HAND, IDC_IBEAM,
-    SM_CYSCREEN, SPI_SETHIGHCONTRAST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, WM_CHAR, WM_CLOSE,
-    WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_SETCURSOR,
-    WM_SETTINGCHANGE,
+    DispatchMessageW, EnumWindows, GetClassNameW, GetClientRect, GetCursorInfo, GetCursorPos,
+    GetForegroundWindow, GetSystemMetrics, GetWindowRect, GetWindowThreadProcessId, IsWindow,
+    IsWindowVisible, LoadCursorW, PeekMessageW, PostMessageW, SetCursorPos, SetForegroundWindow,
+    SetProcessDPIAware, SetWindowPos, TranslateMessage, CURSORINFO, EVENT_OBJECT_FOCUS, HCURSOR,
+    HTCLIENT, HWND_NOTOPMOST, HWND_TOPMOST, IDC_ARROW, IDC_HAND, IDC_IBEAM, MSG, OBJID_CLIENT,
+    PM_REMOVE, SM_CYSCREEN, SPI_SETHIGHCONTRAST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    WINEVENT_OUTOFCONTEXT, WM_CHAR, WM_CLOSE, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP,
+    WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_SETCURSOR, WM_SETTINGCHANGE,
 };
+
+/// Accessibility states, spelled here the way `oleacc.h` declares them: a state
+/// is a field of bits, and a case looks at one at a time.
+const STATE_SYSTEM_CHECKED: u32 = 0x0000_0010;
+const STATE_SYSTEM_FOCUSED: u32 = 0x0000_0004;
+const STATE_SYSTEM_HASPOPUP: u32 = 0x4000_0000;
 
 /// The key Windows starts a program from at sign-in.
 const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
@@ -704,6 +717,51 @@ impl Fixture {
                 solid_png(4, 4, colour),
             )?;
         }
+        self.edit_config(|config| {
+            config["wizard"]["pages"] = serde_json::json!([
+                {"id": "config", "title": "Options", "layout": "layouts/configpage.xml"},
+                {"id": "second", "title": "Second", "layout": "layouts/secondpage.xml"}
+            ]);
+        })
+    }
+
+    /// Declares a page whose controls are every kind a client asks about.
+    ///
+    /// A field with the words that name it written above, a checkbox and two
+    /// radios of one group that carry their own words, a button, and the page
+    /// the button walks to. What each control is called is what a screen reader
+    /// reads out, so every one of them names words a case can look for, and the
+    /// field's name is not written on the field itself: a layout labels a field
+    /// beside it, and finding that is part of what is being tested.
+    fn accessibility_project(&self) -> anyhow::Result<()> {
+        std::fs::write(
+            self.project.join("layouts/configpage.xml"),
+            r##"<Page width="480" height="260" background="#FF101010">
+  <Label text="Your name" position="absolute" left="20" top="16" width="220" height="20" />
+  <TextInput id="name" position="absolute" left="20" top="40" width="220" height="24" />
+  <Checkbox id="terms" text="I accept the terms"
+            position="absolute" left="20" top="76" width="260" height="24" />
+  <RadioButton id="quick" group="mode" value="quick" text="Quick install"
+               position="absolute" left="20" top="108" width="220" height="24" />
+  <RadioButton id="custom" group="mode" value="custom" text="Custom install"
+               position="absolute" left="20" top="136" width="220" height="24" />
+  <Select id="channel" position="absolute" left="20" top="168" width="180" height="26"
+          background="#FF303030" color="#FFFFFFFF" popup-row-height="26" popup-padding="2"
+          popup-background="#FF42515E" popup-selected-background="#FF495A68"
+          popup-highlight-background="#FF7050B0">
+    <Option value="stable" text="Stable" />
+    <Option value="beta" text="Beta" />
+  </Select>
+  <Button id="next" action="next" text="Next"
+          position="absolute" left="20" top="200" width="120" height="30" />
+</Page>"##,
+        )?;
+        std::fs::write(
+            self.project.join("layouts/secondpage.xml"),
+            r##"<Page width="320" height="160" background="#FF202020">
+  <Label text="Second page" position="absolute" left="20" top="20" width="200" height="20" />
+</Page>"##,
+        )?;
         self.edit_config(|config| {
             config["wizard"]["pages"] = serde_json::json!([
                 {"id": "config", "title": "Options", "layout": "layouts/configpage.xml"},
@@ -5552,6 +5610,483 @@ fn wait_for_a_window(setup: &mut SetupGuard) -> anyhow::Result<Option<HWND>> {
     let _ = setup.wait();
     skip_missing_desktop(&reason)?;
     Ok(None)
+}
+
+/// Asks the wizard what it is showing, the way a screen reader does.
+///
+/// The client here is an ordinary one in another process, so this is the whole
+/// path a reader takes: the window answers `WM_GETOBJECT`, Windows marshals the
+/// object across, and every question after that is answered from the page the
+/// wizard is painting.
+fn screen_reader(window: HWND) -> anyhow::Result<IAccessible> {
+    // A client has to have joined an apartment to be handed a marshaled object.
+    let _ = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+    let mut raw: *mut core::ffi::c_void = std::ptr::null_mut();
+    unsafe {
+        AccessibleObjectFromWindow(
+            window,
+            OBJID_CLIENT.0 as u32,
+            &IAccessible::IID,
+            &mut raw as *mut *mut core::ffi::c_void,
+        )
+    }
+    .context("the wizard did not describe itself")?;
+    Ok(unsafe { IAccessible::from_raw(raw) })
+}
+
+/// One child of the object, named the way a client names it.
+fn child(id: i32) -> VARIANT {
+    VARIANT::from(id)
+}
+
+/// What a child is called, or nothing when the client was refused.
+fn accessible_name(object: &IAccessible, id: i32) -> String {
+    unsafe { object.get_accName(&child(id)) }
+        .map(|name| name.to_string())
+        .unwrap_or_default()
+}
+
+/// What a child holds, which for a field is its text and for a select the
+/// option it shows.
+fn accessible_value(object: &IAccessible, id: i32) -> String {
+    unsafe { object.get_accValue(&child(id)) }
+        .map(|value| value.to_string())
+        .unwrap_or_default()
+}
+
+/// What a child is, in the terms `oleacc.h` names.
+fn accessible_role(object: &IAccessible, id: i32) -> u32 {
+    let role = unsafe { object.get_accRole(&child(id)) }.expect("a child has a role");
+    u32::try_from(&role).unwrap_or_default()
+}
+
+/// What a child's state is, which is a field of bits.
+fn accessible_state(object: &IAccessible, id: i32) -> u32 {
+    let state = unsafe { object.get_accState(&child(id)) }.expect("a child has a state");
+    u32::try_from(&state).unwrap_or_default()
+}
+
+/// Where a child is on the screen, which is where a client draws its highlight.
+fn accessible_rect(object: &IAccessible, id: i32) -> (i32, i32, i32, i32) {
+    let (mut left, mut top, mut width, mut height) = (0, 0, 0, 0);
+    unsafe { object.accLocation(&mut left, &mut top, &mut width, &mut height, &child(id)) }
+        .expect("a child has a place on the page");
+    (left, top, width, height)
+}
+
+/// The child with the keyboard, or nothing while the page has not been walked.
+fn accessible_focus(object: &IAccessible) -> Option<i32> {
+    let focus = unsafe { object.accFocus() }.ok()?;
+    if focus.is_empty() {
+        return None;
+    }
+    i32::try_from(&focus).ok()
+}
+
+/// The child a point is over, in screen coordinates.
+fn accessible_hit(object: &IAccessible, x: i32, y: i32) -> Option<i32> {
+    let hit = unsafe { object.accHitTest(x, y) }.ok()?;
+    i32::try_from(&hit).ok()
+}
+
+/// Every child of the object, written out as a client reads it.
+///
+/// A case that fails on one control prints the whole page this way, because
+/// what a reader was told is the only thing worth seeing when it is wrong.
+fn accessible_children(object: &IAccessible, count: i32) -> Vec<String> {
+    (1..=count)
+        .map(|id| {
+            format!(
+                "#{id} role={} name={:?} value={:?} state={:#x} at={:?}",
+                accessible_role(object, id),
+                accessible_name(object, id),
+                accessible_value(object, id),
+                accessible_state(object, id),
+                accessible_rect(object, id),
+            )
+        })
+        .collect()
+}
+
+/// A screen reader that asks the wizard what it is showing is told about the
+/// page's controls: what each one is, what it is called, what it holds, where
+/// it sits, and which of them the keyboard is on.
+///
+/// The runtime paints every control itself, so a client that walks the window's
+/// children finds nothing: this is the only description of the page a reader
+/// can get, and a control the user can reach but a reader cannot name is a
+/// control that user cannot use.
+#[test]
+fn a_screen_reader_reads_the_page_the_wizard_is_showing() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.accessibility_project()?;
+    fixture.build()?;
+
+    let _ = unsafe { SetProcessDPIAware() };
+    let mut setup = SetupGuard::spawn(&fixture.setup)?;
+    let Some(window) = wait_for_a_window(&mut setup)? else {
+        return Ok(());
+    };
+
+    let object = screen_reader(window)?;
+    let count = unsafe { object.accChildCount() }.context("the page has controls")?;
+    assert_eq!(
+        count,
+        6,
+        "the page reads as {:#?}",
+        accessible_children(&object, count)
+    );
+
+    // The field is called by the words the layout wrote above it rather than by
+    // its id, and it holds nothing until the user types.
+    assert_eq!(accessible_role(&object, 1), ROLE_SYSTEM_TEXT);
+    assert_eq!(accessible_name(&object, 1), "Your name");
+    assert_eq!(accessible_value(&object, 1), "");
+
+    // The box carries its own words and is not filled in yet.
+    assert_eq!(accessible_role(&object, 2), ROLE_SYSTEM_CHECKBUTTON);
+    assert_eq!(accessible_name(&object, 2), "I accept the terms");
+    assert_eq!(accessible_state(&object, 2) & STATE_SYSTEM_CHECKED, 0);
+
+    // The radios are the two rows of one group, and neither is chosen yet.
+    assert_eq!(accessible_role(&object, 3), ROLE_SYSTEM_RADIOBUTTON);
+    assert_eq!(accessible_name(&object, 3), "Quick install");
+    assert_eq!(accessible_role(&object, 4), ROLE_SYSTEM_RADIOBUTTON);
+    assert_eq!(accessible_name(&object, 4), "Custom install");
+    assert_eq!(accessible_state(&object, 4) & STATE_SYSTEM_CHECKED, 0);
+
+    // The select shows one of its options, which is what a client reads as its
+    // value, and it says that a press opens a list.
+    assert_eq!(accessible_role(&object, 5), ROLE_SYSTEM_COMBOBOX);
+    assert_eq!(accessible_value(&object, 5), "Stable");
+    assert_ne!(accessible_state(&object, 5) & STATE_SYSTEM_HASPOPUP, 0);
+
+    // The button, and the window itself above it.
+    assert_eq!(accessible_role(&object, 6), ROLE_SYSTEM_PUSHBUTTON);
+    assert_eq!(accessible_name(&object, 6), "Next");
+    assert_eq!(accessible_role(&object, 0), ROLE_SYSTEM_WINDOW);
+    assert!(
+        !accessible_name(&object, 0).is_empty(),
+        "the window has no name of its own"
+    );
+
+    // Where a control is, as the screen coordinates a client draws its
+    // highlight at: the page is measured from the window's client corner.
+    let mut corner = POINT { x: 20, y: 108 };
+    unsafe { ClientToScreen(window, &mut corner) }.expect("the window has a screen position");
+    assert_eq!(accessible_rect(&object, 3), (corner.x, corner.y, 220, 24));
+
+    // A point over a control is that control, and a point on the page where
+    // nothing sits is the wizard.
+    assert_eq!(accessible_hit(&object, corner.x + 5, corner.y + 5), Some(3));
+    let mut empty = POINT { x: 450, y: 240 };
+    unsafe { ClientToScreen(window, &mut empty) }.expect("the window has a screen position");
+    assert_eq!(accessible_hit(&object, empty.x, empty.y), Some(0));
+
+    // Nothing has the keyboard yet, so nothing is announced as focused.
+    assert_eq!(accessible_focus(&object), None);
+
+    // Asking to take the focus is what a reader does when it wants a user to
+    // type into a field, and the field is then the one with the keyboard.
+    unsafe { object.accSelect(SELFLAG_TAKEFOCUS as i32, &child(1)) }
+        .expect("the field takes the focus");
+    assert_eq!(accessible_focus(&object), Some(1));
+    assert_ne!(accessible_state(&object, 1) & STATE_SYSTEM_FOCUSED, 0);
+
+    // A client asking for a control's default action works it the way a press
+    // does, and the box it pressed comes back filled in.
+    unsafe { object.accDoDefaultAction(&child(2)) }.expect("the box accepts its default action");
+    assert_ne!(
+        accessible_state(&object, 2) & STATE_SYSTEM_CHECKED,
+        0,
+        "the box a client pressed is still empty"
+    );
+
+    // The button walks to the page after this one, which declares nothing the
+    // keyboard can reach: the description follows the page rather than staying
+    // behind with the controls that are gone.
+    unsafe { object.accDoDefaultAction(&child(6)) }.expect("the button accepts its default action");
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut later = -1;
+    while Instant::now() < deadline {
+        later = unsafe { object.accChildCount() }.unwrap_or(-1);
+        if later == 0 {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(
+        later, 0,
+        "the description kept the controls of the page the wizard left"
+    );
+
+    let _ = setup.kill();
+    let _ = setup.wait();
+    Ok(())
+}
+
+/// A question the runtime draws over the page is what a client reads while it is
+/// up: the question itself, and the two answers beside it.
+///
+/// The page behind the card cannot be reached while it is up, so a description
+/// that still listed its controls would hand a user controls nothing answers.
+/// The words of the answers belong to the case, so what a client hears is
+/// checked word for word, and the answer a client presses is the answer the
+/// waiting script gets.
+#[test]
+fn a_question_over_the_page_is_what_a_screen_reader_reads() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.cancellable_project()?;
+    std::fs::write(
+        fixture.project.join("layouts/msgBox.xml"),
+        r##"<Page width="400" height="180" background="#FF2A3844">
+  <Label id="lblMsg" text="@ok" value-source="dialog:message"
+         position="absolute" left="20" top="20" width="360" height="60" wrap="true" />
+  <Button id="btnNo" action="dialog_cancel" visible-with="dismiss"
+          text="@cancel" value-source="dialog:dismiss"
+          position="absolute" left="40" top="120" width="140" height="36" />
+  <Button id="btnYes" action="dialog_ok"
+          text="@ok" value-source="dialog:accept"
+          position="absolute" left="220" top="120" width="140" height="36" />
+</Page>"##,
+    )?;
+    // The two answers say what the case looks for, and the question is the title
+    // the script asks with: a question a script asks answers with yes and no,
+    // which are the two keys its card reads.
+    std::fs::write(
+        fixture.project.join("locales/en-US.json"),
+        r#"{"yes": "Install now", "no": "Not now"}"#,
+    )?;
+    let title = format!("Nano question {}", fixture.id);
+    fixture.write_script(
+        "install.rhai",
+        &format!(
+            r#"
+            let install_path = get_install_path();
+            copy_uninstaller();
+            write_file(path_join(install_path, "E2eProbe.exe"), "app");
+            write_file(path_join(install_path, "asking.txt"), "asking");
+            let answered = ask_yes_no("{title}", "Install this product?");
+            write_file(path_join(install_path, "answer.txt"), answered.to_string());
+            "#
+        ),
+    )?;
+    fixture.build()?;
+
+    let _ = unsafe { SetProcessDPIAware() };
+    let mut setup = SetupGuard::spawn(&fixture.setup)?;
+    let Some(window) = wait_for_a_window(&mut setup)? else {
+        return Ok(());
+    };
+
+    // The centre of the install button the first page places: the script starts
+    // there and stops at the question it asks.
+    click_client_point(window, 620, 408);
+    let asking = wait_for_text(
+        &fixture.destination.join("asking.txt"),
+        "asking",
+        Instant::now() + Duration::from_secs(20),
+    );
+    assert_eq!(
+        asking.as_deref(),
+        Some("asking"),
+        "the script never reached the question it asks"
+    );
+
+    let object = screen_reader(window)?;
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut count = -1;
+    while Instant::now() < deadline {
+        count = unsafe { object.accChildCount() }.unwrap_or(-1);
+        if count == 2 {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(
+        count, 2,
+        "the page behind the question is still what a client reads"
+    );
+    assert_eq!(accessible_role(&object, 0), ROLE_SYSTEM_DIALOG);
+    // What the window is named by is the question the card draws, which is the
+    // title the script asked with and the words under it.
+    let question = accessible_name(&object, 0);
+    assert!(
+        question.starts_with(&title) && question.contains("Install this product?"),
+        "the window is not named by the question it is asking: {question:?}"
+    );
+    assert_eq!(accessible_role(&object, 1), ROLE_SYSTEM_PUSHBUTTON);
+    assert_eq!(accessible_name(&object, 1), "Not now");
+    assert_eq!(accessible_role(&object, 2), ROLE_SYSTEM_PUSHBUTTON);
+    assert_eq!(accessible_name(&object, 2), "Install now");
+
+    // Answering through the reader is answering the script: a client that asks
+    // for the button's default action presses the button the user would press.
+    unsafe { object.accDoDefaultAction(&child(2)) }.expect("the answer accepts its default action");
+    let answered = wait_for_text(
+        &fixture.destination.join("answer.txt"),
+        "true",
+        Instant::now() + Duration::from_secs(20),
+    );
+    assert_eq!(
+        answered.as_deref(),
+        Some("true"),
+        "the answer a client gave never reached the script"
+    );
+
+    // The card goes away with the answer, which is the page coming back.
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while Instant::now() < deadline {
+        if unsafe { object.accChildCount() }.unwrap_or(-1) != 2 {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let _ = setup.kill();
+    let _ = setup.wait();
+    Ok(())
+}
+
+/// The focus events a client listening for them has heard.
+///
+/// The callback runs on the thread that installed the hook, while the case
+/// below pumps that thread's message queue.
+static HEARD: Mutex<Vec<i32>> = Mutex::new(Vec::new());
+
+/// The window the case is listening for, as the integer a static can hold.
+static LISTENED_WINDOW: AtomicUsize = AtomicUsize::new(0);
+
+/// What a listening client hears: the focus events the wizard announced for the
+/// window the case is watching.
+unsafe extern "system" fn heard_focus(
+    _hook: HWINEVENTHOOK,
+    event: u32,
+    window: HWND,
+    object: i32,
+    child: i32,
+    _thread: u32,
+    _time: u32,
+) {
+    // A hook installed for one process still sees every window that process
+    // owns, so the window is what says the event belongs to this run.
+    if event != EVENT_OBJECT_FOCUS
+        || object != OBJID_CLIENT.0
+        || window.0 as usize != LISTENED_WINDOW.load(Ordering::SeqCst)
+    {
+        return;
+    }
+    if let Ok(mut heard) = HEARD.lock() {
+        heard.push(child);
+    }
+}
+
+/// Pumps this thread's messages until the client has heard `wanted` events.
+///
+/// An out-of-context hook is delivered by posting to the thread that installed
+/// it, so waiting for one is waiting for that thread's queue to be read.
+fn pump_until_heard(wanted: usize, deadline: Instant) -> Vec<i32> {
+    let mut message = MSG::default();
+    while Instant::now() < deadline {
+        while unsafe { PeekMessageW(&mut message, None, 0, 0, PM_REMOVE) }.as_bool() {
+            let _ = unsafe { TranslateMessage(&message) };
+            unsafe { DispatchMessageW(&message) };
+        }
+        {
+            let heard = HEARD.lock().unwrap_or_else(|error| error.into_inner());
+            if heard.len() >= wanted {
+                return heard.clone();
+            }
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    HEARD
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .clone()
+}
+
+/// A user who cannot see the page is told where the keyboard went, without
+/// having to ask: the wizard announces the focus the way a control with a
+/// window class does, and a reader that only answered questions would leave the
+/// user guessing.
+///
+/// The client here is an ordinary one in another process, listening for the
+/// events Windows delivers to it rather than reading the page back.
+#[test]
+fn the_keyboard_moving_is_what_a_screen_reader_hears() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.accessibility_project()?;
+    fixture.build()?;
+
+    let _ = unsafe { SetProcessDPIAware() };
+    let mut setup = SetupGuard::spawn(&fixture.setup)?;
+    let Some(window) = wait_for_a_window(&mut setup)? else {
+        return Ok(());
+    };
+
+    HEARD
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .clear();
+    LISTENED_WINDOW.store(window.0 as usize, Ordering::SeqCst);
+    // The hook is told which process to listen to, so the case hears the wizard
+    // and nothing else on the machine.
+    let hook = unsafe {
+        SetWinEventHook(
+            EVENT_OBJECT_FOCUS,
+            EVENT_OBJECT_FOCUS,
+            None,
+            Some(heard_focus),
+            setup.id(),
+            0,
+            WINEVENT_OUTOFCONTEXT,
+        )
+    };
+    if hook.is_invalid() {
+        let _ = setup.kill();
+        let _ = setup.wait();
+        anyhow::bail!("the case could not listen for what the wizard announces");
+    }
+
+    // The first Tab lands on the field, and the wizard says so: the client
+    // hears the number of the control the keyboard reached.
+    let deadline = Instant::now() + Duration::from_secs(20);
+    press_key(window, VK_TAB);
+    let heard = pump_until_heard(1, deadline);
+    assert_eq!(
+        heard,
+        vec![1],
+        "the wizard did not announce the control the keyboard reached"
+    );
+
+    // The page itself agrees about where the keyboard is.
+    let object = screen_reader(window)?;
+    assert_eq!(accessible_focus(&object), Some(1));
+
+    // And the next Tab is announced in its turn: a reader hears every move
+    // rather than the first one only.
+    press_key(window, VK_TAB);
+    let heard = pump_until_heard(2, deadline);
+    assert_eq!(
+        heard,
+        vec![1, 2],
+        "the second move of the keyboard was not announced"
+    );
+    assert_eq!(accessible_focus(&object), Some(2));
+
+    let _ = unsafe { UnhookWinEvent(hook) };
+    let _ = setup.kill();
+    let _ = setup.wait();
+    Ok(())
 }
 
 /// A machine whose user has high contrast on gets the scheme that user picked

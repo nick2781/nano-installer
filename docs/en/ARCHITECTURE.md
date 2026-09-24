@@ -55,6 +55,18 @@ double-buffered painting, dragging, minimize, and close. Pages move with `action
 where to go -- a hook is given read-only primitives only -- and Back retraces the pages the user
 really visited.
 
+**Screen readers.** The runtime paints every control itself, so the window owns no child window a
+client could walk: the window answers the one question Windows asks about it. A `WM_GETOBJECT` for
+the client area is answered with an `IAccessible` handed out through `LresultFromObject`, which COM
+marshals into the client's own process. What a reader gets back is the page as it is now, in the
+order the layout recorded the controls: role, name (the words the layout wrote -- a text field is
+named by the label above it, a select by the option it shows), value, state, and screen coordinates,
+and asking for a control's default action runs the same action a press runs. The window announces
+focus moves, state and value changes, and page changes on its own, and while a dialog is up the tree
+becomes the card's two answers and the window is named by the question. The bridge lives in
+`crates/nano-installer-core/src/accessibility.rs` and builds its description from the runtime's
+shared state on every call, so there is no second table to keep in step with the page.
+
 **Questions and notices.** The setup never hands a question or a notice to a system message box.
 Anything the user has to answer, such as the close confirmation, and anything they have to
 acknowledge, is drawn inside the window from the layout named by `ui.dialog_layout`. A dialog is an

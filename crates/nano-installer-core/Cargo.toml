@@ -18,10 +18,16 @@ rhai.workspace = true
 # An update package carries only the files that changed, and the builder
 # writes them itself so a project does not have to archive anything by hand.
 zip.workspace = true
+# The `implement` macro the accessibility object is built with writes its own
+# paths against `windows_core`, so that crate has to be nameable here.
+windows-core = "0.58"
 
 [dependencies.windows]
 version = "0.58"
 features = [
+    # A screen reader asks the wizard what it is showing through `IAccessible`,
+    # which the runtime implements, so the COM side of the bindings is needed.
+    "implement",
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
     "Win32_Graphics_Imaging",

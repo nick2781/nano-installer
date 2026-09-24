@@ -23,6 +23,8 @@ Rust doc comment，再退回用例名。
 | `a_cancelled_install_gives_up_after_the_script_and_undoes_what_it_wrote` | 脚本自己注意到取消、结束长步骤并正常返回后，运行时在脚本之后的检查点停下，报 `cancelled by the user`，脚本写下的目录一并撤回。 |
 | `a_changed_or_new_file_travels_in_the_update` | 内容变了的文件和这一版才有的新文件都随更新包一起走：一个不多，一个不少。 |
 | `a_click_on_a_radio_is_the_value_the_install_waits_for` | 在真实窗口里点单选按钮：安装键等的是被点中那一行的取值。先点安装键没反应；点亮版面默认选中的那一行再点安装，仍然没反应；改点另一行再点安装，窗口切到任务页，产品装进配置指定的目录。版面级用例只证明点击会变成一个动作，这条证明窗口真的记下了被点的是哪一行。 |
+| `a_client_names_a_child_with_what_it_is_told_to` | 客户程序用数字指名一个控件、用空变体指名窗口本身，两者都读成它们各自的意思；指名一个「对象子项」时被拒绝，而不是被答成另一个控件——向导的控件都是简单子项，没有对象子项可给。 |
+| `a_control_is_reported_as_what_a_screen_reader_calls_it` | 版面记下的控件类型各自对应 `oleacc.h` 里的那个角色：按钮、链接、复选框、单选按钮、下拉框、输入框，客户端读到的必须是这几个，读错了念出来的东西就不对。 |
 | `a_closed_language_select_draws_its_arrow_over_its_fill_and_outline` | 收起的 `Select` 由底色、描边和箭头三层组成，箭头从远端边向内缩一段并垂直居中，跟着显示缩放一起变大；收起时画向下的那张，展开时画向上的那张。 |
 | `a_component_project_is_refused_an_update_package` | 内容切成组件的工程做不出更新包：没有一个归档可以拿来比对，构建时当场拒绝并让人照旧发完整安装包，拒绝之后一个安装包文件都不留。 |
 | `a_configured_percent_path_is_expanded_and_used` | 配置里带 `%LOCALAPPDATA%` 的路径必须先展开再用，没展开的路径不是绝对路径，安装会拒绝相对目录。这条用例完全不带 `--dir` 运行，等同于静默运行里没有指定目录的情况。 |
@@ -102,6 +104,7 @@ Rust doc comment，再退回用例名。
 | `a_project_without_silent_support_refuses_a_windowless_install` | 从没声明支持静默安装的工程必须拒绝无窗口运行，而不是照样无人值守地装下去。 |
 | `a_project_without_silent_support_refuses_a_windowless_uninstall` | 卸载一个从没声明支持静默的工程会被拒绝，产品不能靠作者没同意过的开关被无人值守地删掉。 |
 | `a_question_a_script_asks_is_drawn_with_both_of_its_answers` | 脚本提出的问题带着两个答案一起画出来：卡片上同时有确认和取消两个按钮各自的位置，问题正文和 `yes`/`no` 两个标签都用传给脚本调用的那几个词。`ask_yes_no` 要等一个答案，只有一个按钮的卡片会让脚本永远拿不到另一种回答。 |
+| `a_question_over_the_page_is_what_a_screen_reader_reads` | 真窗口里脚本问出问题、卡片画在页面上时，另一个进程里的客户程序读到的是这张卡片而不是被它盖住的页面：清单上只有两个按钮（`yes`/`no` 两个键写的那两句词），窗口自己的角色变成对话框、名字就是卡片上那句提问；客户程序对其中一个按钮执行默认动作，就等同于用户点下它——等着的脚本拿到 `true`；答完卡片消失，清单回到页面。 |
 | `a_radio_group_holds_one_value_at_a_time` | 单选按钮按组记值：版面用 `checked="true"` 标出起始选中的一行，点任意一行就为整组记下那一行的值，选中图和旁边按钮的可用状态跟着换，一组任何时刻只有一行是选中的。 |
 | `a_readonly_field_shows_its_value_without_taking_edits` | `readonly="true"` 的输入框仍然把值画出来，但不接受键入，也不会被记成可编辑字段；`readonly="false"` 则照常可编辑。 |
 | `a_registry_key_names_the_view_it_is_read_in` | 键名能指名 64 位 Windows 里的哪一份拷贝：`HKLM64\SOFTWARE\Microsoft` 换成 `HKLM32` 时视图跟着换，不写后缀就用当前进程所属的那份，`HKLM65` 这种既不是根键也不是视图的名字会被拒绝——要交给独立进程卸载程序的注册表路径正因此不接受视图后缀。本机若装着只在 32 位视图里登记的软件（用例按候选名单一个个去试），它的键就只在那份拷贝里读得到、另一份里读不到；没有这种软件的机器只有一份拷贝，没什么可分。写进带视图后缀那个键的值，用同一个名字读得回来，也删得掉。 |
@@ -109,6 +112,7 @@ Rust doc comment，再退回用例名。
 | `a_run_without_any_install_path_is_refused` | 命令行和配置都没有给出目录可供退而求其次，这次运行会停下，并在提示里点明提供安装路径的两条途径。 |
 | `a_running_build_refuses_a_second_one` | 正在跑的构建会拒绝第二个打包任务。有任务在跑时按钮是禁用的，这条用例就是按钮背后那道检查：同时开两个会把同一个输出文件写坏。 |
 | `a_running_script_sees_the_cancel_request` | 任务运行中脚本里的 `is_cancelled()` 会变成 `true`：用例像窗口那样从另一个线程在 50 毫秒后提出取消，脚本的等待循环随即退出，并报出自己等了多久。 |
+| `a_screen_reader_reads_the_page_the_wizard_is_showing` | 另一个进程里的客户程序向真窗口要这份描述，拿到的是这一页本身：字段（名字取它上方那行字、取值为空）、复选框（名字与未勾选的状态）、同一组的两个单选按钮（都还没选中）、下拉框（取值是它收起时显示的那一行，状态里带着能展开）、按钮，以及窗口自己；控件的屏幕坐标与页面上的位置一致，点上控件报出那个控件、点在空处报出窗口；客户程序请求把键盘交给字段时焦点确实落到字段上，请求执行复选框的默认动作时它被勾上；按过按钮之后向导翻到下一页，而下一页没有键盘能到达的控件，描述跟着页面变成空的。 |
 | `a_script_asks_the_machine_about_the_dependencies_the_project_declares` | 脚本按工程自己的声明问两件事：机器上有没有（`dependency_installed`），没有就让运行时装上（`install_dependency`）。用例把两条依赖分别摆成「有」和「没有」，已经有的那条什么都不用做就返回 `true`；没有的那条因为安装包里根本没带它的程序而返回 `false`，安装照常往下走。问一个工程没声明的名字同样是 `false`，并留下一条说明原因的错误。 |
 | `a_script_deletes_the_desktop_shortcut_and_the_start_menu_folder_it_created` | 卸载脚本用 `delete_desktop_shortcut` 和 `delete_start_menu_folder` 删掉安装时建的桌面快捷方式和开始菜单文件夹，两个原语各自报告自己删掉了东西，事后链接和文件夹都不在了。 |
 | `a_script_dialog_is_drawn_in_the_wizard` | 脚本的提示与提问画在向导窗口里，用的是产品自己的皮肤，点一下卡片就把答案交回正在等待的脚本。用例自己写了一份 400x180 的卡片版面，两个按钮摆到它点得到的位置：先证明卡片亮出来时脚本还停在原地（回答文件此刻不存在），再逐个点中卡片上的确认键，让 `ask_yes_no` 拿到答案、`show_message` 和 `show_error` 被收起，每答一次就检查脚本接下来写下的那个文件，最后窗口走到完成页。卡片要是像原来那样另开系统对话框，这些点就会落空。 |
@@ -326,6 +330,7 @@ Rust doc comment，再退回用例名。
 | `the_example_project_matches_the_schema` | 示例工程自己的配置也要过这张表：它是别人照抄的模板，不能带着没人读的键。 |
 | `the_example_projects_scripts_parse` | 两个示例工程的脚本至少得能解析：参考工程与从 NSIS 迁过来的那份都不会被任何用例真的跑起来，写坏一个括号只有等谁装上这个示例才会有人发现。 |
 | `the_focus_ring_is_drawn_over_the_control_the_keyboard_is_on` | 键盘停在哪个控件上，就在那个控件的矩形上画一层一像素的点状环：有环与没环的页面只差这一层，别处一个像素都不动；颜色是页面声明的那个，边缘隔一个像素一个点，控件中间留给自己。 |
+| `the_keyboard_moving_is_what_a_screen_reader_hears` | 另一个进程里的客户程序挂上焦点事件的钩子，只收这个安装包进程的事件：按一次 Tab，它听到向导报出键盘落在 1 号控件上，问窗口也答 1 号；再按一次 Tab，听到 2 号，问窗口答 2 号。看不见页面的用户靠的就是这一条——只知道主动去问的阅读器不会在键盘移动时开口。 |
 | `the_keyboard_walks_the_page_and_acts_on_what_it_reaches` | 在真窗口里只用键盘走一遍页面：Tab 按版面顺序落在第一个控件上，环画在它身上；空格翻掉环底下的复选框（窗口里那两幅状态图换了一张）；再 Tab 两次，环依次走到输入框和按钮；从最后一个控件再按一次 Tab，环绕回第一个；回到按钮上按 Enter，窗口切到按钮指的第二页（300×150）；第二页一个控件都没有，Tab 在那里什么也不改，窗口还在。往回走（Shift+Tab）由另一条用例守着：按键消息本身不带修饰键，这条用例只发按键，发不出按住的 Shift。 |
 | `the_language_menu_answers_to_the_keyboard` | 在真窗口里用键盘走一遍语言菜单：点一下控件把菜单展开，当前语言那一行标着记号；按一次下箭头，高亮落到下一行，而当前语言那行上的记号还在；按 Escape，菜单收起，页面回到展开之前的样子，一个像素都没变；再展开、再按下箭头、按 Enter，页面上的那句话换成另一种语言写的，而且除那句话和这个控件，别处都没有被重画。 |
 | `the_log_keeps_the_lines_the_view_scrolled_past` | 日志留着视图滚过去的那些行：保存日志写下的和全部复制复制的是同一份文本，导出的应该是整份日志，而不是面板一次能显示的那几行。用例把它填到远超一屏，检查每一行都还在、措辞没变、时间戳还是自己那个。 |

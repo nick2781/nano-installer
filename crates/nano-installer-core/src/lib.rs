@@ -1,6 +1,7 @@
 #[cfg(not(target_arch = "x86_64"))]
 compile_error!("nano-installer-native-x64 must be built for x86_64");
 
+mod accessibility;
 mod config;
 mod contrast;
 mod delta;
@@ -76,9 +77,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
     TranslateMessage, CS_HREDRAW, CS_VREDRAW, HTCAPTION, HTCLIENT, HWND_TOP, ICON_BIG, ICON_SMALL,
     IDC_ARROW, IDC_HAND, MB_ICONERROR, MB_OK, MSG, SWP_NOACTIVATE, SWP_NOZORDER, SW_MINIMIZE,
     SW_SHOW, SW_SHOWNORMAL, WM_CHAR, WM_CLOSE, WM_DESTROY, WM_DPICHANGED, WM_ERASEBKGND,
-    WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_NCLBUTTONDOWN,
-    WM_PAINT, WM_SETCURSOR, WM_SETICON, WM_SETTINGCHANGE, WM_SYSCOLORCHANGE, WM_THEMECHANGED,
-    WM_TIMER, WNDCLASSEXW, WS_EX_APPWINDOW, WS_POPUP,
+    WM_GETOBJECT, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL,
+    WM_NCLBUTTONDOWN, WM_PAINT, WM_SETCURSOR, WM_SETICON, WM_SETTINGCHANGE, WM_SYSCOLORCHANGE,
+    WM_THEMECHANGED, WM_TIMER, WNDCLASSEXW, WS_EX_APPWINDOW, WS_POPUP,
 };
 use windows::Win32::UI::WindowsAndMessaging::{SetCursor, IDC_IBEAM};
 
@@ -585,6 +586,13 @@ struct HoverRegion {
 /// control the page hid is not in the list at all.
 struct FocusRegion {
     id: String,
+    /// What the control is, so the accessibility bridge can tell a screen
+    /// reader whether the user has landed on a button, a box or a field.
+    kind: ControlKind,
+    /// The words the control shows, already translated. A screen reader reads
+    /// this as the name of the control; a field whose words live in a sibling
+    /// label leaves it empty and the bridge looks beside the field instead.
+    name: String,
     /// What activating this control does. A text field has none: a keystroke
     /// there is typing, which the caret already covers.
     action: Option<WindowAction>,
@@ -592,6 +600,21 @@ struct FocusRegion {
     top: i32,
     right: i32,
     bottom: i32,
+}
+
+/// What a control on a page is, in the terms a screen reader speaks.
+///
+/// The runtime draws every control itself, so there is no window class for a
+/// client to fall back on: this is the only place the shape of a control is
+/// written down, and `accessibility` turns it into an MSAA role.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ControlKind {
+    Button,
+    Link,
+    Checkbox,
+    Radio,
+    Select,
+    TextInput,
 }
 
 #[derive(Clone)]
@@ -3989,6 +4012,8 @@ fn push_action(
         if let Some(id) = node.attribute("id") {
             focus_regions.push(FocusRegion {
                 id: id.to_string(),
+                kind: control_kind(node, &action),
+                name: control_name(node, context),
                 action: Some(action.clone()),
                 left,
                 top,
@@ -4004,6 +4029,39 @@ fn push_action(
             bottom,
         });
     }
+}
+
+/// What a control on a page is, as the layout's own tags describe it.
+fn control_kind(node: roxmltree::Node<'_, '_>, action: &WindowAction) -> ControlKind {
+    if node.has_tag_name("Checkbox") {
+        ControlKind::Checkbox
+    } else if node.has_tag_name("RadioButton") {
+        ControlKind::Radio
+    } else if matches!(action, WindowAction::ToggleSelectMenu { .. }) {
+        // `switch_language` opens a select's menu, so it names a select too.
+        ControlKind::Select
+    } else if matches!(action, WindowAction::OpenLink(_)) {
+        ControlKind::Link
+    } else {
+        ControlKind::Button
+    }
+}
+
+/// The words a control draws, which is what a screen reader calls it.
+fn control_name(node: roxmltree::Node<'_, '_>, context: &LayoutContext<'_>) -> String {
+    if node.has_tag_name("TextInput") {
+        // A field's words are its value, and the bridge reads that as the
+        // value: its name is a label beside it, which is found where it sits.
+        return String::new();
+    }
+    if let Some((text, _)) = text_for_node(node, context.translations) {
+        return text;
+    }
+    if node.has_tag_name("Select") {
+        // A select draws the option it shows rather than words of its own.
+        return select_text(node, context).unwrap_or_default();
+    }
+    String::new()
 }
 
 /// Whether a text field holds a value the project accepts, and what to say
@@ -4579,6 +4637,11 @@ fn push_text_input(
     if !id.is_empty() {
         output.focus_regions.push(FocusRegion {
             id: id.clone(),
+            kind: ControlKind::TextInput,
+            // A field's words are a label beside it, which the bridge finds by
+            // looking where the field sits; what a field *holds* is its value,
+            // not its name, and a screen reader has to hear the two apart.
+            name: String::new(),
             action: None,
             left: rect.left,
             top: rect.top,
@@ -6961,6 +7024,11 @@ fn run_window(client_width: i32, client_height: i32) -> Result<()> {
         .map(|state| HSTRING::from(state.ui.product_name.clone()))
         .unwrap_or_else(|| HSTRING::from("nano-installer"));
     unsafe {
+        // The accessibility object this window hands a screen reader is
+        // marshaled by COM, which the thread it is asked on has to have joined.
+        // The apartment lives as long as the window and its message loop, which
+        // is this whole function, so the reference is never given back.
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         let module = GetModuleHandleW(None)?;
         let instance = HINSTANCE(module.0);
         let class_name = w!("NanoInstallerNativeRuntime");
@@ -7264,6 +7332,12 @@ unsafe extern "system" fn window_proc(
 ) -> LRESULT {
     match message {
         WM_ERASEBKGND => LRESULT(1),
+        // A screen reader asks what the wizard is showing, and the answer is a
+        // reference Windows marshals into the client's own process.
+        WM_GETOBJECT => match accessibility::answer_get_object(window, wparam, lparam) {
+            Some(reference) => reference,
+            None => DefWindowProcW(window, message, wparam, lparam),
+        },
         WM_PAINT => {
             let mut paint = PAINTSTRUCT::default();
             let dc = BeginPaint(window, &mut paint);
@@ -8507,6 +8581,7 @@ unsafe fn handle_window_action(window: HWND, action: WindowAction) {
                 // yes: the wizard itself stays as it was either way.
                 answer_pending_dialog(true);
             }
+            accessibility::announce_page(window);
         }
         WindowAction::DialogCancel => {
             let kind = open_dialog_kind();
@@ -8516,6 +8591,7 @@ unsafe fn handle_window_action(window: HWND, action: WindowAction) {
                 // Escape and the dialog's own second button both mean no.
                 answer_pending_dialog(false);
             }
+            accessibility::announce_page(window);
         }
         WindowAction::Minimize => {
             let _ = ShowWindow(window, SW_MINIMIZE);
@@ -8549,11 +8625,15 @@ unsafe fn handle_window_action(window: HWND, action: WindowAction) {
             if let Err(error) = navigate_forward() {
                 show_runtime_error(&error);
             }
+            // Whatever page arrived is a different set of controls, which a
+            // client has to be told about before it asks about them.
+            accessibility::announce_page(window);
         }
         WindowAction::PreviousPage => {
             if let Err(error) = navigate_back() {
                 show_runtime_error(&error);
             }
+            accessibility::announce_page(window);
         }
         WindowAction::Install => install::start_install(),
         WindowAction::Uninstall => install::start_uninstall(),
@@ -8633,6 +8713,9 @@ unsafe fn set_focused_control(window: HWND, id: Option<String>) -> Result<()> {
     state.interaction.focused_control = id;
     rebuild_runtime_ui(&mut state)?;
     drop(state);
+    // A screen reader hears where the keyboard landed without asking, which is
+    // what a user who cannot see the ring needs.
+    accessibility::announce_focus(window);
     let _ = InvalidateRect(window, None, false);
     let _ = UpdateWindow(window);
     Ok(())
@@ -8863,11 +8946,14 @@ unsafe fn set_choice(window: HWND, id: String, value: String) -> Result<()> {
     let mut state = runtime
         .lock()
         .map_err(|_| anyhow::anyhow!("native UI state lock was poisoned"))?;
-    state.interaction.choices.insert(id, value);
+    state.interaction.choices.insert(id.clone(), value);
     state.open_select = None;
     state.interaction.highlighted_option = None;
     rebuild_runtime_ui(&mut state)?;
     drop(state);
+    // Every control that answers to the id -- a select, or a radio's whole
+    // group -- is what changed, so each of them is announced.
+    accessibility::announce_control(window, accessibility::ControlEvent::State, &id);
     let _ = InvalidateRect(window, None, false);
     let _ = UpdateWindow(window);
     Ok(())
@@ -8968,9 +9054,14 @@ unsafe fn set_checkbox_state(window: HWND, id: String, checked: bool) -> Result<
     let mut state = runtime
         .lock()
         .map_err(|_| anyhow::anyhow!("native UI state lock was poisoned"))?;
-    state.interaction.checkbox_states.insert(id, checked);
+    state
+        .interaction
+        .checkbox_states
+        .insert(id.clone(), checked);
     rebuild_runtime_ui(&mut state)?;
     drop(state);
+    // A box a client cannot see is one it hears about instead.
+    accessibility::announce_control(window, accessibility::ControlEvent::State, &id);
     let _ = InvalidateRect(window, None, false);
     let _ = UpdateWindow(window);
     Ok(())
@@ -8981,9 +9072,15 @@ unsafe fn set_text_input_value(window: HWND, id: String, value: String) -> Resul
     let mut state = runtime
         .lock()
         .map_err(|_| anyhow::anyhow!("native UI state lock was poisoned"))?;
-    state.interaction.text_input_values.insert(id, value);
+    state
+        .interaction
+        .text_input_values
+        .insert(id.clone(), value);
     rebuild_runtime_ui(&mut state)?;
     drop(state);
+    // A field filled in by something other than typing -- the folder picker,
+    // say -- has to say so, because no keystroke carries the change.
+    accessibility::announce_control(window, accessibility::ControlEvent::Value, &id);
     let _ = InvalidateRect(window, None, false);
     let _ = UpdateWindow(window);
     Ok(())
@@ -9208,6 +9305,9 @@ unsafe fn set_dialog(window: HWND, dialog: Option<DialogState>) -> Result<()> {
         state.interaction.focused_text_input = None;
         rebuild_runtime_ui(&mut state)?;
     }
+    // The page is replaced by the question and comes back afterwards, so what a
+    // client was told about is gone either way.
+    accessibility::announce_page(window);
     let _ = InvalidateRect(window, None, false);
     let _ = UpdateWindow(window);
     Ok(())
