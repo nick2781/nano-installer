@@ -61,6 +61,13 @@ when it is dispatched again, and the other job of the same wedged run is green, 
 force-cancels the in-progress and queued runs of the same branch before the build jobs start. It is
 allowed to fail: a cancel the API refuses must not turn a build that would be green into a red one.
 
+One more thing is worth knowing about a step that stops answering: the cache. A run that is cancelled
+never reaches the step that saves it, so the next run restores whatever was saved last -- and a save that
+was interrupted leaves a `target/` tree that cargo can stop on, which looks exactly like a suite that stops
+answering. The cache steps in `ci.yml` therefore carry `key: ci-v2`: a new key throws the old caches away,
+and it is the cheapest thing to try (the run after that key change finished its suite in 103 s, where the
+six runs before it never finished at all).
+
 The deadline inside `run_tests.ps1` and `run_e2e_setup.ps1` is what ends a step whose command never
 ends, and it lists the processes still alive before it takes the tree down, so a hang leaves a record
 of what it hung on. That list is read from the process table rather than from WMI: a
