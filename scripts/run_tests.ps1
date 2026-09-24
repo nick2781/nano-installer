@@ -120,23 +120,22 @@ function Invoke-NativeStep {
     $previous = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     try {
-        $start = New-Object System.Diagnostics.ProcessStartInfo
-        $start.FileName = "cmd.exe"
-        $start.Arguments = "/c `"$Command > `"$log`" 2>&1`""
-        # A console of its own: a child created with this step's own handles
-        # inherits this step's output, and so does everything it starts, so one
-        # process the command leaves behind holds the step open however the build
-        # agent is asked to end it. A command with a console of its own shares
-        # none of this step's output.
-        $start.UseShellExecute = $true
-        $start.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
-        $process = [System.Diagnostics.Process]::Start($start)
-        $finished = $true
-        if ($DeadlineMinutes -gt 0) {
-            $finished = $process.WaitForExit($DeadlineMinutes * 60 * 1000)
+        # A console of its own and no inherited handles: a build agent gives its
+        # step a pipe for output and calls the step finished when that pipe
+        # closes, so a process that inherits the pipe and outlives the command
+        # keeps the step open however the agent is asked to end it.
+        # scripts/step_job.ps1's launcher is what creates the process that way --
+        # `Start-Process` and `Process.Start` both hand the child every
+        # inheritable handle this process holds.
+        $process = [NanoStepCommand]::Start(
+            "cmd.exe /c `"$Command > `"$log`" 2>&1`"",
+            (Get-Location).ProviderPath)
+        try {
+            $finished = [NanoStepCommand]::Wait($process, $(if ($DeadlineMinutes -gt 0) { $DeadlineMinutes * 60 * 1000 } else { 0 }))
         }
-        else {
-            $process.WaitForExit()
+        catch {
+            [NanoStepCommand]::Release($process)
+            throw
         }
         if (-not $finished) {
             Write-Output "::error title=command deadline::$Command did not end within $DeadlineMinutes minute(s); what it wrote so far follows"
@@ -174,11 +173,12 @@ function Invoke-NativeStep {
             }
             # The tree is taken down with a deadline of its own: this branch
             # exists to end a step, so nothing in it may wait without one.
-            Stop-ProcessTree -ProcessId $process.Id
+            Stop-ProcessTree -ProcessId ([NanoStepCommand]::Id($process))
             Write-Output "everything this step started ends with it now, so the step can end and keep this log"
             exit 124
         }
-        $code = $process.ExitCode
+        $code = [NanoStepCommand]::ExitCode($process)
+        [NanoStepCommand]::Release($process)
     }
     finally {
         $ErrorActionPreference = $previous

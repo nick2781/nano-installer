@@ -70,6 +70,11 @@ end a wedged step became part of the wedge. Command lines, which only WMI has, a
 a pid, a name, a start time and a window title are enough to name a holder. The takedown itself is
 bounded too, in `Stop-ProcessTree`: `taskkill /T` waits on the very tree that may be holding
 everything up, so a tree it cannot finish off within two minutes is left to the job the step joined.
+Commands are started differently as well: `NanoStepCommand` in `scripts/step_job.ps1` creates the
+process with `CreateProcess` and a console of its own, and passes it **none** of this process's
+handles. A build agent gives its step a pipe for output and calls the step finished when that pipe
+closes, while `Process.Start` hands every inheritable handle to the child -- so one process that
+outlives the command would keep the step open however long it lives.
 
 Every job also runs `scripts/audit_test_targets.ps1`, which asks Cargo which packages the workspace
 has and fails if a `tests/*.rs` file sits outside all of them. A `tests/` directory next to the

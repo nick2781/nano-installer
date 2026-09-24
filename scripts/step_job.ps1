@@ -111,6 +111,167 @@ public static class NanoStepJob
 "@
 }
 
+if (-not ("NanoStepCommand" -as [type])) {
+    Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+
+public static class NanoStepCommand
+{
+    [StructLayout(LayoutKind.Sequential)]
+    private struct StartupInfo
+    {
+        public int Size;
+        public IntPtr Reserved;
+        public IntPtr Desktop;
+        public IntPtr Title;
+        public int X;
+        public int Y;
+        public int XSize;
+        public int YSize;
+        public int XCountChars;
+        public int YCountChars;
+        public int FillAttribute;
+        public int Flags;
+        public short ShowWindow;
+        public short Reserved2;
+        public IntPtr Reserved3;
+        public IntPtr StdInput;
+        public IntPtr StdOutput;
+        public IntPtr StdError;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ProcessInformation
+    {
+        public IntPtr Process;
+        public IntPtr Thread;
+        public int ProcessId;
+        public int ThreadId;
+    }
+
+    private const uint CreateNewConsole = 0x00000010;
+    private const uint StartfUseShowWindow = 0x00000001;
+    private const short SwHide = 0;
+    private const uint WaitTimeout = 0x00000102;
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool CreateProcessW(
+        string application,
+        string commandLine,
+        IntPtr processAttributes,
+        IntPtr threadAttributes,
+        bool inheritHandles,
+        uint creationFlags,
+        IntPtr environment,
+        string currentDirectory,
+        ref StartupInfo startupInfo,
+        out ProcessInformation processInformation);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern uint WaitForSingleObject(IntPtr handle, uint milliseconds);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GetExitCodeProcess(IntPtr process, out uint exitCode);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern int GetProcessId(IntPtr process);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool TerminateProcess(IntPtr process, uint exitCode);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool CloseHandle(IntPtr handle);
+
+    // Starts a command line with a console of its own and *without* handing this
+    // process's handles to it.
+    //
+    // That second part is the whole point. A build agent gives its step a pipe
+    // for standard output and standard error, and the step is finished when that
+    // pipe closes -- so every handle a descendant inherits is a chance for the
+    // step never to end: `Process.Start`, whichever of its two paths is used,
+    // creates the process with handle inheritance on, and one process that
+    // outlives the command then keeps the step's output open for as long as it
+    // lives. Measured on this machine with a grandchild living eight seconds:
+    // started the ordinary way, the caller's output stayed open 7.5 s after the
+    // step's own process had gone; started this way, it closed at once.
+    public static IntPtr Start(string commandLine, string currentDirectory)
+    {
+        StartupInfo startup = new StartupInfo();
+        startup.Size = Marshal.SizeOf(typeof(StartupInfo));
+        startup.Flags = (int)StartfUseShowWindow;
+        startup.ShowWindow = SwHide;
+        ProcessInformation information;
+        if (!CreateProcessW(null, commandLine, IntPtr.Zero, IntPtr.Zero, false, CreateNewConsole, IntPtr.Zero, currentDirectory, ref startup, out information))
+        {
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        }
+        CloseHandle(information.Thread);
+        return information.Process;
+    }
+
+    public static int Id(IntPtr process)
+    {
+        return GetProcessId(process);
+    }
+
+    // Waits for the command and says whether it ended within the deadline; a
+    // deadline of zero or less waits without one.
+    public static bool Wait(IntPtr process, int milliseconds)
+    {
+        uint waited = WaitForSingleObject(process, milliseconds <= 0 ? 0xFFFFFFFF : (uint)milliseconds);
+        if (waited == WaitTimeout)
+        {
+            return false;
+        }
+        if (waited != 0)
+        {
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        }
+        return true;
+    }
+
+    public static int ExitCode(IntPtr process)
+    {
+        uint code;
+        if (!GetExitCodeProcess(process, out code))
+        {
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        }
+        return unchecked((int)code);
+    }
+
+    public static void Kill(IntPtr process)
+    {
+        TerminateProcess(process, 1);
+    }
+
+    public static void Release(IntPtr process)
+    {
+        CloseHandle(process);
+    }
+}
+"@
+}
+
+# `Add-Type` starts a compiler the ordinary way -- with handle inheritance on --
+# so that compiler holds this step's output while it runs, and anything the
+# compiler leaves behind holds it afterwards. The two helpers the Microsoft
+# toolchain leaves running are the same kind of thing: a step is finished when its
+# output closes, so one of them outliving the step is a step that never ends. They
+# are caches that come back when a build wants them, so ending them here costs
+# nothing, and the runner ends the telemetry helper itself at the end of the job,
+# which is too late for the step that is waiting on it.
+foreach ($name in @("vctip", "mspdbsrv")) {
+    foreach ($row in @(Get-Process -Name $name -ErrorAction SilentlyContinue)) {
+        try {
+            Stop-Process -Id $row.Id -Force -ErrorAction SilentlyContinue
+        }
+        catch {
+        }
+    }
+}
+
 # The handle is kept for the whole life of the script: the job is over once the
 # last handle to it closes, and the process holding this one is the step itself.
 $script:StepJobHandle = [IntPtr]::Zero

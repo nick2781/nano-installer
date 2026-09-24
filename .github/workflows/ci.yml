@@ -193,19 +193,22 @@ jobs:
         run: |
           . .\scripts\step_job.ps1
           New-Item -ItemType Directory -Force -Path target | Out-Null
-          $start = New-Object System.Diagnostics.ProcessStartInfo
-          $start.FileName = "cmd.exe"
-          $start.Arguments = "/c `"powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build.ps1 > target\build.log 2>&1`""
-          $start.UseShellExecute = $true
-          $start.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
-          $process = [System.Diagnostics.Process]::Start($start)
-          if (-not $process.WaitForExit(30 * 60 * 1000)) {
+          # The launcher in scripts/step_job.ps1 creates the process with a
+          # console of its own and none of this step's handles, so a helper the
+          # linker leaves behind cannot hold this step's output open after the
+          # build has ended: a step is finished when its output closes.
+          $handle = [NanoStepCommand]::Start(
+            "cmd.exe /c `"powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build.ps1 > target\build.log 2>&1`"",
+            (Get-Location).ProviderPath)
+          if (-not [NanoStepCommand]::Wait($handle, 30 * 60 * 1000)) {
             Write-Output "the build did not end within 30 minute(s); what it wrote so far follows"
             Get-Content -LiteralPath target\build.log -Tail 60
-            foreach ($line in (& taskkill /PID $process.Id /T /F 2>&1)) { Write-Output "  | $line" }
+            foreach ($line in (& taskkill /PID ([NanoStepCommand]::Id($handle)) /T /F 2>&1)) { Write-Output "  | $line" }
+            [NanoStepCommand]::Release($handle)
             exit 1
           }
-          $code = $process.ExitCode
+          $code = [NanoStepCommand]::ExitCode($handle)
+          [NanoStepCommand]::Release($handle)
           Get-Content -LiteralPath target\build.log
           exit $code
 
