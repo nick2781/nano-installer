@@ -61,7 +61,11 @@ param(
         "cargo test --locked -p nano-installer-uninstaller",
         "cargo test --locked --workspace --doc"
     ),
-    [int]$SuiteDeadlineMinutes = 10
+    [int]$SuiteDeadlineMinutes = 10,
+    # A cold cache has to compile the whole dependency tree before the first test
+    # runs, and that is a build rather than a test: it gets the deadline a build
+    # gets, and the targets below keep theirs for what they are for.
+    [int]$WarmupDeadlineMinutes = 40
 )
 
 Set-StrictMode -Version Latest
@@ -383,6 +387,21 @@ Start-StepWatchdog -Minutes 25
 $commandText = $SuiteCommand -join "; "
 $printed = New-Object System.Collections.Generic.List[string]
 $code = 0
+# A cold cache is the one case the per-target deadline cannot tell apart from a
+# command that stopped answering. Building the workspace happens inside the first
+# target, and on a cache that has to compile the dependency tree it can take
+# longer than a deadline that exists to notice a hung test -- which is how a run
+# that merely started cold ends up in the deadline branch at its first command.
+# What the suite needs is built once here instead, under a deadline that is about
+# a build, so every target below is about running tests.
+Write-Phase "warm-up: building the workspace for the suite"
+$warmup = Invoke-NativeStep "cargo build --locked --workspace --tests" -DeadlineMinutes $WarmupDeadlineMinutes
+foreach ($line in @($warmup.Output)) {
+    $printed.Add($line)
+}
+if ($warmup.ExitCode -ne 0 -and $code -eq 0) {
+    $code = $warmup.ExitCode
+}
 foreach ($command in $SuiteCommand) {
     # Which target is running is the phase that matters most: a suite that stops
     # answering stops inside one of these, and this is what names it.
