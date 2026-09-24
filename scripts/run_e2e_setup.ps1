@@ -165,7 +165,16 @@ function Invoke-NativeStep {
     }
     $output = @()
     if (Test-Path -LiteralPath $log) {
-        $output = [System.IO.File]::ReadAllLines($log)
+        # The shell opens this file for the command, and the command's own
+        # children inherit that handle: one that outlives the command still holds
+        # the file open, so it is read with sharing allowed -- and a file that
+        # cannot be read at all says so instead of throwing the run away.
+        try {
+            $output = @(Get-CapturedTail -Path $log -Count ([int]::MaxValue))
+        }
+        catch {
+            $output = @("the command's output could not be read: $($_.Exception.Message)")
+        }
         Remove-Item -LiteralPath $log -Force -ErrorAction SilentlyContinue
     }
     return @{ Output = @($output | ForEach-Object { ConvertTo-ReportLine "$_" }); ExitCode = $code }

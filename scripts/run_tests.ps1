@@ -3,8 +3,13 @@
 
     The suite is every case the workspace holds: the core library's unit cases,
     the setup-level cases that build and run a real installer, the project
-    inspection, the visual builder, and the runtimes. Both reports keep the
-    commit, the toolchain, the command, the whole output, one row per target, one
+    inspection, the visual builder, and the runtimes. It is run one command per
+    target rather than as one command over the workspace, because a suite that
+    stops answering has to name what it stopped in: each command is bounded on its
+    own, and the one that never ended is the one the deadline branch prints, so the
+    log says which target it was instead of leaving a reader to guess. A command
+    that fails no longer hides the targets after it either. Both reports keep the
+    commit, the toolchain, the commands, the whole output, one row per target, one
     row per case -- and the page also points a target at the cases that ran in
     it, and lists every behaviour the coverage document promises with what this
     run ran for it -- and the totals in target/test-report.txt and
@@ -36,7 +41,8 @@
     that, so everything this script starts joins a job that ends with it, which
     scripts/step_job.ps1 sets up.
 
-    The exit code is cargo's own, so a caller can gate on it. Every phase sends
+    The exit code is the first command's own that did not succeed, so a caller can gate on it.
+    Every phase sends
     the build agent a notice with the time it was reached, so a step that never
     ends, and is therefore archived with no log, still says where it stopped.
 #>
@@ -44,8 +50,18 @@ param(
     [string]$Report = "target/test-report.txt",
     [string]$Snapshots = "target/setup-snapshots",
     [string]$Language = "zh-CN",
-    [string]$SuiteCommand = "cargo test --locked --workspace",
-    [int]$SuiteDeadlineMinutes = 15
+    [string[]]$SuiteCommand = @(
+        "cargo test --locked -p nano-installer-core --lib",
+        "cargo test --locked -p nano-installer-core --test e2e_setup",
+        "cargo test --locked -p nano-installer-core --test project_inspection",
+        "cargo test --locked -p nano-installer-gui",
+        "cargo test --locked -p nano-installer-native-cli",
+        "cargo test --locked -p nano-installer-stub-lzma",
+        "cargo test --locked -p nano-installer-stub-zlib",
+        "cargo test --locked -p nano-installer-uninstaller",
+        "cargo test --locked --workspace --doc"
+    ),
+    [int]$SuiteDeadlineMinutes = 10
 )
 
 Set-StrictMode -Version Latest
@@ -186,7 +202,16 @@ function Invoke-NativeStep {
     }
     $output = @()
     if (Test-Path -LiteralPath $log) {
-        $output = [System.IO.File]::ReadAllLines($log)
+        # The shell opens this file for the command, and the command's own
+        # children inherit that handle: one that outlives the command still holds
+        # the file open, so it is read with sharing allowed -- and a file that
+        # cannot be read at all says so instead of throwing the run away.
+        try {
+            $output = @(Get-CapturedTail -Path $log -Count ([int]::MaxValue))
+        }
+        catch {
+            $output = @("the command's output could not be read: $($_.Exception.Message)")
+        }
         Remove-Item -LiteralPath $log -Force -ErrorAction SilentlyContinue
     }
     return @{ Output = @($output | ForEach-Object { ConvertTo-ReportLine "$_" }); ExitCode = $code }
@@ -274,13 +299,26 @@ Write-Phase "script started"
 # A step that stops answering ends anyway: the watchdog is outside this process
 # and ends it once its deadline has passed. A step is finished when its output
 # closes, and a step that never answers never closes it, so nothing inside the
-# step can end it -- not the deadline below, not the runner's own timeouts.
-Start-StepWatchdog -Minutes ($SuiteDeadlineMinutes + 4)
-Write-Output (Get-ReportPhrase -Text $text -Key "console.runningsuite" -Values @($suiteCommand))
-$suite = Invoke-NativeStep $suiteCommand -DeadlineMinutes $SuiteDeadlineMinutes
+# step can end it -- not the deadline below, not the runner's own timeouts. Its
+# time is generous because it is about the step, not about one command: every
+# command below has a deadline of its own.
+Start-StepWatchdog -Minutes 25
+$commandText = $SuiteCommand -join "; "
+$printed = New-Object System.Collections.Generic.List[string]
+$code = 0
+foreach ($command in $SuiteCommand) {
+    Write-Output (Get-ReportPhrase -Text $text -Key "console.runningsuite" -Values @($command))
+    $part = Invoke-NativeStep $command -DeadlineMinutes $SuiteDeadlineMinutes
+    foreach ($line in @($part.Output)) {
+        $printed.Add($line)
+    }
+    if ($part.ExitCode -ne 0 -and $code -eq 0) {
+        $code = $part.ExitCode
+    }
+}
+$printed = @($printed)
 
-Write-Phase "suite finished with exit code $($suite.ExitCode) and $(@($suite.Output).Count) output line(s)"
-$printed = @($suite.Output)
+Write-Phase "suite finished with exit code $code and $($printed.Count) output line(s)"
 $summary = @($printed | Where-Object { $_ -like "test result:*" })
 $skipping = @($printed | Where-Object { $_ -like "skipping:*" })
 
@@ -293,8 +331,6 @@ foreach ($line in $summary) {
     if ($line -match "(\d+) ignored") { $ignored += [int]$Matches[1] }
 }
 
-$code = $suite.ExitCode
-
 $lines = New-Object System.Collections.Generic.List[string]
 $lines.Add((Get-ReportPhrase -Text $text -Key "text.title"))
 Add-ReportField -Lines $lines -Label (Get-ReportPhrase -Text $text -Key "text.runat") -Value $runAt
@@ -303,7 +339,7 @@ Add-ReportField -Lines $lines -Label (Get-ReportPhrase -Text $text -Key "text.to
 Add-ReportField -Lines $lines -Label (Get-ReportPhrase -Text $text -Key "text.rustc") -Value $rustcVersion
 Add-ReportField -Lines $lines -Label (Get-ReportPhrase -Text $text -Key "text.elevated") -Value $elevated
 $lines.Add("")
-$lines.Add("$ $suiteCommand")
+$lines.Add("$ $commandText")
 $lines.AddRange([string[]]$printed)
 $lines.Add("")
 $lines.Add((Get-ReportPhrase -Text $text -Key "text.results"))
@@ -519,7 +555,7 @@ $fields = @(
     @{ Label = (Get-ReportPhrase -Text $text -Key "text.toolchain"); Value = $toolchain },
     @{ Label = (Get-ReportPhrase -Text $text -Key "text.rustc"); Value = $rustcVersion },
     @{ Label = (Get-ReportPhrase -Text $text -Key "text.elevated"); Value = $elevated },
-    @{ Label = (Get-ReportPhrase -Text $text -Key "fields.command"); Value = $suiteCommand }
+    @{ Label = (Get-ReportPhrase -Text $text -Key "fields.command"); Value = $commandText }
 )
 $verdict = "passed"
 if ($failed -gt 0 -or $code -ne 0) { $verdict = "failed" }
@@ -561,7 +597,7 @@ Write-ReportHtml -Path $htmlPath -Title (Get-ReportPhrase -Text $text -Key "titl
     -Uncovered $coverageDocument.Uncovered `
     -CoverageIntro (Get-ReportPhrase -Text $text -Key "coverage.intro" -Values @($documentPath)) `
     -Images $images `
-    -Sections @(@{ Heading = (Get-ReportPhrase -Text $text -Key "output.heading"); Summary = "$ $suiteCommand"; Lines = $printed; Open = ($verdict -eq "failed") }) `
+    -Sections @(@{ Heading = (Get-ReportPhrase -Text $text -Key "output.heading"); Summary = "$ $commandText"; Lines = $printed; Open = ($verdict -eq "failed") }) `
     -Notes $notes.ToArray()
 
 Write-Phase "page written"

@@ -3,9 +3,10 @@
 Every behaviour the documentation promises, and the automated case that holds it. A row names the
 cases that fail when that behaviour breaks; a behaviour with no row is one nobody is checking.
 
-`cargo test --locked --workspace` runs 359 cases: 261 in the core library, 59 that build a real
-setup and run it, 5 that read a project the way the builder does, 32 in the visual builder, and 2
-in the extraction runtimes. The setup-level cases need real runtime executables built first, which
+`\scripts\run_tests.ps1` runs 359 cases, one command per target: 261 in the core library, 59 that
+build a real setup and run it, 5 that read a project the way the builder does, 32 in the visual
+builder, and 2 in the extraction runtimes. Every target has a deadline of its own, so a target that
+stops answering is named by the command that never ended instead of stopping the suite silently. The setup-level cases need real runtime executables built first, which
 is what `.\scripts\run_e2e_setup.ps1` does before it runs them and writes `target/e2e-report.txt`.
 
 ## What each layer can prove
