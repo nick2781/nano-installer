@@ -4414,7 +4414,12 @@ fn a_field_the_user_fills_in_is_what_lets_the_install_start() -> anyhow::Result<
     click_client_point(window, 90, 148);
     let started =
         wait_for_client_size(window, (500, 300), Instant::now() + Duration::from_secs(20));
-    let installed = wait_for_directory(&typed, Instant::now() + Duration::from_secs(20));
+    let installed = wait_for_directory(&typed, Instant::now() + Duration::from_secs(30));
+    // What the field held and what the page looked like, read while the window is
+    // still up: a case that fails here has to say whether every typed character
+    // arrived, because that is what the install used as its destination.
+    let held = accessible_field_value(window);
+    let described = describe_page(window);
     let _ = setup.kill();
     let _ = setup.wait();
 
@@ -4438,7 +4443,7 @@ fn a_field_the_user_fills_in_is_what_lets_the_install_start() -> anyhow::Result<
     );
     assert!(
         installed && typed.join("E2eProbe.exe").is_file(),
-        "the install did not write the product into the directory the field held"
+        "the install did not write the product into {destination:?}; the field held {held:?} and the page read as {described:#?}"
     );
     Ok(())
 }
@@ -4500,8 +4505,11 @@ fn a_click_on_a_radio_is_the_value_the_install_waits_for() -> anyhow::Result<()>
         wait_for_client_size(window, (500, 300), Instant::now() + Duration::from_secs(20));
     let installed = wait_for_directory(
         &fixture.destination,
-        Instant::now() + Duration::from_secs(20),
+        Instant::now() + Duration::from_secs(30),
     );
+    // Which row the page recorded, read while the window is still up: a case
+    // that fails here has to say whether the click that picks the value arrived.
+    let described = describe_page(window);
     let _ = setup.kill();
     let _ = setup.wait();
 
@@ -4525,7 +4533,8 @@ fn a_click_on_a_radio_is_the_value_the_install_waits_for() -> anyhow::Result<()>
     );
     assert!(
         installed && fixture.destination.join("E2eProbe.exe").is_file(),
-        "the install did not write the product into the configured directory"
+        "the install did not write the product into the configured directory {}; the page read as {described:#?}",
+        fixture.destination.display()
     );
     Ok(())
 }
@@ -5951,6 +5960,32 @@ fn a_question_over_the_page_is_what_a_screen_reader_reads() -> anyhow::Result<()
     let _ = setup.kill();
     let _ = setup.wait();
     Ok(())
+}
+
+/// The field a page is showing, as the value it holds, or nothing when the page
+/// could not be asked about.
+///
+/// A case that fails because an install went somewhere else has to say whether
+/// the input that decided where it went ever reached the page, and the page's own
+/// description is the only place that answer lives.
+fn accessible_field_value(window: HWND) -> Option<String> {
+    let object = screen_reader(window).ok()?;
+    let count = unsafe { object.accChildCount() }.unwrap_or(0);
+    (1..=count)
+        .filter(|id| accessible_role(&object, *id) == ROLE_SYSTEM_TEXT)
+        .map(|id| accessible_value(&object, id))
+        .find(|value| !value.is_empty())
+}
+
+/// The page as a client reads it, for a failure to print.
+fn describe_page(window: HWND) -> Vec<String> {
+    match screen_reader(window) {
+        Ok(object) => {
+            let count = unsafe { object.accChildCount() }.unwrap_or(0);
+            accessible_children(&object, count)
+        }
+        Err(error) => vec![format!("the page could not be read: {error}")],
+    }
 }
 
 /// The focus events a client listening for them has heard.
