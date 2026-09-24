@@ -202,9 +202,19 @@ function Invoke-NativeStep {
         }
         if (-not $finished) {
             Write-Output "::error title=command deadline::$Command did not end within $DeadlineMinutes minute(s); what it wrote so far follows"
-            foreach ($line in (Get-CapturedTail -Path $log -Count 40)) {
+            $tail = @(Get-CapturedTail -Path $log -Count 40)
+            foreach ($line in $tail) {
                 Write-Output "  | $line"
             }
+            # Everything printed above goes into a step log, and a step log is
+            # only archived once the step ends -- which is exactly what a command
+            # that left a process behind prevents. What the command said before it
+            # stopped is therefore also posted where it survives the run, and the
+            # last line it wrote is the one that matters: a test harness writes a
+            # test's name before running it and its verdict after, so the last
+            # line names the test that never answered.
+            $last = @($tail | Where-Object { $_.Trim() }) | Select-Object -Last 1
+            Update-PhaseStatus ("$Command stopped at: " + $(if ($last) { $last.Trim() } else { "nothing was written" }))
             # The command is taken down here rather than left to the job the step
             # joined, which is best effort -- scripts/step_job.ps1 says so and prints
             # which of the two happened. /T takes what the command started with it,
