@@ -114,9 +114,21 @@ the step is running, and posts both. Three contexts go out, so a wedged run leav
 `suite phase` (what the step said), `suite output` (the last line of the command it is running, which for
 a test harness is the name of the test that never answered) and `suite step` (whether the step's process
 is alive, how much processor time it has used, and how long it has been quiet). A machine that is gone
-posts nothing at all, and that silence is itself the finding; the posting itself uses `HttpClient`, whose
-timeout does cover the body, because this process has one job and losing it to the same defect would lose
-the record twice.
+posts nothing at all, and that silence is itself the finding; the posting itself waits at most ten
+seconds per report -- with the wait in this process's own hands rather than left to the client, because a
+request whose connection is black-holed can sit in a call that never returns however the client's timeout
+is set -- and the reports it gave up on are counted and named in the next one (`N post(s) unanswered`),
+so a machine whose network has gone says so instead of going quiet. The watcher was soaked here against a
+server that accepts every request and answers none: it ran to its own deadline, kept watching, and
+reported the losses.
+
+The library's unit cases now run one at a time (`-- --test-threads=1`). Five of the six runs that stopped
+answering stopped inside that target within seconds of it starting, and several of those cases touch the
+machine rather than a temporary directory -- one installs a service, one writes a machine-wide key, one
+asks whether this process may do either -- where the build job's step is elevated and a developer's plain
+run is not, which is why it cannot be reproduced here. With one thread the same target finished and the
+run was green. That is the suite not doing those things at once rather than a proof that the agent's
+condition is gone, so the `suite_command` input above stays for the next time it is looked at.
 
 The suite also reads the step's console quietly. `run_tests.ps1 -Quiet` is what the workflow runs: the
 console gets the verdict of each target and, when a target fails, the last of what it said, while the

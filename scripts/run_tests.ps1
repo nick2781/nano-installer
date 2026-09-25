@@ -51,7 +51,18 @@ param(
     [string]$Snapshots = "target/setup-snapshots",
     [string]$Language = "zh-CN",
     [string[]]$SuiteCommand = @(
-        "cargo test --locked -p nano-installer-core --lib",
+        # One case at a time, because several of these cases touch the machine
+        # rather than a temporary directory, and on the build agent they are
+        # elevated: one installs a service, one writes a machine-wide key, one
+        # asks whether this process may do either. Measured on the agent: with
+        # the default thread count this target is where every run that stopped
+        # answering stopped, within seconds of starting, five runs out of six --
+        # and with one thread the same target finished and the run was green. The
+        # mechanism is the agent's and not this repository's (the same commit on
+        # the same runner image was green hours earlier and stopped later), but
+        # what this repository can do about it is not to have those cases running
+        # at once.
+        "cargo test --locked -p nano-installer-core --lib -- --test-threads=1",
         # A case that leaves because this machine cannot run it says so on its
         # own output, which the test harness swallows unless it is asked not to
         # -- and a report that lists the cases it skipped has to be able to hear

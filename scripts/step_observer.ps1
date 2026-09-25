@@ -57,21 +57,9 @@ $repository = $env:GITHUB_REPOSITORY
 $sha = $env:GITHUB_SHA
 $api = if ($env:GITHUB_API_URL) { $env:GITHUB_API_URL } else { "https://api.github.com" }
 
-$client = $null
+$statusUrl = ""
+$runUrl = ""
 if ($token -and $repository -and $sha) {
-    $client = New-Object System.Net.Http.HttpClient
-    # A whole-request timeout, which is the one thing `Invoke-RestMethod` does not
-    # give: it is implemented on `HttpWebRequest`, whose `Timeout` covers getting
-    # the response and not reading its body, so a response that starts and never
-    # finishes is a call that never returns. Measured here against a server that
-    # writes its headers and then nothing: `-TimeoutSec 10` was still waiting
-    # after 45 s. `HttpClient.Timeout` covers the body as well.
-    $client.Timeout = [TimeSpan]::FromSeconds(10)
-    $client.DefaultRequestHeaders.Add("User-Agent", "nano-installer-step-observer")
-    $client.DefaultRequestHeaders.Add("Accept", "application/vnd.github+json")
-    $client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28")
-    $client.DefaultRequestHeaders.Authorization =
-        New-Object System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", $token)
     $statusUrl = "$api/repos/$repository/statuses/$sha"
     $runUrl = "$env:GITHUB_SERVER_URL/$repository/actions/runs/$env:GITHUB_RUN_ID"
 }
@@ -79,10 +67,21 @@ if ($token -and $repository -and $sha) {
 # One status per call, and every way it can fail is swallowed: this process has
 # one job, and a report that cannot be delivered is not a reason to stop
 # reporting.
+#
+# The wait is bounded here rather than left to the client, because a client's own
+# timeout is not a bound this code can rely on: a request whose connection is
+# black-holed can sit in a call that never returns however that timeout is set,
+# which is the defect that used to take the whole record down with the step. A
+# post that has not answered in its ten seconds is left where it is -- its socket
+# leaks, this process lives on to report the next one -- and counted, so the next
+# report says how many were lost, and a machine whose network has gone says so
+# instead of going quiet.
+$script:LostPosts = 0
+
 function Send-Report {
     param([string]$Context, [string]$Description)
 
-    if (-not $client) {
+    if (-not $statusUrl) {
         return
     }
     $body = @{
@@ -91,18 +90,37 @@ function Send-Report {
         description = $Description.Substring(0, [Math]::Min(140, $Description.Length))
         target_url  = $runUrl
     } | ConvertTo-Json -Compress
+    $client = New-Object System.Net.Http.HttpClient
+    $content = $null
     try {
+        $client.Timeout = [TimeSpan]::FromSeconds(10)
+        $client.DefaultRequestHeaders.Add("User-Agent", "nano-installer-step-observer")
+        $client.DefaultRequestHeaders.Add("Accept", "application/vnd.github+json")
+        $client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28")
+        $client.DefaultRequestHeaders.Authorization =
+            New-Object System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", $token)
         $content = New-Object System.Net.Http.StringContent($body, [System.Text.Encoding]::UTF8, "application/json")
-        try {
-            $response = $client.PostAsync($statusUrl, $content).GetAwaiter().GetResult()
-            $response.Dispose()
+        $posting = $client.PostAsync($statusUrl, $content)
+        if (-not $posting.Wait(10000)) {
+            $script:LostPosts = $script:LostPosts + 1
+            return
         }
-        finally {
-            $content.Dispose()
-        }
+        $response = $posting.Result
+        $response.Dispose()
     }
     catch {
-        return
+        $script:LostPosts = $script:LostPosts + 1
+    }
+    finally {
+        foreach ($disposable in @($content, $client)) {
+            if ($null -ne $disposable) {
+                try {
+                    $disposable.Dispose()
+                }
+                catch {
+                }
+            }
+        }
     }
 }
 
@@ -239,7 +257,11 @@ while ($true) {
                 $cpu = "unknown"
             }
             $quiet = [int]($now - $silentSince).TotalSeconds
-            Send-Report "suite step" ("pid {0} alive, cpu {1}, threads {2}, quiet {3}s" -f $process.Id, $cpu, $process.Threads.Count, $quiet)
+            $lost = ""
+            if ($script:LostPosts -gt 0) {
+                $lost = ", $script:LostPosts post(s) unanswered"
+            }
+            Send-Report "suite step" ("pid {0} alive, cpu {1}, threads {2}, quiet {3}s$lost" -f $process.Id, $cpu, $process.Threads.Count, $quiet)
         }
         $nextHealth = $now.AddSeconds(60)
     }
@@ -251,8 +273,4 @@ while ($true) {
     }
 
     Start-Sleep -Seconds 5
-}
-
-if ($client) {
-    $client.Dispose()
 }
