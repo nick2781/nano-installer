@@ -6208,27 +6208,16 @@ fn what_a_running_task_publishes_is_what_a_screen_reader_hears() -> anyhow::Resu
 /// A client reading the page while a field is edited does not take the wizard
 /// down with it.
 ///
-/// This is the reproduction of a crash that is not fixed yet. With a client
-/// connected, editing a field and then asking the wizard about the page again
-/// ends with the process killed by `0xc000041d`, which is what Windows reports
-/// when an exception escapes a callback it called. What is known so far:
-///
-/// - It needs an accessibility client: with nothing connected, the same keys and
-///   the same page leave the wizard running.
-/// - It needs the description to be handed out: a client that is given the
-///   window's own answer for `WM_GETOBJECT` is not killed by it.
-/// - It needs a field to be edited: connecting, asking, typing and asking again
-///   survives; clearing the field and asking again does not.
-/// - The last thing the wizard was doing is painting: the window's messages stop
-///   on `WM_PAINT`, and the paint reports the layers of the page that came back
-///   before the process ends.
-/// - No Rust panic is involved: a panic hook the runtime installed for the
-///   experiment wrote nothing, so the exception is raised inside native code.
-///
-/// Until it is understood, a case that expects the page after a field was edited
-/// cannot run, which is why this one is ignored rather than removed.
+/// This is what a crash looked like. With a client connected, filling a field in
+/// and then emptying it ended the process with `0xc000041d` -- the code Windows
+/// reports when an exception escapes a callback it called -- and the faulting
+/// instruction was inside `user32`'s `DrawTextW`, reached with a run of text that
+/// held no characters. That is what an empty field draws, since the field has the
+/// caret and holds nothing, and the pointer an empty buffer has is a dangling one
+/// that the text layout dereferences on its way through. Skipping the call for a
+/// run with nothing in it is the fix; this case is what would notice it coming
+/// back.
 #[test]
-#[ignore = "the wizard is killed with 0xc000041d while a client is connected and a field is edited; see the changelog's known limitations"]
 fn a_client_reading_the_page_does_not_take_the_wizard_down() -> anyhow::Result<()> {
     let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
         skip_missing_stubs()?;

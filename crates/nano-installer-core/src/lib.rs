@@ -9798,6 +9798,15 @@ unsafe fn draw_wrapped_text(destination: HDC, layer: &TextLayer) {
 }
 
 unsafe fn draw_positioned_run(destination: HDC, layer: &TextLayer, run: &PositionedRun) {
+    // Nothing to draw, and nothing that may be handed to Windows: a run with no
+    // characters is what an empty field draws, and the pointer an empty buffer
+    // has is a dangling one, which `DrawTextW` dereferences on its way to laying
+    // text out. That is a crash inside user32, and it is not a rare state: an
+    // empty field is the one every field starts in and the one clearing it
+    // leaves behind. The call is skipped rather than made with nothing.
+    if run.text.is_empty() {
+        return;
+    }
     if run.left >= layer.left + layer.width {
         return;
     }
