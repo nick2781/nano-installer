@@ -69,7 +69,8 @@ plain run never reaches those branches.
 One more thing is worth knowing about a step that stops answering: the cache. A run that is cancelled
 never reaches the step that saves it, so the next run restores whatever was saved last -- and a save that
 was interrupted leaves a `target/` tree that cargo can stop on, which looks exactly like a suite that stops
-answering. The cache steps in `ci.yml` therefore carry `key: ci-v2`: a new key throws the old caches away,
+answering. The cache steps in `ci.yml` therefore carry a versioned key that is bumped by hand (`ci-v3` at
+the time of writing): a new key throws the old caches away,
 and it is the cheapest thing to try (the run after that key change finished its suite in 103 s, where the
 six runs before it never finished at all).
 

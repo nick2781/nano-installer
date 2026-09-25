@@ -2003,6 +2003,13 @@ fn a_package_installs_the_product_the_setup_carries_and_removes_it_again() -> an
 
     let uninstall_log = fixture.case_path("package-uninstall.log");
     run_msiexec(&package, "/x", &[], &uninstall_log)?;
+    // The removal is what the product's own uninstaller does, and that happens
+    // while `msiexec` is still exiting: it copies itself out, waits for itself,
+    // and only then takes the directory. Asking whether the directory is gone
+    // the moment `msiexec` returns is asking a question that has not been
+    // answered yet -- which is how this case failed once, under the load of the
+    // whole suite, and passed alone in 13.6 s.
+    wait_for_removal(destination);
     assert!(
         !destination.exists(),
         "the product is still on disk after the package was removed"
@@ -2110,6 +2117,10 @@ fn a_package_released_again_on_the_same_day_replaces_what_it_installed() -> anyh
         &[],
         &fixture.case_path("rebuild-uninstall.log"),
     )?;
+    // For the same reason as the removal above: what the package removed is
+    // taken away by the product's own uninstaller, which is still running when
+    // `msiexec` returns.
+    wait_for_removal(&fixture.destination);
     assert!(
         !fixture.destination.exists(),
         "the product is still on disk after the package was removed"
@@ -2180,6 +2191,9 @@ fn a_newer_package_upgrades_the_product_the_older_one_installed() -> anyhow::Res
         &[],
         &fixture.case_path("second-uninstall.log"),
     )?;
+    // The product's own uninstaller does the removing, and it is still running
+    // when `msiexec` returns.
+    wait_for_removal(&fixture.destination);
     assert!(
         !fixture.destination.exists(),
         "the upgraded product is still on disk after the package was removed"
