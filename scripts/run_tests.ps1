@@ -78,10 +78,6 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-# How many phase posts were taken down for not answering. It is reported at the
-# end of the run, so a suite that lost phases is not read as one that had none.
-$script:CutShortPosts = 0
-
 # What the step prints is the verdict of each target rather than the whole of
 # every command: the report file this script writes is where the whole lives, and
 # the workflow that runs this as a step asks for that with -Quiet.
@@ -120,64 +116,7 @@ function Write-Phase {
 
     $stamp = (Get-Date).ToUniversalTime().ToString("HH:mm:ss")
     Write-Output "::notice title=suite phase::$stamp $Message"
-    Update-PhaseStatus "$stamp $Message"
-}
-
-# The commit status is a noticeboard rather than a verdict, so it is written as
-# a success whatever the suite is doing: its text is what a wedged run leaves
-# behind, and a status left pending would read as a check that never passed. The
-# verdict on the commit is the job's own conclusion.
-#
-# The post itself is made by scripts/post_status.ps1, in a process with a
-# deadline this one can enforce: a network call made here would be a call the
-# suite waits on, and the whole point of the record is to say where the suite
-# stopped rather than to be one more place it can stop. A post that does not
-# answer in its fifteen seconds is taken down and counted, so the run that lost
-# a phase says so instead of being one phase short with no explanation.
-function Update-PhaseStatus {
-    param([string]$Message)
-
-    # A local run has no token and nowhere to post, and needs none of this: the
-    # phases are already in front of whoever started it.
-    $token = $env:GH_TOKEN
-    $repository = $env:GITHUB_REPOSITORY
-    $sha = $env:GITHUB_SHA
-    if (-not $token -or -not $repository -or -not $sha) {
-        return
-    }
-    $api = if ($env:GITHUB_API_URL) { $env:GITHUB_API_URL } else { "https://api.github.com" }
-    $body = @{
-        state       = "success"
-        context     = "suite phase"
-        description = $Message.Substring(0, [Math]::Min(140, $Message.Length))
-        target_url  = "$env:GITHUB_SERVER_URL/$repository/actions/runs/$env:GITHUB_RUN_ID"
-    } | ConvertTo-Json -Compress
-    $path = Join-Path ([System.IO.Path]::GetTempPath()) ("nano-status-{0}.json" -f [guid]::NewGuid().ToString("n"))
-    [System.IO.File]::WriteAllText($path, $body, (New-Object System.Text.UTF8Encoding($false)))
-    $poster = Join-Path $PSScriptRoot "post_status.ps1"
-    # Every way this can go wrong is caught: the record of where the suite
-    # stopped is worth having, and it is never worth the suite.
-    $handle = [IntPtr]::Zero
-    try {
-        $handle = [NanoStepCommand]::Start(
-            "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$poster`" -Url `"$api/repos/$repository/statuses/$sha`" -BodyPath `"$path`"",
-            (Get-Location).ProviderPath)
-        if (-not [NanoStepCommand]::Wait($handle, 15000)) {
-            [NanoStepCommand]::Kill($handle)
-            $script:CutShortPosts = $script:CutShortPosts + 1
-            Write-Output "  | the phase did not post within 15 second(s) and was taken down"
-        }
-    }
-    catch {
-        $script:CutShortPosts = $script:CutShortPosts + 1
-        Write-Output ("  | the phase could not be posted: {0}" -f $_.Exception.Message)
-    }
-    finally {
-        if ($handle -ne [IntPtr]::Zero) {
-            [NanoStepCommand]::Release($handle)
-        }
-        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
-    }
+    Update-PhaseStatus $Message
 }
 
 # The command's output goes into a file the operating system opens for it, and
@@ -227,14 +166,22 @@ function Invoke-NativeStep {
         # `Process.Start` both hand the child every inheritable handle this process
         # holds, and the console a command of its own would need is one more thing
         # the step can stop inside.
+        # Where the command's output goes is written down before it is started:
+        # the watchdog posts that file's last line on its own, so a command that
+        # never answers is named in a commit status even though this process never
+        # comes back to say so. That the command started is written down after it
+        # has: a step whose last line is the one above stopped inside the launcher
+        # rather than inside the command.
+        Add-StepCrumb "log $log"
         $process = [NanoStepCommand]::Start(
             "cmd.exe /c `"$Command > `"$log`" 2>&1`"",
             (Get-Location).ProviderPath)
+        Update-PhaseStatus "started: $Command"
         try {
             # The wait is taken in slices, so a command that never ends can still
             # say what it is doing while it does not end: what it has written so
-            # far goes out as a commit status, and a commit status survives the
-            # step whose log does not.
+            # far is written down for the watchdog to post, and a commit status
+            # survives the step whose log does not.
             $deadline = if ($DeadlineMinutes -gt 0) { (Get-Date).AddMinutes($DeadlineMinutes) } else { $null }
             $began = Get-Date
             $finished = $false
@@ -248,14 +195,19 @@ function Invoke-NativeStep {
                     break
                 }
                 if ((Get-Date) -ge $next) {
-                    # Two posts, and the order is the point: the first says the
-                    # read is about to happen, so a run whose last status is that
+                    # Two lines, and the order is the point: the first says the
+                    # read is about to happen, so a step whose last line is that
                     # one stopped in the read and not in the run it was reading.
-                    # A target that has been running this long is the case worth
-                    # watching, so the extra post costs nothing that matters.
+                    # A command that has been running this long is the case worth
+                    # watching, so the extra line costs nothing that matters.
+                    #
+                    # What is read is the last line with anything in it. A file
+                    # whose last write ended in a newline ends in an empty line,
+                    # and "no output yet" for a command that has been writing for
+                    # a minute is a report of nothing.
                     $minutes = [int]((Get-Date) - $began).TotalMinutes
-                    Update-PhaseStatus ("$Command after $minutes minute(s): reading what it wrote")
-                    $line = @(Get-CapturedTail -Path $log -Count 1) | Select-Object -Last 1
+                    Update-PhaseStatus "$Command after $minutes minute(s): reading what it wrote"
+                    $line = @(Get-CapturedTail -Path $log -Count 5 | Where-Object { $_.Trim() }) | Select-Object -Last 1
                     Update-PhaseStatus ("$Command after $minutes minute(s): " + $(if ($line) { $line.Trim() } else { "no output yet" }))
                     $next = (Get-Date).AddSeconds(60)
                 }
@@ -318,6 +270,7 @@ function Invoke-NativeStep {
         }
         $code = [NanoStepCommand]::ExitCode($process)
         [NanoStepCommand]::Release($process)
+        Add-StepCrumb "exit $code $Command"
     }
     finally {
         $ErrorActionPreference = $previous
@@ -429,14 +382,18 @@ $elevated = Get-ReportPhrase -Text $text -Key $(if (Test-Elevated) { "elevated.y
 $commit = Get-CommitDescription
 $runAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 
-Write-Phase "script started"
 # A step that stops answering ends anyway: the watchdog is outside this process
 # and ends it once its deadline has passed. A step is finished when its output
 # closes, and a step that never answers never closes it, so nothing inside the
 # step can end it -- not the deadline below, not the runner's own timeouts. Its
 # time is generous because it is about the step, not about one command: every
 # command below has a deadline of its own.
+#
+# It goes first, before the first phase is written: it is what owns the file the
+# phases are written to and what posts them, so a phase written before it exists
+# would be a phase nobody ever hears.
 Start-StepWatchdog -Minutes 25
+Write-Phase "script started"
 $commandText = $SuiteCommand -join "; "
 $printed = New-Object System.Collections.Generic.List[string]
 $code = 0
@@ -492,11 +449,7 @@ foreach ($command in $SuiteCommand) {
 }
 $printed = @($printed)
 
-$lost = ""
-if ($script:CutShortPosts -gt 0) {
-    $lost = " ($script:CutShortPosts phase post(s) were taken down)"
-}
-Write-Phase "suite finished with exit code $code and $($printed.Count) output line(s)$lost"
+Write-Phase "suite finished with exit code $code and $($printed.Count) output line(s)"
 $summary = @($printed | Where-Object { $_ -like "test result:*" })
 $skipping = @($printed | Where-Object { $_ -like "skipping:*" })
 
@@ -519,10 +472,6 @@ Add-ReportField -Lines $lines -Label (Get-ReportPhrase -Text $text -Key "text.el
 $lines.Add("")
 $lines.Add("$ $commandText")
 $lines.AddRange([string[]]$printed)
-if ($script:CutShortPosts -gt 0) {
-    $lines.Add("")
-    $lines.Add("$script:CutShortPosts phase status post(s) did not answer within their deadline and were taken down.")
-}
 $lines.Add("")
 $lines.Add((Get-ReportPhrase -Text $text -Key "text.results"))
 if ($summary.Count -gt 0) {

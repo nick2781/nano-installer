@@ -107,9 +107,16 @@ function Invoke-NativeStep {
         # `Process.Start` both hand the child every inheritable handle this process
         # holds, and the console a command of its own would need is one more thing
         # the step can stop inside.
+        # Where the command's output goes is written down before it is started, and
+        # that it started is written down after: the watchdog posts the file's last
+        # line on its own, so a command that never answers is named in a commit
+        # status even though this process never comes back to say so, and a step
+        # whose last line is the one above stopped inside the launcher.
+        Add-StepCrumb "log $log"
         $process = [NanoStepCommand]::Start(
             "cmd.exe /c `"$Command > `"$log`" 2>&1`"",
             (Get-Location).ProviderPath)
+        Update-PhaseStatus "started: $Command"
         try {
             $finished = [NanoStepCommand]::Wait($process, $(if ($DeadlineMinutes -gt 0) { $DeadlineMinutes * 60 * 1000 } else { 0 }))
         }
@@ -159,6 +166,7 @@ function Invoke-NativeStep {
         }
         $code = [NanoStepCommand]::ExitCode($process)
         [NanoStepCommand]::Release($process)
+        Add-StepCrumb "exit $code $Command"
     }
     finally {
         $ErrorActionPreference = $previous

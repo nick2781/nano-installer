@@ -263,6 +263,11 @@ public static class NanoStepCommand
 # last handle to it closes, and the process holding this one is the step itself.
 $script:StepJobHandle = [IntPtr]::Zero
 
+# Where the step writes what it is doing, for the watchdog below to read. One
+# line at a time, appended before the thing that could block, so a step that
+# stops inside that thing has already said where it was.
+$script:StepCrumbPath = ""
+
 $job = [NanoStepJob]::Create()
 if ($job -eq [IntPtr]::Zero) {
     Write-Warning "step job: the system refused a job for this step, so a process it leaves behind can hold the step open"
@@ -276,7 +281,52 @@ else {
 }
 
 <#
-    Ends this step from outside it if the step is still there when its time is up.
+    Says what this step is doing, where a process outside the step can read it.
+
+    A local file append, and deliberately nothing else: the point of the record
+    is that it survives a step which stops answering, and a step cannot write a
+    commit status from inside a call that never returns. scripts/step_observer.ps1
+    reads these lines and posts them; this side only appends, so it can never be
+    the thing that blocks. A line naming a command's output file (`log <path>`)
+    is how the observer learns which file to tail.
+#>
+function Add-StepCrumb {
+    param([string]$Message)
+
+    if (-not $script:StepCrumbPath) {
+        return
+    }
+    try {
+        [System.IO.File]::AppendAllText($script:StepCrumbPath, $Message + "`r`n", (New-Object System.Text.UTF8Encoding($false)))
+    }
+    catch {
+        return
+    }
+}
+
+<#
+    Where a step is, written the way the watchdog above reads it.
+
+    It is deliberately not a commit status written from the step. Three runs of
+    this repository stopped at the first report a step made while a command was
+    running and never made another: a status written from inside a step is a
+    network call the step waits on, and Windows PowerShell implements
+    `Invoke-RestMethod` on `HttpWebRequest`, whose `Timeout` covers getting the
+    response and not reading its body -- measured here against a server that
+    writes its headers and then nothing, `-TimeoutSec 10` was still waiting after
+    45 s. The record of where a step stopped cannot be the reason it stopped, so
+    the record is a line the step appends to a file and the watchdog posts it.
+#>
+function Update-PhaseStatus {
+    param([string]$Message)
+
+    $stamp = (Get-Date).ToUniversalTime().ToString("HH:mm:ss")
+    Add-StepCrumb "$stamp $Message"
+}
+
+<#
+    Watches this step from outside it, and ends it if the step is still there
+    when its time is up.
 
     A step is finished when its output closes, and a step that stops answering
     never closes it: nothing on the runner's side reaches such a step, and the
@@ -285,27 +335,32 @@ else {
     anyway, so a step that stops answering costs its deadline and not the whole
     hour the agent would otherwise wait.
 
+    It also says what the step was doing when it stopped, which is the part the
+    step cannot do for itself: it reads the crumb file above and the output file
+    of the command the step is running, and posts both as commit statuses, which
+    the commit keeps whether the run ends or not. That is
+    scripts/step_observer.ps1's whole job, and it is where the posting lives
+    rather than here, so nothing the step calls has to reach the network.
+
     It is started with the launcher above, so it inherits none of this process's
     handles and cannot hold this step's output open itself; it is in the step's
     job, so it goes away with the step when the step ends on its own.
 #>
 function Start-StepWatchdog {
-    param([int]$Minutes, [int]$StepProcessId = $PID)
+    param([int]$Minutes, [int]$StepProcessId = $PID, [string]$CrumbPath = "")
 
-    $seconds = [Math]::Max(60, $Minutes * 60)
-    # The step's own process is not the only thing the agent waits for: it waits
-    # on the step's output as well, and a descendant that inherited a write of
-    # that output keeps it open after the step's process has gone -- which is a
-    # step that never ends, archives no log, and outlives every deadline on the
-    # runner's side. /T ends the tree, so the output closes and the step ends
-    # with the log that says where it stopped. Measured here, an ordinary kill of
-    # the step alone leaves the output open for as long as the descendant lives.
-    $body = "Start-Sleep -Seconds $seconds; if (Get-Process -Id $StepProcessId -ErrorAction SilentlyContinue) { & taskkill.exe /PID $StepProcessId /T /F | Out-Null }"
+    if (-not $CrumbPath) {
+        $CrumbPath = Join-Path ([System.IO.Path]::GetTempPath()) ("nano-step-{0}.crumbs" -f [guid]::NewGuid().ToString("n"))
+    }
+    $script:StepCrumbPath = $CrumbPath
+    New-Item -ItemType File -Force -Path $CrumbPath | Out-Null
+    $observer = Join-Path $PSScriptRoot "step_observer.ps1"
     $handle = [NanoStepCommand]::Start(
-        "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `"$body`"",
+        "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$observer`" -StepProcessId $StepProcessId -Minutes $Minutes -CrumbPath `"$CrumbPath`"",
         (Get-Location).ProviderPath)
     [NanoStepCommand]::Release($handle)
     Write-Output "step watchdog: this step ends in $Minutes minute(s) whether it answers or not"
+    Write-Output "step watchdog: it posts what the step writes to $CrumbPath as commit statuses, where the run has a token"
 }
 
 <#
