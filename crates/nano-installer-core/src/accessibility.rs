@@ -73,7 +73,9 @@ fn role_of(kind: ControlKind) -> u32 {
 fn live_role(kind: LiveRegionKind) -> u32 {
     match kind {
         LiveRegionKind::Progress => ROLE_SYSTEM_PROGRESSBAR,
-        LiveRegionKind::Status => ROLE_SYSTEM_STATICTEXT,
+        // The words a task publishes and the rule a field's value breaks are both
+        // lines of text: a client reads them out and says nothing else about them.
+        LiveRegionKind::Status | LiveRegionKind::Hint => ROLE_SYSTEM_STATICTEXT,
     }
 }
 
@@ -89,6 +91,9 @@ struct Control {
     /// keyboard or run what the control does, so a client's request lands on
     /// the same control the user sees.
     layout_id: Option<String>,
+    /// The field this element explains, for a hint: a client is told about the
+    /// rule a value breaks as that field's own description.
+    describes: Option<String>,
     role: u32,
     name: String,
     value: String,
@@ -139,6 +144,7 @@ fn dialog_controls(state: &RuntimeState) -> Vec<Control> {
         controls.push(Control {
             id: controls.len() as i32 + 1,
             layout_id: None,
+            describes: None,
             role: ROLE_SYSTEM_PUSHBUTTON,
             name,
             value: String::new(),
@@ -177,6 +183,7 @@ fn page_controls(state: &RuntimeState) -> Vec<Control> {
         let mut control = Control {
             id: controls.len() as i32 + 1,
             layout_id: Some(region.id.clone()),
+            describes: None,
             role: role_of(region.kind),
             name: region.name.clone(),
             value: String::new(),
@@ -233,17 +240,18 @@ fn page_controls(state: &RuntimeState) -> Vec<Control> {
         controls.push(Control {
             id: controls.len() as i32 + 1,
             layout_id: None,
+            describes: region.field.clone(),
             role: live_role(region.kind),
             // A bar's own words are the percentage it shows, which is the value
             // a client reads off it; the line of status words is the name, the
             // way any other static text on the page is.
             name: match region.kind {
-                LiveRegionKind::Status => region.text.clone(),
+                LiveRegionKind::Status | LiveRegionKind::Hint => region.text.clone(),
                 LiveRegionKind::Progress => String::new(),
             },
             value: match region.kind {
                 LiveRegionKind::Progress => region.text.clone(),
-                LiveRegionKind::Status => String::new(),
+                LiveRegionKind::Status | LiveRegionKind::Hint => String::new(),
             },
             focusable: false,
             focused: false,
@@ -451,15 +459,34 @@ pub(crate) unsafe fn announce_live(window: HWND) {
             NotifyWinEvent(EVENT_OBJECT_VALUECHANGE, window, OBJID_CLIENT.0, child);
         }
     }
+    // A field's value breaking a rule is what makes the button beside it inert,
+    // so the words that say which rule are announced the moment they appear: a
+    // user typing into a field cannot see the hint arrive. A hint that goes away
+    // is recorded without being announced, because there is nothing left to read.
+    if previous.hint != live.hint && live.hint.is_some() {
+        if let Some(child) = live_child(&state, LiveRegionKind::Hint) {
+            NotifyWinEvent(EVENT_OBJECT_NAMECHANGE, window, OBJID_CLIENT.0, child);
+            NotifyWinEvent(
+                EVENT_OBJECT_LIVEREGIONCHANGED,
+                window,
+                OBJID_CLIENT.0,
+                child,
+            );
+        }
+    }
 }
 
 /// What a page says about the task that is running, as the values a client is
 /// told about: the percentage a bar shows and the words a status line shows.
 fn live_values(state: &RuntimeState) -> AnnouncedLive {
+    announced_live_of(&state.ui)
+}
+
+/// What a page says about a task that is running, for the frame that is about to
+/// be shown to nobody in particular.
+pub(crate) fn announced_live_of(ui: &crate::RuntimeUi) -> AnnouncedLive {
     let text = |kind: LiveRegionKind| {
-        state
-            .ui
-            .live_regions
+        ui.live_regions
             .iter()
             .find(|region| region.kind == kind)
             .map(|region| region.text.clone())
@@ -467,6 +494,7 @@ fn live_values(state: &RuntimeState) -> AnnouncedLive {
     AnnouncedLive {
         progress: text(LiveRegionKind::Progress),
         status: text(LiveRegionKind::Status),
+        hint: text(LiveRegionKind::Hint),
     }
 }
 
@@ -615,11 +643,24 @@ impl IAccessible_Impl for WizardAccessible_Impl {
     }
 
     fn get_accDescription(&self, varchild: &VARIANT) -> windows::core::Result<BSTR> {
-        // A control's words are its name and what it holds is its value, so
-        // there is nothing further to say about one. A dialog's question is the
-        // window's name, and a page has no description of its own yet.
-        let _ = self.child(varchild)?;
-        Ok(BSTR::new())
+        // A control's words are its name and what it holds is its value. The one
+        // thing further a field has to say about itself is the rule its value
+        // breaks, which the page draws as a hint beside it: a client told only
+        // about the field would leave a user with a button that does nothing and
+        // no word about why.
+        let Some(control) = self.child(varchild)? else {
+            return Ok(BSTR::new());
+        };
+        let Some(id) = control.layout_id else {
+            return Ok(BSTR::new());
+        };
+        Ok(BSTR::from(
+            self.controls()
+                .into_iter()
+                .find(|hint| hint.describes.as_deref() == Some(id.as_str()))
+                .map(|hint| hint.name)
+                .unwrap_or_default(),
+        ))
     }
 
     fn get_accRole(&self, varchild: &VARIANT) -> windows::core::Result<VARIANT> {
@@ -953,5 +994,6 @@ mod tests {
         // says different things about a percentage and about a line of words.
         assert_eq!(live_role(LiveRegionKind::Progress), ROLE_SYSTEM_PROGRESSBAR);
         assert_eq!(live_role(LiveRegionKind::Status), ROLE_SYSTEM_STATICTEXT);
+        assert_eq!(live_role(LiveRegionKind::Hint), ROLE_SYSTEM_STATICTEXT);
     }
 }

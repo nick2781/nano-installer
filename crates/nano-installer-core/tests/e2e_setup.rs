@@ -412,7 +412,7 @@ impl Fixture {
         std::fs::write(
             self.project.join("layouts/configpage.xml"),
             r##"<Page width="720" height="450" background="#FF101010">
-  <TextInput id="editDir" required="true" required-message="@dir_needed"
+  <TextInput id="editDir" required="true" required-message="@dir_needed" min-length="5" min-length-message="@dir_short"
              position="absolute" left="20" top="40" width="400" height="26" />
   <Checkbox id="chkAgree" text="@agree" position="absolute" left="20" top="90" width="200" height="20" />
   <Button id="install" action="install" text="@install_button"
@@ -428,7 +428,7 @@ impl Fixture {
         )?;
         std::fs::write(
             self.project.join("locales/en-US.json"),
-            br#"{"dir_needed": "Choose a folder", "agree": "I agree", "install_button": "Install"}"#,
+            br#"{"dir_needed": "Choose a folder", "dir_short": "At least five characters", "agree": "I agree", "install_button": "Install"}"#,
         )?;
         self.edit_config(|config| {
             config["wizard"]["pages"] = serde_json::json!([
@@ -5764,6 +5764,21 @@ fn child_with_role(object: &IAccessible, role: u32) -> Option<i32> {
     (1..=count).find(|id| accessible_role(object, *id) == role)
 }
 
+/// What the page is telling the user about a value it will not accept, while it
+/// is telling them anything: the words of the hint it draws beside the field.
+fn accessible_hint(object: &IAccessible) -> Option<String> {
+    let hint = child_with_role(object, ROLE_SYSTEM_STATICTEXT)?;
+    let words = accessible_name(object, hint);
+    (!words.is_empty()).then_some(words)
+}
+
+/// What a client is told about a child beyond its name and its value.
+fn accessible_description(object: &IAccessible, id: i32) -> String {
+    unsafe { object.get_accDescription(&child(id)) }
+        .map(|text| text.to_string())
+        .unwrap_or_default()
+}
+
 /// Pumps this thread's messages until the client has heard `wanted` reports
 /// about the task that is running.
 fn pump_until_live(wanted: usize, deadline: Instant) -> Vec<(u32, i32)> {
@@ -6265,6 +6280,115 @@ fn a_client_reading_the_page_does_not_take_the_wizard_down() -> anyhow::Result<(
         after > 0,
         "the page a client reads after editing has no controls"
     );
+    Ok(())
+}
+
+/// A user who cannot see the page is told which rule their value breaks, which
+/// is the only thing that explains a button that does nothing.
+///
+/// The page draws the hint beside the field and nothing at all while the value is
+/// acceptable, so the case types a value that is too short, then one that is
+/// fine, and reads both off the page: a reader told about the hint only when it
+/// asked would leave the user typing into a dead button.
+#[test]
+fn the_rule_a_fields_value_breaks_is_what_a_screen_reader_hears() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.validated_project()?;
+    fixture.build()?;
+
+    let _ = unsafe { SetProcessDPIAware() };
+    let mut setup = SetupGuard::spawn(&fixture.setup)?;
+    let Some(window) = wait_for_a_window(&mut setup)? else {
+        return Ok(());
+    };
+
+    HEARD_LIVE
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .clear();
+    LISTENED_WINDOW.store(window.0 as usize, Ordering::SeqCst);
+    let hook = unsafe {
+        SetWinEventHook(
+            EVENT_OBJECT_NAMECHANGE,
+            EVENT_OBJECT_LIVEREGIONCHANGED,
+            None,
+            Some(heard_live),
+            setup.id(),
+            0,
+            WINEVENT_OUTOFCONTEXT,
+        )
+    };
+    if hook.is_invalid() {
+        let _ = setup.kill();
+        let _ = setup.wait();
+        anyhow::bail!("the case could not listen for what the wizard announces");
+    }
+
+    let object = screen_reader(window)?;
+    let field = child_with_role(&object, ROLE_SYSTEM_TEXT).expect("the page shows a field");
+    // The field starts empty and the project asks for it, so the hint is on the
+    // page before anything is typed -- drawn, and described against the field.
+    // Nothing on this page writes words beside the field, so it is named by the
+    // id its layout gave it, which is the fallback the description is built on.
+    assert_eq!(accessible_name(&object, field), "editDir");
+    assert_eq!(
+        accessible_hint(&object),
+        Some("Choose a folder".to_string())
+    );
+    assert_eq!(
+        accessible_description(&object, field),
+        "Choose a folder",
+        "the rule a value breaks is not part of what a client is told about the field"
+    );
+
+    // A value that breaks the other rule the page declares replaces the words, and
+    // the change is announced: nothing else says why the button is inert.
+    press_client_point(window, 220, 53);
+    type_client_text(window, "abc");
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while Instant::now() < deadline
+        && accessible_hint(&object) != Some("At least five characters".to_string())
+    {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(
+        accessible_hint(&object),
+        Some("At least five characters".to_string()),
+        "the page does not say which rule the value breaks; the field holds {:?}",
+        accessible_value(&object, field)
+    );
+    let hint = child_with_role(&object, ROLE_SYSTEM_STATICTEXT).expect("the hint is on the page");
+    let heard = pump_until_live(2, Instant::now() + Duration::from_secs(20));
+    assert!(
+        heard.contains(&(EVENT_OBJECT_NAMECHANGE, hint)),
+        "the rule the value broke was not announced: {heard:?}"
+    );
+    assert!(
+        heard.contains(&(EVENT_OBJECT_LIVEREGIONCHANGED, hint)),
+        "the rule the value broke was not announced as a live region: {heard:?}"
+    );
+
+    // And a value the project accepts takes the hint away, from the page and from
+    // the field's own description.
+    type_client_text(window, "defgh");
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while Instant::now() < deadline && accessible_hint(&object).is_some() {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(
+        accessible_hint(&object),
+        None,
+        "the hint stayed on the page after the value became acceptable; the field holds {:?}",
+        accessible_value(&object, field)
+    );
+    assert_eq!(accessible_description(&object, field), "");
+
+    let _ = unsafe { UnhookWinEvent(hook) };
+    let _ = setup.kill();
+    let _ = setup.wait();
     Ok(())
 }
 

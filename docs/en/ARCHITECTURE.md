@@ -66,7 +66,7 @@ focus moves, state and value changes, and page changes on its own, and while a d
 becomes the card's two answers and the window is named by the question. **While a task runs** there is
 no control left to reach, so what the task publishes and the bar beside it are described with the
 rest -- the bar's value being the percentage it draws -- and each change of either is announced as it
-happens: the status words as a live region, the bar as a value change. The bridge lives in
+happens: the status words as a live region, the bar as a value change. The hint a page shows when a field's value breaks a rule is part of the same description: it is the field's own description, and it is announced when it appears or changes to another rule. The frame the wizard opens on is recorded rather than announced -- it is what a reader finds when it asks, and a user can type before that frame has been drawn, so the baseline is taken when the window is built. The bridge lives in
 `crates/nano-installer-core/src/accessibility.rs` and builds its description from the runtime's
 shared state on every call, so there is no second table to keep in step with the page.
 

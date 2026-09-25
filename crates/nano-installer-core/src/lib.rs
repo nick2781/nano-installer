@@ -312,6 +312,10 @@ struct RuntimeState {
 struct AnnouncedLive {
     progress: Option<String>,
     status: Option<String>,
+    /// The rule a field's value breaks, while the page is showing one. A hint
+    /// that goes away is not announced: the field is acceptable now, and there is
+    /// nothing left to read.
+    hint: Option<String>,
 }
 
 #[derive(Clone, Copy)]
@@ -646,6 +650,10 @@ enum ControlKind {
 /// so they are described to a client and announced when they change.
 struct LiveRegion {
     kind: LiveRegionKind,
+    /// The field a hint explains, for the kind that has one: a hint belongs to
+    /// the field whose value broke a rule, and a client is told about it as that
+    /// field's own description.
+    field: Option<String>,
     /// The words it shows, or the percentage for a bar, already resolved.
     text: String,
     left: i32,
@@ -660,6 +668,8 @@ enum LiveRegionKind {
     Progress,
     /// What the task is doing, in the words the page shows.
     Status,
+    /// The rule a field's value breaks, in the words the page shows for it.
+    Hint,
 }
 
 #[derive(Clone)]
@@ -2857,6 +2867,10 @@ fn run_embedded(bundle: BundleIndex, mode: RuntimeMode) -> Result<()> {
     let palette = contrast::palette();
     let ui = load_layout(&files, dpi, &locale, None, &interaction, mode, palette)?;
     let (width, height) = (ui.width, ui.height);
+    // What the wizard opens on is the frame no client has to be told about: it is
+    // what a reader finds when it asks, so it is recorded here rather than when
+    // the first refresh happens -- a user can type before that frame is drawn.
+    let announced_live = Some(accessibility::announced_live_of(&ui));
     UI.set(Mutex::new(RuntimeState {
         files,
         page_hook,
@@ -2871,7 +2885,7 @@ fn run_embedded(bundle: BundleIndex, mode: RuntimeMode) -> Result<()> {
         window: 0,
         window_size: (0, 0),
         installed_app: None,
-        announced_live: None,
+        announced_live,
     }))
     .map_err(|_| anyhow::anyhow!("native UI was already initialized"))?;
     run_window(width, height)
@@ -4665,13 +4679,23 @@ fn push_node_text(
     }
     let layer = output.texts.last().expect("text layer was just pushed");
     output.text_hits.extend(unsafe { text_layer_hits(layer) });
-    // A label bound to `status` is the words of the task that is running, which
-    // is the one thing on the page a user who cannot see it needs while an
-    // install runs. It is recorded as something to announce, not as a control:
-    // nothing about it answers the keyboard.
-    if node.attribute("value-source") == Some("status") {
+    // Words the page binds to something other than itself are what a user who
+    // cannot see it has to be told, and they are not controls: nothing about
+    // them answers the keyboard. `status` is the line a running task
+    // publishes; a hint is the rule a field's value breaks, which the page draws
+    // only while it is broken -- `resolved_text_for_node` returns nothing
+    // otherwise -- so it appears and disappears with the message.
+    let live = match node.attribute("value-source") {
+        Some("status") => Some((LiveRegionKind::Status, None)),
+        Some(source) => source
+            .strip_prefix("field-error:")
+            .map(|field| (LiveRegionKind::Hint, Some(field.to_string()))),
+        None => None,
+    };
+    if let Some((kind, field)) = live {
         output.live_regions.push(LiveRegion {
-            kind: LiveRegionKind::Status,
+            kind,
+            field,
             text,
             left: rect.left,
             top: rect.top,
@@ -6964,6 +6988,7 @@ fn render_progress_bar(
     // percentage is what it says: the bar itself is a sprite.
     output.live_regions.push(LiveRegion {
         kind: LiveRegionKind::Progress,
+        field: None,
         text: progress.to_string(),
         left: rect.left,
         top: rect.top,
@@ -9914,10 +9939,10 @@ mod tests {
         runtime_page_count, runtime_page_index_for_role, scale_value, selection_layers,
         size_attribute, uninstaller_version_info, validate_output_filename, word_end_after,
         word_range, word_start_before, wrap_lines, wraps, BundleIndex, DialogKind, DialogState,
-        DpiContext, DpiSettings, FlowAxis, FlowItem, ImageLayer, Insets, InteractionState,
-        LayerRect, LayoutContext, LayoutOutput, LiveRegionKind, MoveTrouble, PayloadFormat,
-        RuntimeMode, RuntimeUi, TextAlignment, TextHit, TextInputRegion, TextSnapshot,
-        WindowAction, BUNDLE_MAGIC, BUNDLE_VERSION, COLORREF, FOOTER_MAGIC, POINT,
+        DpiContext, DpiSettings, FieldState, FlowAxis, FlowItem, ImageLayer, Insets,
+        InteractionState, LayerRect, LayoutContext, LayoutOutput, LiveRegionKind, MoveTrouble,
+        PayloadFormat, RuntimeMode, RuntimeUi, TextAlignment, TextHit, TextInputRegion,
+        TextSnapshot, WindowAction, BUNDLE_MAGIC, BUNDLE_VERSION, COLORREF, FOOTER_MAGIC, POINT,
     };
     use anyhow::Context;
     use std::collections::HashMap;
@@ -12704,6 +12729,89 @@ mod tests {
         Ok(())
     }
 
+    /// The rule a field's value breaks is described against the field it
+    /// explains, and only while it is broken: a page draws the hint for as long
+    /// as the value is unacceptable and nothing at all once it is fine.
+    #[test]
+    fn a_page_describes_the_rule_a_field_breaks() -> anyhow::Result<()> {
+        let files: HashMap<String, Vec<u8>> = HashMap::new();
+        let config = serde_json::json!({});
+        let document = roxmltree::Document::parse(
+            r##"<Page width="600" height="100">
+                  <Label id="hint" value-source="field-error:dir"
+                         position="absolute" left="10" top="10" width="580" height="20" />
+                </Page>"##,
+        )?;
+        let page = document
+            .descendants()
+            .find(|node| node.has_tag_name("Page"))
+            .context("page missing")?;
+        let label = page
+            .descendants()
+            .find(|node| node.has_tag_name("Label"))
+            .context("hint missing")?;
+        let rect = LayerRect {
+            left: 10,
+            top: 10,
+            width: 580,
+            height: 20,
+        };
+        let translations =
+            HashMap::from([("dir_needed".to_string(), "Choose a folder".to_string())]);
+        let described = |fields: HashMap<String, FieldState>| -> anyhow::Result<Vec<(LiveRegionKind, Option<String>, String)>> {
+            let mut output = LayoutOutput::default();
+            push_node_text(
+                label,
+                rect,
+                &LayoutContext {
+                    dpi: DpiContext {
+                        scale: 1.0,
+                        use_2x: false,
+                    },
+                    files: &files,
+                    config: &config,
+                    locale: "zh-CN",
+                    translations: &translations,
+                    interaction: &InteractionState::default(),
+                    fields,
+                    open_select: None,
+                    contrast: None,
+                },
+                &mut output,
+            );
+            Ok(output
+                .live_regions
+                .iter()
+                .map(|region| (region.kind, region.field.clone(), region.text.clone()))
+                .collect())
+        };
+        // The value breaks a rule, so the page says which one, against the field.
+        assert_eq!(
+            described(HashMap::from([(
+                "dir".to_string(),
+                FieldState {
+                    valid: false,
+                    message: Some("@dir_needed".to_string()),
+                },
+            )]))?,
+            vec![(
+                LiveRegionKind::Hint,
+                Some("dir".to_string()),
+                "Choose a folder".to_string()
+            )]
+        );
+        // A value the project accepts draws nothing, so there is nothing for a
+        // client to be told about either.
+        assert!(described(HashMap::from([(
+            "dir".to_string(),
+            FieldState {
+                valid: true,
+                message: None,
+            },
+        )]))?
+        .is_empty());
+        Ok(())
+    }
     #[test]
     fn out_of_range_pages_fall_back_to_the_first_layout() -> anyhow::Result<()> {
         let config: serde_json::Value = serde_json::from_slice(include_bytes!(

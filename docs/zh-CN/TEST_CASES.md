@@ -80,6 +80,7 @@ Rust doc comment，再退回用例名。
 | `a_package_installs_the_product_the_setup_carries_and_removes_it_again` | 包把安装包跑起来并把它装的东西卸掉：`msiexec /i` 在命令行指定的目录里装出产品 exe、卸载程序和 manifest，产品自己的卸载项记着这个位置，包自己也记了一份；`msiexec /x` 之后目录与卸载项都不在。 |
 | `a_package_path_that_is_not_an_msi_is_refused` | 窗口是拦住坏包路径的唯一一道关：勾了包却把路径留空、或者路径不是 `.msi`，都在构建开始前被拒绝，构建器不会照着这个路径写出去。 |
 | `a_package_released_again_on_the_same_day_replaces_what_it_installed` | 同一天再发的包（版本从 `1.0.0` 改成 `1.0.0-r2`，三段数字没变）装得上，而且是把上一版收掉再装：两版共用升级码但产品码不同，装完后机器上是第二版（`DisplayVersion` 写着 `1.0.0-r2`、第二版才有的 payload 文件在），第一版那个包已经卸不动了（它的产品被收走了），第二版卸载后目录与登记都不在。 |
+| `a_page_describes_the_rule_a_field_breaks` | 输入框破坏规矩时，那句提示被记成「一行状态文字」并记下它解释的是哪个字段，而且只在破坏规矩时才记：同一个版面在取值合格时什么都不画，也就什么都不记。 |
 | `a_page_describes_what_a_running_task_publishes` | 任务报出来的两样东西各自被记成「被描述的对象」：绑定 `value-source="status"` 的那行文字按当时的值记成一行状态文字，`ProgressBar` 记成进度条并把画出来的百分比当它的取值；两者的位置都来自排版给它们的矩形，而且它们都不进焦点清单——键盘到不了的东西不该被说成能到达。 |
 | `a_page_hook_sends_the_wizard_past_a_page_the_project_skips` | 在真窗口里点 `next`：钩子把向导从欢迎页直接送到选项页，中间那页许可协议（客户区 640x420）根本没出现；再点 `back` 回到的是用户来时的欢迎页，而不是钩子跳过的那一页——三页的客户区各不相同，窗口尺寸就是证据。 |
 | `a_page_hook_sends_the_wizard_to_the_page_it_names` | 钩子点名哪一页就走到哪一页，中间声明的页面跳过；钩子对这一次翻页不作声时，回到工程声明的下一页。 |
@@ -345,6 +346,7 @@ Rust doc comment，再退回用例名。
 | `the_page_and_the_project_decide_which_components_install` | 一个组件装不装由三件事按顺序决定：写了 `required` 的一律装；页面有同名复选框就听页面的；页面没有这个复选框（静默安装也算）就听 `default`。用例把这三条各走一遍，包括用户清掉工程默认勾上的组件、以及勾不掉必需的组件。 |
 | `the_panels_draw_in_every_state_they_can_be_in` | 面板在指南说到的每种状态下都画得出来：这里没有一条用例能开窗口，状态是画在无窗口上下文里的——什么都没打开、检查过工程、构建进行中、构建失败、构建完成，两种界面语言都算。一个根本画不出来的状态会让用户看到空白窗口，而画的过程改掉要展示的状态则更糟。 |
 | `the_payload_format_selects_the_runtime_that_gets_embedded` | payload 格式决定嵌入哪个运行时。一直声称错误格式的安装包什么都装不上，因为那个 stub 读不懂归档。 |
+| `the_rule_a_fields_value_breaks_is_what_a_screen_reader_hears` | 真窗口里跑一个带两条规矩的输入框（必填，以及至少 5 个字符）：客户程序读到的字段描述就是当时那条提示的原文（先是「Choose a folder」）；敲进 3 个字符之后，页面上的提示换成「At least five characters」，字段的描述跟着换，事件钩子听到这行字的名字变化与活动区域变化；再补齐到 5 个字符以上，提示从页面上消失，字段的描述也变回空。 |
 | `the_pointer_decides_which_cursor_the_wizard_shows` | 指针在向导上是什么形状，由它底下那个控件说了算：按钮上是手型，可以输入的文本框上是工字光标，落在页面空白处则是普通箭头；指针再挪回按钮，形状跟着回去。三种标准光标必须先能彼此区分（句柄互不相同），否则这条用例不管窗口做什么都会通过。 |
 | `the_reported_size_counts_every_owned_file` | 卸载项里的容量按磁盘上的字节数算：安装占用的每个文件都算进去，卸载程序本身也算，不是文件的条目（比如同名目录）不算；不足 1 KiB 的产品报 1 而不是 0，因为 0 在 Windows 那里读作「大小未知」。 |
 | `the_ring_follows_the_scheme_under_high_contrast` | 高对比下的焦点环按 `COLOR_HIGHLIGHT` 画在控件自己的矩形上，而不是版面声明的 `focus-color`；同一个页面关掉高对比，环还是声明的那个颜色。 |
