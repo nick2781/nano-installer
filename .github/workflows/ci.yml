@@ -4,6 +4,17 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      # A diagnostic door. The suite runs one fixed list of targets, and a run
+      # that stops answering stops inside one of them -- on the build agent,
+      # which is not the machine a developer can reproduce it on. A dispatched
+      # run may choose the list instead, so a target can be taken apart where the
+      # problem is: the value is the suite's own `-SuiteCommand`, targets
+      # separated by `;`, and an empty value runs the suite's own list.
+      suite_command:
+        description: "Targets for the test step, separated by ';' (empty runs the suite's own list)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -190,7 +201,18 @@ jobs:
         shell: powershell
         env:
           GH_TOKEN: ${{ github.token }}
-        run: .\scripts\run_tests.ps1 -Quiet
+          NANO_SUITE_COMMAND: ${{ inputs.suite_command }}
+        run: |
+          # A dispatched run that asked for targets of its own gets them, so the
+          # target a wedged run stopped on can be run on its own, or without one
+          # of its cases, on the agent that reproduces the problem.
+          if ($env:NANO_SUITE_COMMAND) {
+            Write-Output "this run was dispatched with targets of its own: $env:NANO_SUITE_COMMAND"
+            .\scripts\run_tests.ps1 -Quiet -SuiteCommand $env:NANO_SUITE_COMMAND
+          }
+          else {
+            .\scripts\run_tests.ps1 -Quiet
+          }
 
       - name: Upload the test report
         if: always()

@@ -52,14 +52,19 @@ That job sets `NANO_INSTALLER_E2E_REQUIRE_STUBS=1`, which turns "the runtime stu
 a skip into a failure. Without it a job that built nothing would report every case as skipped and
 still pass.
 
-A run also ends the runs it replaces, in the `supersede` job that both build jobs need. `Test
-workspace` occasionally never finishes, and the cause is the build agent rather than a commit: a step
+A run also ends the runs it replaces, in the `supersede` job that both build jobs need. `Test workspace` occasionally never finishes, and the cause is the build agent rather than a commit: a step
 is over once its output has closed, something the step started sometimes holds that output open, and
 no timeout on the runner's side reaches such a step -- while it sits there it also holds the
 pipeline's concurrency, so the next push waits behind it rather than building. The same commit passes
 when it is dispatched again, and the other job of the same wedged run is green, so the job
 force-cancels the in-progress and queued runs of the same branch before the build jobs start. It is
 allowed to fail: a cancel the API refuses must not turn a build that would be green into a red one.
+
+A dispatched run may also choose the targets the suite runs (`suite_command`). That is how a target a
+wedged run stopped on is taken apart on the agent that reproduces the problem, which is not the machine
+a developer can reproduce it on: the build job runs the suite elevated, where cases that install a
+service or write a machine-wide key take their round trip rather than their refusal, and a developer's
+plain run never reaches those branches.
 
 One more thing is worth knowing about a step that stops answering: the cache. A run that is cancelled
 never reaches the step that saves it, so the next run restores whatever was saved last -- and a save that
