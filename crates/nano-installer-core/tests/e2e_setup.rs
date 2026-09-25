@@ -38,7 +38,7 @@ use windows::Win32::UI::Accessibility::{
     ROLE_SYSTEM_WINDOW, SELFLAG_TAKEFOCUS,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    VIRTUAL_KEY, VK_DOWN, VK_ESCAPE, VK_RETURN, VK_SPACE, VK_TAB,
+    VIRTUAL_KEY, VK_BACK, VK_DOWN, VK_ESCAPE, VK_RETURN, VK_SPACE, VK_TAB,
 };
 use windows::Win32::UI::Shell::{
     FOLDERID_Desktop, FOLDERID_Programs, SHGetKnownFolderPath, KF_FLAG_DEFAULT,
@@ -6202,6 +6202,80 @@ fn what_a_running_task_publishes_is_what_a_screen_reader_hears() -> anyhow::Resu
     let _ = unsafe { UnhookWinEvent(hook) };
     let _ = setup.kill();
     let _ = setup.wait();
+    Ok(())
+}
+
+/// A client reading the page while a field is edited does not take the wizard
+/// down with it.
+///
+/// This is the reproduction of a crash that is not fixed yet. With a client
+/// connected, editing a field and then asking the wizard about the page again
+/// ends with the process killed by `0xc000041d`, which is what Windows reports
+/// when an exception escapes a callback it called. What is known so far:
+///
+/// - It needs an accessibility client: with nothing connected, the same keys and
+///   the same page leave the wizard running.
+/// - It needs the description to be handed out: a client that is given the
+///   window's own answer for `WM_GETOBJECT` is not killed by it.
+/// - It needs a field to be edited: connecting, asking, typing and asking again
+///   survives; clearing the field and asking again does not.
+/// - The last thing the wizard was doing is painting: the window's messages stop
+///   on `WM_PAINT`, and the paint reports the layers of the page that came back
+///   before the process ends.
+/// - No Rust panic is involved: a panic hook the runtime installed for the
+///   experiment wrote nothing, so the exception is raised inside native code.
+///
+/// Until it is understood, a case that expects the page after a field was edited
+/// cannot run, which is why this one is ignored rather than removed.
+#[test]
+#[ignore = "the wizard is killed with 0xc000041d while a client is connected and a field is edited; see the changelog's known limitations"]
+fn a_client_reading_the_page_does_not_take_the_wizard_down() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.validated_project()?;
+    fixture.build()?;
+
+    let _ = unsafe { SetProcessDPIAware() };
+    let mut setup = SetupGuard::spawn(&fixture.setup)?;
+    let Some(window) = wait_for_a_window(&mut setup)? else {
+        return Ok(());
+    };
+
+    // A reader connects and asks for the page the wizard opens on.
+    let object = screen_reader(window)?;
+    let count = unsafe { object.accChildCount() }.unwrap_or(-1);
+    assert!(count > 0, "the page a client reads has no controls at all");
+
+    // The user fills the field in and empties it again, which takes the hint
+    // away and brings it back.
+    press_client_point(window, 220, 53);
+    type_client_text(window, "D:\\E2E");
+    std::thread::sleep(Duration::from_millis(400));
+    for _ in 0..6 {
+        press_key(window, VK_BACK);
+    }
+    std::thread::sleep(Duration::from_millis(800));
+
+    // The reader asks about the page that came back, which is where the wizard
+    // dies today.
+    let after = unsafe { object.accChildCount() }.unwrap_or(-1);
+    let ended = setup
+        .try_wait()
+        .ok()
+        .flatten()
+        .map(|status| status.to_string());
+    let _ = setup.kill();
+    let _ = setup.wait();
+    assert_eq!(
+        ended, None,
+        "the wizard ended while a client was reading a page a user had just edited"
+    );
+    assert!(
+        after > 0,
+        "the page a client reads after editing has no controls"
+    );
     Ok(())
 }
 

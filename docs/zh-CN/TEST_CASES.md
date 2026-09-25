@@ -22,6 +22,7 @@ Rust doc comment，再退回用例名。
 | `a_cancelled_deployment_writes_nothing` | 部署一开始就已经被要求取消时，一个文件都不会复制；回滚随后把这次新建的安装目录整个删掉。 |
 | `a_cancelled_install_gives_up_after_the_script_and_undoes_what_it_wrote` | 脚本自己注意到取消、结束长步骤并正常返回后，运行时在脚本之后的检查点停下，报 `cancelled by the user`，脚本写下的目录一并撤回。 |
 | `a_changed_or_new_file_travels_in_the_update` | 内容变了的文件和这一版才有的新文件都随更新包一起走：一个不多，一个不少。 |
+| `a_client_reading_the_page_does_not_take_the_wizard_down` | **被忽略**：这是一条还没修的崩溃的复现。有客户程序连着时，把输入框填好再清空、然后再问一次页面，向导进程以 `0xc000041d`（回调里逃出来的异常）结束。已知边界：不连客户程序、或让客户程序只拿到窗口自己那份回答，同样的按键都活着；连上之后光连接与提问也活着，改过输入框才会死；窗口的消息停在 `WM_PAINT` 上，panic 钩子什么也没写（异常在原生代码里）。等修好之后去掉 `#[ignore]`。 |
 | `a_click_on_a_radio_is_the_value_the_install_waits_for` | 在真实窗口里点单选按钮：安装键等的是被点中那一行的取值。先点安装键没反应；点亮版面默认选中的那一行再点安装，仍然没反应；改点另一行再点安装，窗口切到任务页，产品装进配置指定的目录。版面级用例只证明点击会变成一个动作，这条证明窗口真的记下了被点的是哪一行。 |
 | `a_client_names_a_child_with_what_it_is_told_to` | 客户程序用数字指名一个控件、用空变体指名窗口本身，两者都读成它们各自的意思；指名一个「对象子项」时被拒绝，而不是被答成另一个控件——向导的控件都是简单子项，没有对象子项可给。 |
 | `a_control_is_reported_as_what_a_screen_reader_calls_it` | 版面记下的控件类型各自对应 `oleacc.h` 里的那个角色：按钮、链接、复选框、单选按钮、下拉框、输入框，客户端读到的必须是这几个，读错了念出来的东西就不对。 |
