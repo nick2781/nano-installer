@@ -155,7 +155,10 @@ jobs:
       # this job's artifact: the commit, the toolchain, the whole output, the
       # result line of every target and the totals. The page is the same run
       # laid out for a reader: one row per case with what it holds, every
-      # failure first, and a target linked to the cases that ran in it.
+      # failure first, and a target linked to the cases that ran in it. `-Quiet`
+      # is how a step reads it: the verdict of each target on the console, the
+      # whole of every command in the report, because a report is a file and a
+      # console is a pipe something may stop draining.
       #
       # The script also keeps the suite off the step's console, in three places. A
       # step has finished only once its own output has closed, and the linker
@@ -170,18 +173,22 @@ jobs:
       # process -- does not outlive the step either. A command that does not end is
       # waited on with a deadline, which prints the last lines it wrote and the
       # processes it was waiting on, so a suite that hangs fails this step with a
-      # log that says where, instead of hanging for hours.
+      # log that says where, instead of hanging for hours. The phase reports the
+      # script posts are made by a process of its own with fifteen seconds to do
+      # it, so the record of where the suite stopped cannot become the reason it
+      # stopped.
       #
       # None of that bounds the runner-side wedge described above the supersede
       # job: a step whose output something else is holding stays in_progress past
       # every deadline, archives no log at all, and blocks the steps after it.
       # That is why a run which replaces a wedged one ends it up front instead of
-      # waiting for the group it was holding.
+      # waiting for the group it was holding, and why the watchdog the script
+      # starts ends the step's whole tree rather than the step alone.
       - name: Test workspace
         shell: powershell
         env:
           GH_TOKEN: ${{ github.token }}
-        run: .\scripts\run_tests.ps1
+        run: .\scripts\run_tests.ps1 -Quiet
 
       - name: Upload the test report
         if: always()

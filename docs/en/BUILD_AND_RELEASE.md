@@ -77,8 +77,14 @@ end a wedged step became part of the wedge. Command lines, which only WMI has, a
 a pid, a name, a start time and a window title are enough to name a holder. The takedown itself is
 bounded too, in `Stop-ProcessTree`: `taskkill /T` waits on the very tree that may be holding
 everything up, so a tree it cannot finish off within two minutes is left to the job the step joined.
-A watchdog outside the step (`Start-StepWatchdog`) ends the step's own process when its time is up,
-because a step that stops answering never ends itself. If a run does stop answering, the `CI janitor` workflow checks every fifteen minutes: a CI run that has
+A watchdog outside the step (`Start-StepWatchdog`) ends the step's **whole process tree** when its time is
+up, because a step that stops answering never ends itself and because what the agent waits on is the
+step's output as much as the step: a descendant that inherited that output keeps it open after the step's
+own process is gone. That difference is measured, not assumed -- with the step's process exiting at once
+and a descendant living 25 s, the step's output closed 25.2 s later, and `Stop-Process` on the step alone
+left the descendant alive where `taskkill /T /F` ended it. A step that stops answering therefore costs
+its watchdog's 25 minutes, fails, and keeps the log that says where it stopped, instead of staying
+`in_progress` until someone force-cancels the run. If a run does stop answering, the `CI janitor` workflow checks every fifteen minutes: a CI run that has
 been going for more than thirty minutes gets a fresh run dispatched on its own branch, whose `supersede` job
 ends the wedged one, so the pipeline recovers without anyone watching it or pushing a commit.
 Commands are started differently as well: `NanoStepCommand` in `scripts/step_job.ps1` creates the
@@ -87,6 +93,25 @@ at all -- the shell redirects the command's output to a file. A build agent give
 output and calls the step finished when that pipe
 closes, while `Process.Start` hands every inheritable handle to the child -- so one process that
 outlives the command would keep the step open however long it lives.
+
+What a wedged run actually stopped on was the suite's own phase post. That post is what a cancelled run
+still leaves behind, and it goes out through `Invoke-RestMethod`, which Windows PowerShell implements on
+`HttpWebRequest`: its `Timeout` covers getting the response and not reading its body, so a response that
+starts and never finishes is a call that never returns however short the timeout is. Measured here against
+a server that writes its headers and then sends nothing: the call was still waiting after 45 s with
+`-TimeoutSec 10`. The evidence agrees -- every wedged run stops reporting at the first status posted
+while a command is running, and the other long step in CI, `Setup End to End`, posts no status at all and
+has never wedged. Each post is therefore made by `scripts/post_status.ps1` in a process of its own, which
+the suite gives fifteen seconds before it takes it down: the record of where the suite stopped cannot be
+the reason it stopped. Posts that were taken down are counted, and the count is reported at the end of the
+run and in the report, so a run that lost phases is not read as one that had none.
+
+The suite also reads the step's console quietly. `run_tests.ps1 -Quiet` is what the workflow runs: the
+console gets the verdict of each target and, when a target fails, the last of what it said, while the
+whole of every command goes into `target/test-report.txt` and `.html`, which is the artifact the job
+uploads. A report is a file and a console is a pipe that something may stop draining. Reading a command's
+output back is bounded in the same spirit: the tail is the last 256 KB of what it wrote, because a command
+that never ends keeps writing and a read that has to reach the end waits for the command.
 
 Every job also runs `scripts/audit_test_targets.ps1`, which asks Cargo which packages the workspace
 has and fails if a `tests/*.rs` file sits outside all of them. A `tests/` directory next to the

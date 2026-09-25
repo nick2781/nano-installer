@@ -56,7 +56,7 @@ $reportName = Split-Path -Leaf $reportPath
 $text = Get-ReportText -Language $Language
 
 $stubCommand = "cargo build --locked -p nano-installer-stub-lzma -p nano-installer-stub-zlib -p nano-installer-uninstaller"
-$suiteCommand = "cargo test --locked -p nano-installer-core --test e2e_setup"
+$suiteCommand = "cargo test --locked -p nano-installer-core --test e2e_setup -- --nocapture"
 
 # A native tool that reports progress on standard error would otherwise trip
 # $ErrorActionPreference = "Stop" on a message that is not a failure.

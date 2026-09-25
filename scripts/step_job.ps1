@@ -293,7 +293,14 @@ function Start-StepWatchdog {
     param([int]$Minutes, [int]$StepProcessId = $PID)
 
     $seconds = [Math]::Max(60, $Minutes * 60)
-    $body = "Start-Sleep -Seconds $seconds; if (Get-Process -Id $StepProcessId -ErrorAction SilentlyContinue) { Stop-Process -Id $StepProcessId -Force }"
+    # The step's own process is not the only thing the agent waits for: it waits
+    # on the step's output as well, and a descendant that inherited a write of
+    # that output keeps it open after the step's process has gone -- which is a
+    # step that never ends, archives no log, and outlives every deadline on the
+    # runner's side. /T ends the tree, so the output closes and the step ends
+    # with the log that says where it stopped. Measured here, an ordinary kill of
+    # the step alone leaves the output open for as long as the descendant lives.
+    $body = "Start-Sleep -Seconds $seconds; if (Get-Process -Id $StepProcessId -ErrorAction SilentlyContinue) { & taskkill.exe /PID $StepProcessId /T /F | Out-Null }"
     $handle = [NanoStepCommand]::Start(
         "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command `"$body`"",
         (Get-Location).ProviderPath)

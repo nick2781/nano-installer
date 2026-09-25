@@ -52,7 +52,11 @@ param(
     [string]$Language = "zh-CN",
     [string[]]$SuiteCommand = @(
         "cargo test --locked -p nano-installer-core --lib",
-        "cargo test --locked -p nano-installer-core --test e2e_setup",
+        # A case that leaves because this machine cannot run it says so on its
+        # own output, which the test harness swallows unless it is asked not to
+        # -- and a report that lists the cases it skipped has to be able to hear
+        # them. The `test result:` lines this console prints do not change.
+        "cargo test --locked -p nano-installer-core --test e2e_setup -- --nocapture",
         "cargo test --locked -p nano-installer-core --test project_inspection",
         "cargo test --locked -p nano-installer-gui",
         "cargo test --locked -p nano-installer-native-cli",
@@ -65,12 +69,22 @@ param(
     # A cold cache has to compile the whole dependency tree before the first test
     # runs, and that is a build rather than a test: it gets the deadline a build
     # gets, and the targets below keep theirs for what they are for.
-    [int]$WarmupDeadlineMinutes = 40
+    [int]$WarmupDeadlineMinutes = 40,
+    # What the console gets: the verdict of each target rather than the whole of
+    # every command. The report file below keeps the whole whatever this says.
+    [switch]$Quiet
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+# How many phase posts were taken down for not answering. It is reported at the
+# end of the run, so a suite that lost phases is not read as one that had none.
+$script:CutShortPosts = 0
+
+# What the step prints is the verdict of each target rather than the whole of
+# every command: the report file this script writes is where the whole lives, and
+# the workflow that runs this as a step asks for that with -Quiet.
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $reportPath = $Report
 if (-not [System.IO.Path]::IsPathRooted($reportPath)) {
@@ -113,6 +127,13 @@ function Write-Phase {
 # a success whatever the suite is doing: its text is what a wedged run leaves
 # behind, and a status left pending would read as a check that never passed. The
 # verdict on the commit is the job's own conclusion.
+#
+# The post itself is made by scripts/post_status.ps1, in a process with a
+# deadline this one can enforce: a network call made here would be a call the
+# suite waits on, and the whole point of the record is to say where the suite
+# stopped rather than to be one more place it can stop. A post that does not
+# answer in its fifteen seconds is taken down and counted, so the run that lost
+# a phase says so instead of being one phase short with no explanation.
 function Update-PhaseStatus {
     param([string]$Message)
 
@@ -124,26 +145,38 @@ function Update-PhaseStatus {
     if (-not $token -or -not $repository -or -not $sha) {
         return
     }
+    $api = if ($env:GITHUB_API_URL) { $env:GITHUB_API_URL } else { "https://api.github.com" }
     $body = @{
         state       = "success"
         context     = "suite phase"
         description = $Message.Substring(0, [Math]::Min(140, $Message.Length))
         target_url  = "$env:GITHUB_SERVER_URL/$repository/actions/runs/$env:GITHUB_RUN_ID"
     } | ConvertTo-Json -Compress
-    $headers = @{
-        Authorization           = "Bearer $token"
-        Accept                  = "application/vnd.github+json"
-        "X-GitHub-Api-Version"  = "2022-11-28"
-    }
-    # Posting a phase may not hold the suite, and a phase that could not be
-    # posted is not a reason to stop a run: the call has a deadline of its own.
+    $path = Join-Path ([System.IO.Path]::GetTempPath()) ("nano-status-{0}.json" -f [guid]::NewGuid().ToString("n"))
+    [System.IO.File]::WriteAllText($path, $body, (New-Object System.Text.UTF8Encoding($false)))
+    $poster = Join-Path $PSScriptRoot "post_status.ps1"
+    # Every way this can go wrong is caught: the record of where the suite
+    # stopped is worth having, and it is never worth the suite.
+    $handle = [IntPtr]::Zero
     try {
-        Invoke-RestMethod -Method Post -TimeoutSec 10 `
-            -Uri "https://api.github.com/repos/$repository/statuses/$sha" `
-            -Headers $headers -Body $body -ContentType "application/json" | Out-Null
+        $handle = [NanoStepCommand]::Start(
+            "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$poster`" -Url `"$api/repos/$repository/statuses/$sha`" -BodyPath `"$path`"",
+            (Get-Location).ProviderPath)
+        if (-not [NanoStepCommand]::Wait($handle, 15000)) {
+            [NanoStepCommand]::Kill($handle)
+            $script:CutShortPosts = $script:CutShortPosts + 1
+            Write-Output "  | the phase did not post within 15 second(s) and was taken down"
+        }
     }
     catch {
+        $script:CutShortPosts = $script:CutShortPosts + 1
         Write-Output ("  | the phase could not be posted: {0}" -f $_.Exception.Message)
+    }
+    finally {
+        if ($handle -ne [IntPtr]::Zero) {
+            [NanoStepCommand]::Release($handle)
+        }
+        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -203,6 +236,7 @@ function Invoke-NativeStep {
             # far goes out as a commit status, and a commit status survives the
             # step whose log does not.
             $deadline = if ($DeadlineMinutes -gt 0) { (Get-Date).AddMinutes($DeadlineMinutes) } else { $null }
+            $began = Get-Date
             $finished = $false
             $next = (Get-Date).AddSeconds(60)
             while (-not $finished) {
@@ -214,8 +248,15 @@ function Invoke-NativeStep {
                     break
                 }
                 if ((Get-Date) -ge $next) {
+                    # Two posts, and the order is the point: the first says the
+                    # read is about to happen, so a run whose last status is that
+                    # one stopped in the read and not in the run it was reading.
+                    # A target that has been running this long is the case worth
+                    # watching, so the extra post costs nothing that matters.
+                    $minutes = [int]((Get-Date) - $began).TotalMinutes
+                    Update-PhaseStatus ("$Command after $minutes minute(s): reading what it wrote")
                     $line = @(Get-CapturedTail -Path $log -Count 1) | Select-Object -Last 1
-                    Update-PhaseStatus ("${Command}: " + $(if ($line) { $line.Trim() } else { "no output yet" }))
+                    Update-PhaseStatus ("$Command after $minutes minute(s): " + $(if ($line) { $line.Trim() } else { "no output yet" }))
                     $next = (Get-Date).AddSeconds(60)
                 }
             }
@@ -316,14 +357,26 @@ function Get-CapturedTail {
     }
     $text = ""
     $stream = $null
+    # What is read is the end of the file and no more: a tail is what is wanted,
+    # a command that writes for ten minutes must not turn into a read of
+    # everything it ever wrote, and a reader that has to finish before the step
+    # can end is one more thing a wedged step can be inside. A cut in the middle
+    # of a character only damages the first line of the tail, which is the line a
+    # reader looks at last.
+    $limit = 256 * 1024
     try {
         $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
         $length = $stream.Length
-        if ($length -gt 0) {
-            $buffer = New-Object byte[] $length
+        $start = [Math]::Max(0, $length - $limit)
+        if ($start -gt 0) {
+            $stream.Position = $start
+        }
+        $count = [int]($length - $start)
+        if ($count -gt 0) {
+            $buffer = New-Object byte[] $count
             $read = 0
-            while ($read -lt $length) {
-                $got = $stream.Read($buffer, $read, [int]($length - $read))
+            while ($read -lt $count) {
+                $got = $stream.Read($buffer, $read, $count - $read)
                 if ($got -le 0) {
                     break
                 }
@@ -414,10 +467,36 @@ foreach ($command in $SuiteCommand) {
     if ($part.ExitCode -ne 0 -and $code -eq 0) {
         $code = $part.ExitCode
     }
+    # What the step prints is not the report: the report is a file this run leaves
+    # behind and the workflow uploads, so the whole of every command is kept there
+    # whatever is said here. A step whose output is a wall of text is one an agent
+    # can stop draining, and a step nobody drains is a step that never ends -- so
+    # in a workflow the console gets the verdict of each target and, when a target
+    # fails, the last of what it said. `-Quiet` does the same for a local run.
+    if ($Quiet) {
+        foreach ($line in @($part.Output | Where-Object { $_ -like "test result:*" })) {
+            Write-Output "  $line"
+        }
+        if ($part.ExitCode -ne 0) {
+            $tail = @($part.Output | Select-Object -Last 40)
+            foreach ($line in $tail) {
+                Write-Output "  | $line"
+            }
+        }
+    }
+    else {
+        foreach ($line in @($part.Output)) {
+            Write-Output $line
+        }
+    }
 }
 $printed = @($printed)
 
-Write-Phase "suite finished with exit code $code and $($printed.Count) output line(s)"
+$lost = ""
+if ($script:CutShortPosts -gt 0) {
+    $lost = " ($script:CutShortPosts phase post(s) were taken down)"
+}
+Write-Phase "suite finished with exit code $code and $($printed.Count) output line(s)$lost"
 $summary = @($printed | Where-Object { $_ -like "test result:*" })
 $skipping = @($printed | Where-Object { $_ -like "skipping:*" })
 
@@ -440,6 +519,10 @@ Add-ReportField -Lines $lines -Label (Get-ReportPhrase -Text $text -Key "text.el
 $lines.Add("")
 $lines.Add("$ $commandText")
 $lines.AddRange([string[]]$printed)
+if ($script:CutShortPosts -gt 0) {
+    $lines.Add("")
+    $lines.Add("$script:CutShortPosts phase status post(s) did not answer within their deadline and were taken down.")
+}
 $lines.Add("")
 $lines.Add((Get-ReportPhrase -Text $text -Key "text.results"))
 if ($summary.Count -gt 0) {
@@ -700,7 +783,9 @@ Write-ReportHtml -Path $htmlPath -Title (Get-ReportPhrase -Text $text -Key "titl
     -Notes $notes.ToArray()
 
 Write-Phase "page written"
-$printed | ForEach-Object { Write-Output $_ }
+if (-not $Quiet) {
+    $printed | ForEach-Object { Write-Output $_ }
+}
 Write-Output (Get-ReportPhrase -Text $text -Key "console.exitcode" -Values @($code))
 Write-Output (Get-ReportPhrase -Text $text -Key "console.reportwritten" -Values @($reportPath))
 Write-Output (Get-ReportPhrase -Text $text -Key "console.pagewritten" -Values @($htmlPath))
