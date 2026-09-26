@@ -21,7 +21,7 @@ use anyhow::Context;
 use nano_installer_core::{
     build_project, build_project_with_progress, BuildRequest, BuildResult, PayloadFormat,
 };
-use windows::core::{Interface, VARIANT};
+use windows::core::{Interface, BSTR, GUID, PCWSTR, VARIANT};
 use windows::Win32::Foundation::{BOOL, HANDLE, HWND, LPARAM, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     ClientToScreen, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC,
@@ -30,7 +30,10 @@ use windows::Win32::Graphics::Gdi::{
     DIB_RGB_COLORS, HDC, HGDIOBJ, SYS_COLOR_INDEX,
 };
 use windows::Win32::Storage::Xps::{PrintWindow, PRINT_WINDOW_FLAGS};
-use windows::Win32::System::Com::{CoInitializeEx, CoTaskMemFree, COINIT_APARTMENTTHREADED};
+use windows::Win32::System::Com::{
+    CoInitializeEx, CoTaskMemFree, IDispatch, COINIT_APARTMENTTHREADED, DISPATCH_PROPERTYGET,
+    DISPPARAMS,
+};
 use windows::Win32::UI::Accessibility::{
     AccessibleObjectFromWindow, IAccessible, SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK,
     ROLE_SYSTEM_CHECKBUTTON, ROLE_SYSTEM_COMBOBOX, ROLE_SYSTEM_DIALOG, ROLE_SYSTEM_PROGRESSBAR,
@@ -38,7 +41,7 @@ use windows::Win32::UI::Accessibility::{
     ROLE_SYSTEM_WINDOW, SELFLAG_TAKEFOCUS,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    VIRTUAL_KEY, VK_BACK, VK_DOWN, VK_ESCAPE, VK_RETURN, VK_SPACE, VK_TAB,
+    VIRTUAL_KEY, VK_BACK, VK_DOWN, VK_ESCAPE, VK_LEFT, VK_RETURN, VK_SPACE, VK_TAB,
 };
 use windows::Win32::UI::Shell::{
     FOLDERID_Desktop, FOLDERID_Programs, SHGetKnownFolderPath, KF_FLAG_DEFAULT,
@@ -6128,6 +6131,9 @@ fn what_a_running_task_publishes_is_what_a_screen_reader_hears() -> anyhow::Resu
         return Ok(());
     };
 
+    // One listener at a time: two cases listening at once read each other's
+    // events. See `the_listener`.
+    let _listening = the_listener();
     HEARD_LIVE
         .lock()
         .unwrap_or_else(|error| error.into_inner())
@@ -6319,6 +6325,9 @@ fn the_rule_a_fields_value_breaks_is_what_a_screen_reader_hears() -> anyhow::Res
         return Ok(());
     };
 
+    // One listener at a time: two cases listening at once read each other's
+    // events. See `the_listener`.
+    let _listening = the_listener();
     HEARD_LIVE
         .lock()
         .unwrap_or_else(|error| error.into_inner())
@@ -6406,6 +6415,229 @@ fn the_rule_a_fields_value_breaks_is_what_a_screen_reader_hears() -> anyhow::Res
     Ok(())
 }
 
+/// A user typing into a field is heard while they type, not once when they stop.
+///
+/// The directory the wizard installs into is a field like any other: what a reader
+/// follows as someone types is the value changing, once per keystroke. A key that
+/// only moves the caret inside the text changes nothing, and telling a client that
+/// it did would make a reader repeat the whole field on every arrow key -- so the
+/// case listens for value changes alone, types three characters, and then moves
+/// the caret with none of them arriving.
+#[test]
+fn a_field_the_user_types_in_is_what_a_screen_reader_hears() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.validated_project()?;
+    fixture.build()?;
+
+    let _ = unsafe { SetProcessDPIAware() };
+    let mut setup = SetupGuard::spawn(&fixture.setup)?;
+    let Some(window) = wait_for_a_window(&mut setup)? else {
+        return Ok(());
+    };
+
+    // One listener at a time: two cases listening at once read each other's
+    // events. See `the_listener`.
+    let _listening = the_listener();
+    HEARD_LIVE
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .clear();
+    LISTENED_WINDOW.store(window.0 as usize, Ordering::SeqCst);
+    // A client that listens for value changes and nothing else: the hint the page
+    // puts up while the value is too short is announced too, and a case that
+    // counted those would be counting the wrong thing.
+    let hook = unsafe {
+        SetWinEventHook(
+            EVENT_OBJECT_VALUECHANGE,
+            EVENT_OBJECT_VALUECHANGE,
+            None,
+            Some(heard_live),
+            setup.id(),
+            0,
+            WINEVENT_OUTOFCONTEXT,
+        )
+    };
+    if hook.is_invalid() {
+        let _ = setup.kill();
+        let _ = setup.wait();
+        anyhow::bail!("the case could not listen for what the wizard announces");
+    }
+
+    let object = screen_reader(window)?;
+    let field = child_with_role(&object, ROLE_SYSTEM_TEXT).expect("the page shows a field");
+    // The field is the one the page asks for a directory in; clicking it is what
+    // puts the caret in it, exactly as a user does.
+    press_client_point(window, 220, 53);
+
+    type_client_text(window, "abc");
+    let typed = pump_until_live(3, Instant::now() + Duration::from_secs(20));
+    assert_eq!(
+        accessible_value(&object, field),
+        "abc",
+        "the field does not hold what was typed into it"
+    );
+    let announced = typed
+        .iter()
+        .filter(|(event, child)| *event == EVENT_OBJECT_VALUECHANGE && *child == field)
+        .count();
+    assert!(
+        announced >= 3,
+        "three characters were typed and the field was announced {announced} time(s): {typed:?}"
+    );
+
+    // Moving inside the text is not a change to it, and a reader told otherwise
+    // would repeat the field on every arrow key.
+    let after_typing = typed.len();
+    press_key(window, VK_LEFT);
+    let later = pump_until_live(after_typing + 1, Instant::now() + Duration::from_secs(3));
+    assert_eq!(
+        later.len(),
+        after_typing,
+        "moving the caret announced the value again: {later:?}"
+    );
+
+    let _ = unsafe { UnhookWinEvent(hook) };
+    let _ = setup.kill();
+    let _ = setup.wait();
+    Ok(())
+}
+
+/// The same object reached the other way: a client that asks the window for
+/// `IDispatch` and calls members by name rather than through `IAccessible`.
+fn late_binding(window: HWND) -> anyhow::Result<IDispatch> {
+    let _ = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+    let mut raw: *mut core::ffi::c_void = std::ptr::null_mut();
+    unsafe {
+        AccessibleObjectFromWindow(
+            window,
+            OBJID_CLIENT.0 as u32,
+            &IDispatch::IID,
+            &mut raw as *mut *mut core::ffi::c_void,
+        )
+    }
+    .context("the wizard did not describe itself to a late-binding client")?;
+    Ok(unsafe { IDispatch::from_raw(raw) })
+}
+
+/// Calls a member of the object by name, the way a late-binding client does.
+///
+/// The name is turned into the number MSAA gives that member and the number is
+/// then called: that is the whole of what late binding is. A member that takes no
+/// child is called with no argument at all rather than with one that means the
+/// window.
+fn by_name(dispatch: &IDispatch, member: &str, id: Option<i32>) -> anyhow::Result<VARIANT> {
+    let name: Vec<u16> = member.encode_utf16().chain(std::iter::once(0)).collect();
+    let mut dispid = 0i32;
+    unsafe { dispatch.GetIDsOfNames(&GUID::zeroed(), &PCWSTR(name.as_ptr()), 1, 0, &mut dispid) }
+        .with_context(|| format!("{member} is not a member this object has"))?;
+    let mut argument = child(id.unwrap_or(0));
+    let params = DISPPARAMS {
+        rgvarg: &mut argument,
+        rgdispidNamedArgs: std::ptr::null_mut(),
+        cArgs: u32::from(id.is_some()),
+        cNamedArgs: 0,
+    };
+    let mut result = VARIANT::new();
+    unsafe {
+        dispatch.Invoke(
+            dispid,
+            &GUID::zeroed(),
+            0,
+            DISPATCH_PROPERTYGET,
+            &params,
+            Some(&mut result as *mut VARIANT),
+            None,
+            None,
+        )
+    }
+    .with_context(|| format!("{member} could not be called"))?;
+    Ok(result)
+}
+
+/// A client that asks for members by name gets the same page.
+///
+/// `IAccessible` is the interface every Windows reader calls, but a client may
+/// reach the same object through `IDispatch` and name what it wants instead:
+/// late binding is a way of calling the interface rather than a second one, so
+/// this case asks by name what the case above asks through the interface and
+/// compares the answers. A name MSAA does not have, and a member this object
+/// does not serve, are both refused rather than answered with something made up.
+#[test]
+fn a_client_asking_by_name_is_told_the_same_page() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.accessibility_project()?;
+    fixture.build()?;
+
+    let _ = unsafe { SetProcessDPIAware() };
+    let mut setup = SetupGuard::spawn(&fixture.setup)?;
+    let Some(window) = wait_for_a_window(&mut setup)? else {
+        return Ok(());
+    };
+
+    let object = screen_reader(window)?;
+    let dispatch = late_binding(window)?;
+
+    // The number of children is what a client asks first, and it takes no child
+    // of its own.
+    let count = by_name(&dispatch, "accChildCount", None)?;
+    assert_eq!(
+        i32::try_from(&count)?,
+        unsafe { object.accChildCount() }?,
+        "the two ways of asking do not agree on how many controls the page has"
+    );
+
+    // The field is the first control: what it is called and what it is.
+    let name = by_name(&dispatch, "accName", Some(1))?;
+    assert_eq!(
+        BSTR::try_from(&name)?.to_string(),
+        accessible_name(&object, 1),
+        "the name of the first control is not the one the interface gives"
+    );
+    let role = by_name(&dispatch, "accRole", Some(1))?;
+    assert_eq!(
+        i32::try_from(&role)?,
+        accessible_role(&object, 1) as i32,
+        "the role of the first control is not the one the interface gives"
+    );
+
+    // A name MSAA has no member for is refused, which is how a client learns it
+    // spelled it wrong rather than being handed an empty answer.
+    assert!(
+        by_name(&dispatch, "accNothingOfTheSort", None).is_err(),
+        "a member MSAA does not have was answered"
+    );
+    // And a member the interface itself does not serve is refused the same way
+    // through either door: there is no selection for a client to read.
+    assert!(
+        by_name(&dispatch, "accSelection", None).is_err(),
+        "the selection was answered by a page that has none"
+    );
+
+    let _ = setup.kill();
+    let _ = setup.wait();
+    Ok(())
+}
+
+/// The client that listens for what a wizard announces, which only one case can
+/// be at a time.
+///
+/// A hook and the list it fills are process-wide, and so is the window they are
+/// filtered by: two cases listening at once would each be handed the other's
+/// events, and the case that expected its own would read the other page -- which
+/// is how one of them failed when another case started listening beside it. They
+/// take this in turn however the suite happens to schedule them.
+static LISTENER: Mutex<()> = Mutex::new(());
+
+fn the_listener() -> MutexGuard<'static, ()> {
+    LISTENER.lock().unwrap_or_else(|error| error.into_inner())
+}
+
 /// The focus events a client listening for them has heard.
 ///
 /// The callback runs on the thread that installed the hook, while the case
@@ -6462,6 +6694,31 @@ unsafe extern "system" fn heard_focus(
     }
 }
 
+/// The controls a client heard announced.
+///
+/// Windows announces the window itself taking the keyboard as child 0, and that
+/// is not a control moving: what these cases are about is the controls the wizard
+/// moved to, in the order it moved to them.
+fn announced_controls(heard: &[i32]) -> Vec<i32> {
+    heard.iter().copied().filter(|child| *child != 0).collect()
+}
+
+/// Pumps until the client has heard `wanted` controls announced.
+fn pump_until_controls(wanted: usize, deadline: Instant) -> Vec<i32> {
+    let mut heard = Vec::new();
+    while Instant::now() < deadline {
+        heard = pump_until_heard(wanted, Instant::now() + Duration::from_millis(50));
+        if announced_controls(&heard).len() >= wanted {
+            break;
+        }
+        // The list can hold an event that is not a control moving and nothing
+        // else, in which case the pump above returns at once; waiting here keeps
+        // this from becoming a loop that only reads its own list.
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    announced_controls(&heard)
+}
+
 /// Pumps this thread's messages until the client has heard `wanted` events.
 ///
 /// An out-of-context hook is delivered by posting to the thread that installed
@@ -6509,6 +6766,9 @@ fn the_keyboard_moving_is_what_a_screen_reader_hears() -> anyhow::Result<()> {
         return Ok(());
     };
 
+    // One listener at a time: two cases listening at once read each other's
+    // events. See `the_listener`.
+    let _listening = the_listener();
     HEARD
         .lock()
         .unwrap_or_else(|error| error.into_inner())
@@ -6534,10 +6794,13 @@ fn the_keyboard_moving_is_what_a_screen_reader_hears() -> anyhow::Result<()> {
     }
 
     // The first Tab lands on the field, and the wizard says so: the client
-    // hears the number of the control the keyboard reached.
+    // hears the number of the control the keyboard reached. Windows announces
+    // the window itself taking the keyboard as child 0, which is not a control
+    // moving and is filtered out here -- on a busy desk it can arrive first, and
+    // a case that read the first event of any kind would fail on it.
     let deadline = Instant::now() + Duration::from_secs(20);
     press_key(window, VK_TAB);
-    let heard = pump_until_heard(1, deadline);
+    let heard = pump_until_controls(1, deadline);
     assert_eq!(
         heard,
         vec![1],
@@ -6551,7 +6814,7 @@ fn the_keyboard_moving_is_what_a_screen_reader_hears() -> anyhow::Result<()> {
     // And the next Tab is announced in its turn: a reader hears every move
     // rather than the first one only.
     press_key(window, VK_TAB);
-    let heard = pump_until_heard(2, deadline);
+    let heard = pump_until_controls(2, deadline);
     assert_eq!(
         heard,
         vec![1, 2],

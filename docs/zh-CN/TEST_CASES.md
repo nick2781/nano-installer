@@ -347,6 +347,8 @@ Rust doc comment，再退回用例名。
 | `the_panels_draw_in_every_state_they_can_be_in` | 面板在指南说到的每种状态下都画得出来：这里没有一条用例能开窗口，状态是画在无窗口上下文里的——什么都没打开、检查过工程、构建进行中、构建失败、构建完成，两种界面语言都算。一个根本画不出来的状态会让用户看到空白窗口，而画的过程改掉要展示的状态则更糟。 |
 | `the_payload_format_selects_the_runtime_that_gets_embedded` | payload 格式决定嵌入哪个运行时。一直声称错误格式的安装包什么都装不上，因为那个 stub 读不懂归档。 |
 | `the_rule_a_fields_value_breaks_is_what_a_screen_reader_hears` | 真窗口里跑一个带两条规矩的输入框（必填，以及至少 5 个字符）：客户程序读到的字段描述就是当时那条提示的原文（先是「Choose a folder」）；敲进 3 个字符之后，页面上的提示换成「At least five characters」，字段的描述跟着换，事件钩子听到这行字的名字变化与活动区域变化；再补齐到 5 个字符以上，提示从页面上消失，字段的描述也变回空。 |
+| `a_field_the_user_types_in_is_what_a_screen_reader_hears` | 敲进输入框的每一个字符都会被听到。客户程序只为「取值变化」装钩子：敲进 3 个字符就应当收到 3 次变化，并且这时读到的字段取值就是敲进去的那 3 个字符；随后按左方向键只在文字里移动光标，取值没变，因此一次也不该再报——否则读屏会在每按一次方向键时把整个字段重念一遍。 |
+| `a_client_asking_by_name_is_told_the_same_page` | 走 `IDispatch` 晚绑定的客户程序拿到的是同一页。这条用例向窗口要 `IDispatch`，用名字（`accChildCount`、`accName`、`accRole`）换成 MSAA 的编号再调用，答案与走 `IAccessible` 的用例逐项相同：控件数量、第一个控件的名字与角色都对得上；MSAA 没有的名字会被拒绝，这个对象本身不服务的成员（`accSelection`）也一样被拒绝——两种情况都不会拿一个编出来的答案糊弄过去。 |
 | `the_pointer_decides_which_cursor_the_wizard_shows` | 指针在向导上是什么形状，由它底下那个控件说了算：按钮上是手型，可以输入的文本框上是工字光标，落在页面空白处则是普通箭头；指针再挪回按钮，形状跟着回去。三种标准光标必须先能彼此区分（句柄互不相同），否则这条用例不管窗口做什么都会通过。 |
 | `the_reported_size_counts_every_owned_file` | 卸载项里的容量按磁盘上的字节数算：安装占用的每个文件都算进去，卸载程序本身也算，不是文件的条目（比如同名目录）不算；不足 1 KiB 的产品报 1 而不是 0，因为 0 在 Windows 那里读作「大小未知」。 |
 | `the_ring_follows_the_scheme_under_high_contrast` | 高对比下的焦点环按 `COLOR_HIGHLIGHT` 画在控件自己的矩形上，而不是版面声明的 `focus-color`；同一个页面关掉高对比，环还是声明的那个颜色。 |

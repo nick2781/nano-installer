@@ -19,11 +19,13 @@
 
 use windows::core::{implement, Error, IUnknown, Interface, BSTR, GUID, PCWSTR, VARIANT};
 use windows::Win32::Foundation::{
-    BOOL, E_FAIL, E_INVALIDARG, E_NOTIMPL, E_POINTER, HWND, LPARAM, LRESULT, POINT, WPARAM,
+    BOOL, DISP_E_MEMBERNOTFOUND, DISP_E_UNKNOWNNAME, E_FAIL, E_INVALIDARG, E_NOTIMPL, E_POINTER,
+    HWND, LPARAM, LRESULT, POINT, WPARAM,
 };
 use windows::Win32::Graphics::Gdi::{ClientToScreen, ScreenToClient};
 use windows::Win32::System::Com::{
-    IDispatch, IDispatch_Impl, ITypeInfo, DISPATCH_FLAGS, DISPPARAMS, EXCEPINFO,
+    IDispatch, IDispatch_Impl, ITypeInfo, DISPATCH_FLAGS, DISPATCH_PROPERTYPUT,
+    DISPATCH_PROPERTYPUTREF, DISPPARAMS, EXCEPINFO,
 };
 use windows::Win32::System::Ole::{IOleWindow, IOleWindow_Impl};
 use windows::Win32::UI::Accessibility::{
@@ -38,6 +40,13 @@ use windows::Win32::UI::WindowsAndMessaging::{
     EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_REORDER, EVENT_OBJECT_STATECHANGE,
     EVENT_OBJECT_VALUECHANGE, OBJID_CLIENT, OBJID_WINDOW,
 };
+
+/// The type of a `long` a client passes by reference: `VT_BYREF | VT_I4`.
+///
+/// Spelled out because the module that declares the variant types belongs to a
+/// feature this crate does not turn on, and the values are the ones `wtypes.h`
+/// gives them.
+const BY_REFERENCE_LONG: u16 = 0x4000 | 3;
 
 use crate::{
     AnnouncedLive, ControlKind, LayerRect, LiveRegionKind, RuntimeState, WindowAction, UI,
@@ -896,10 +905,125 @@ impl IOleWindow_Impl for WizardAccessible_Impl {
     }
 }
 
+/// The ids MSAA gives the members of `IAccessible`.
+///
+/// A late-binding client asks for a member by name and is answered with one of
+/// these numbers: they are part of the interface rather than of this provider,
+/// which is why they are the standard negative ones and not something invented
+/// here.
+mod dispid {
+    pub(super) const UNKNOWN: i32 = -1;
+    pub(super) const PARENT: i32 = -5000;
+    pub(super) const CHILD_COUNT: i32 = -5001;
+    pub(super) const CHILD: i32 = -5002;
+    pub(super) const NAME: i32 = -5003;
+    pub(super) const VALUE: i32 = -5004;
+    pub(super) const DESCRIPTION: i32 = -5005;
+    pub(super) const ROLE: i32 = -5006;
+    pub(super) const STATE: i32 = -5007;
+    pub(super) const HELP: i32 = -5008;
+    pub(super) const HELP_TOPIC: i32 = -5009;
+    pub(super) const KEYBOARD_SHORTCUT: i32 = -5010;
+    pub(super) const FOCUS: i32 = -5011;
+    pub(super) const SELECTION: i32 = -5012;
+    pub(super) const DEFAULT_ACTION: i32 = -5013;
+    pub(super) const SELECT: i32 = -5014;
+    pub(super) const LOCATION: i32 = -5015;
+    pub(super) const NAVIGATE: i32 = -5016;
+    pub(super) const DO_DEFAULT_ACTION: i32 = -5017;
+}
+
+/// The member a client named, or nothing when MSAA names no such member.
+///
+/// Names are compared without case: they belong to the interface, and the SDK
+/// spells them with a capital in the middle.
+fn dispid_of(name: &str) -> Option<i32> {
+    Some(match name.to_ascii_lowercase().as_str() {
+        "accparent" => dispid::PARENT,
+        "accchildcount" => dispid::CHILD_COUNT,
+        "accchild" => dispid::CHILD,
+        "accname" => dispid::NAME,
+        "accvalue" => dispid::VALUE,
+        "accdescription" => dispid::DESCRIPTION,
+        "accrole" => dispid::ROLE,
+        "accstate" => dispid::STATE,
+        "acchelp" => dispid::HELP,
+        "acchelptopic" => dispid::HELP_TOPIC,
+        "acckeyboardshortcut" => dispid::KEYBOARD_SHORTCUT,
+        "accfocus" => dispid::FOCUS,
+        "accselection" => dispid::SELECTION,
+        "accdefaultaction" => dispid::DEFAULT_ACTION,
+        "accselect" => dispid::SELECT,
+        "acclocation" => dispid::LOCATION,
+        "accnavigate" => dispid::NAVIGATE,
+        "accdodefaultaction" => dispid::DO_DEFAULT_ACTION,
+        _ => return None,
+    })
+}
+
+/// A name a client passed to `GetIDsOfNames`.
+unsafe fn wide_string(pointer: PCWSTR) -> String {
+    if pointer.is_null() {
+        return String::new();
+    }
+    let mut length = 0usize;
+    while *pointer.0.add(length) != 0 {
+        length += 1;
+    }
+    String::from_utf16_lossy(std::slice::from_raw_parts(pointer.0, length))
+}
+
+/// A number a client passed in a `VARIANT`.
+fn argument_number(argument: Option<&VARIANT>) -> Option<i32> {
+    argument.and_then(|variant| i32::try_from(variant).ok())
+}
+
+/// Writes the four numbers `accLocation` answers with into the arguments a
+/// late-binding client handed over by reference.
+///
+/// Out-parameters are how `IDispatch` carries more than one answer: the client
+/// passes four `VARIANT`s that each point at a `long`, and reads them afterwards.
+/// Anything else is not an answer this can write into.
+fn write_location(
+    arguments: [Option<&VARIANT>; 4],
+    location: (i32, i32, i32, i32),
+) -> windows::core::Result<()> {
+    let (left, top, width, height) = location;
+    for (argument, value) in arguments.into_iter().zip([left, top, width, height]) {
+        let Some(argument) = argument else {
+            return Err(Error::from(E_INVALIDARG));
+        };
+        let raw = argument.as_raw();
+        if unsafe { raw.Anonymous.Anonymous.vt } != BY_REFERENCE_LONG {
+            return Err(Error::from(E_INVALIDARG));
+        }
+        let target = unsafe { raw.Anonymous.Anonymous.Anonymous.pintVal };
+        if target.is_null() {
+            return Err(Error::from(E_INVALIDARG));
+        }
+        unsafe { *target = value };
+    }
+    Ok(())
+}
+
+/// An object a late-binding client is handed: the answer to `accParent` and
+/// `accChild`.
+///
+/// The variant holds the object itself rather than naming it as a dispatch
+/// pointer. That is the one place this deviates from what the interface's own
+/// signature says, and it is deliberate: there is no safe way to build a
+/// dispatch-typed variant from this side of the boundary, and an object held as
+/// an unknown is one a client reaches `IDispatch` through, which is the only
+/// thing a late-binding client would do with it.
+fn object_answer(object: &IDispatch) -> windows::core::Result<VARIANT> {
+    Ok(VARIANT::from(object.cast::<IUnknown>()?))
+}
+
 impl IDispatch_Impl for WizardAccessible_Impl {
     fn GetTypeInfoCount(&self) -> windows::core::Result<u32> {
-        // There is no type library to describe this object: a client uses the
-        // interface it asked for.
+        // There is no type library to describe this object: a client that wants
+        // one gets the interface it asked for instead, which is what the members
+        // below answer.
         Ok(0)
     }
 
@@ -910,32 +1034,132 @@ impl IDispatch_Impl for WizardAccessible_Impl {
     fn GetIDsOfNames(
         &self,
         _riid: *const GUID,
-        _rgsznames: *const PCWSTR,
-        _cnames: u32,
+        rgsznames: *const PCWSTR,
+        cnames: u32,
         _lcid: u32,
-        _rgdispid: *mut i32,
+        rgdispid: *mut i32,
     ) -> windows::core::Result<()> {
-        // A name would have to come from a type library, which the runtime does
-        // not ship.
-        Err(Error::from(E_NOTIMPL))
+        if rgsznames.is_null() || rgdispid.is_null() {
+            return Err(Error::from(E_POINTER));
+        }
+        let mut unknown = false;
+        for index in 0..cnames as usize {
+            let name = unsafe { wide_string(*rgsznames.add(index)) };
+            match dispid_of(&name) {
+                Some(dispid) => unsafe { rgdispid.add(index).write(dispid) },
+                None => {
+                    unknown = true;
+                    unsafe { rgdispid.add(index).write(dispid::UNKNOWN) };
+                }
+            }
+        }
+        // The names that were found are still written: a client that asked for
+        // several gets the ones MSAA has and is told the rest are unknown, which
+        // is what the interface says a client should do with them.
+        if unknown {
+            return Err(Error::from(DISP_E_UNKNOWNNAME));
+        }
+        Ok(())
     }
 
     fn Invoke(
         &self,
-        _dispidmember: i32,
+        dispidmember: i32,
         _riid: *const GUID,
         _lcid: u32,
-        _wflags: DISPATCH_FLAGS,
-        _pdispparams: *const DISPPARAMS,
-        _pvarresult: *mut VARIANT,
+        wflags: DISPATCH_FLAGS,
+        pdispparams: *const DISPPARAMS,
+        pvarresult: *mut VARIANT,
         _pexcepinfo: *mut EXCEPINFO,
         _puargerr: *mut u32,
     ) -> windows::core::Result<()> {
-        // A client that reaches the wizard through `IDispatch` is told to use
-        // the `IAccessible` interface it asked for. Every client Windows ships
-        // -- and the bridge that puts MSAA providers under UI Automation -- uses
-        // that interface rather than late binding.
-        Err(Error::from(E_NOTIMPL))
+        // A client that reaches the wizard through `IDispatch` reaches the same
+        // description a client using `IAccessible` reaches: late binding is a way
+        // of calling the interface, not a second one, so every member here is the
+        // member of the same name. Windows' own readers call the interface
+        // directly; this is for the ones that do not.
+        if pdispparams.is_null() {
+            return Err(Error::from(E_POINTER));
+        }
+        // The arguments arrive backwards -- the last parameter of the declaration
+        // is the first `VARIANT` -- and they are borrowed rather than copied,
+        // because a `VARIANT` owns whatever it holds.
+        let count = unsafe { (*pdispparams).cArgs as usize };
+        let arguments: Vec<&VARIANT> = if count == 0 {
+            Vec::new()
+        } else {
+            let argv = unsafe { (*pdispparams).rgvarg };
+            if argv.is_null() {
+                return Err(Error::from(E_POINTER));
+            }
+            (0..count)
+                .rev()
+                .map(|index| unsafe { &*argv.add(index) })
+                .collect()
+        };
+        let argument = |index: usize| -> Option<&VARIANT> { arguments.get(index).copied() };
+        // A member whose child argument is optional is being asked about the
+        // window itself when the client leaves it out, which an empty variant is
+        // how the interface says.
+        let window_itself = VARIANT::new();
+        let child_of = |index: usize| -> &VARIANT { argument(index).unwrap_or(&window_itself) };
+
+        if wflags.0 & (DISPATCH_PROPERTYPUT.0 | DISPATCH_PROPERTYPUTREF.0) != 0 {
+            // The wizard's words come from its layout and its locale table and
+            // its values from the page and the user's typing: a client cannot
+            // write either from behind the page's back, which is what the
+            // interface says as well.
+            return Err(Error::from(E_NOTIMPL));
+        }
+
+        let answer = match dispidmember {
+            dispid::PARENT => object_answer(&self.accParent()?)?,
+            dispid::CHILD_COUNT => VARIANT::from(self.accChildCount()?),
+            dispid::CHILD => object_answer(&self.get_accChild(child_of(0))?)?,
+            dispid::NAME => VARIANT::from(self.get_accName(child_of(0))?),
+            dispid::VALUE => VARIANT::from(self.get_accValue(child_of(0))?),
+            dispid::DESCRIPTION => VARIANT::from(self.get_accDescription(child_of(0))?),
+            dispid::ROLE => self.get_accRole(child_of(0))?,
+            dispid::STATE => self.get_accState(child_of(0))?,
+            dispid::HELP => VARIANT::from(self.get_accHelp(child_of(0))?),
+            dispid::HELP_TOPIC => return Err(Error::from(E_NOTIMPL)),
+            dispid::KEYBOARD_SHORTCUT => VARIANT::from(self.get_accKeyboardShortcut(child_of(0))?),
+            dispid::FOCUS => self.accFocus()?,
+            dispid::SELECTION => self.accSelection()?,
+            dispid::DEFAULT_ACTION => VARIANT::from(self.get_accDefaultAction(child_of(0))?),
+            dispid::SELECT => {
+                let Some(flags) = argument_number(argument(0)) else {
+                    return Err(Error::from(E_INVALIDARG));
+                };
+                self.accSelect(flags, child_of(1))?;
+                VARIANT::new()
+            }
+            dispid::LOCATION => {
+                let (mut left, mut top, mut width, mut height) = (0i32, 0i32, 0i32, 0i32);
+                self.accLocation(&mut left, &mut top, &mut width, &mut height, child_of(0))?;
+                write_location(
+                    [argument(1), argument(2), argument(3), argument(4)],
+                    (left, top, width, height),
+                )?;
+                VARIANT::new()
+            }
+            dispid::NAVIGATE => {
+                let Some(direction) = argument_number(argument(0)) else {
+                    return Err(Error::from(E_INVALIDARG));
+                };
+                self.accNavigate(direction, child_of(1))?
+            }
+            dispid::DO_DEFAULT_ACTION => {
+                self.accDoDefaultAction(child_of(0))?;
+                VARIANT::new()
+            }
+            _ => return Err(Error::from(DISP_E_MEMBERNOTFOUND)),
+        };
+
+        if !pvarresult.is_null() {
+            unsafe { *pvarresult = answer };
+        }
+        Ok(())
     }
 }
 

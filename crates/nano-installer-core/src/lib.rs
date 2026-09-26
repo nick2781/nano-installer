@@ -355,6 +355,13 @@ struct InteractionState {
     highlighted_option: Option<usize>,
     /// Text field that takes typed characters, if any.
     focused_text_input: Option<String>,
+    /// What a client was last told the focused field holds.
+    ///
+    /// Typing is a change per keystroke and a reader needs each of them, while a
+    /// key that only moves the caret changes nothing and must not read the whole
+    /// field out again. The id is part of what is remembered because moving to
+    /// another field makes the value new even when the text happens to match.
+    announced_text: Option<(String, String)>,
     /// Control the keyboard is on, if any. It is the control Tab walked to, or
     /// the one the last click landed on, and it is what a keystroke acts on: the
     /// ring around it is the only thing that says where the next key goes. A
@@ -8161,8 +8168,53 @@ unsafe fn handle_text_input_char(window: HWND, character: u32) {
     if let Err(error) = result {
         show_runtime_error(&error);
     } else {
+        // A character is a change to what the field holds, and following those
+        // is how a reader reads what is being typed.
+        announce_typed_text(window);
         let _ = InvalidateRect(window, None, false);
         let _ = UpdateWindow(window);
+    }
+}
+
+/// Tells a client what the focused field holds, once per change.
+///
+/// Called after a key that could have edited the field. Whether it did is what
+/// the comparison answers: backspace at the start of the text and every arrow key
+/// leave the value where it was, and announcing those would make a reader repeat
+/// the whole field while the user is only moving around inside it.
+///
+/// The announcement is made after the state is unlocked, because describing the
+/// field reads that same state: what a client is told and what the page holds
+/// come from one place, and saying so from inside the lock would be asking for it
+/// twice.
+unsafe fn announce_typed_text(window: HWND) {
+    let mut announced = None;
+    let result = update_runtime(|state| {
+        let Some(id) = state.interaction.focused_text_input.clone() else {
+            // Nothing holds the keyboard, so the next field is a change whatever
+            // it holds.
+            state.interaction.announced_text = None;
+            return Ok(());
+        };
+        let value = state
+            .interaction
+            .text_input_values
+            .get(&id)
+            .cloned()
+            .unwrap_or_default();
+        if state.interaction.announced_text.as_ref() != Some(&(id.clone(), value.clone())) {
+            state.interaction.announced_text = Some((id.clone(), value));
+            announced = Some(id);
+        }
+        Ok(())
+    });
+    match result {
+        Err(error) => show_runtime_error(&error),
+        Ok(()) => {
+            if let Some(id) = announced {
+                accessibility::announce_control(window, accessibility::ControlEvent::Value, &id);
+            }
+        }
     }
 }
 
@@ -8194,6 +8246,10 @@ unsafe fn handle_text_input_key(window: HWND, key: u32) {
     if let Err(error) = result {
         show_runtime_error(&error);
     } else {
+        // Backspace, delete, paste, cut, undo and redo can all change what the
+        // field holds; the keys that only move the caret change nothing, and the
+        // announcement is made once per change rather than once per key.
+        announce_typed_text(window);
         let _ = InvalidateRect(window, None, false);
         let _ = UpdateWindow(window);
     }
@@ -9181,6 +9237,13 @@ unsafe fn set_text_input_value(window: HWND, id: String, value: String) -> Resul
         .interaction
         .text_input_values
         .insert(id.clone(), value);
+    let value = state
+        .interaction
+        .text_input_values
+        .get(&id)
+        .cloned()
+        .unwrap_or_default();
+    state.interaction.announced_text = Some((id.clone(), value));
     rebuild_runtime_ui(&mut state)?;
     drop(state);
     // A field filled in by something other than typing -- the folder picker,
