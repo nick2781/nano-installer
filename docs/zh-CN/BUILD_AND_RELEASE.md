@@ -35,6 +35,20 @@ DPI 行为是否与项目配置一致，所以悄悄丢掉提权声明的安装�
 它旁边多写出一个企业按 MSI 分发的包，用来验证 payload、布局与 bundle；脚本还会取出项目化的
 `uninst.exe`，单独审计它的 Windows 7 导入与版本资源。
 
+发布只从**套件绿过的提交**发出。tag 是手推的，发布 job 自己不跑套件，所以它先去问 GitHub：这个提交上
+最新的一次 **push** 运行是不是成功（`scripts/audit_release_evidence.ps1`，在花时间构建之前就跑）。
+派发的运行不算——派发的运行可以只跑指定的 target；而这在这里不是形式：本仓库的运行经常因为下一次推送
+被取代，所以某个提交的最后一句往往是 cancelled，而不是结论。
+
+发布还会写出 `SHA256SUMS.txt`（`scripts/release_manifest.ps1`）并和 5 个可执行文件一起挂在 release 上：
+每个文件一行摘要，格式是 `sha256sum -c`、`shasum -c` 认的那种，下载之后可以这样核对：
+
+```bash
+sha256sum -c SHA256SUMS.txt
+```
+
+下载是安装里唯一事后没人能检查的一步；产品本来就会拒绝摘要对不上的依赖——它自己发布的文件值得同一条规矩。
+
 示例 payload `examples/TapTap/payload/app.7z` 未存入仓库，所以上面的 CI job 只构建工具链。
 安装包级验证放在独立的 `setup-end-to-end` job：`crates/nano-installer-core/tests/e2e_setup.rs`
 自己写出一份项目、用它构建安装包，然后运行这个安装包与它部署出来的卸载程序。fixture 不含任何

@@ -41,6 +41,26 @@ the installer package an estate deploys beside it, so you can validate the paylo
 bundle; the script also extracts the project's `uninst.exe` and audits its Windows 7 imports and
 version resource on its own.
 
+A release is published only from a commit whose suite passed. The tag is pushed by hand and the release
+job does not run the suite itself, so the job asks GitHub for the runs of the commit the tag names and
+refuses to build unless the newest **push** run of that commit succeeded
+(`scripts/audit_release_evidence.ps1`, which runs before anything expensive). A dispatched run does not
+count, because a dispatched run can be given targets of its own; and this is not a formality here, since a
+run of this repository is ended routinely when a newer push supersedes it, so a commit's last word is
+often a cancellation rather than a verdict.
+
+The job also writes `SHA256SUMS.txt` (`scripts/release_manifest.ps1`) and attaches it to the release
+beside the five executables: one digest per file, in the form `sha256sum -c` and `shasum -c` read, so a
+download can be checked with
+
+```bash
+sha256sum -c SHA256SUMS.txt
+```
+
+Downloading is the one step of an install nobody can check afterwards, and the product already refuses a
+dependency whose bytes do not match the digest its project wrote down; the assets this repository ships
+deserve the same.
+
 The example payload `examples/TapTap/payload/app.7z` is not stored in the repository, so the CI job
 above builds only the toolchain. Setup-level validation runs in its own `setup-end-to-end` job:
 `crates/nano-installer-core/tests/e2e_setup.rs` writes a project of its own, builds a setup from it,

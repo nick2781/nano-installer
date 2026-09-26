@@ -7,6 +7,9 @@ on:
 
 permissions:
   contents: write
+  # The release gate reads this repository's own CI runs, so it needs to see
+  # them: the tag is pushed by hand and the release job does not run the suite.
+  actions: read
 
 jobs:
   native-win7-release:
@@ -50,6 +53,18 @@ jobs:
           $version = [regex]::Match($versionLine, '"([^"]+)"').Groups[1].Value
           .\scripts\release_version.ps1 -Tag $env:GITHUB_REF_NAME -Version $version -Commit $env:GITHUB_SHA
 
+      # Before anything expensive is built: the binaries this job publishes are
+      # only as tested as the CI run behind the commit the tag names, and a run of
+      # this repository is ended routinely when a newer push supersedes it. A
+      # commit whose newest push run is not a success is refused here, in seconds,
+      # rather than published and cleaned up afterwards.
+      - name: Check the commit has a green suite behind it
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .\scripts\audit_release_evidence.ps1 -Commit $env:GITHUB_SHA
+
       # The build links, so it runs the way the test job runs its own: in a
       # process with a console of its own, whose output goes into a file this step
       # prints. A process the build leaves behind -- the linker's telemetry helper
@@ -78,6 +93,13 @@ jobs:
           Get-Content -LiteralPath target\build.log
           exit $code
 
+      # What says a download arrived whole. The digests are of the files this run
+      # built, and the list is uploaded as an artifact here and attached to the
+      # release below, in the form `sha256sum -c` reads.
+      - name: Write the digests of the published assets
+        shell: powershell
+        run: .\scripts\release_manifest.ps1 -Output tmp\SHA256SUMS.txt
+
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v7
         with:
@@ -88,6 +110,7 @@ jobs:
             target/release/stubs/lzma-stub-native.exe
             target/release/stubs/zlib-stub-native.exe
             target/release/stubs/uninst-stub-native.exe
+            tmp/SHA256SUMS.txt
 
       - name: Build release notes from CHANGELOG.md
         if: startsWith(github.ref, 'refs/tags/v')
@@ -105,3 +128,4 @@ jobs:
             target/release/stubs/lzma-stub-native.exe
             target/release/stubs/zlib-stub-native.exe
             target/release/stubs/uninst-stub-native.exe
+            tmp/SHA256SUMS.txt
