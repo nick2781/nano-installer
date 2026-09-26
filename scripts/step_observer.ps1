@@ -84,15 +84,21 @@ function Send-Report {
     if (-not $statusUrl) {
         return
     }
+    # What a command writes is what a reader reads, and a command that colours its
+    # output writes escape sequences a status description shows as noise. Newlines
+    # go too: a status is one line.
+    $clean = $Description -replace "$([char]27)\[[0-9;?]*[a-zA-Z]", ""
+    $clean = $clean -replace "[\r\n\t]+", " "
     $body = @{
         state       = "success"
         context     = $Context
-        description = $Description.Substring(0, [Math]::Min(140, $Description.Length))
+        description = $clean.Substring(0, [Math]::Min(140, $clean.Length))
         target_url  = $runUrl
     } | ConvertTo-Json -Compress
-    $client = New-Object System.Net.Http.HttpClient
     $content = $null
+    $client = $null
     try {
+        $client = New-Object System.Net.Http.HttpClient
         $client.Timeout = [TimeSpan]::FromSeconds(10)
         $client.DefaultRequestHeaders.Add("User-Agent", "nano-installer-step-observer")
         $client.DefaultRequestHeaders.Add("Accept", "application/vnd.github+json")
@@ -207,69 +213,91 @@ $silentSince = Get-Date
 $nextHealth = (Get-Date).AddSeconds(30)
 $nextOutput = (Get-Date).AddSeconds(30)
 
+# Nothing a single pass can do may end the watching, and it has to be able to say
+# that something did: this process is the only record a wedged step leaves, and a
+# record that dies quietly is worse than no record, because it reads as a step
+# that stopped rather than as a watcher that did. Every pass is therefore wrapped,
+# what went wrong is kept, and the next report that gets through carries it --
+# which is how a bug in this file reached a developer instead of a hypothesis
+# about a build agent.
+$script:Failures = 0
+$script:LastFailure = ""
+
 while ($true) {
-    $alive = $null -ne (Get-Process -Id $StepProcessId -ErrorAction SilentlyContinue)
-    if (-not $alive) {
-        Send-Report "suite step" "the step's process is gone"
-        break
-    }
-
-    if (Test-Path -LiteralPath $CrumbPath) {
-        $lines = @(Get-Content -LiteralPath $CrumbPath -Encoding UTF8 -ErrorAction SilentlyContinue)
-        while ($consumed -lt $lines.Count) {
-            $line = $lines[$consumed].Trim()
-            $consumed = $consumed + 1
-            if (-not $line) {
-                continue
-            }
-            $silentSince = Get-Date
-            if ($line.StartsWith("log ")) {
-                $logPath = $line.Substring(4).Trim()
-                $lastLine = ""
-                continue
-            }
-            if ($line.StartsWith("exit ")) {
-                $logPath = ""
-            }
-            Send-Report "suite phase" $line
+    try {
+        $alive = $null -ne (Get-Process -Id $StepProcessId -ErrorAction SilentlyContinue)
+        if (-not $alive) {
+            Send-Report "suite step" "the step's process is gone"
+            break
         }
-    }
 
-    $now = Get-Date
-    if ($now -ge $nextOutput) {
-        if ($logPath) {
-            $line = Get-OutputTail -Path $logPath
-            if ($line -and $line -ne $lastLine) {
-                $lastLine = $line
-                Send-Report "suite output" $line
+        if (Test-Path -LiteralPath $CrumbPath) {
+            $lines = @(Get-Content -LiteralPath $CrumbPath -Encoding UTF8 -ErrorAction SilentlyContinue)
+            while ($consumed -lt $lines.Count) {
+                $line = $lines[$consumed].Trim()
+                $consumed = $consumed + 1
+                if (-not $line) {
+                    continue
+                }
+                $silentSince = Get-Date
+                if ($line.StartsWith("log ")) {
+                    $logPath = $line.Substring(4).Trim()
+                    $lastLine = ""
+                    continue
+                }
+                if ($line.StartsWith("exit ")) {
+                    $logPath = ""
+                }
+                Send-Report "suite phase" $line
             }
         }
-        $nextOutput = $now.AddSeconds(30)
-    }
-    if ($now -ge $nextHealth) {
-        $process = Get-Process -Id $StepProcessId -ErrorAction SilentlyContinue
-        if ($process) {
-            $cpu = ""
-            try {
-                $cpu = "{0:N1}s" -f $process.CPU
+
+        $now = Get-Date
+        if ($now -ge $nextOutput) {
+            if ($logPath) {
+                $line = Get-OutputTail -Path $logPath
+                if ($line -and $line -ne $lastLine) {
+                    $lastLine = $line
+                    Send-Report "suite output" $line
+                }
             }
-            catch {
+            $nextOutput = $now.AddSeconds(30)
+        }
+        if ($now -ge $nextHealth) {
+            $process = Get-Process -Id $StepProcessId -ErrorAction SilentlyContinue
+            if ($process) {
                 $cpu = "unknown"
+                $threads = "unknown"
+                try {
+                    $cpu = "{0:N1}s" -f $process.CPU
+                    $threads = [string]$process.Threads.Count
+                }
+                catch {
+                    $cpu = "unknown"
+                    $threads = "unknown"
+                }
+                $quiet = [int]($now - $silentSince).TotalSeconds
+                $trouble = ""
+                if ($script:LostPosts -gt 0) {
+                    $trouble += ", $script:LostPosts post(s) unanswered"
+                }
+                if ($script:Failures -gt 0) {
+                    $trouble += ", $script:Failures pass(es) failed: $script:LastFailure"
+                }
+                Send-Report "suite step" ("pid {0} alive, cpu {1}, threads {2}, quiet {3}s$trouble" -f $process.Id, $cpu, $threads, $quiet)
             }
-            $quiet = [int]($now - $silentSince).TotalSeconds
-            $lost = ""
-            if ($script:LostPosts -gt 0) {
-                $lost = ", $script:LostPosts post(s) unanswered"
-            }
-            Send-Report "suite step" ("pid {0} alive, cpu {1}, threads {2}, quiet {3}s$lost" -f $process.Id, $cpu, $process.Threads.Count, $quiet)
+            $nextHealth = $now.AddSeconds(60)
         }
-        $nextHealth = $now.AddSeconds(60)
-    }
 
-    if ($now -ge $deadline) {
-        $said = Stop-StepTree -ProcessId $StepProcessId -DeadlineSeconds $KillDeadlineSeconds
-        Send-Report "suite step" ("the step's time is up after {0} minute(s): {1}" -f $Minutes, $said)
-        break
+        if ($now -ge $deadline) {
+            $said = Stop-StepTree -ProcessId $StepProcessId -DeadlineSeconds $KillDeadlineSeconds
+            Send-Report "suite step" ("the step's time is up after {0} minute(s): {1}" -f $Minutes, $said)
+            break
+        }
+    }
+    catch {
+        $script:Failures = $script:Failures + 1
+        $script:LastFailure = $_.Exception.Message
     }
 
     Start-Sleep -Seconds 5
