@@ -186,7 +186,7 @@ true of any installer, and it is why the acceptance run is on the list rather th
   what the first one installed -- the entry reported the new version, the older package had nothing
   left to remove, and the newer one cleaned up completely. A project that never declared a windowless
   run is refused a package, by name of the setting it is missing.
-  Seventeen of its fifty-eight cases open the wizard window and drive it: one measures the client
+  Twenty-five of its sixty-nine cases open the wizard window and drive it: one measures the client
   area it drew, one walks the page actions a project declares, one stops a running task from a cancel
   button, one types a directory into the field a page asks for and starts the install with it, one
   clicks the row a radio group's install button waits for, one rolls the wheel over a list and
@@ -203,10 +203,17 @@ true of any installer, and it is why the acceptance run is on the list rather th
   picture a checkbox carries stays the project's own, and one clicks a
   browse button and closes the shell's folder dialog again, one lets a page hook send the wizard
   past the licence page and Back the way the user came, and one watches a hook fail: the reason
-  lands on the product's own card and the declared order walks on. They need an interactive
+  lands on the product's own card and the declared order walks on. Eight more hand the page to a
+  client in another process: the controls with their roles, names, values, states and places, a
+  control worked through its default action and another taking the keyboard when asked, the focus
+  events the wizard announces as Tab walks on, the value of a field read again as it is typed (once
+  per keystroke, and not for a key that only moves the caret), the words and the bar a running task
+  publishes, the rule a field's value breaks, the card a question is drawn on, and the same page
+  asked for by member name over `IDispatch` -- one of them reads the page and keeps reading it to see
+  the wizard stays up while it is being asked. They need an interactive
   desktop session, so they skip where there is none and `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` makes the
   skip a failure; the cursor case asks that the session be showing a pointer as well, which a
-  hosted runner is not, and it prints its skip there. Of the other thirty-eight, three read their
+  hosted runner is not, and it prints its skip there. Of the other forty-four, three read their
   answer back out of the machine rather than out of the primitive that wrote it: one checks every
   registry type a script named, and the copy of a key a view name selects, one checks the exit code
   and both streams of a command a script ran, and one checks that the service a script installed is
