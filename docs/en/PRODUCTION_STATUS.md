@@ -1,7 +1,10 @@
 # Production status
 
-**The current implementation is not ready for production distribution.** Install actions write
-files and registry entries, so validate them in a disposable virtual machine only.
+**Windows 7 SP1 -- the platform these artifacts claim as their minimum -- has never been observed.**
+Everything else in this document was verified on Windows 11 and in CI, and the one thing a release waits
+on is that acceptance run ([Blocking a release](#blocking-a-release)). Install actions write files and
+registry entries, so a new project's setup is worth trying in a disposable virtual machine first; that is
+true of any installer, and it is why the acceptance run is on the list rather than a formality.
 
 ## Verified
 
@@ -277,6 +280,26 @@ the real hooks was walked end to end as well: a probe project pointed both `fina
 `signtool verify /pa` (with a DigiCert timestamp); `scripts/audit_embedded_uninstaller.ps1` still
 finds the footer, extracts the uninstaller and matches its digest on the signed setup; and a signed
 setup installs, registers its uninstall entry and removes itself again.
+
+## Publishing
+
+A release is built and published from a tag, and the tag is pushed by hand. Two things the pipeline
+checks rather than assumes:
+
+- **The commit the tag names has a green suite behind it.** A run of this repository is ended routinely
+  when a newer push supersedes it, so a commit's last word is often a cancellation rather than a verdict.
+  The release job asks GitHub for the runs of the commit and refuses to build unless the newest push run
+  succeeded (`scripts/audit_release_evidence.ps1`, before anything expensive runs). A dispatched run does
+  not count, because a dispatched run can be given targets of its own. A run that stopped answering
+  therefore leaves no green evidence, and the gate refuses the tag until the suite has run on that commit
+  again -- see the changelog for what is known about that and what the suite does about it.
+- **The five assets are published with their digests.** `scripts/release_manifest.ps1` writes
+  `SHA256SUMS.txt`, one digest per file in the form `sha256sum -c` reads, and the workflow attaches it to
+  the release and to its artifact. Downloading is the one step of an install nobody can check afterwards,
+  and the product already refuses a dependency whose bytes do not match the digest its project wrote down.
+
+The setup a project builds is not one of those assets: it is built and published by whoever ships the
+product, and the hooks described under [Signing](#signing) are where that pipeline signs it.
 
 ## Blocking a release
 
