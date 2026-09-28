@@ -1,0 +1,47 @@
+name: Feature request
+description: Ask for something the product or the project does not do yet
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before opening: `docs/en/PRODUCTION_STATUS.md` lists what is deliberately missing today, and
+        `docs/en/MIGRATION_FROM_NSIS.md` says which NSIS features are supported, which are mapped to
+        something else, and which are refused on purpose. The refusing ones are the ones worth arguing
+        about — say why the mapping is not enough.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you are trying to ship or do, and where it stops today. Describe the situation rather than the API you have in mind.
+    validations:
+      required: true
+  - type: textarea
+    id: workaround
+    attributes:
+      label: What you do instead
+      description: How you get it done now — a script, another tool, a manual step — and why that is not good enough.
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Build and packaging
+        - Project configuration
+        - The install / uninstall scripting language
+        - Plugins
+        - User interface and layout
+        - Uninstall and update
+        - MSI package
+        - Documentation
+    validations:
+      required: true
+  - type: textarea
+    id: nsis
+    attributes:
+      label: Does NSIS do this?
+      description: If you are coming from NSIS, name the instruction, plug-in, or behaviour. That is the most useful description we can get.
+    validations:
+      required: false

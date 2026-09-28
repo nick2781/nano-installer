@@ -1,0 +1,72 @@
+name: A plugin does not work
+description: A plugin fails to build, load, run, or is refused by the builder
+labels: ["plugin"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        `docs/en/PLUGIN_API.md` and `docs/zh-CN/PLUGIN_API.md` describe the ABI and the two rules
+        that explain most refusals: the plugin has to be 64-bit, and every export has to be
+        undecorated `__cdecl` — `NANO_PLUGIN_EXPORT int32_t NANO_PLUGIN_CALL`.
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Where it stops
+      options:
+        - The builder refuses the project (a check fails before anything is packaged)
+        - The setup deploys the plugin but the script's call fails
+        - The script's call returns the wrong answer
+        - The uninstaller complains about the plugin
+        - The plugin builds but has no exports
+        - The plugin crashes or takes the installer down with it
+    validations:
+      required: true
+  - type: dropdown
+    id: language
+    attributes:
+      label: Written in
+      options:
+        - C or C++
+        - Rust
+        - Another language
+    validations:
+      required: true
+  - type: input
+    id: exports
+    attributes:
+      label: Exported names
+      description: The exact names the DLL exports. `dumpbin /exports your.dll` or `llvm-nm -g your.dll` prints them, and decoration (`_Hello@4`) is itself the answer.
+      placeholder: "Hello, Sum, Install"
+    validations:
+      required: true
+  - type: textarea
+    id: header
+    attributes:
+      label: How the plugin is declared
+      description: The export declaration and the entry point, plus the part of the host table you read. A mismatch here is the usual cause.
+      render: c
+    validations:
+      required: true
+  - type: textarea
+    id: call
+    attributes:
+      label: The script line and the message
+      description: The `plugin_call` line from `install.rhai` or `uninstall.rhai` and the error text or returned value.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: "v2026.9.28, or a1b2c3d"
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before opening
+      options:
+        - label: The DLL is 64-bit and matches the architecture of the setup.
+          required: true
+        - label: The name in the script matches an export exactly, including case.
+          required: true

@@ -9,7 +9,15 @@ and your application files in one folder. Nano Installer turns that folder into 
 file with your logo, your pages and your wording, and your users install nothing first.
 
 > **Status:** early implementation, not ready for production distribution. Install actions write
-> files and registry entries, so test only inside a disposable VM.
+> files and registry entries, so test only inside a disposable VM; neither a setup nor the
+> installer package around it is code-signed, and Windows 7 support has not been accepted on a
+> real machine yet. See [production status](PRODUCTION_STATUS.md).
+
+<img src="https://github.com/nick2781/nano-installer/raw/main/assets/setup-welcome-en-US.png" alt="The first page of a setup built from the TapTap example" width="640">
+
+That is the first page of `examples/TapTap`, captured at 96 dpi by
+`scripts/capture_setup_snapshots.ps1`, which photographs every page the example declares and
+checks each one against the project's own layout.
 
 ## What you get
 
@@ -23,6 +31,9 @@ file with your logo, your pages and your wording, and your users install nothing
 | Uninstall | Takes back what it put down, and keeps user data by default |
 | Administrator rights | Requested from Windows when the config asks for them |
 | Progress and finish pages | Live progress names the current step, and the finish page can start what it installed |
+| Update packages | `--delta-from` ships only the files whose bytes changed, and the setup checks what is already on the machine before it writes |
+| Screen readers | A reader in another process is told the page, the focus, the value of a field as it is typed, the words a running task publishes, and the card a question is drawn on |
+| Plugins | A third party extends a setup with a DLL built against [`include/nano_plugin.h`](PLUGIN_API.md), called from the project's script |
 | GUI, or a command line | Click through the visual builder, or drive the same engine from CI |
 
 ## Start
@@ -43,6 +54,8 @@ same engine from the [visual builder](GUI.md).
 - [Page layout](XML_LAYOUT_GUIDE.md) - pages, controls, flow layout, links, actions
 - [Languages](LOCALIZATION.md) - shipping translated installers
 - [Custom steps](SCRIPT_API.md) - install/uninstall logic in Rhai
+- [Plugin ABI](PLUGIN_API.md) - the header a third-party DLL is built against, and what the host lends it
+- [Migrating from NSIS](MIGRATION_FROM_NSIS.md) - what maps onto what, and what is refused on purpose
 - [Production status](PRODUCTION_STATUS.md) - what works today and what blocks a release
 
 ## Technical notes

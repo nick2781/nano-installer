@@ -1,0 +1,72 @@
+name: Bug report
+description: Something a setup, the builder, or the scripts do wrong
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. The run log is usually the fastest evidence: a failed install leaves
+        one behind in `%TEMP%\nano-installer\` and names it in its own error message.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The tag or release you used, or the commit if you built from source. `git rev-parse --short HEAD` is enough for a source build.
+      placeholder: "v2026.9.28, or a1b2c3d"
+    validations:
+      required: true
+  - type: dropdown
+    id: part
+    attributes:
+      label: What is involved
+      options:
+        - The setup the build produced
+        - The uninstaller
+        - The builder (command line)
+        - The visual builder (GUI)
+        - A project script (`install.rhai` / `uninstall.rhai`)
+        - A plugin
+        - The MSI package
+        - The repository's own scripts
+        - Documentation
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      description: For example "Windows 11 24H2 x64". If the run was elevated, say so — several code paths only run that way.
+      placeholder: "Windows 11 24H2 x64, elevated"
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you ran or clicked, what you expected, and what you got instead. Paste the error text and the last lines of the run log if you have them.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The project folder, or the smallest project or setup that shows it. `examples/TapTap` is a good starting point when the bug is not project-specific.
+    validations:
+      required: false
+  - type: input
+    id: log
+    attributes:
+      label: Run log
+      description: The path of the log the failed run left behind, if you still have it.
+      placeholder: "%TEMP%\\nano-installer\\MyApp_Setup-20260928-120000-install.log"
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before opening
+      options:
+        - label: I read the section that covers this in `docs/en/PRODUCTION_STATUS.md` (or the Chinese one).
+          required: false
+        - label: This is not a security report — those go to `SECURITY.md` instead of an issue.
+          required: true

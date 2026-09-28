@@ -16,4 +16,6 @@
   * [Test plan](TEST_PLAN.md)
   * [Test coverage](TEST_COVERAGE.md)
   * [Production status](PRODUCTION_STATUS.md)
+* [Contributing](https://github.com/nick2781/nano-installer/blob/main/CONTRIBUTING.md)
+* [Security policy](https://github.com/nick2781/nano-installer/blob/main/SECURITY.md)
 * [中文文档](../zh-CN/README.md)

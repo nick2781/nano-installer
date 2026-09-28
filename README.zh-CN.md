@@ -11,6 +11,11 @@ Installer 把它打包成一个 Windows 安装包。图标、界面和文案都�
 > **状态：** 早期实现，尚不适合对外发布产品。安装动作会写入文件和注册表，请在一次性虚拟机中
 > 测试；正式规划发布前请先读[当前生产状态](docs/zh-CN/PRODUCTION_STATUS.md)。
 
+<img src="assets/setup-welcome-zh-CN.png" alt="用 TapTap 示例构建出的安装包首屏：产品 logo、一句标语、安装选项，以及「立即安装」按钮" width="720">
+
+这张图就是 `examples/TapTap` 的首屏，由 `scripts/capture_setup_snapshots.ps1` 拍下来——它会把示例真的
+构建出来，再逐页截图并对照工程自己的布局检查，所以图上是运行时画出来的样子，不是效果图。
+
 ## 它给你什么
 
 | | |
@@ -20,14 +25,19 @@ Installer 把它打包成一个 Windows 安装包。图标、界面和文案都�
 | 页面和控件归你 | 用 XML 描述，换上自己的背景图和按钮图 |
 | 内置 11 种界面语言 | 也可以另外增加自己的 JSON 语言文件 |
 | 升级与回滚 | 重复运行安装包即原地升级，中途失败会自动回到升级前的状态 |
+| 更新包 | `--delta-from` 只发字节变了的文件；安装时先核对机器上已有的那些，再动手写 |
 | 卸载 | 卸载只回收自己装下的内容，用户数据默认保留 |
 | 管理员权限 | 配置要求时才向 Windows 申请 |
 | 进度与完成页 | 实时进度会说明当前在做什么，完成页可直接启动刚装好的应用 |
+| 读屏 | 另一个进程里的读屏被告知：这一页是什么、焦点在哪、字段里正在敲进去的值、任务报出来的那句话与进度条、提问卡片——走 MSAA，也走 `IDispatch`（按名字问的客户程序拿到同样的答案） |
+| 插件 | 第三方按 [`include/nano_plugin.h`](docs/zh-CN/PLUGIN_API.md) 编一个 DLL，脚本就能调用它 |
 | 界面或命令行 | 日常点可视化界面；CI 里用命令行驱动同一套引擎 |
 
 ## 上手
 
-需要 Windows x64、MSVC 构建工具，以及本仓库固定的 Rust 工具链。
+需要 Windows x64、MSVC 构建工具，以及本仓库固定的 Rust 工具链。请用 `git clone` 取代码，并先跑一次
+`git lfs install`：图标、示例图片和 `tools/` 下的压缩工具都存在 Git LFS 里，直接下载源码 ZIP 拿到的是
+指针文件而不是它们本身。
 
 ```powershell
 # 1. 构建工具（每个检出做一次）
@@ -76,6 +86,11 @@ MyApp/
 - 布局里写的颜色、圆角和描边都会画出来，鼠标移到能点的地方会变成手型。
 - 内置步骤不够用时，可以用一份小脚本自己写安装和卸载流程；脚本出错会回滚，不会留下装到一半的
   产品。
+- 工程可以带上自己的插件：一个按 [`include/nano_plugin.h`](docs/zh-CN/PLUGIN_API.md) 编出来的 64 位
+  DLL 随安装包发出去，脚本用 `plugin_call("dll::function", [...])` 调用它；插件经宿主写下的东西照样
+  进清单，卸载收得回来。
+- 页面不只是画出来，还会被读给读屏听：焦点、字段里正在敲进去的值、任务报出来的话与进度条、提问
+  卡片；按成员名通过 `IDispatch` 来问的客户程序，拿到的答案与走 `MSAA` 的逐项一致。
 - 构建时多给一个 `--msi <文件>`，可以把做完的安装包封成更大规模部署用的那个包：`.msi` 通过
   Windows Installer 无窗口装上产品、也能把它卸干净，新版本的包会升级旧版包装出来的那一份。
 - Windows 10 及以上还有可视化构建界面，生成的安装包和命令行一模一样。
@@ -89,12 +104,15 @@ MyApp/
 
 ## 文档
 
+文档站点：**https://nick2781.github.io/nano-installer/**
+
 使用指南：[快速开始](docs/zh-CN/QUICK_START.md) &middot;
 [可视化构建](docs/zh-CN/GUI.md) &middot;
 [配置参考](docs/zh-CN/CONFIG_REFERENCE.md) &middot;
 [页面布局](docs/zh-CN/XML_LAYOUT_GUIDE.md) &middot;
 [多语言](docs/zh-CN/LOCALIZATION.md) &middot;
 [自定义步骤](docs/zh-CN/SCRIPT_API.md) &middot;
+[插件 ABI](docs/zh-CN/PLUGIN_API.md) &middot;
 [从 NSIS 迁移](docs/zh-CN/MIGRATION_FROM_NSIS.md)
 
 技术说明：[架构](docs/zh-CN/ARCHITECTURE.md) &middot;
@@ -104,11 +122,24 @@ MyApp/
 [当前生产状态](docs/zh-CN/PRODUCTION_STATUS.md) &middot;
 [项目结构](docs/zh-CN/PROJECT_STRUCTURE.md)
 
+每个 release 里的 5 个可执行文件旁边都带一份 `SHA256SUMS.txt`，下载之后可以用
+`sha256sum -c SHA256SUMS.txt` 核对。
+
 英文文档见 [docs/en](docs/en/)。
+
+## 参与
+
+怎么把工作区装起来、一个改动必须过哪几条检查、这个仓自己有哪些规矩，都写在
+[CONTRIBUTING.md](CONTRIBUTING.md) 里。缺陷、插件问题、功能请求、使用提问各有一张
+[issue 表单](.github/ISSUE_TEMPLATE)；每张都问版本号和运行日志，因为少了这两样就得来回一轮。
+
+安全漏洞请不要开 issue，走私有上报，见 [SECURITY.md](SECURITY.md)；那份文件也列出哪些在这里
+**不算**漏洞，比如没有代码签名。
 
 ## 权利与许可
 
 - 本仓库的 Rust 源码以 [MIT License](LICENSE) 授权。
 - `examples/TapTap` 仅用于校验。其中的 TapTap 商标、图片与文案归
-  **易玩（上海）网络科技有限公司**及相关权利人所有，不属于 MIT 授权范围。
+  **易玩（上海）网络科技有限公司**及相关权利人所有，不属于 MIT 授权范围；`assets/` 下的截图就是
+  这个示例的截图，同样适用。
 - 你生成的安装包携带你自己配置的产品资源，按你产品的授权处理。

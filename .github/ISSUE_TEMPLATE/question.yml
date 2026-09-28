@@ -1,0 +1,31 @@
+name: Question
+description: Ask how to build, script, or migrate a project
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The answer may already be written down: `docs/en/CONFIG_REFERENCE.md` lists every
+        configuration key, `docs/en/MIGRATION_FROM_NSIS.md` maps NSIS instructions onto this project,
+        and `examples/TapTap` is a complete working project to compare against.
+  - type: textarea
+    id: question
+    attributes:
+      label: The question
+      description: What you are trying to do and what you are unsure about.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: "v2026.9.28, or a1b2c3d"
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you tried
+      description: The configuration, script, or command you used, and what it did instead. Paste any message the tool printed.
+    validations:
+      required: false

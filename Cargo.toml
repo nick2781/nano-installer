@@ -18,6 +18,11 @@ authors = ["nano-installer contributors"]
 description = "Native configuration-driven Windows installer framework"
 license = "MIT"
 repository = "https://github.com/Nick2781/nano-installer"
+# The crates are this repository's own build units, not libraries to publish: they are
+# Windows-only, they are built together by scripts/build.ps1, and several of them exist only to
+# keep one archive backend out of another binary. Publishing one would ship a crate whose
+# documented entry point is a generated executable, so this stays false until someone asks.
+publish = false
 
 [workspace.dependencies]
 anyhow = "1.0"

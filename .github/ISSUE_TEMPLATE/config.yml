@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a vulnerability
+    url: https://github.com/nick2781/nano-installer/security/advisories/new
+    about: Do not open an issue for a security problem. Use private vulnerability reporting; SECURITY.md says what is in scope.
+  - name: Documentation
+    url: https://nick2781.github.io/nano-installer/
+    about: Configuration reference, plugin ABI, NSIS migration notes, and the production status of each declared gap.

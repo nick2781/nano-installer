@@ -10,10 +10,19 @@ Hand someone a single `.exe` and your product is installed. You keep the configu
 and your application files in one folder. Nano Installer turns that folder into one Windows setup
 file with your logo, your pages and your wording, and your users install nothing first.
 
-> **状态 / Status:** 早期实现，尚不适合对外发布产品。安装动作请只在一次性虚拟机中测试。
+> **状态 / Status:** 早期实现，尚不适合对外发布产品。安装动作请只在一次性虚拟机中测试；
+> 未签名的安装包、尚未在真机上验收的 Windows 7 支持这些已知缺口，逐条记在
+> [当前生产状态](zh-CN/PRODUCTION_STATUS.md)里。
 >
 > Early implementation, not ready for production distribution. Test install actions only in a
-> disposable VM.
+> disposable VM. The missing code signature and the Windows 7 acceptance that has not happened
+> on a real machine are listed one by one in the
+> [production status](en/PRODUCTION_STATUS.md).
+
+<img src="https://github.com/nick2781/nano-installer/raw/main/assets/setup-welcome-en-US.png" alt="A setup built from the TapTap example, first page" width="640">
+
+上面这张是 `examples/TapTap` 装出来的第一页，由 `scripts/capture_setup_snapshots.ps1` 在 96 dpi 下截取，页面本身经过工程自己的版面核对。The picture above is the first page of `examples/TapTap`, captured at
+96 dpi by `scripts/capture_setup_snapshots.ps1` and checked against the project's own layout.
 
 ## 从这里开始 / Start here
 
@@ -33,6 +42,7 @@ blocks a release.
 | [多语言](zh-CN/LOCALIZATION.md) | [Languages](en/LOCALIZATION.md) |
 | [自定义步骤](zh-CN/SCRIPT_API.md) | [Custom steps](en/SCRIPT_API.md) |
 | [从 NSIS 迁移](zh-CN/MIGRATION_FROM_NSIS.md) | [Migrating from NSIS](en/MIGRATION_FROM_NSIS.md) |
+| [插件 ABI](zh-CN/PLUGIN_API.md) | [Plugin ABI](en/PLUGIN_API.md) |
 | [当前生产状态](zh-CN/PRODUCTION_STATUS.md) | [Production status](en/PRODUCTION_STATUS.md) |
 
 ## 技术说明 / Technical notes
@@ -50,6 +60,7 @@ maintainers rather than for product onboarding.
 | [构建与发布](zh-CN/BUILD_AND_RELEASE.md) | [Build and release](en/BUILD_AND_RELEASE.md) |
 | [测试计划](zh-CN/TEST_PLAN.md) | [Test plan](en/TEST_PLAN.md) |
 
-仓库说明见 [README.md](../README.md)（English）与 [README.zh-CN.md](../README.zh-CN.md)（简体中文）。
+本页只发布 `docs/`，所以仓库根目录的文件得回 GitHub 上看：[README（English）](https://github.com/nick2781/nano-installer/blob/main/README.md)、[README（简体中文）](https://github.com/nick2781/nano-installer/blob/main/README.zh-CN.md)、[贡献指南](https://github.com/nick2781/nano-installer/blob/main/CONTRIBUTING.md)、[安全策略](https://github.com/nick2781/nano-installer/blob/main/SECURITY.md)。
 
-The repository README is available in [English](../README.md) and [简体中文](../README.zh-CN.md).
+Only `docs/` is published as this site, so the files at the repository root live on GitHub:
+[English README](https://github.com/nick2781/nano-installer/blob/main/README.md), [Chinese README](https://github.com/nick2781/nano-installer/blob/main/README.zh-CN.md), [contributing guide](https://github.com/nick2781/nano-installer/blob/main/CONTRIBUTING.md), [security policy](https://github.com/nick2781/nano-installer/blob/main/SECURITY.md).

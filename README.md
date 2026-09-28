@@ -13,6 +13,12 @@ users install first.
 > files and registry entries, so test only inside a disposable VM. See
 > [production status](docs/en/PRODUCTION_STATUS.md) before you plan a release.
 
+<img src="assets/setup-welcome-en-US.png" alt="The first page of a setup built from the TapTap example: the product logo, a tagline, the installation options, and an Install Now button" width="720">
+
+That page is the first page of `examples/TapTap`, captured by
+`scripts/capture_setup_snapshots.ps1` — the script builds the example and photographs every page it
+declares, so the picture is what the runtime drew rather than a mock-up.
+
 ## What you get
 
 | | |
@@ -22,14 +28,19 @@ users install first.
 | Your pages and controls | Described in XML, using your own backgrounds and buttons |
 | Eleven UI languages | Built in, and you can add more in plain JSON |
 | Upgrades and rollback | Re-running the setup upgrades in place, and returns to the previous state if a step fails |
+| Update packages | `--delta-from` ships only the files whose bytes changed, and the setup checks what is already on the machine before it writes |
 | Uninstall | Takes back what it put down, and keeps user data by default |
 | Administrator rights | Requested from Windows when the config asks for them |
 | Progress and finish pages | Live progress names the current step, and the finish page can start what it installed |
+| Screen readers | A reader in another process is told the page, the focus, the value of a field as it is typed, the words a running task publishes, and the card a question is drawn on — through MSAA, and through `IDispatch` for clients that ask by name |
+| Plugins | A third party extends a setup with a DLL built against [`include/nano_plugin.h`](docs/en/PLUGIN_API.md), called from the project's script |
 | GUI, or a command line | Click through the visual builder, or drive the same engine from CI |
 
 ## Get started
 
 You need Windows x64 with the MSVC build tools, plus the Rust toolchain pinned in this repository.
+Clone with `git clone`, and run `git lfs install` once: the icons, the example's images and the
+archiver under `tools/` are stored in Git LFS, so a source ZIP download arrives without them.
 
 ```powershell
 # 1. Build the tools (once per checkout)
@@ -86,6 +97,13 @@ quickest start is to copy `examples/TapTap` and replace what is inside.
   into a hand over anything clickable.
 - When the built-in steps are not enough, a small script file can drive install and uninstall. A
   failing script rolls back and never leaves a half-installed product.
+- A project can ship its own plugins: a 64-bit DLL built against
+  [`include/nano_plugin.h`](docs/en/PLUGIN_API.md), embedded in the setup and called from the script
+  as `plugin_call("dll::function", [...])`. What a plugin writes goes through the host, so the
+  uninstall still takes it back.
+- A page is announced to a screen reader, not just drawn: the focus, a field's value as it is typed,
+  the words and the bar a running task publishes, and the card a question is drawn on. A client that
+  asks by member name over `IDispatch` gets the same answers as one using `MSAA`.
 - A build can also wrap the finished setup in the package a larger estate deploys: `--msi <file>`
   writes a `.msi` that installs the product with no window through Windows Installer and removes it
   again, and a newer package upgrades the release an older one installed.
@@ -101,12 +119,15 @@ quickest start is to copy `examples/TapTap` and replace what is inside.
 
 ## Documentation
 
+Documentation site: **https://nick2781.github.io/nano-installer/**
+
 Product guides: [Quick start](docs/en/QUICK_START.md) &middot;
 [Visual builder](docs/en/GUI.md) &middot;
 [Configuration](docs/en/CONFIG_REFERENCE.md) &middot;
 [Page layout](docs/en/XML_LAYOUT_GUIDE.md) &middot;
 [Languages](docs/en/LOCALIZATION.md) &middot;
 [Custom steps](docs/en/SCRIPT_API.md) &middot;
+[Plugin ABI](docs/en/PLUGIN_API.md) &middot;
 [Migrating from NSIS](docs/en/MIGRATION_FROM_NSIS.md)
 
 Technical notes: [Architecture](docs/en/ARCHITECTURE.md) &middot;
@@ -116,13 +137,28 @@ Technical notes: [Architecture](docs/en/ARCHITECTURE.md) &middot;
 [Production status](docs/en/PRODUCTION_STATUS.md) &middot;
 [Project layout](docs/en/PROJECT_STRUCTURE.md)
 
+Releases carry the five executables and a `SHA256SUMS.txt` beside them, so a download can be checked
+with `sha256sum -c SHA256SUMS.txt`.
+
 Chinese documentation lives in [docs/zh-CN](docs/zh-CN/).
+
+## Contributing
+
+[CONTRIBUTING.md](CONTRIBUTING.md) has the working-tree setup, the checks a change has to pass, and
+the rules this repository keeps. Bugs, plugin problems, feature requests and questions each have an
+[issue form](.github/ISSUE_TEMPLATE); every form asks for the version and the run log, because a
+report without them costs a round trip.
+
+Please report security problems through private vulnerability reporting rather than in an issue —
+see [SECURITY.md](SECURITY.md), which also lists the things that are knowingly not vulnerabilities
+here, such as the missing code signature.
 
 ## Rights and license
 
 - The Rust source in this repository is licensed under the [MIT License](LICENSE).
 - `examples/TapTap` is a validation project. The TapTap trademarks, images, and copy in it belong
   to **易玩（上海）网络科技有限公司** and their respective rights holders; they are not
-  MIT-licensed.
+  MIT-licensed. The screenshots in `assets/` are captures of that example, so the same applies to
+  them.
 - Setups you generate carry the resources you configure for your own product, under your own
   licensing.
