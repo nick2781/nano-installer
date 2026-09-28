@@ -54,6 +54,11 @@ push supersedes it, so a commit's last word is often a cancellation rather than 
 also the way back: a tag whose push run was cancelled is published after the whole suite is dispatched on
 the tag itself (`gh workflow run ci.yml --ref <tag>`), with no new commit pushed for it.
 
+`ci.yml` runs on branch pushes, on pull requests and when it is dispatched -- not on tag pushes. A tag push
+is a release event, and a run started by it would be a *newer* whole-suite run that is still going, so the
+gate would refuse the very commit the tag names; that is what happened when v2026.9.28 was cut, and the
+release went out after that run finished and the job was run again. Testing a commit twice buys nothing.
+
 The job also writes `SHA256SUMS.txt` (`scripts/release_manifest.ps1`) and attaches it to the release
 beside the five executables: one digest per file, in the form `sha256sum -c` and `shasum -c` read, so a
 download can be checked with

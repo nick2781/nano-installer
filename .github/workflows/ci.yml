@@ -1,7 +1,14 @@
 name: CI
 
 on:
+  # Branch pushes only. A tag push is a release event: `release.yml` builds and
+  # publishes from it, and the release gate reads this workflow's runs as the
+  # evidence behind the tagged commit. A run started by the tag push would arrive
+  # as a newer whole-suite run that is still going, and the gate would refuse a
+  # commit whose suite had just passed -- which is what happened when v2026.9.28
+  # was cut. Testing the same commit twice buys nothing either.
   push:
+    branches: ["**"]
   pull_request:
   workflow_dispatch:
     inputs:
