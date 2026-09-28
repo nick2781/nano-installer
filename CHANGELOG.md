@@ -22,7 +22,12 @@
   `include/nano_plugin.h` 里，三条规则：文本进、文本出；要写就走宿主；不认识 ABI 版本就别读后面的字段。
   宿主交给插件的服务有 `push`、`log`、`window`、`cancelled`、`install_dir`、`write_file`、
   `write_registry` 与 `error_text`。文档在 `docs/{en,zh-CN}/PLUGIN_API.md`，可抄的实现在
-  `crates/nano-installer-plugin-sample`。
+  `crates/nano-installer-plugin-sample`（Rust）与 `examples/plugin-c/sample.c`（C）。
+- 这个 ABI 属于头文件，不属于某一种语言。C 那份示例只用 MSVC 和 `include/nano_plugin.h` 编出来，不经过
+  Rust 工具链；端到端用例会各装一次带两份示例的安装包并驱动它们——两个独立实现互相把对方钉在同一份头文件
+  上。写它的时候发现一处必须写进规范的东西：C/C++ 里少一个 `__declspec(dllexport)`，DLL 照样编得出来、
+  也加载得起来，可就是没有那个名字的导出，而且什么都不说。头文件因此多了 `NANO_PLUGIN_EXPORT`，放在签名
+  旁边，而不是让每个作者自己踩一次。
 - 插件**只经宿主写**才进 manifest，这是「卸载只删 manifest 里记的东西」这条承诺的一部分：`write_file` 只
   收安装目录里的路径，`write_registry` 按脚本原语的方式记账。插件想*读*什么、*查*什么，直接调 Win32 API
   就行——它是这个进程里的原生代码，只有写要过宿主。
@@ -45,12 +50,12 @@
 
 - 插件这条路的证据分三层。九条单元用例：宿主交给插件的那张表逐字段对得上头文件、`dll::function` 的写法、
   以及构建期拒绝三种 DLL（32 位映像、可执行文件、根本不是映像的文件——后三条真的跑一次 `pack_project`，
-  看它点名哪个文件失败）。三条安装包级用例：真的装一次带示例插件的安装包，取回的五个值逐条核对；插件
-  经宿主写下的文件与注册表值在卸载之后都不在了；往安装目录外写被当场拒绝并把原因交回脚本；失败与拒绝
-  ABI 的插件按名字报给脚本。本机整套套件 385 条全跑到（384 通过、0 失败、1 忽略；这次桌面是解锁的，
-  两条指针用例也通过了），`cargo fmt --all -- --check`、
-  `cargo clippy --locked --workspace --all-targets -- -D warnings` 与三个审计脚本（用例描述 385/385、
-  测试目标、脚本编码）全部退出码 0。
+  看它点名哪个文件失败）。四条安装包级用例：两次真的装一遍带插件的安装包（一次带 Rust 那份示例、一次带
+  只用 MSVC 编出来的 C 那份），取回的值逐条核对，插件经宿主写下的文件与注册表值在卸载之后都不在了，
+  往安装目录外写被当场拒绝并把原因交回脚本，失败与拒绝 ABI 的插件按名字报给脚本。本机整套套件 386 条
+  全跑到（385 通过、0 失败、1 忽略；这次桌面是解锁的，两条指针用例也通过了），
+  `cargo fmt --all -- --check`、`cargo clippy --locked --workspace --all-targets -- -D warnings`
+  与三个审计脚本（用例描述 386/386、测试目标、脚本编码）全部退出码 0。
 - 插件 panic 的行为是量出来的，不是推测：Rust 在 panic 要穿过 `extern "system"` 边界时直接中止进程
   （本机看到 `thread caused non-unwinding panic. aborting.`），宿主根本来不及报告。所以头文件与插件文档
   写的是「不允许任何异常或 panic 逃出导出函数」，而不是留一句「宿主会接住」。

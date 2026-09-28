@@ -46,8 +46,8 @@ ARM64 映像、不是 DLL 的可执行文件、或者根本不是 Windows 映像
 ```c
 #include "nano_plugin.h"
 
-int32_t NANO_PLUGIN_CALL Hello(nano_plugin_host *host, int32_t argc,
-                               const wchar_t *const *argv) {
+NANO_PLUGIN_EXPORT int32_t NANO_PLUGIN_CALL Hello(nano_plugin_host *host, int32_t argc,
+                                                  const wchar_t *const *argv) {
     if (host->abi_version != NANO_PLUGIN_ABI_VERSION) {
         return 1;
     }
@@ -58,6 +58,10 @@ int32_t NANO_PLUGIN_CALL Hello(nano_plugin_host *host, int32_t argc,
 
 一个插件可以导出任意多个函数，签名都是这一个。`argv` 按脚本写的顺序放着参数，每个是 UTF-16、以 NUL
 结尾，宿主拥有、只在这次调用期间有效；`argc` 是参数的个数。
+
+`NANO_PLUGIN_EXPORT` 是写 C 或 C++ 的人不能忘的那一半：少了它，DLL 照样编得出来、也加载得起来，可就是
+没有这个名字的导出，而且什么都不说。Rust 是用 `#[no_mangle]` 说同一件事，所以 Rust 那份示例里看不到这个
+宏。
 
 ## 服务
 
@@ -112,6 +116,7 @@ int32_t NANO_PLUGIN_CALL Hello(nano_plugin_host *host, int32_t argc,
 
 ## 从哪里开始
 
-`crates/nano-installer-plugin-sample` 就是一个能用的插件：它会回答一个值、把参数加起来、经宿主写一个
-文件和一个注册表值、拒绝安装目录外的路径，也会按需要失败。安装包级用例会真的装一次带它的安装包，
-把每个函数都驱动一遍——所以它同时也是「ABI 与这一页说法一致」的持有者。
+`crates/nano-installer-plugin-sample` 是一份能用的 Rust 插件：它会回答一个值、把参数加起来、经宿主写一个
+文件和一个注册表值、拒绝安装目录外的路径，也会按需要失败。`examples/plugin-c/sample.c` 是同一个插件的 C
+版本，只用 MSVC 和那份头文件编出来——它证明这套 ABI 是头文件的，不是某一种语言的。安装包级用例会各装一次
+带它们的安装包，把每个函数都驱动一遍，所以它们同时也是「ABI 与这一页说法一致」的持有者。

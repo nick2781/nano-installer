@@ -60,6 +60,52 @@ $stubCommand = "cargo build --locked -p nano-installer-stub-lzma -p nano-install
 # is this repository's sample: a DLL has to be built before a project can bundle
 # it, and its own command is what names it when that build is what failed.
 $pluginCommand = "cargo build --locked -p nano-installer-plugin-sample"
+# The C sample is what a third party without a Rust toolchain copies, so it is
+# built with the MSVC tools alone. A job that already put them on the PATH (the
+# build agent does) compiles it directly; anywhere else the developer tools are
+# found through vswhere and entered first, which is what a developer command
+# prompt does. No tools at all means no C plugin, and the suite says why it
+# skipped those cases rather than pretending they ran.
+$pluginCSource = "examples\plugin-c\sample.c"
+$pluginCOutput = "target\debug\plugin-c.dll"
+$pluginCObject = "target\plugin-c"
+function Get-PluginCCommand {
+    $switch = (
+        "/nologo /LD /MT /O2 /W4 /I include {0} " +
+        "/Fo:{1}\ /Fd:{1}\plugin-c.pdb /Fe:{2}"
+    ) -f $pluginCSource, $pluginCObject, $pluginCOutput
+
+    if (Get-Command cl.exe -ErrorAction SilentlyContinue) {
+        New-Item -ItemType Directory -Force -Path $pluginCObject, (Split-Path -Parent $pluginCOutput) | Out-Null
+        return @{ Command = "cl $switch"; Runner = "cl $switch" }
+    }
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+    if (-not (Test-Path -LiteralPath $vswhere)) {
+        return $null
+    }
+    $root = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+    if (-not $root) {
+        return $null
+    }
+    $devcmd = Join-Path $root "Common7\Tools\VsDevCmd.bat"
+    if (-not (Test-Path -LiteralPath $devcmd)) {
+        return $null
+    }
+    # The shim exists because the entry point is a batch file that has to be
+    # called before the compiler will find a single header, and the paths it
+    # names have spaces in them: one script this step runs beats a command line
+    # of nested quotes.
+    $shim = Join-Path (Get-Location).ProviderPath "target\build-c-plugin.cmd"
+    New-Item -ItemType Directory -Force -Path $pluginCObject, (Split-Path -Parent $pluginCOutput) | Out-Null
+    @(
+        "@echo off",
+        "call `"$devcmd`" -arch=x64 -host_arch=x64 -no_logo",
+        "if errorlevel 1 exit /b 1",
+        "cl $switch"
+    ) | Set-Content -LiteralPath $shim -Encoding ASCII
+    return @{ Command = "cl $switch (through $([System.IO.Path]::GetFileName($devcmd)))"; Runner = $shim }
+}
+$pluginC = Get-PluginCCommand
 $suiteCommand = "cargo test --locked -p nano-installer-core --test e2e_setup -- --nocapture"
 
 # A native tool that reports progress on standard error would otherwise trip
@@ -287,6 +333,25 @@ if ($stubs.ExitCode -eq 0) {
     $plugins = Invoke-NativeStep $pluginCommand -DeadlineMinutes $SuiteDeadlineMinutes
 }
 
+# The C plugin is optional in a way the Rust one is not: the sample crate is part
+# of this workspace, while the C sample needs the developer tools to be present.
+# A build that cannot happen says so, and the case that needs the DLL turns its
+# own skip into a failure through this variable rather than through the stubs'.
+$cPlugins = $null
+if ($null -ne $plugins -and $plugins.ExitCode -eq 0) {
+    if ($null -eq $pluginC) {
+        Write-Output (Get-ReportPhrase -Text $text -Key "console.cpluginskipped")
+    }
+    else {
+        Write-Output (Get-ReportPhrase -Text $text -Key "console.buildingcplugin")
+        $cPlugins = Invoke-NativeStep $pluginC.Runner -DeadlineMinutes $SuiteDeadlineMinutes
+        if ($cPlugins.ExitCode -eq 0) {
+            $env:NANO_INSTALLER_E2E_REQUIRE_CPLUGIN = "1"
+            $requirements = "$requirements NANO_INSTALLER_E2E_REQUIRE_CPLUGIN=1"
+        }
+    }
+}
+
 $suite = $null
 if ($null -ne $plugins -and $plugins.ExitCode -eq 0) {
     Write-Output (Get-ReportPhrase -Text $text -Key "console.runninge2e")
@@ -320,6 +385,14 @@ $lines.Add("")
 $lines.Add("$ $pluginCommand")
 if ($null -ne $plugins) {
     $lines.AddRange([string[]]$plugins.Output)
+}
+else {
+    $lines.Add((Get-ReportPhrase -Text $text -Key "text.notrun"))
+}
+$lines.Add("")
+$lines.Add("$ $($pluginC.Command)")
+if ($null -ne $cPlugins) {
+    $lines.AddRange([string[]]$cPlugins.Output)
 }
 else {
     $lines.Add((Get-ReportPhrase -Text $text -Key "text.notrun"))
@@ -368,11 +441,13 @@ $fields = @(
     @{ Label = (Get-ReportPhrase -Text $text -Key "text.elevated"); Value = $elevated },
     @{ Label = (Get-ReportPhrase -Text $text -Key "fields.runtimeBuild"); Value = $stubCommand },
     @{ Label = (Get-ReportPhrase -Text $text -Key "fields.pluginBuild"); Value = $pluginCommand },
+    @{ Label = (Get-ReportPhrase -Text $text -Key "fields.cPluginBuild"); Value = $(if ($null -ne $pluginC) { $pluginC.Command } else { (Get-ReportPhrase -Text $text -Key "text.notrun") }) },
     @{ Label = (Get-ReportPhrase -Text $text -Key "fields.suite"); Value = $suiteCommand }
 )
 $sections = New-Object System.Collections.Generic.List[object]
 $sections.Add(@{ Heading = (Get-ReportPhrase -Text $text -Key "sections.runtimeBuild"); Summary = "$ $stubCommand"; Lines = $stubs.Output; Open = ($stubs.ExitCode -ne 0) })
 $sections.Add(@{ Heading = (Get-ReportPhrase -Text $text -Key "sections.pluginBuild"); Summary = "$ $pluginCommand"; Lines = @($plugins.Output); Open = ($null -eq $plugins -or $plugins.ExitCode -ne 0) })
+$sections.Add(@{ Heading = (Get-ReportPhrase -Text $text -Key "sections.cPluginBuild"); Summary = "$ $($pluginC.Command)"; Lines = @($cPlugins.Output); Open = ($null -ne $pluginC -and ($null -eq $cPlugins -or $cPlugins.ExitCode -ne 0)) })
 if ($null -ne $suite) {
     $sections.Add(@{ Heading = (Get-ReportPhrase -Text $text -Key "sections.suite"); Summary = "$ $suiteCommand"; Lines = $suite.Output; Open = ($code -ne 0) })
 }

@@ -59,8 +59,8 @@ machine with "not a valid Win32 application" tells an author nothing.
 ```c
 #include "nano_plugin.h"
 
-int32_t NANO_PLUGIN_CALL Hello(nano_plugin_host *host, int32_t argc,
-                               const wchar_t *const *argv) {
+NANO_PLUGIN_EXPORT int32_t NANO_PLUGIN_CALL Hello(nano_plugin_host *host, int32_t argc,
+                                                  const wchar_t *const *argv) {
     if (host->abi_version != NANO_PLUGIN_ABI_VERSION) {
         return 1;
     }
@@ -73,6 +73,11 @@ A plugin exports as many functions as it likes, each with that signature. `argv`
 holds the script's arguments in the order it wrote them, each UTF-16 and
 NUL-terminated, owned by the host and valid only for the call. `argc` is how many
 there are.
+
+`NANO_PLUGIN_EXPORT` is the part a C or C++ author must not forget: without it the
+DLL builds, loads, and then has no export by that name, and nothing says why.
+Rust says the same thing with `#[no_mangle]`, which is why the Rust sample has no
+sign of the macro.
 
 ## The services
 
@@ -143,8 +148,10 @@ say why. Measured, not assumed.
 
 ## Where to start
 
-`crates/nano-installer-plugin-sample` is a working plugin: it answers a value,
-adds up arguments, writes a file and a registry value through the host, refuses a
-path outside the installation, and fails on purpose. The end-to-end cases install
-a setup that ships it and drive every function, so it is also the thing that
-holds the ABI to what this page says.
+`crates/nano-installer-plugin-sample` is a working plugin in Rust: it answers a
+value, adds up arguments, writes a file and a registry value through the host,
+refuses a path outside the installation, and fails on purpose.
+`examples/plugin-c/sample.c` is the same plugin in C, built by MSVC alone from
+the header — the proof that this ABI is the header's and not one language's. The
+end-to-end cases install a setup that ships each of them and drive every function,
+so they are also the thing that holds the ABI to what this page says.

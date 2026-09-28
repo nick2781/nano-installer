@@ -7075,6 +7075,29 @@ fn skip_missing_plugin() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// The C sample plugin, which the suite's own script builds with the MSVC tools.
+fn c_plugin() -> Option<PathBuf> {
+    let dll = workspace_root().join("target/debug/plugin-c.dll");
+    dll.is_file().then_some(dll)
+}
+
+/// Reports that a case cannot run because the C sample plugin is not built.
+///
+/// The C sample needs the MSVC developer tools, which the machine running the
+/// suite may not have. The script that builds it sets this variable only when it
+/// actually produced the DLL, so a skip here stays a skip: it is not the same
+/// statement as a machine that was supposed to build it and did not.
+fn skip_missing_c_plugin() -> anyhow::Result<()> {
+    let required =
+        std::env::var_os("NANO_INSTALLER_E2E_REQUIRE_CPLUGIN").is_some_and(|value| value != "0");
+    anyhow::ensure!(
+        !required,
+        "the C sample plugin is missing; build it with the MSVC tools, as examples/plugin-c/README.md says"
+    );
+    eprintln!("skipping: the C sample plugin is not built");
+    Ok(())
+}
+
 /// A Rust string as a Rhai string literal, so a Windows path or registry key
 /// survives being embedded in a script.
 fn script_literal(value: &str) -> String {
@@ -7286,6 +7309,104 @@ try {{ plugin_call("nowhere::Add", []); }} catch (error) {{ write_file(out, read
     assert!(
         written.contains("unshipped=the setup ships no plugin called `nowhere`"),
         "{written}"
+    );
+    Ok(())
+}
+
+/// The ABI is the header, not the language it was first written in.
+///
+/// This case installs a setup that ships a plugin written in C -- the same
+/// contract as the sample crate next to it, compiled by MSVC alone from
+/// `examples/plugin-c/sample.c`, with no Rust toolchain involved. It answers
+/// values, reports the installation directory and the argument count through
+/// the services, writes a file and a registry value through the host with the
+/// uninstall taking both back, and fails with a code of its own. A second
+/// implementation is what says the layout and the calling convention are the
+/// header's and not one compiler's.
+#[test]
+fn a_plugin_written_in_c_is_called_the_same_way() -> anyhow::Result<()> {
+    let Some(dll) = c_plugin() else {
+        skip_missing_c_plugin()?;
+        return Ok(());
+    };
+    let Some(mut fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    let report = fixture.case_path("c-plugin-report.txt");
+    let out = script_literal(&report.to_string_lossy());
+    let key = fixture.test_key.clone();
+    let key_literal = script_literal(&key);
+    let script = format!(
+        r#"
+let out = {out};
+extract_payload();
+copy_uninstaller();
+write_file(out, "hello=" + plugin_call("plugin-c::Hello", []) + "\n");
+write_file(out, read_text_file(out) + "sum=" + plugin_call("plugin-c::Sum", ["7", "8", "-2"]) + "\n");
+let described = plugin_values("plugin-c::Describe", ["a"]);
+write_file(out, read_text_file(out) + "args=" + described[0] + "\n");
+write_file(out, read_text_file(out) + "dir=" + described[1] + "\n");
+write_file(out, read_text_file(out) + "install=" + plugin_call("plugin-c::Install", [{key_literal}, "Sample", "written by C"]) + "\n");
+try {{ plugin_call("plugin-c::Refuse", []); }} catch (error) {{ write_file(out, read_text_file(out) + "refuse=" + error.to_string() + "\n"); }}
+"#
+    );
+    fixture.plugin_project(&script, &dll)?;
+    fixture.build()?;
+    let output = fixture.install()?;
+    anyhow::ensure!(
+        output.status.success(),
+        "the install failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    fixture.remember_registry_value(&key, "Sample");
+
+    let placed = fixture.destination.join("c-plugin.txt");
+    assert!(
+        placed.is_file(),
+        "the C plugin's file is not in the installation"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&placed)
+            .unwrap_or_else(|_| String::from("the C plugin wrote no file")),
+        "written by the C plugin\n",
+        "the file the C plugin wrote is not what it wrote"
+    );
+    assert_eq!(
+        read_registry_string(&key, "Sample")?.as_deref(),
+        Some("written by C"),
+        "the registry value the C plugin wrote is not what it wrote"
+    );
+
+    let written = std::fs::read_to_string(&report)?;
+    assert!(written.contains("hello=hello from C"), "{written}");
+    assert!(written.contains("sum=13"), "{written}");
+    assert!(written.contains("args=1"), "{written}");
+    assert!(
+        written.contains(&format!("dir={}", fixture.destination.display())),
+        "{written}"
+    );
+    assert!(written.contains("install=installed by C"), "{written}");
+    assert!(
+        written.contains("refuse=the plugin plugin-c.dll answered 7 from `Refuse`"),
+        "{written}"
+    );
+
+    let uninstalled = fixture.uninstall()?;
+    anyhow::ensure!(
+        uninstalled.status.success(),
+        "the uninstall failed: {}",
+        String::from_utf8_lossy(&uninstalled.stderr)
+    );
+    wait_for_removal(&fixture.destination);
+    assert!(
+        !placed.exists(),
+        "the file the C plugin wrote survived the uninstall"
+    );
+    assert_eq!(
+        read_registry_string(&key, "Sample")?,
+        None,
+        "the registry value the C plugin wrote survived the uninstall"
     );
     Ok(())
 }

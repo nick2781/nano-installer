@@ -65,6 +65,22 @@
 #define NANO_PLUGIN_CALL
 #endif
 
+/* What tells the compiler which functions the DLL exports.
+
+   A language whose functions are exported by an attribute rather than by a list
+   of names -- C and C++ are the ones a plugin is usually written in -- has to
+   say so on every one of them. Written here once, next to the signature it
+   belongs to, because forgetting it is silent: the DLL builds, loads, and then
+   has no export by that name. Rust says it with `#[no_mangle]` instead, which is
+   why the sample in `crates/` has no sign of this macro. */
+#if defined(_MSC_VER) || defined(__MINGW32__)
+#define NANO_PLUGIN_EXPORT __declspec(dllexport)
+#elif defined(__GNUC__)
+#define NANO_PLUGIN_EXPORT __attribute__((visibility("default")))
+#else
+#define NANO_PLUGIN_EXPORT
+#endif
+
 typedef struct nano_plugin_host {
     /* Filled in by the host before the plugin function is called. A plugin must
        check `abi_version` first: NANO_PLUGIN_ABI_VERSION is the version this
