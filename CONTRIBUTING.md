@@ -61,6 +61,7 @@ exists in both languages; a change to one side is a change to both.
   have to ask for. The run log at `%TEMP%\nano-installer\` is usually the fastest evidence — a failed
   install leaves one behind and names it.
 - **Security**: do not open a public issue. See [`SECURITY.md`](SECURITY.md).
+- **Conduct**: what is expected of everyone here is in [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
 
 ## Licence
 

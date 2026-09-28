@@ -134,7 +134,7 @@ MyApp/
 [issue 表单](.github/ISSUE_TEMPLATE)；每张都问版本号和运行日志，因为少了这两样就得来回一轮。
 
 安全漏洞请不要开 issue，走私有上报，见 [SECURITY.md](SECURITY.md)；那份文件也列出哪些在这里
-**不算**漏洞，比如没有代码签名。
+**不算**漏洞，比如没有代码签名。大家在这里该守什么规矩，见 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)。
 
 ## 权利与许可
 

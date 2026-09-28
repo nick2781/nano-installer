@@ -151,7 +151,8 @@ report without them costs a round trip.
 
 Please report security problems through private vulnerability reporting rather than in an issue —
 see [SECURITY.md](SECURITY.md), which also lists the things that are knowingly not vulnerabilities
-here, such as the missing code signature.
+here, such as the missing code signature. What is expected of everyone in this repository is in
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## Rights and license
 
