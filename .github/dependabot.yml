@@ -12,8 +12,12 @@ updates:
       day: monday
     open-pull-requests-limit: 3
     groups:
-      cargo:
+      # Patch and minor updates arrive as one pull request. A major version is left on its own:
+      # an archive or Win32 crate that changes its own API is a change to this project's code too,
+      # and it should not be able to fail a suite on behalf of eight unrelated bumps.
+      cargo-minor-and-patch:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   # The workflows pin a major version on purpose: a new major is read before it is taken.
   - package-ecosystem: github-actions
@@ -23,5 +27,6 @@ updates:
       day: monday
     open-pull-requests-limit: 2
     groups:
-      actions:
+      actions-minor-and-patch:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
