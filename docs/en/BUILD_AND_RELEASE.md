@@ -113,9 +113,14 @@ step's **whole process tree** when its time is up, because a step that stops ans
 and because what the agent waits on is the step's output as much as the step: a descendant that inherited
 that output keeps it open after the step's own process is gone. That difference is measured, not assumed
 -- with the step's process exiting at once and a descendant living 25 s, the step's output closed 25.2 s
-later, and `Stop-Process` on the step alone left the descendant alive where `taskkill /T /F` ended it. A
-step that stops answering therefore costs its watchdog's 25 minutes, fails, and keeps the log that says
-where it stopped, instead of staying `in_progress` until someone force-cancels the run. If a run does stop answering, the `CI janitor` workflow checks every fifteen minutes: a CI run that has
+later, and `Stop-Process` on the step alone left the descendant alive where `taskkill /T /F` ended it. What
+a step that stops answering costs is measured rather than promised: the two runs of 2026-09-28 that stopped
+answering both stayed `in_progress` -- 42m56s and 11m45s -- until the next run's `supersede` job
+force-cancelled them, so what survives is the watchdog's record, which is a commit status the commit keeps,
+and not the step's own ending. That is because the watchdog runs inside the step's own job
+(`KillOnJobClose`): the system takes it down the moment the step's script ends, so it never gets to post
+that the step is gone -- and two statuses stopping at the same instant is therefore a reading in itself,
+namely that the step died rather than that the machine froze. If a run does stop answering, the `CI janitor` workflow checks every fifteen minutes: a CI run that has
 been going for more than thirty minutes gets a fresh run dispatched on its own branch, whose `supersede` job
 ends the wedged one, so the pipeline recovers without anyone watching it or pushing a commit.
 Commands are started differently as well: `NanoStepCommand` in `scripts/step_job.ps1` creates the
@@ -139,7 +144,8 @@ them has already said where it was -- and the watchdog reads that file and the o
 the step is running, and posts both. Three contexts go out, so a wedged run leaves all three behind:
 `suite phase` (what the step said), `suite output` (the last line of the command it is running, which for
 a test harness is the name of the test that never answered) and `suite step` (whether the step's process
-is alive, how much processor time it has used, and how long it has been quiet). A machine that is gone
+is alive, how much processor time it has used, how long it has been quiet, and how much room the workspace
+volume has left). A machine that is gone
 posts nothing at all, and that silence is itself the finding; the posting itself waits at most ten
 seconds per report -- with the wait in this process's own hands rather than left to the client, because a
 request whose connection is black-holed can sit in a call that never returns however the client's timeout
@@ -148,13 +154,17 @@ so a machine whose network has gone says so instead of going quiet. The watcher 
 server that accepts every request and answers none: it ran to its own deadline, kept watching, and
 reported the losses.
 
-The library's unit cases now run one at a time (`-- --test-threads=1`). Five of the six runs that stopped
-answering stopped inside that target within seconds of it starting, and several of those cases touch the
-machine rather than a temporary directory -- one installs a service, one writes a machine-wide key, one
-asks whether this process may do either -- where the build job's step is elevated and a developer's plain
-run is not, which is why it cannot be reproduced here. With one thread the same target finished and the
-run was green. That is the suite not doing those things at once rather than a proof that the agent's
-condition is gone, so the `suite_command` input above stays for the next time it is looked at.
+The library's unit cases now run one at a time (`-- --test-threads=1`), and that choice has a control behind
+it rather than a hunch: three runs of 2026-09-28 dispatched the same target on the agent with one thing
+changed at a time. Default threads with `--nocapture` stopped answering twice, 11 s and 4 s after the target
+began; one thread with `--nocapture` passed in 5m50s; and one thread without it is what the suite has been
+running green. The thread count is therefore the variable, and the extra output is not. Five of the six runs
+that stopped answering earlier stopped inside that same target within seconds of it starting, and several of
+its cases touch the machine rather than a temporary directory -- one installs a service, one writes a
+machine-wide key, one asks whether this process may do either -- where the build job's step is elevated and a
+developer's plain run is not (a local two-thread run of that target finishes in 11.8 s), which is why it
+cannot be reproduced here. That is still the suite not doing those things at once rather than a proof that
+the agent's condition is gone, so the `suite_command` input above stays for the next time it is looked at.
 
 The suite also reads the step's console quietly. `run_tests.ps1 -Quiet` is what the workflow runs: the
 console gets the verdict of each target and, when a target fails, the last of what it said, while the
