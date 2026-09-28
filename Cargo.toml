@@ -4,6 +4,7 @@ members = [
     "crates/nano-installer-core",
     "crates/nano-installer-cli",
     "crates/nano-installer-gui",
+    "crates/nano-installer-plugin-sample",
     "crates/nano-installer-stub-lzma",
     "crates/nano-installer-stub-zlib",
     "crates/nano-installer-uninstaller",

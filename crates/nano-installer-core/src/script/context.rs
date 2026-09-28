@@ -86,6 +86,10 @@ pub(super) struct ScriptState {
     pub(super) tracked_uninstall: bool,
     /// The directory the bundled tools were unpacked into, once a script asked.
     pub(super) tools: Option<PathBuf>,
+    /// The directory the bundled plugins were unpacked into, once a script asked.
+    pub(super) plugins: Option<PathBuf>,
+    /// The plugin DLLs this run has loaded, by the name a script calls them by.
+    pub(super) libraries: crate::plugin::Loaded,
 }
 
 struct Inner {
@@ -230,6 +234,8 @@ impl ScriptContext {
                 kept: Vec::new(),
                 tracked_uninstall: false,
                 tools: None,
+                plugins: None,
+                libraries: crate::plugin::Loaded::default(),
             })),
         }
     }
@@ -267,6 +273,17 @@ impl ScriptContext {
 
     pub(super) fn set_tools_directory(&self, directory: PathBuf) {
         self.state().tools = Some(directory);
+    }
+
+    /// Where the bundled plugins were unpacked, once a script called one. A
+    /// plugin DLL is written to disk before it is loaded, and unpacking again
+    /// would only repeat the writes to the same place.
+    pub(super) fn plugins_directory(&self) -> Option<PathBuf> {
+        self.state().plugins.clone()
+    }
+
+    pub(super) fn set_plugins_directory(&self, directory: PathBuf) {
+        self.state().plugins = Some(directory);
     }
 
     /// The task this script is part of, so `is_cancelled` can ask it.

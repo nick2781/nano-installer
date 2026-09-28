@@ -963,6 +963,24 @@ impl Fixture {
         Ok(())
     }
 
+    /// Ships a plugin with the project and makes the script the install runs.
+    ///
+    /// The DLL keeps the name it was built with, because that name is what a
+    /// script calls it by: a plugin in `plugins/sample.dll` answers to
+    /// `sample::function`.
+    fn plugin_project(&self, script: &str, dll: &Path) -> anyhow::Result<()> {
+        let name = dll
+            .file_name()
+            .context("the sample plugin has a file name")?;
+        let plugins = self.project.join("plugins");
+        std::fs::create_dir_all(&plugins)?;
+        std::fs::copy(dll, plugins.join(name))?;
+        self.edit_config(|config| {
+            config["resources"]["plugins_dir"] = serde_json::json!("plugins");
+        })?;
+        self.write_script("install.rhai", script)
+    }
+
     /// Remembers a value this case wrote into a key the machine shares.
     fn remember_registry_value(&mut self, key: &str, name: &str) {
         self.extra_registry_values
@@ -7032,6 +7050,242 @@ fn a_browse_button_opens_the_folder_picker_and_leaving_it_changes_nothing() -> a
     assert!(
         !fixture.destination.exists(),
         "opening the folder picker installed something"
+    );
+    Ok(())
+}
+
+/// The sample plugin, which the suite's own script builds before it runs.
+fn sample_plugin() -> Option<PathBuf> {
+    let dll = workspace_root().join("target/debug/sample.dll");
+    dll.is_file().then_some(dll)
+}
+
+/// Reports that a case cannot run because the sample plugin is not built.
+///
+/// The same variable the missing stubs answer to turns this skip into a failure:
+/// one script builds both, so a job that built them on purpose means it.
+fn skip_missing_plugin() -> anyhow::Result<()> {
+    let required =
+        std::env::var_os("NANO_INSTALLER_E2E_REQUIRE_STUBS").is_some_and(|value| value != "0");
+    anyhow::ensure!(
+        !required,
+        "the sample plugin is missing; build it first with `cargo build -p nano-installer-plugin-sample`"
+    );
+    eprintln!("skipping: the sample plugin is not built");
+    Ok(())
+}
+
+/// A Rust string as a Rhai string literal, so a Windows path or registry key
+/// survives being embedded in a script.
+fn script_literal(value: &str) -> String {
+    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+/// A plugin is third-party code inside the installer process, and what a script
+/// asks it for is what it gets back.
+///
+/// The sample plugin answers with its own version, adds up what it is given,
+/// echoes its arguments in order, says where the installation is going, and
+/// writes two lines into the run's log. Every one of those is the ABI: text in,
+/// text out, and nothing about the answer left to a guess.
+#[test]
+fn a_plugin_answers_the_script_that_calls_it() -> anyhow::Result<()> {
+    let Some(dll) = sample_plugin() else {
+        skip_missing_plugin()?;
+        return Ok(());
+    };
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    let report = fixture.case_path("plugin-report.txt");
+    let out = script_literal(&report.to_string_lossy());
+    let script = format!(
+        r#"
+let out = {out};
+extract_payload();
+copy_uninstaller();
+write_file(out, "about=" + plugin_call("sample::About", []) + "\n");
+write_file(out, read_text_file(out) + "sum=" + plugin_call("sample::Add", ["20", "22"]) + "\n");
+write_file(out, read_text_file(out) + "echo=" + plugin_values("sample::Echo", ["a", "b", "c"]).reduce(|sum, value| sum + value, "") + "\n");
+write_file(out, read_text_file(out) + "where=" + plugin_call("sample::Where", []) + "\n");
+write_file(out, read_text_file(out) + "note=" + plugin_call("sample::Note", ["1", "2"]) + "\n");
+write_file(out, read_text_file(out) + "abi=" + plugin_call("sample::RequiresAbi", ["1"]) + "\n");
+"#
+    );
+    fixture.plugin_project(&script, &dll)?;
+    fixture.build()?;
+    let output = fixture.install()?;
+    anyhow::ensure!(
+        output.status.success(),
+        "the install failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let written = std::fs::read_to_string(&report)?;
+    assert!(
+        written.contains("about=nano-plugin-sample 1.0"),
+        "{written}"
+    );
+    assert!(written.contains("sum=42"), "{written}");
+    assert!(written.contains("echo=abc"), "{written}");
+    assert!(
+        written.contains(&format!("where={}", fixture.destination.display())),
+        "{written}"
+    );
+    assert!(written.contains("note=logged"), "{written}");
+    assert!(written.contains("abi=abi 1"), "{written}");
+    Ok(())
+}
+
+/// What a plugin writes is what the uninstall takes back.
+///
+/// The sample plugin writes a file and a registry value through the host, and
+/// the host refuses a path outside the installation. Both halves matter: a file
+/// the manifest does not name is a file this product leaves on the machine, and
+/// refusing the outside path is what keeps that promise from being a matter of
+/// the plugin's good behaviour.
+#[test]
+fn a_plugins_writes_are_taken_back_by_the_uninstall() -> anyhow::Result<()> {
+    let Some(dll) = sample_plugin() else {
+        skip_missing_plugin()?;
+        return Ok(());
+    };
+    let Some(mut fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    let report = fixture.case_path("plugin-report.txt");
+    let out = script_literal(&report.to_string_lossy());
+    let outside = fixture.case_path("outside.txt");
+    let away = script_literal(&outside.to_string_lossy());
+    // Two spellings of the same key: the script gets the literal, and the case
+    // reads the machine with the key itself.
+    let key = fixture.test_key.clone();
+    let key_literal = script_literal(&key);
+    let script = format!(
+        r#"
+extract_payload();
+copy_uninstaller();
+write_file({out}, plugin_call("sample::Install", [{key_literal}, "Sample", "hello from the plugin"]) + "\n");
+let refused = plugin_call("sample::WriteOutside", [{away}]);
+write_file({out}, read_text_file({out}) + "refused=" + refused + "\n");
+"#
+    );
+    fixture.plugin_project(&script, &dll)?;
+    fixture.build()?;
+    let output = fixture.install()?;
+    anyhow::ensure!(
+        output.status.success(),
+        "the install failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    fixture.remember_registry_value(&key, "Sample");
+
+    let placed = fixture.destination.join("plugin-sample.txt");
+    assert!(
+        placed.is_file(),
+        "the plugin's file is not in the installation"
+    );
+    assert_eq!(
+        read_registry_string(&key, "Sample")?.as_deref(),
+        Some("hello from the plugin"),
+        "the plugin's registry value is not what it wrote"
+    );
+    let written = std::fs::read_to_string(&report)?;
+    assert!(written.contains("installed"), "{written}");
+    assert!(
+        written.contains("outside the installation directory"),
+        "writing outside the installation was not refused: {written}"
+    );
+    assert!(
+        !Path::new(&outside).exists(),
+        "the plugin wrote outside the installation after all"
+    );
+
+    let uninstalled = fixture.uninstall()?;
+    anyhow::ensure!(
+        uninstalled.status.success(),
+        "the uninstall failed: {}",
+        String::from_utf8_lossy(&uninstalled.stderr)
+    );
+    wait_for_removal(&fixture.destination);
+    assert!(
+        !placed.exists(),
+        "the file a plugin wrote survived the uninstall"
+    );
+    assert_eq!(
+        read_registry_string(&key, "Sample")?,
+        None,
+        "the registry value a plugin wrote survived the uninstall"
+    );
+    Ok(())
+}
+
+/// A plugin that fails or refuses the host is reported rather than guessed at.
+///
+/// Two ways for third-party code to go wrong are covered here: a plugin that
+/// explains itself and answers a failure code, and one that refuses an ABI it
+/// does not know. The script catches both, because a failed call has to be
+/// something a script can decide about rather than a run that ends with a
+/// sentence nobody can act on. Two more are the call itself: an export the DLL
+/// does not have, and a plugin the setup does not ship.
+///
+/// A plugin that panics is deliberately not here, because there is nothing to
+/// assert. Rust aborts the process when a panic would cross the boundary of an
+/// `extern "system"` function, so an installer whose plugin panics ends as a
+/// crash and the host never gets to report anything -- measured while writing
+/// this case, and why `include/nano_plugin.h` tells an author not to let one
+/// escape.
+#[test]
+fn a_plugin_that_fails_is_reported_to_the_script() -> anyhow::Result<()> {
+    let Some(dll) = sample_plugin() else {
+        skip_missing_plugin()?;
+        return Ok(());
+    };
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    let report = fixture.case_path("plugin-report.txt");
+    let out = script_literal(&report.to_string_lossy());
+    let script = format!(
+        r#"
+let out = {out};
+extract_payload();
+copy_uninstaller();
+write_file(out, "");
+try {{ plugin_call("sample::Fail", []); }} catch (error) {{ write_file(out, read_text_file(out) + "fail=" + error.to_string() + "\n"); }}
+try {{ plugin_call("sample::RequiresAbi", ["99"]); }} catch (error) {{ write_file(out, read_text_file(out) + "abi=" + error.to_string() + "\n"); }}
+try {{ plugin_call("sample::NothingHere", []); }} catch (error) {{ write_file(out, read_text_file(out) + "missing=" + error.to_string() + "\n"); }}
+try {{ plugin_call("nowhere::Add", []); }} catch (error) {{ write_file(out, read_text_file(out) + "unshipped=" + error.to_string() + "\n"); }}
+"#
+    );
+    fixture.plugin_project(&script, &dll)?;
+    fixture.build()?;
+    let output = fixture.install()?;
+    anyhow::ensure!(
+        output.status.success(),
+        "the install failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let written = std::fs::read_to_string(&report)?;
+    assert!(
+        written.contains("fail=the plugin sample.dll answered 3 from `Fail`"),
+        "{written}"
+    );
+    assert!(
+        written.contains("abi=the plugin sample.dll answered 5 from `RequiresAbi`"),
+        "{written}"
+    );
+    assert!(
+        written.contains("missing=the plugin sample.dll does not export `NothingHere`"),
+        "{written}"
+    );
+    assert!(
+        written.contains("unshipped=the setup ships no plugin called `nowhere`"),
+        "{written}"
     );
     Ok(())
 }

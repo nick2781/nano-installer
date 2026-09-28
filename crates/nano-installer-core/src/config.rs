@@ -67,6 +67,7 @@ const SECTIONS: &[(&str, &[&str])] = &[
             "payload_file",
             "uninstaller_icon",
             "tools_dir",
+            "plugins_dir",
         ],
     ),
     ("components", &["items"]),

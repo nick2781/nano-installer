@@ -21,7 +21,7 @@
 | `MUI_LANGUAGE` | 同上 |
 | `Uninstall` 段里一条条删掉安装时写的东西 | 机器上的 manifest，安装写下的每个文件、每个快捷方式、每个注册表值都在里面，卸载按记录收回 |
 | `!finalize` 与 `!uninstfinalize` | `finalize.installer` 与 `finalize.uninstaller`——还是这两个钩子，还是同一件事 |
-| 让插件去做 NSIS 做不到的事 | 脚本里的原语、声明出来的依赖，或者 `run_command`——这里没有插件 ABI |
+| 让插件去做 NSIS 做不到的事 | 脚本里的原语、声明出来的依赖、`run_command`，或者自己按[插件 ABI](PLUGIN_API.md)写一个插件、由脚本调用 |
 
 有两件事过不来，值得早点决定。一是手写的 `Uninstall` 段不必再写：manifest 知道你装了什么，而靠人维护
 一张删除清单，正是产品留垃圾的来路。二是 `SetShellVarContext all` 没有对应物——快捷方式建在运行安装
@@ -114,7 +114,7 @@ NSIS migration report for D:\src\legacy.nsi
 | `!define`, `!undef`, `!searchparse`, `!searchreplace`, `!addincludedir` | none | 构建期的文本替换，正式跑之前就展开了 |
 | `!macro`, `!macroend` | none | 宏体里的语句按它们本来写的位置逐条报出来 |
 | `!insertmacro` | none | 脚本自己定义的宏；宏体里的语句按它们写的位置报 |
-| `!addplugindir` | manual | 这里没有插件 ABI；插件做过的事要么是某个原语，要么是脚本跑的一条命令 |
+| `!addplugindir` | manual | 编译器没有插件搜索路径：自己的插件放进 `resources.plugins_dir`，随安装包一起发 |
 | `!system`, `!execute` | manual | 构建器自己不在构建期间跑命令；`finalize.installer` 跑在成品上 |
 | `!finalize` | direct | `finalize.installer` |
 | `!uninstfinalize` | direct | `finalize.uninstaller` |
@@ -202,7 +202,7 @@ NSIS migration report for D:\src\legacy.nsi
 
 | 命令 | 判定 | 变成什么 |
 | --- | --- | --- |
-| `*::*` | manual | 插件调用：这里没有插件 ABI，插件做过的事要么是某个原语，要么是脚本跑的一条命令 |
+| `*::*` | manual | 插件调用变成 `plugin_call("dll::function", [...])`；DLL 自己得按 [`include/nano_plugin.h`](../../include/nano_plugin.h) 重编，因为 NSIS 插件是 32 位的、还要回调 NSIS 自己的运行时 |
 | `nsProcess::_FindProcess` | script | `is_process_running` |
 | `nsProcess::_KillProcess` | script | `kill_process` |
 | `nsExec::Exec` | script | `run_command` |
@@ -240,10 +240,14 @@ NSIS migration report for D:\src\legacy.nsi
 
 费时间的正是这几条，所以值得先看。
 
-- **插件。** `nsDialogs`、`nsisXML`、`InetLoad`、`nsis7z` 之类在这里没有对应物，因为这里没有插件 ABI。
-  用 `nsDialogs` 搭出来的页面，改写成 `layouts/` 里的一页；行为还要看用户怎么选时，再写一个
-  `scripts/pages.rhai` 的 `next_page(from)`。下载改成 `dependencies.items` 里带 `sha256` 的一条，或者
-  脚本里的 `download_file_with_hash`。解压归档改成载荷或某个组件。
+- **插件。** 现在有插件 ABI 了，但它不是 NSIS 那一套：插件是按
+  [`include/nano_plugin.h`](../../include/nano_plugin.h) 编出来的 64 位 DLL，像工程资源一样进安装包，
+  脚本用 `plugin_call("dll::function", [...])` 调用。现成的 NSIS 插件加载不了——那是 32 位映像，而且它
+  通过 `extra_parameters` 回调 NSIS 自己的运行时——所以 `nsDialogs`、`nsisXML`、`InetLoad`、`nsis7z`
+  这些要么重写、要么换掉。它们做过的事大多本来就有对应物：用 `nsDialogs` 搭出来的页面，改写成
+  `layouts/` 里的一页，行为还要看用户怎么选时，再写一个 `scripts/pages.rhai` 的 `next_page(from)`；
+  下载改成 `dependencies.items` 里带 `sha256` 的一条，或者脚本里的 `download_file_with_hash`；解压归档
+  改成载荷或某个组件。剩下那些没有对应物的，才是自己写插件的用处。
 - **`SetShellVarContext all`。** 快捷方式建在运行安装包的那个账户下。原本写全局快捷方式的安装包得另找
   办法：即使 `require_admin` 装了全机器用的程序，快捷方式仍然写在跑这个安装包的那个账户下。
 - **重启机器。** 这里没有任何东西会重启机器。依赖答 3010 或 1641 就算装好了，继续走；产品非重启不能

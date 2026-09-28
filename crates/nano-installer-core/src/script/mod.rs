@@ -13,6 +13,7 @@ mod api_association;
 mod api_dependency;
 mod api_download;
 mod api_file;
+mod api_plugin;
 mod api_process;
 mod api_registry;
 mod api_service;
@@ -332,6 +333,7 @@ fn run(context: &ScriptContext, source: &str) -> Result<()> {
     api_dependency::register(&mut engine, context.clone());
     api_download::register(&mut engine, context.clone());
     api_file::register(&mut engine, context.clone());
+    api_plugin::register(&mut engine, context.clone());
     api_registry::register(&mut engine, context.clone());
     api_service::register(&mut engine, context.clone());
     api_process::register(&mut engine, context.clone());

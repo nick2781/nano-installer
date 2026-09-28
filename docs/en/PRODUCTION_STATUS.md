@@ -83,6 +83,14 @@ true of any installer, and it is why the acceptance run is on the list rather th
   directory into the setup as it stands, subdirectories included, and `get_tools_dir()` unpacks it
   beside the script and returns the path. A project that bundles none, and a script asking a setup
   built without them, get an empty string and a log warning rather than a failed install.
+- A project can ship plugins of its own. A plugin is a 64-bit DLL written against
+  `include/nano_plugin.h`, placed in `resources.plugins_dir`, and called from a script as
+  `plugin_call("dll::function", [...])`, which reads back the text values it pushes. What a plugin
+  writes goes through the host's `write_file` and `write_registry`, so the manifest records it and
+  the uninstall takes it back; a write outside the installation is refused there and then. The build
+  refuses a DLL this runtime could never load (32-bit, ARM64, not a DLL, not an image at all) and
+  names which one, because finding that out on a machine half way through an install is finding it
+  out too late.
 - A project script can write one of the user's environment variables (`set_env`, `remove_env`) and
   claim a file type (`register_file_association`, `unregister_file_association`). Both go through
   the manifest: the install records the value it wrote or the keys it created, and the uninstall

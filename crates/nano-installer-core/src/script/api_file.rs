@@ -303,7 +303,10 @@ fn deploy(context: &ScriptContext, extracted: &Path, files: &[PathBuf]) -> anyho
 }
 
 /// Writes `contents` to `target`, recording the target first.
-fn write(context: &ScriptContext, target: &Path, contents: &[u8]) -> anyhow::Result<()> {
+///
+/// Shared with the plugin host: a plugin's own file write goes down this same
+/// path, so what it writes is journaled for a rollback exactly like a script's.
+pub(super) fn write(context: &ScriptContext, target: &Path, contents: &[u8]) -> anyhow::Result<()> {
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent)?;
     }

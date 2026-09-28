@@ -26,7 +26,7 @@ to agree or the check fails.
 | `MUI_LANGUAGE` | the same |
 | `Uninstall` section deleting what the installer wrote | The machine's manifest, which records every file, shortcut and registry value the install wrote; the uninstaller removes what it records |
 | `!finalize` and `!uninstfinalize` | `finalize.installer` and `finalize.uninstaller` — the same two hooks, with the same job |
-| A plugin that does something NSIS cannot | A primitive in the script, a declared dependency, or `run_command` — there is no plugin ABI |
+| A plugin that does something NSIS cannot | A primitive in the script, a declared dependency, `run_command` — or a plugin of your own, written against the [plugin ABI](PLUGIN_API.md) and called from the script |
 
 Two things do not survive the move, and both are worth deciding early. An
 `Uninstall` section that deletes by hand is not needed: the manifest knows what
@@ -122,7 +122,7 @@ it, so `MUI_PAGE_*` catches the MUI pages that have no row of their own.
 | `!define`, `!undef`, `!searchparse`, `!searchreplace`, `!addincludedir` | none | build-time text, expanded by NSIS before anything runs |
 | `!macro`, `!macroend` | none | the statements inside are reported where they are written |
 | `!insertmacro` | none | a macro the script defines itself; its statements are reported where they are written |
-| `!addplugindir` | manual | there is no plugin ABI; what a plugin did has to be a primitive or a command the script runs |
+| `!addplugindir` | manual | the compiler has no plugin search path: a plugin of your own goes in `resources.plugins_dir` and is embedded in the setup |
 | `!system`, `!execute` | manual | the builder runs no command of its own while building; `finalize.installer` runs one on the finished setup |
 | `!finalize` | direct | `finalize.installer` |
 | `!uninstfinalize` | direct | `finalize.uninstaller` |
@@ -210,7 +210,7 @@ it, so `MUI_PAGE_*` catches the MUI pages that have no row of their own.
 
 | Command | Verdict | What it becomes |
 | --- | --- | --- |
-| `*::*` | manual | a plugin call: there is no plugin ABI, so what it did has to be a primitive or a command the script runs |
+| `*::*` | manual | a plugin call becomes `plugin_call("dll::function", [...])`; the DLL itself is rebuilt against [`include/nano_plugin.h`](../../include/nano_plugin.h), because an NSIS plugin is 32-bit and calls back into the NSIS runtime |
 | `nsProcess::_FindProcess` | script | `is_process_running` |
 | `nsProcess::_KillProcess` | script | `kill_process` |
 | `nsExec::Exec` | script | `run_command` |
@@ -249,12 +249,18 @@ it, so `MUI_PAGE_*` catches the MUI pages that have no row of their own.
 These are the rows that cost real time, so they are worth reading before the
 rest of the table.
 
-- **Plugins.** `nsDialogs`, `nsisXML`, `InetLoad`, `nsis7z` and the rest have no
-  counterpart, because there is no plugin ABI here. A page built with `nsDialogs`
-  becomes a page in `layouts/` and, when its behaviour depends on what the user
-  did, a `next_page(from)` hook in `scripts/pages.rhai`. A download becomes a
-  `dependencies.items` entry with a `sha256`, or `download_file_with_hash` from
-  the script. An archive becomes the payload or a component.
+- **Plugins.** There is a plugin ABI now, and it is not NSIS's: a plugin is a
+  64-bit DLL built against [`include/nano_plugin.h`](../../include/nano_plugin.h),
+  embedded in the setup like a project resource, and called from a script as
+  `plugin_call("dll::function", [...])`. An existing NSIS plugin cannot be loaded
+  — it is a 32-bit image, and it calls back into the NSIS runtime through
+  `extra_parameters` — so `nsDialogs`, `nsisXML`, `InetLoad`, `nsis7z` and the
+  rest have to be rewritten or replaced. Most of what they did has a counterpart
+  already: a page built with `nsDialogs` becomes a page in `layouts/` and, when
+  its behaviour depends on what the user did, a `next_page(from)` hook in
+  `scripts/pages.rhai`; a download becomes a `dependencies.items` entry with a
+  `sha256`, or `download_file_with_hash` from the script; an archive becomes the
+  payload or a component. What is left over is what a plugin of your own is for.
 - **`SetShellVarContext all`.** Shortcuts are created for the account running
   the setup. An installer that wrote an all-users shortcut has to place that
   shortcut another way — a per-machine install started with `require_admin` still

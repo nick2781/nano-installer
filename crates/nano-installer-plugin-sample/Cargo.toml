@@ -1,0 +1,15 @@
+[package]
+name = "nano-installer-plugin-sample"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+description = "Reference plugin for the nano-installer plugin ABI"
+
+[lib]
+# A plugin is a DLL, and the name it gets is the name a project ships it under
+# and a script calls it by: this one answers to `sample::Name`. The `rlib` half
+# exists so the crate can have unit tests; nothing links it.
+name = "sample"
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"

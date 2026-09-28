@@ -1294,6 +1294,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "nano-installer-plugin-sample"
+version = "2026.9.28"
+
+[[package]]
 name = "nano-installer-stub-lzma"
 version = "2026.9.28"
 dependencies = [

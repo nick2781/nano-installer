@@ -104,6 +104,7 @@ installing, so removal restores the machine to its previous state.
 | `resources.locales_dir` | string | Language JSON directory, defaults to `locales` |
 | `resources.payload_file` | string | Required; path to the ZIP or 7z payload |
 | `resources.tools_dir` | string | Optional; directory of helper programs to bundle, read back by `get_tools_dir()` |
+| `resources.plugins_dir` | string | Optional; directory of plugin DLLs to bundle, called by a script as `plugin_call("dll::function", ...)` (see [Plugin ABI](PLUGIN_API.md)); every DLL in it is checked for shape at build time |
 | `localization.default_locale` | string | Language used at startup, defaults to `zh-CN` |
 | `localization.supported_locales` | array | Languages you intend to ship; the build reports any entry without a matching JSON file |
 | `wizard.pages[].layout` | string | Install pages, walked with `action="next"` and `action="back"`, or by `scripts/pages.rhai` |

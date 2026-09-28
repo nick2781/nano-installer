@@ -12,6 +12,7 @@ mod install_log;
 mod manifest;
 mod msi;
 mod net;
+mod plugin;
 mod script;
 mod service;
 mod shell;
@@ -2380,6 +2381,30 @@ fn pack_project_with_progress(
         collect_directory(project, &project.join(directory), &mut files)?;
         progress(format!(
             "Collected {directory}/: {} files ({})",
+            files.len() - file_count_before,
+            format_build_size(collected_size(&files) - size_before)
+        ));
+    }
+    // Plugins are opt-in the same way, and every DLL among them is checked here
+    // rather than at install time: a 32-bit image can never be loaded by this
+    // 64-bit runtime, and an author should hear that from the build rather than
+    // from a machine that tried to install. Anything else in the directory rides
+    // along, because a plugin ships with whatever it needs beside it.
+    if let Some(directory) = config["resources"]["plugins_dir"].as_str() {
+        let file_count_before = files.len();
+        let size_before = collected_size(&files);
+        collect_directory(project, &project.join(directory), &mut files)?;
+        let collected = &files[file_count_before..];
+        let mut plugins = 0usize;
+        for (name, data) in collected {
+            if !name.to_ascii_lowercase().ends_with(".dll") {
+                continue;
+            }
+            plugin::check_x64_dll(name, data)?;
+            plugins += 1;
+        }
+        progress(format!(
+            "Collected {directory}/: {plugins} plugin(s), {} file(s) ({})",
             files.len() - file_count_before,
             format_build_size(collected_size(&files) - size_before)
         ));
@@ -10068,6 +10093,101 @@ mod tests {
         // runs.
         assert_eq!(files.get("tools/7za.exe").unwrap(), b"seven zip");
         assert_eq!(files.get("tools/bin/helper.dll").unwrap(), b"helper");
+        Ok(())
+    }
+
+    /// A PE image with only the parts the plugin check reads, so a case can
+    /// build an x64 DLL, a 32-bit one, or an executable by changing one field.
+    fn plugin_image(machine: u16, characteristics: u16) -> Vec<u8> {
+        let mut bytes = vec![0u8; 0x100];
+        bytes[0..2].copy_from_slice(b"MZ");
+        bytes[0x3c..0x40].copy_from_slice(&(0x80u32).to_le_bytes());
+        bytes[0x80..0x84].copy_from_slice(b"PE\0\0");
+        bytes[0x84..0x86].copy_from_slice(&machine.to_le_bytes());
+        bytes[0x96..0x98].copy_from_slice(&characteristics.to_le_bytes());
+        bytes
+    }
+
+    /// A project that names a plugins directory ships every file in it: the DLLs
+    /// a script calls, and whatever those DLLs need beside them.
+    #[test]
+    fn a_project_bundles_the_plugins_directory_it_names() -> anyhow::Result<()> {
+        let temp = tempfile::tempdir()?;
+        let project = temp.path();
+        for directory in ["layouts", "assets", "locales", "payload", "plugins"] {
+            std::fs::create_dir_all(project.join(directory))?;
+        }
+        std::fs::write(
+            project.join("installer_config.json"),
+            br#"{"resources":{"payload_file":"payload/app.7z","plugins_dir":"plugins"}}"#,
+        )?;
+        std::fs::write(
+            project.join("plugins/sample.dll"),
+            plugin_image(0x8664, 0x2000),
+        )?;
+        // Something a plugin ships beside itself: it is not called by name, and
+        // it still has to travel with the setup.
+        std::fs::write(project.join("plugins/sample.dat"), b"data")?;
+        std::fs::write(project.join("payload/app.7z"), b"payload")?;
+
+        let packed = pack_project(project, None)?;
+        let files = parse_bundle(&packed)?;
+
+        assert_eq!(
+            files.get("plugins/sample.dll").unwrap(),
+            &plugin_image(0x8664, 0x2000)
+        );
+        assert_eq!(files.get("plugins/sample.dat").unwrap(), b"data");
+        Ok(())
+    }
+
+    /// A plugin this runtime could never load is refused where it is built.
+    ///
+    /// A 32-bit DLL cannot be loaded by a 64-bit process, and finding that out
+    /// from a machine that tried to install is finding it out too late: the
+    /// build says which file, and why.
+    #[test]
+    fn a_project_that_ships_a_32_bit_plugin_is_refused() -> anyhow::Result<()> {
+        let temp = tempfile::tempdir()?;
+        let project = temp.path();
+        for directory in ["layouts", "assets", "locales", "payload", "plugins"] {
+            std::fs::create_dir_all(project.join(directory))?;
+        }
+        std::fs::write(
+            project.join("installer_config.json"),
+            br#"{"resources":{"payload_file":"payload/app.7z","plugins_dir":"plugins"}}"#,
+        )?;
+        std::fs::write(
+            project.join("plugins/legacy.dll"),
+            plugin_image(0x014c, 0x2000),
+        )?;
+        std::fs::write(project.join("payload/app.7z"), b"payload")?;
+
+        let error = pack_project(project, None).unwrap_err();
+        let said = format!("{error:#}");
+        assert!(said.contains("legacy.dll"), "{said}");
+        assert!(said.contains("32-bit"), "{said}");
+        Ok(())
+    }
+
+    /// A file in the plugins directory that is not an image at all is refused by
+    /// name as well, rather than being loaded and failing obscurely.
+    #[test]
+    fn a_plugin_that_is_not_an_image_is_refused() -> anyhow::Result<()> {
+        let temp = tempfile::tempdir()?;
+        let project = temp.path();
+        for directory in ["layouts", "assets", "locales", "payload", "plugins"] {
+            std::fs::create_dir_all(project.join(directory))?;
+        }
+        std::fs::write(
+            project.join("installer_config.json"),
+            br#"{"resources":{"payload_file":"payload/app.7z","plugins_dir":"plugins"}}"#,
+        )?;
+        std::fs::write(project.join("plugins/notes.dll"), b"not an image")?;
+        std::fs::write(project.join("payload/app.7z"), b"payload")?;
+
+        let error = pack_project(project, None).unwrap_err();
+        assert!(format!("{error:#}").contains("notes.dll"));
         Ok(())
     }
 

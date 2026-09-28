@@ -56,6 +56,10 @@ $reportName = Split-Path -Leaf $reportPath
 $text = Get-ReportText -Language $Language
 
 $stubCommand = "cargo build --locked -p nano-installer-stub-lzma -p nano-installer-stub-zlib -p nano-installer-uninstaller"
+# The plugin cases install a setup that ships a plugin, and the plugin they ship
+# is this repository's sample: a DLL has to be built before a project can bundle
+# it, and its own command is what names it when that build is what failed.
+$pluginCommand = "cargo build --locked -p nano-installer-plugin-sample"
 $suiteCommand = "cargo test --locked -p nano-installer-core --test e2e_setup -- --nocapture"
 
 # A native tool that reports progress on standard error would otherwise trip
@@ -277,13 +281,22 @@ Start-StepWatchdog -Minutes ($SuiteDeadlineMinutes + 4)
 Write-Output (Get-ReportPhrase -Text $text -Key "console.buildingstubs")
 $stubs = Invoke-NativeStep $stubCommand -DeadlineMinutes $SuiteDeadlineMinutes
 
-$suite = $null
+$plugins = $null
 if ($stubs.ExitCode -eq 0) {
+    Write-Output (Get-ReportPhrase -Text $text -Key "console.buildingplugin")
+    $plugins = Invoke-NativeStep $pluginCommand -DeadlineMinutes $SuiteDeadlineMinutes
+}
+
+$suite = $null
+if ($null -ne $plugins -and $plugins.ExitCode -eq 0) {
     Write-Output (Get-ReportPhrase -Text $text -Key "console.runninge2e")
     $suite = Invoke-NativeStep $suiteCommand -DeadlineMinutes $SuiteDeadlineMinutes
 }
-else {
+elseif ($null -eq $plugins) {
     Write-Output (Get-ReportPhrase -Text $text -Key "console.stubsfailed")
+}
+else {
+    Write-Output (Get-ReportPhrase -Text $text -Key "console.pluginfailed")
 }
 
 $summary = @()
@@ -303,6 +316,14 @@ Add-ReportField -Lines $lines -Label (Get-ReportPhrase -Text $text -Key "text.el
 $lines.Add("")
 $lines.Add("$ $stubCommand")
 $lines.AddRange([string[]]$stubs.Output)
+$lines.Add("")
+$lines.Add("$ $pluginCommand")
+if ($null -ne $plugins) {
+    $lines.AddRange([string[]]$plugins.Output)
+}
+else {
+    $lines.Add((Get-ReportPhrase -Text $text -Key "text.notrun"))
+}
 $lines.Add("")
 $lines.Add("$ $suiteCommand")
 if ($null -ne $suite) {
@@ -346,10 +367,12 @@ $fields = @(
     @{ Label = (Get-ReportPhrase -Text $text -Key "text.required"); Value = $requirements },
     @{ Label = (Get-ReportPhrase -Text $text -Key "text.elevated"); Value = $elevated },
     @{ Label = (Get-ReportPhrase -Text $text -Key "fields.runtimeBuild"); Value = $stubCommand },
+    @{ Label = (Get-ReportPhrase -Text $text -Key "fields.pluginBuild"); Value = $pluginCommand },
     @{ Label = (Get-ReportPhrase -Text $text -Key "fields.suite"); Value = $suiteCommand }
 )
 $sections = New-Object System.Collections.Generic.List[object]
 $sections.Add(@{ Heading = (Get-ReportPhrase -Text $text -Key "sections.runtimeBuild"); Summary = "$ $stubCommand"; Lines = $stubs.Output; Open = ($stubs.ExitCode -ne 0) })
+$sections.Add(@{ Heading = (Get-ReportPhrase -Text $text -Key "sections.pluginBuild"); Summary = "$ $pluginCommand"; Lines = @($plugins.Output); Open = ($null -eq $plugins -or $plugins.ExitCode -ne 0) })
 if ($null -ne $suite) {
     $sections.Add(@{ Heading = (Get-ReportPhrase -Text $text -Key "sections.suite"); Summary = "$ $suiteCommand"; Lines = $suite.Output; Open = ($code -ne 0) })
 }

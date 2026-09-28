@@ -40,7 +40,9 @@ fn type_name(kind: REG_VALUE_TYPE) -> &'static str {
 }
 
 /// A text value's bytes, its terminator included.
-fn text_bytes(value: &str) -> Vec<u8> {
+///
+/// Shared with the plugin host, whose ABI stores a string the same way.
+pub(super) fn text_bytes(value: &str) -> Vec<u8> {
     value
         .encode_utf16()
         .chain(std::iter::once(0))
@@ -110,7 +112,10 @@ fn write_with(
 }
 
 /// Writes one value of the given type.
-fn write_value(
+///
+/// Shared with the plugin host: a plugin's registry write goes through this same
+/// call, so it is recorded for the uninstaller exactly like a script's.
+pub(super) fn write_value(
     context: &ScriptContext,
     primitive: &str,
     key: &str,

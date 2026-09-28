@@ -16,6 +16,7 @@ Rust doc comment，再退回用例名。
 | `a_button_state_image_falls_back_to_the_normal_one` | 只画了部分状态的版面照样画得出按钮：缺 `hover-image`、`pressed-image` 或 `disabled-image` 时退回 `normal-image`。被条件挡住的按钮优先用 `disabled-image`，没有 id 的控件则完全收不到悬停和按下。 |
 | `a_button_waits_for_each_state_its_condition_can_name` | `enabled-when` 让一个控件取决于另一个控件，指南列的 `checked`、`unchecked`、`visible`、`hidden` 四种状态按它们点名的复选框或面板判断；条件写成一串用逗号隔开的条件时全部成立才算成立，多打的逗号留下的空条件算不成立；运行时看不懂的状态、页面上找不到的控件都会把按钮挡住而不是放过点击，没写条件的按钮可用，说明这个属性是可选的。 |
 | `a_button_waits_for_the_field_its_condition_names` | `enabled-when` 点名一个输入框时，按钮等的是那个值合不合格：字段还空着（`required` 说的就是这种）时安装键既不登记点击区域也不登记悬停，填进一个工程接受的路径就把点击还回来，清空后又收回去；同一个页面上写 `dir:invalid` 的那个按钮正好相反。 |
+| `a_call_is_two_names_and_a_path_is_not_one` | `plugin_call` 的第一个参数只有 `dll::function` 一种写法：两段都齐的照收；少一段、只有一段、或者写成路径的（带分隔符或 `..`）当场拒绝——插件按工程带在包里的 DLL 名认，不按路径认。 |
 | `a_caret_sits_after_the_characters_before_it` | 文本光标画在前面的字符之后，位置随下标右移；下标超出文本长度时仍然留在输入框内。 |
 | `a_cancel_button_stops_the_project_script_and_leaves_nothing_installed` | 页面上放一个 `action="cancel"` 的按钮，在真窗口里点它：正在跑的任务在脚本那一步停下，向导回到任务起始的那一页，脚本已经建出来的目录被撤掉，一个字节都没留下。 |
 | `a_cancel_request_stops_the_checkpoints_that_follow_it` | 收到取消请求的检查点报出 `cancelled by the user`，而且带的是它自己的错误类型，向导据此说"已取消"而不是"失败"；取消只作用于这一个任务，下一个任务拿到的是全新的句柄。 |
@@ -52,6 +53,7 @@ Rust doc comment，再退回用例名。
 | `a_failure_notice_points_at_the_log_of_the_run` | 向导报失败时，除了错误本身还点名这次运行写下的日志文件——用户能交给别人的就是这一行。没有日志可点的时候（比如窗口都还没建立）提示里不提日志，安装成功时也不提。 |
 | `a_field_checks_the_value_the_project_asks_it_to` | 输入框自己的规矩就写在版面上：`required` 管值有没有，`min-length` 与 `max-length` 按字符数算（中文按字算，不按字节），`pattern` 是掩码而不是正则——`*` 是任意长的一段（可以为空），`?` 恰好一个字符，整段值都要对得上，所以安装目录写 `?:*` 就是要一个盘符开头的路径。没写规矩的字段一律合格，可留空的字段空着也合格；值最先破坏的那条规矩留下自己那句文案，没写文案的规矩只让字段不合格、什么也不说。 |
 | `a_field_the_user_fills_in_is_what_lets_the_install_start` | 在真窗口里从头走一遍要填字段的流程：字段空着时点安装键没有反应，只勾同意也不行，往字段里逐字符敲进一个路径之后安装才开始，产品落在敲进去的那个目录里。字段、按钮条件和安装动作三件事里任何一环没接上，它都会停在原地。 |
+| `a_file_that_is_not_an_image_is_refused` | 构建时插件目录里一个只是改了扩展名的文本文件会被点名拒绝，而不是等到安装时 `LoadLibrary` 回一句「不是有效的 Win32 应用程序」——那时作者不知道该改哪一半。 |
 | `a_file_that_moved_in_size_travels` | 尺寸挪过的文件照样随更新包走：先看尺寸再看摘要，尺寸变了就不算没变，哪怕摘要是同一个。 |
 | `a_file_type_that_would_write_outside_the_classes_tree_is_refused` | 文件类型的两个名字先查再用：扩展名或程序 id 里带路径分隔符、或其中任何一个为空，调用直接返回 `false`；命令行空着的调用同样被拒绝，因为那样的文件类型打不开任何东西。五种被拒的调用一个字节都没写进注册表，manifest 里也没有记录。 |
 | `a_finalize_command_runs_on_the_finished_setup_and_uninstaller` | 工程自己的命令跑在成品上：卸载程序还是独立文件、尚未嵌进安装包时被处理一遍，标记因此落在安装包里那个条目上；安装包写完、页脚也写完之后再处理一遍，标记落在文件末尾，也就是签名会长出来的地方。两条命令拿到的是各自的文件（卸载程序在前、安装包在后），被处理过的安装包照常安装、注册卸载项。 |
@@ -71,6 +73,10 @@ Rust doc comment，再退回用例名。
 | `a_layout_picks_the_image_density_the_display_asks_for` | 版面只点一个文件名，由运行时选版本：低密度显示器用 1x，高密度用 `@2x`。版面直接写 `@2x` 的文件名也会被归一化，只发布其中一个版本时退回另一个。 |
 | `a_link_the_project_does_not_configure_stays_plain_text` | 指南的解析顺序最后一条是解析不到目标的链接保持普通文字：字照常显示，点了什么也不发生，标签不会因此画不出来。 |
 | `a_latin_code_page_cannot_hold_a_chinese_name` | 拉丁代码页永远装不下中文名这一条事实：构建期的判断就建立在它上面，而它与机器上装了什么无关。 |
+| `a_plugin_answers_the_script_that_calls_it` | 真的装一次带插件的安装包：`sample::About` 拿到插件的版本串，`sample::Add` 把参数加出 42（按脚本写的顺序到），`plugin_values` 收回 `Echo` 压回的三个值，`Where` 说的安装目录就是这次装进去的目录，`Note` 写了两行日志之后照常成功，`RequiresAbi` 在宿主 ABI 够新时给出 `abi 1`——文本进、文本出，没有一处靠猜。 |
+| `a_plugin_that_fails_is_reported_to_the_script` | 第三方代码两种可报告的失败各走一遍：插件解释一句再返回失败码，以及插件拒绝一个它不认识的 ABI；脚本用 `try` 接住，错误里带插件文件名、函数名与返回码。另外两种失败是调用本身的问题——DLL 里没有那个导出、安装包根本没带那个插件——也各有各的说法。插件 panic 不在这条里：Rust 在 panic 要穿过 `extern "system"` 边界时直接中止进程，宿主来不及报告，这条写进了 `nano_plugin.h`。 |
+| `a_plugin_that_is_not_an_image_is_refused` | 插件目录里那个不是映像的文件同样在构建时被点名拒绝，理由里必须有文件名。 |
+| `a_plugins_writes_are_taken_back_by_the_uninstall` | 插件经宿主写的东西跟着卸载走：它写进安装目录的 `plugin-sample.txt` 与它写下的注册表值，安装后都读得到，卸载之后两样都不在了。同一轮里它试过往安装目录外写文件，宿主当场拒绝并把原因交回给插件——「插件只写卸载会收回的地方」不靠作者自觉。 |
 | `a_product_name_is_stored_whole_or_the_build_is_refused` | 包里的表按构建机的 ANSI 代码页存（实测如此，声明哪个代码页都改不了它），所以产品名要么原样存进去、要么这次构建就被拒绝——绝不允许存成一串替换字符。用例按这台机器能做什么来要求：能存就要求读回原样，不能存就要求报错并点出机器用的代码页。 |
 | `a_name_too_long_for_a_short_name_carries_one_the_file_system_can_keep` | 产品名太长或不是拉丁字母时，安装目录声明成「短名|长名」：短名由名字里的 ASCII 字母数字生成、两个字符的标记取名字里的数字（没有数字就取摘要），产品名照原样跟在竖线后面；Windows 留给设备的那些名字（`CON` 等）也会拿到短名；同一个名字每次都得到同一个短名。 |
 | `a_nested_container_reports_the_extent_its_children_need` | 没声明尺寸的面板有多大由内容决定：沿自己的轴把子项和间距相加，垂直于轴取最大的子项，自己的内边距只算一次。外层容器用同样的量法放置它，版面不必给包装层声明尺寸。 |
@@ -98,10 +104,12 @@ Rust doc comment，再退回用例名。
 | `a_plan_round_trips_through_its_json` | 更新计划写成 JSON 再读回来形状不变：来源归档名、这一版要装的版本、每条保留文件的路径、字节数和 64 位十六进制摘要都还在，路径仍按安装目录里的相对路径读。 |
 | `a_product_name_that_cannot_name_a_directory_is_refused` | 不能当目录用的产品名（空、空白、带 `/` 或 `:`）在构建期被拒绝，报出的原因说的是目录名，而不是等到装的时候失败。 |
 | `a_progress_bar_paints_a_rounded_track_and_follows_the_live_value` | 进度条先画轨道，`border-radius` 把它修成胶囊形；版面里写的 `progress` 是空闲时的样子，任务上报的进度会盖住它，任务还没开始时只画轨道，没有任务时又回到版面写的值。 |
+| `a_project_bundles_the_plugins_directory_it_names` | 工程点名的插件目录整份进包：脚本要按名字调用的那些 DLL，以及 DLL 自己需要、放在它旁边的数据文件，都按各自的相对路径随安装包走。 |
 | `a_project_bundles_the_tools_directory_it_names` | 工程把 `resources.tools_dir` 指到的目录整个打进安装包，子目录和它们的相对路径都在内：脚本拿到的是工程自己那份目录的布局，而不是一堆压平的文件名。 |
 | `a_project_that_cannot_run_without_a_window_is_refused_a_package` | 没声明无窗口运行的工程被拒绝出包：构建失败并点名 `advanced.silent_mode_support`，也不在磁盘上留下半成品包。 |
 | `a_project_that_did_not_opt_in_refuses_a_windowless_run` | 无窗口运行是工程自己的决定，从没声明过它的工程既不能被无人值守地安装，也不能被无人值守地卸载。 |
 | `a_project_that_names_no_tools_bundles_none` | 没写 `resources.tools_dir` 的工程，目录就算摆在自己的树里也不进包：安装包只带工程点名要的东西，不带碰巧放在旁边的东西。 |
+| `a_project_that_ships_a_32_bit_plugin_is_refused` | 32 位 DLL 在 64 位运行时下永远加载不了，所以构建当场拒绝，并点名那个文件、说清它是 32 位——让机器装到一半才发现是太晚的发现。 |
 | `a_project_without_a_dialog_layout_still_opens` | 没带对话框版面的工程照样能用：页面自己画出来，调用方退回成不问直接关闭。 |
 | `a_project_without_components_installs_none_of_them` | 没写 `components.items` 的工程一个组件都不装，页面上勾什么都一样：基础载荷照旧，组件这一层根本不存在。 |
 | `a_project_without_silent_support_refuses_a_windowless_install` | 从没声明支持静默安装的工程必须拒绝无窗口运行，而不是照样无人值守地装下去。 |
@@ -158,6 +166,7 @@ Rust doc comment，再退回用例名。
 | `a_styled_image_draws_into_a_sub_rectangle_at_the_opacity_it_declares` | `file='...' dest='...' fade='...'` 这种写法把图片画进控件内的一个子矩形，并按 `fade` 给透明度；目标矩形相对控件而不是页面，跟着控件一起被缩放。 |
 | `a_supported_locale_without_a_file_is_reported` | 工程声明支持、却没有对应语言文件的语言会被报告出来，因为别的环节不会报：运行时会退回默认语言，产品只是显示成另一种语言而已。 |
 | `a_system_colour_reads_as_an_opaque_layout_colour` | 机器报出来的系统颜色是 `0x00BBGGRR`，转成版面的写法要把字节反过来并补上不透明的 `FF`：`0x00112233` 读成 `#FF332211`，黑与白两个端点也各对一次。 |
+| `a_thirty_two_bit_image_is_refused_by_name` | 32 位映像在构建时被点名拒绝，理由里说明这个运行时只有 64 位；错误信息里必须有文件名，否则作者不知道该动哪一个。 |
 | `a_translation_missing_page_text_is_reported` | 默认语言能回答的页面文案键，凡是某个语言漏掉的都要报出来，没漏的不报。 |
 | `a_tree_is_described_by_its_installed_paths` | 一棵目录树按它装到机器上的路径来描述，目录多深都一样，每个文件都带上自己的字节数和摘要。 |
 | `a_typed_value_wins_over_the_bound_default` | 绑定到工程文件的输入框先显示配置里的路径，但用户输入或选择过的值要一直留在屏幕上，`disk-free:` 绑定读的也是同一个输入框。 |
@@ -181,6 +190,7 @@ Rust doc comment，再退回用例名。
 | `an_element_is_pinned_by_the_edge_attribute_it_carries` | `right` 和 `bottom` 从远端边量起，`inset` 是一次写四边的简写；声明了近端边时以它为准，单边写法能覆盖简写，页面本身就是绝对定位控件的参照父级。 |
 | `an_empty_field_is_one_a_user_can_click_into` | 空着的输入框仍然是输入框：它一个字的文字都不画，却照样被记成可编辑字段，光标也按它声明的字号和颜色落进去——用户就是靠这一步才能把页面要的路径敲进来。`readonly="true"` 的字段和别人一样不在这份名单里；待在流式容器里的字段同样被记下，位置跟着容器给它的槽位。 |
 | `an_empty_runtime_directory_leaves_the_stub_search_automatic` | 运行时目录为空时 stub 的查找保持自动：勾上自动搜索 stub 会清空这个输入框，而把空路径当目录传下去会先在那里搜并且搜不到。所以请求里根本不能带这个覆盖项，预览里也不能显示它。 |
+| `an_executable_is_not_a_plugin` | PE 头完好、但不是 DLL 的可执行文件会被拒绝：检查读的是 COFF 头里的 DLL 标志，不是文件名。 |
 | `an_explicit_directory_wins_over_the_configured_one` | 命令行给出的目录优先于配置里的目录，静默运行才能自己决定产品装到哪里。 |
 | `an_explicit_install_path_wins_over_the_configured_one` | 显式给出的目录优先于配置里的目录，这样不改工程也能让静默运行决定产品装到哪里。 |
 | `an_input_method_anchors_at_the_caret_the_page_drew` | 输入法组字窗与候选窗锚在页面画出的那个插入符上：组字点就是插入符的左上角，候选点在同一个 x 上、比插入符低一个插入符的高度，用户打字时眼睛就落在那里；光标沿着一行往右走，两个点跟着一起走，候选列表不会留在第一个字底下。输入法自己的窗口不归运行时管，运行时只负责回答插入符画在哪儿。 |
@@ -201,6 +211,7 @@ Rust doc comment，再退回用例名。
 | `an_update_package_refuses_a_machine_it_does_not_fit` | 更新包只装在它做出来的那个版本之上。机器上那份文件被人换过（尺寸和摘要都对不上）时当场拒绝，点出是哪个文件不合、并让人改用完整安装包，退出前连新版本的一半都没写进去；机器上根本没装过产品时同样拒绝，并说明该跑哪个安装包。 |
 | `an_upgrade_keeps_a_file_the_payload_does_not_own` | 产品自己写的本地设置文件不属于 payload，升级时必须原样留着。 |
 | `an_upgrade_replaces_the_previous_version_and_drops_stale_files` | 覆盖安装把上个版本的文件换成本次的，旧版本里不再有的文件被删掉，manifest 里只剩这次部署的文件。 |
+| `an_x64_dll_passes_the_check` | PE 头、机器类型与 DLL 标志都对得上的映像通过检查——这是插件目录里唯一被接受的形状。 |
 | `bottom_hbox_distributes_fixed_and_flexible_items` | 底部一行的宽度分配：两个可伸缩项平分剩余空间，定宽按钮保持 184 像素，算出 196、196、184。 |
 | `build_messages_reach_the_log_in_the_order_the_worker_sent_them` | 构建消息按工作线程发出的顺序进入日志，行文由构建器决定，包括 `Uninstaller bundle:` 标题下的第一遍和第二遍里重复出现的目录名。窗口只是转发，用例喂进那串消息后检查途中没有合并也没有丢行、payload 只被点名一次、两遍都还看得见。 |
 | `build_progress_is_monotonic` | 构建各阶段的进度值依次递增，从校验、选 stub、打包、写资源一路到完成，不会往回走。 |
@@ -333,6 +344,7 @@ Rust doc comment，再退回用例名。
 | `the_example_project_matches_the_schema` | 示例工程自己的配置也要过这张表：它是别人照抄的模板，不能带着没人读的键。 |
 | `the_example_projects_scripts_parse` | 两个示例工程的脚本至少得能解析：参考工程与从 NSIS 迁过来的那份都不会被任何用例真的跑起来，写坏一个括号只有等谁装上这个示例才会有人发现。 |
 | `the_focus_ring_is_drawn_over_the_control_the_keyboard_is_on` | 键盘停在哪个控件上，就在那个控件的矩形上画一层一像素的点状环：有环与没环的页面只差这一层，别处一个像素都不动；颜色是页面声明的那个，边缘隔一个像素一个点，控件中间留给自己。 |
+| `the_host_table_is_the_abi_the_header_declares` | 宿主交给插件的那张结构体表，字段顺序、宽度与偏移和 `include/nano_plugin.h` 写的一模一样：`struct_size` 在 0、`abi_version` 在 4，函数指针从 16 开始各占 8 字节。这条是 ABI 的地基，动一处就会在这里响。 |
 | `the_keyboard_moving_is_what_a_screen_reader_hears` | 另一个进程里的客户程序挂上焦点事件的钩子，只收这个安装包进程的事件：按一次 Tab，它听到向导报出键盘落在 1 号控件上，问窗口也答 1 号；再按一次 Tab，听到 2 号，问窗口答 2 号。看不见页面的用户靠的就是这一条——只知道主动去问的阅读器不会在键盘移动时开口。 |
 | `the_keyboard_walks_the_page_and_acts_on_what_it_reaches` | 在真窗口里只用键盘走一遍页面：Tab 按版面顺序落在第一个控件上，环画在它身上；空格翻掉环底下的复选框（窗口里那两幅状态图换了一张）；再 Tab 两次，环依次走到输入框和按钮；从最后一个控件再按一次 Tab，环绕回第一个；回到按钮上按 Enter，窗口切到按钮指的第二页（300×150）；第二页一个控件都没有，Tab 在那里什么也不改，窗口还在。往回走（Shift+Tab）由另一条用例守着：按键消息本身不带修饰键，这条用例只发按键，发不出按住的 Shift。 |
 | `the_language_menu_answers_to_the_keyboard` | 在真窗口里用键盘走一遍语言菜单：点一下控件把菜单展开，当前语言那一行标着记号；按一次下箭头，高亮落到下一行，而当前语言那行上的记号还在；按 Escape，菜单收起，页面回到展开之前的样子，一个像素都没变；再展开、再按下箭头、按 Enter，页面上的那句话换成另一种语言写的，而且除那句话和这个控件，别处都没有被重画。 |

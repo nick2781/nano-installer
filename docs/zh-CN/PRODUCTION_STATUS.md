@@ -67,6 +67,11 @@
 - 工程可以把脚本要跑的辅助程序一起打包：`resources.tools_dir` 指到的目录按原样进安装包，子目录
   也在内，脚本用 `get_tools_dir()` 把它摊到磁盘上并拿到路径。没打包工具的工程，以及向一个没带工具的
   安装包要工具的脚本，拿到的是空字符串和一条日志告警，安装照常继续。
+- 工程可以随安装包带自己的插件。插件是按 `include/nano_plugin.h` 编出来的 64 位 DLL，放进
+  `resources.plugins_dir`，脚本用 `plugin_call("dll::function", [...])` 调用并取回它推回来的文本值。
+  插件经宿主的 `write_file` 与 `write_registry` 写下的东西跟着 manifest 走，卸载一并收回；往安装目录
+  之外的写入被当场拒绝。构建时会拒绝这个运行时永远加载不了的 DLL（32 位、ARM64、不是 DLL、不是映像），
+  并点名是哪一个——让机器装到一半才发现是太晚的发现。
 - 项目脚本可以写入当前用户的环境变量（`set_env`、`remove_env`），也可以登记文件类型
   （`register_file_association`、`unregister_file_association`）。两者都经过 manifest：
   安装记下写过的值和建过的键，卸载只按记录收回这些——`Environment` 记的是值而不是键，
