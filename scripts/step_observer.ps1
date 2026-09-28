@@ -277,6 +277,23 @@ while ($true) {
                     $threads = "unknown"
                 }
                 $quiet = [int]($now - $silentSince).TotalSeconds
+                # The workspace is where everything a step runs writes, and this
+                # process reads the command's own output off the same volume: a
+                # disk that stops answering stops all of them at once, which is
+                # one of the few things that can take the step and its watcher
+                # down together. The number sits next to the rest of the health so
+                # a wedged step says whether the disk was going.
+                $disk = "unknown"
+                try {
+                    $qualifier = (Split-Path -Qualifier (Get-Location).ProviderPath).TrimEnd(":")
+                    $drive = Get-PSDrive -Name $qualifier -ErrorAction Stop
+                    if ($null -ne $drive.Free) {
+                        $disk = "{0:N1}G free" -f ($drive.Free / 1GB)
+                    }
+                }
+                catch {
+                    $disk = "unknown"
+                }
                 $trouble = ""
                 if ($script:LostPosts -gt 0) {
                     $trouble += ", $script:LostPosts post(s) unanswered"
@@ -284,7 +301,7 @@ while ($true) {
                 if ($script:Failures -gt 0) {
                     $trouble += ", $script:Failures pass(es) failed: $script:LastFailure"
                 }
-                Send-Report "suite step" ("pid {0} alive, cpu {1}, threads {2}, quiet {3}s$trouble" -f $process.Id, $cpu, $threads, $quiet)
+                Send-Report "suite step" ("pid {0} alive, cpu {1}, threads {2}, quiet {3}s, disk {4}$trouble" -f $process.Id, $cpu, $threads, $quiet, $disk)
             }
             $nextHealth = $now.AddSeconds(60)
         }

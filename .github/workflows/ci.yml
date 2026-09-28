@@ -209,10 +209,15 @@ jobs:
         run: |
           # A dispatched run that asked for targets of its own gets them, so the
           # target a wedged run stopped on can be run on its own, or without one
-          # of its cases, on the agent that reproduces the problem.
+          # of its cases, on the agent that reproduces the problem. The input is a
+          # list of commands separated by ';', which is what its description says;
+          # the parameter is an array, so the split has to be made here.
           if ($env:NANO_SUITE_COMMAND) {
             Write-Output "this run was dispatched with targets of its own: $env:NANO_SUITE_COMMAND"
-            .\scripts\run_tests.ps1 -Quiet -SuiteCommand $env:NANO_SUITE_COMMAND
+            $targets = @($env:NANO_SUITE_COMMAND -split ';' |
+              ForEach-Object { $_.Trim() } |
+              Where-Object { $_ })
+            .\scripts\run_tests.ps1 -Quiet -SuiteCommand $targets
           }
           else {
             .\scripts\run_tests.ps1 -Quiet
