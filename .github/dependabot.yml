@@ -1,0 +1,27 @@
+version: 2
+
+updates:
+  # Dependencies are pinned by Cargo.lock and by the nightly toolchain CI builds with, so these
+  # pull requests are a reminder rather than an automatic bump. An archive or Win32 crate moves
+  # only after it has been built against the Windows 7 baseline and the whole suite is green,
+  # which is a person's decision and not a merge button.
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    groups:
+      cargo:
+        patterns: ["*"]
+
+  # The workflows pin a major version on purpose: a new major is read before it is taken.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 2
+    groups:
+      actions:
+        patterns: ["*"]
