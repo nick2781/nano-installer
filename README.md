@@ -68,7 +68,9 @@ MyApp/
 ```
 
 Paths in the configuration are relative to the project folder, so you can move a project anywhere. The
-quickest start is to copy `examples/TapTap` and replace what is inside.
+quickest start is to copy `examples/TapTap` and replace what is inside — the shape of the
+configuration, not the artwork, which belongs to its rights holders. [`examples/`](examples/README.md)
+lists all three examples and what each one proves.
 
 ## What your setup does today
 
