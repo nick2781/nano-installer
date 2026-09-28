@@ -37,7 +37,9 @@ cargo clippy --locked --workspace --all-targets -- -D warnings
 A change to what a setup *does* also updates the documents that promise it: `CHANGELOG.md`,
 `docs/{en,zh-CN}/TEST_COVERAGE.md` (the counts, and the row for the behaviour), and
 `docs/zh-CN/TEST_CASES.md` (one row per case — the audit refuses a case without one). Documentation
-exists in both languages; a change to one side is a change to both.
+exists in both languages; a change to one side is a change to both. Two files carry one language on
+purpose, and each says so in its own text: `docs/zh-CN/TEST_CASES.md` supplies the Chinese column of
+the test report, and `docs/AGENTS.md` is read by the same agents that read this file.
 
 ## What a change has to respect
 

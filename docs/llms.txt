@@ -4,9 +4,12 @@
 
 Every page of this site is a Markdown file served beside the HTML viewer, and every link below points at that file. Fetch the file; the viewer needs a browser and a script. / 本站每一页都是与网页并列发布的 Markdown 文件，下面每条链接都直接指向那个文件——取文件即可，网页需要浏览器和脚本才能读。
 
+Every English page in one document / 英文页面合成的一份: https://nick2781.github.io/nano-installer/llms-full.txt
+
 ## Start here / 从这里开始
 
 - [Documentation home / 文档首页](https://nick2781.github.io/nano-installer/README.md): 中英双语的总览：这个站点有什么、先读哪一篇，以及产品现在能不能用于正式发布。 / The bilingual overview: what this site holds, where to start, and whether the product is ready to ship.
+- [Documentation map for agents](https://nick2781.github.io/nano-installer/AGENTS.md): Which page answers which question, how the two languages relate, and where the machine-readable entry points are. English only, on purpose.
 
 ## English
 

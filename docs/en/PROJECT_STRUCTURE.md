@@ -75,14 +75,21 @@ Three files make the pages findable to something that cannot run the viewer, and
 | File | What it holds |
 | --- | --- |
 | `docs/llms.txt` | Every page, one line each, linked to the page's own Markdown file with a one-line description; then the repository files outside the site that are worth knowing about |
+| `docs/llms-full.txt` | The pages of the groups that ask to be in it -- the English documentation -- in one document, each introduced by its own address. The coverage table is left out because it is a table to look things up in rather than reading |
 | `docs/robots.txt` | Everything public, and where the sitemap is |
 | `docs/sitemap.xml` | The same list as XML. Its entries are the Markdown files rather than the viewer's fragment addresses, because a fragment is not a page a crawler can fetch |
 
 `.\scripts\build_docs_index.ps1 -Verify` is the check, and it is the same code that writes them, so
 the two cannot disagree. A page with no entry in `scripts/docs_index.json`, an entry naming a file
 that is not there, an empty title or description, a title that disagrees with the page's own
-`# heading`, a repository file that has moved, and a page that belongs to no group are all failures.
-Adding a page therefore means adding its line to that data file, in the same change.
+`# heading`, a repository file that has moved, a page that belongs to no group, a name excluded from
+the one-document file that is not a page, and no group asking for that file at all are all failures.
+Adding a page therefore means adding its line to that data file, in the same change -- and it joins
+`llms-full.txt` because of the group it is in, not because a list was updated.
 
 The sidebar files (`_sidebar.md`, `_navbar.md`) are navigation rather than pages, and the index
 leaves out every file whose name begins with an underscore for that reason.
+
+`docs/AGENTS.md` is the map of the documentation itself: which page answers which question, how the
+two languages relate, and where the machine-readable entry points are. It is one of the two
+documents that carry a single language on purpose.

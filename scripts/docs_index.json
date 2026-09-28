@@ -6,15 +6,18 @@
   "groups": [
     {
       "prefix": "",
-      "heading": "Start here / 从这里开始"
+      "heading": "Start here / 从这里开始",
+      "inFull": true
     },
     {
       "prefix": "en/",
-      "heading": "English"
+      "heading": "English",
+      "inFull": true
     },
     {
       "prefix": "zh-CN/",
-      "heading": "中文"
+      "heading": "中文",
+      "inFull": false
     }
   ],
   "pages": [
@@ -22,6 +25,11 @@
       "path": "README.md",
       "title": "Documentation home / 文档首页",
       "description": "中英双语的总览：这个站点有什么、先读哪一篇，以及产品现在能不能用于正式发布。 / The bilingual overview: what this site holds, where to start, and whether the product is ready to ship."
+    },
+    {
+      "path": "AGENTS.md",
+      "title": "Documentation map for agents",
+      "description": "Which page answers which question, how the two languages relate, and where the machine-readable entry points are. English only, on purpose."
     },
     {
       "path": "en/README.md",
@@ -228,6 +236,14 @@
         "title": "Changelog",
         "description": "What changed in each release. Written in Chinese / 中文。"
       }
+    ]
+  },
+  "full": {
+    "label": "Every English page in one document / 英文页面合成的一份",
+    "title": "Nano Installer documentation",
+    "note": "Every English page of this site in one document, for a reader that would rather fetch once. The test coverage table is left out: it is a long table rather than reading, and llms.txt links it by URL. / 本站的英文页面合成一份，便于只取一次；测试覆盖表没有收进来——那是一张长表而不是通读内容，llms.txt 里有它的地址。",
+    "exclude": [
+      "en/TEST_COVERAGE.md"
     ]
   }
 }

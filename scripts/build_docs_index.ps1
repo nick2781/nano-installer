@@ -8,6 +8,8 @@
 
       docs/llms.txt      the index, one line per page, each pointing at the
                          Markdown file rather than at the viewer
+      docs/llms-full.txt the English pages in one document, for a reader that
+                         would rather fetch once
       docs/robots.txt    everything public, and where the sitemap is
       docs/sitemap.xml   the same page list as XML
 
@@ -22,7 +24,8 @@
     title or description, a heading that disagrees, a repository file that is not
     there, and a page that belongs to no group are all failures. Adding a page
     without describing it therefore fails in CI instead of quietly missing from
-    the index.
+    the index. A page named as excluded from the one-document file has to exist
+    too, so a typo there cannot silently drop a page from it.
 
     -Verify compares what is on disk with what would be written and fails on any
     difference. That is what the docs workflow runs before it publishes. The
@@ -165,6 +168,8 @@ foreach ($group in @($data.groups)) {
     $members = @($entries | Where-Object { $owner.ContainsKey($_.Path) -and $owner[$_.Path] -eq $prefix })
     $groups += [pscustomobject]@{
         Heading = [string]$group.heading
+        Prefix  = $prefix
+        InFull  = [bool]$group.inFull
         Members = $members
     }
 }
@@ -183,6 +188,33 @@ foreach ($file in @($repository.files)) {
     $repositoryLines += "- [$([string]$file.title)]($link): $([string]$file.description)"
 }
 
+# A page named as excluded from the one-document file has to be a page, so a typo
+# here cannot quietly drop a document from it. Which pages that file carries is
+# the group's own answer, so a new page joins it because of where it lives rather
+# than because someone remembered to list it.
+$full = $data.full
+$excluded = @{}
+foreach ($path in @($full.exclude)) {
+    $path = [string]$path
+    if (-not $listed.ContainsKey($path)) {
+        $failures += "$path is left out of llms-full.txt but is not a page listed in $dataPath"
+        continue
+    }
+    $excluded[$path] = $true
+}
+$inFull = @{}
+foreach ($group in $groups) {
+    if (-not $group.InFull) {
+        continue
+    }
+    foreach ($member in $group.Members) {
+        $inFull[$member.Path] = $true
+    }
+}
+if ($inFull.Count -eq 0) {
+    $failures += "no group in $dataPath is marked for llms-full.txt, so that file would be empty"
+}
+
 if ($failures.Count -gt 0) {
     $failures | ForEach-Object { Write-Error $_ }
     throw "The documentation index does not match the pages it describes"
@@ -196,6 +228,8 @@ $llms.Add("")
 $llms.Add("> $([string]$data.summary)")
 $llms.Add("")
 $llms.Add([string]$data.note)
+$llms.Add("")
+$llms.Add("$([string]$full.label): ${site}llms-full.txt")
 foreach ($group in $groups) {
     if ($group.Members.Count -eq 0) {
         continue
@@ -249,8 +283,28 @@ foreach ($entry in $entries) {
 $sitemap.Add("</urlset>")
 $sitemapText = ($sitemap -join "`n") + "`n"
 
+# llms-full.txt: the pages whose path is not in the excluded set, in the order the
+# index lists them, each introduced by the address it came from so a reader can
+# quote the one page rather than the one file.
+$fullPages = @($entries | Where-Object { $inFull.ContainsKey($_.Path) -and -not $excluded.ContainsKey($_.Path) })
+$fullLines = [System.Collections.Generic.List[string]]::new()
+$fullLines.Add("# $([string]$full.title)")
+$fullLines.Add("")
+$fullLines.Add([string]$full.note)
+foreach ($page in $fullPages) {
+    $fullLines.Add("")
+    $fullLines.Add("---")
+    $fullLines.Add("")
+    $fullLines.Add("Source: $site$($page.Path)")
+    $fullLines.Add("")
+    $content = [System.IO.File]::ReadAllText($onDisk[$page.Path], [System.Text.UTF8Encoding]::new($false))
+    $fullLines.Add((($content -split "`r?`n") -join "`n").TrimEnd())
+}
+$fullText = ($fullLines -join "`n") + "`n"
+
 $outputs = @(
     [pscustomobject]@{ Path = (Join-Path $docsDirectory "llms.txt"); Text = $llmsText },
+    [pscustomobject]@{ Path = (Join-Path $docsDirectory "llms-full.txt"); Text = $fullText },
     [pscustomobject]@{ Path = (Join-Path $docsDirectory "robots.txt"); Text = $robotsText },
     [pscustomobject]@{ Path = (Join-Path $docsDirectory "sitemap.xml"); Text = $sitemapText }
 )
