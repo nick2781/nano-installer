@@ -21,7 +21,7 @@ rhai.workspace = true
 zip.workspace = true
 # The `implement` macro the accessibility object is built with writes its own
 # paths against `windows_core`, so that crate has to be nameable here.
-windows-core = "0.58"
+windows-core = "0.100"
 
 [dependencies.windows]
 version = "0.58"
