@@ -31,6 +31,7 @@ cargo clippy --locked --workspace --all-targets -- -D warnings
 .\scripts\run_e2e_setup.ps1             # builds the stubs and the sample plugin, then the setup-level cases
 .\scripts\audit_script_encoding.ps1     # scripts must be pure ASCII or carry a BOM
 .\scripts\audit_case_descriptions.ps1   # every case has a row in docs/zh-CN/TEST_CASES.md
+.\scripts\build_docs_index.ps1 -Verify  # every documentation page has a line in scripts/docs_index.json
 ```
 
 A change to what a setup *does* also updates the documents that promise it: `CHANGELOG.md`,
@@ -54,6 +55,12 @@ exists in both languages; a change to one side is a change to both.
 - **Configuration keys are validated.** The builder refuses a key it does not read, so adding one
   means adding it to `crates/nano-installer-core/src/config.rs` and to
   `docs/{en,zh-CN}/CONFIG_REFERENCE.md` in the same change.
+- **The documentation index.** The published site is a viewer over Markdown files, and
+  `docs/llms.txt` is how something that cannot run the viewer finds them. A new page under `docs/`
+  therefore needs a line in `scripts/docs_index.json` — title and one-line description — and that
+  title has to read exactly like the page's own `# heading`, because the index is what a reader and
+  an agent quote back. `.\scripts\build_docs_index.ps1` writes the three index files;
+  `-Verify` is the check.
 
 ## Reporting
 

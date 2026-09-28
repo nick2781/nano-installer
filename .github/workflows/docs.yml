@@ -7,6 +7,9 @@ on:
     paths:
       - "docs/**"
       - "assets/nano-technology.png"
+      # The index files under docs/ are generated from this data file, so a change
+      # to it alone changes what the site publishes.
+      - "scripts/docs_index.json"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 
@@ -37,6 +40,17 @@ jobs:
 
       - name: Configure Pages
         uses: actions/configure-pages@v6
+
+      # The site is a viewer over the Markdown files beside it, and three of those
+      # files are what makes the pages findable to something that cannot run the
+      # viewer: llms.txt, robots.txt and sitemap.xml. They are generated from
+      # scripts/docs_index.json, so this fails rather than publishing a site whose
+      # index no longer lists the page someone just added. It runs on this runner
+      # (pwsh is installed on the Ubuntu images), so a Windows checkout and this
+      # one are held to the same files.
+      - name: Verify the documentation index
+        shell: pwsh
+        run: ./scripts/build_docs_index.ps1 -Verify
 
       - name: Upload docs artifact
         uses: actions/upload-pages-artifact@v5

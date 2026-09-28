@@ -83,6 +83,16 @@
 - `examples/` 有了一份索引：三个目录各自是什么、各自能证明什么，以及动手抄之前该知道的两件事——
   示例里的素材不属于你（归权利人），TapTap 的 payload 不在仓库里，所以新克隆的目录要先自己放一个
   压缩包才构建得出来，截图脚本那句「写一个临时 payload、用完删掉」也一并写明。
+- 文档站开始对 agent 也开门。站点本来就是个 docsify 外壳：发布出去的 HTML 里没有一句正文，agent 抓
+  站点根拿到的是空壳；但每一页本来就是与它并列发布的 Markdown 文件（`Content-Type: text/markdown`），
+  缺的只是「去哪儿拿」。于是 `docs/llms.txt` 按 llms.txt 的写法列出每一页、每条都直接指向那一页自己的
+  Markdown 文件并带一句说明，另有 `docs/robots.txt` 与 `docs/sitemap.xml`；每页顶部多一行「本页
+  Markdown」提示（人和 agent 都看得见），`docs/index.html` 里补了站点级 JSON-LD。这三个文件由
+  `scripts/build_docs_index.ps1` 从 `scripts/docs_index.json` 生成，`-Verify` 用的就是同一份代码，所以
+  生成与检查不可能对不上：页面没有条目、条目指向不存在的文件、标题与页面自己的 `# 标题` 不一致、说明
+  为空、仓库文件搬走、页面不属于任何分组，全都失败——新增一页却忘了写它那一行，会在 PR 的 CI 里失败，
+  而不是悄悄从索引里消失。实测：三个失败路径都真的抛出，本地无头 Edge 渲染确认提示在深层页、目录页和
+  首页三种地址下都指向正确的 `.md`。
 
 ### 变更
 

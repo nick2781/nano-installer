@@ -1,0 +1,233 @@
+{
+  "site": "https://nick2781.github.io/nano-installer/",
+  "title": "Nano Installer",
+  "summary": "Turn one project folder into one Windows setup executable. / 把一个项目目录做成一个 Windows 安装包。",
+  "note": "Every page of this site is a Markdown file served beside the HTML viewer, and every link below points at that file. Fetch the file; the viewer needs a browser and a script. / 本站每一页都是与网页并列发布的 Markdown 文件，下面每条链接都直接指向那个文件——取文件即可，网页需要浏览器和脚本才能读。",
+  "groups": [
+    {
+      "prefix": "",
+      "heading": "Start here / 从这里开始"
+    },
+    {
+      "prefix": "en/",
+      "heading": "English"
+    },
+    {
+      "prefix": "zh-CN/",
+      "heading": "中文"
+    }
+  ],
+  "pages": [
+    {
+      "path": "README.md",
+      "title": "Documentation home / 文档首页",
+      "description": "中英双语的总览：这个站点有什么、先读哪一篇，以及产品现在能不能用于正式发布。 / The bilingual overview: what this site holds, where to start, and whether the product is ready to ship."
+    },
+    {
+      "path": "en/README.md",
+      "title": "English documentation",
+      "description": "The English entry point: what this is, what a setup does today, and where to go next."
+    },
+    {
+      "path": "en/QUICK_START.md",
+      "title": "Quick start",
+      "description": "Build the sample setup, install it in a virtual machine, and see what each page does."
+    },
+    {
+      "path": "en/GUI.md",
+      "title": "Visual builder",
+      "description": "The Windows 10+ visual builder: what it edits, what it refuses, and how it matches the command line."
+    },
+    {
+      "path": "en/CONFIG_REFERENCE.md",
+      "title": "Configuration reference",
+      "description": "Every setting in installer_config.json that changes what your setup does, and the keys the builder refuses."
+    },
+    {
+      "path": "en/XML_LAYOUT_GUIDE.md",
+      "title": "Page layout",
+      "description": "Pages, controls, flow layout, images, actions and conditions, as the layout XML spells them."
+    },
+    {
+      "path": "en/LOCALIZATION.md",
+      "title": "Languages",
+      "description": "One UTF-8 JSON file per language, the eleven built-in languages, and how a page finds its own text."
+    },
+    {
+      "path": "en/SCRIPT_API.md",
+      "title": "Custom install and uninstall steps",
+      "description": "The Rhai primitives an install.rhai or uninstall.rhai script may call, and what happens when one fails."
+    },
+    {
+      "path": "en/PLUGIN_API.md",
+      "title": "Plugin ABI",
+      "description": "The header a third-party DLL is built against, the services the host lends it, and the rules that let an uninstall take its writes back."
+    },
+    {
+      "path": "en/MIGRATION_FROM_NSIS.md",
+      "title": "Migrating from NSIS",
+      "description": "Every NSIS construct: what it becomes here, what is mapped to something else, and what is refused on purpose."
+    },
+    {
+      "path": "en/ARCHITECTURE.md",
+      "title": "Architecture",
+      "description": "What each crate owns, how a project folder becomes one bundle, and how the runtime draws and drives a page."
+    },
+    {
+      "path": "en/PROJECT_STRUCTURE.md",
+      "title": "Project layout",
+      "description": "The repository tree, a product project folder, where build outputs land, and how this documentation site is published."
+    },
+    {
+      "path": "en/WINDOWS_COMPATIBILITY.md",
+      "title": "Windows compatibility",
+      "description": "The x86_64-win7-windows-msvc baseline, the system calls a build may use, and how that is checked."
+    },
+    {
+      "path": "en/BUILD_AND_RELEASE.md",
+      "title": "Build and release",
+      "description": "The build scripts, the toolchain, the release gate, and the files a release publishes."
+    },
+    {
+      "path": "en/TEST_PLAN.md",
+      "title": "Test plan",
+      "description": "The layers of the suite, how a case is named and described, and what each run proves."
+    },
+    {
+      "path": "en/TEST_COVERAGE.md",
+      "title": "Test coverage",
+      "description": "Every behaviour the documentation promises and the automated case that holds it."
+    },
+    {
+      "path": "en/PRODUCTION_STATUS.md",
+      "title": "Production status",
+      "description": "What is finished, what is missing, and the blockers that stand between this and a production release."
+    },
+    {
+      "path": "zh-CN/README.md",
+      "title": "中文文档",
+      "description": "中文入口：这是什么、现在装出来是什么样、接下来看哪里。"
+    },
+    {
+      "path": "zh-CN/QUICK_START.md",
+      "title": "快速开始",
+      "description": "生成示例安装包，在虚拟机里装一遍，看清每个页面在做什么。"
+    },
+    {
+      "path": "zh-CN/GUI.md",
+      "title": "可视化构建",
+      "description": "Windows 10+ 的可视化构建：它能改什么、会拒绝什么、怎么和命令行保持一致。"
+    },
+    {
+      "path": "zh-CN/CONFIG_REFERENCE.md",
+      "title": "配置参考",
+      "description": "`installer_config.json` 里所有真的会改变安装包行为的设置，以及构建会拒绝的键。"
+    },
+    {
+      "path": "zh-CN/XML_LAYOUT_GUIDE.md",
+      "title": "页面布局",
+      "description": "页面、控件、流式布局、图片、动作与条件，在布局 XML 里的写法。"
+    },
+    {
+      "path": "zh-CN/LOCALIZATION.md",
+      "title": "多语言",
+      "description": "每种语言一个 UTF-8 JSON 文件、内置的 11 种语言，以及页面怎么找到自己的文案。"
+    },
+    {
+      "path": "zh-CN/SCRIPT_API.md",
+      "title": "自定义安装与卸载步骤",
+      "description": "`install.rhai` / `uninstall.rhai` 能调用的 Rhai 原语，以及脚本失败时会发生什么。"
+    },
+    {
+      "path": "zh-CN/PLUGIN_API.md",
+      "title": "插件 ABI",
+      "description": "第三方 DLL 照着编的头文件、宿主借给它的服务，以及让卸载能把插件写下的东西收回去的那几条规矩。"
+    },
+    {
+      "path": "zh-CN/MIGRATION_FROM_NSIS.md",
+      "title": "从 NSIS 迁移",
+      "description": "每个 NSIS 构造分别变成什么、被映射到哪里、哪些是故意不做的。"
+    },
+    {
+      "path": "zh-CN/ARCHITECTURE.md",
+      "title": "架构",
+      "description": "每个 crate 负责什么、项目目录怎么变成一个 bundle、运行时怎么画出一页并驱动它。"
+    },
+    {
+      "path": "zh-CN/PROJECT_STRUCTURE.md",
+      "title": "项目结构",
+      "description": "仓库目录树、一个项目目录长什么样、构建产物落在哪里，以及这份文档站是怎么发布的。"
+    },
+    {
+      "path": "zh-CN/WINDOWS_COMPATIBILITY.md",
+      "title": "Windows 兼容性",
+      "description": "`x86_64-win7-windows-msvc` 基线、每次构建允许使用的系统调用，以及这套约束怎么被检查。"
+    },
+    {
+      "path": "zh-CN/BUILD_AND_RELEASE.md",
+      "title": "构建与发布",
+      "description": "构建脚本、工具链、发布门禁，以及一次发布到底发出哪些文件。"
+    },
+    {
+      "path": "zh-CN/TEST_PLAN.md",
+      "title": "测试计划",
+      "description": "套件的分层、用例的命名与说明规矩，以及每次运行证明了什么。"
+    },
+    {
+      "path": "zh-CN/TEST_COVERAGE.md",
+      "title": "测试覆盖",
+      "description": "文档承诺的每一条行为，以及守住它的那条自动化用例。"
+    },
+    {
+      "path": "zh-CN/TEST_CASES.md",
+      "title": "用例说明",
+      "description": "测试报告里「检查什么」一列的中文文本，一条用例一行。"
+    },
+    {
+      "path": "zh-CN/PRODUCTION_STATUS.md",
+      "title": "当前生产状态",
+      "description": "已经完成什么、还缺什么，以及挡在正式发布前面的那两个阻塞项。"
+    }
+  ],
+  "repository": {
+    "heading": "In the repository / 仓库里的文件",
+    "base": "https://raw.githubusercontent.com/nick2781/nano-installer/main/",
+    "files": [
+      {
+        "path": "README.md",
+        "title": "Repository README",
+        "description": "What the product is, what it does today, and what blocks a release."
+      },
+      {
+        "path": "examples/README.md",
+        "title": "Examples",
+        "description": "The three example projects and what each one proves."
+      },
+      {
+        "path": "include/nano_plugin.h",
+        "title": "Plugin ABI header",
+        "description": "The three rules a plugin follows, and the host table it is built against."
+      },
+      {
+        "path": "CONTRIBUTING.md",
+        "title": "Contributing",
+        "description": "How to set up a working tree, the checks a change must pass, and the rules this repository keeps."
+      },
+      {
+        "path": "SECURITY.md",
+        "title": "Security policy",
+        "description": "How to report a vulnerability privately, and what is knowingly not one."
+      },
+      {
+        "path": "AGENTS.md",
+        "title": "Repository conventions for a coding agent",
+        "description": "Layout, build and test commands, and the change boundaries a coding agent has to respect."
+      },
+      {
+        "path": "CHANGELOG.md",
+        "title": "Changelog",
+        "description": "What changed in each release. Written in Chinese / 中文。"
+      }
+    ]
+  }
+}

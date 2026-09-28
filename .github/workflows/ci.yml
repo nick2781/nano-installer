@@ -166,6 +166,15 @@ jobs:
         shell: powershell
         run: .\scripts\check_nsi_migration.ps1 -Script .\examples\nsis-migration\legacy.nsi -FailOnUnknown
 
+      # The published site is a viewer over Markdown files, and docs/llms.txt is
+      # how something that cannot run the viewer finds them. The files are
+      # generated from scripts/docs_index.json, so this fails when a page was
+      # added without a line describing it -- here, on a pull request, rather than
+      # after the merge in the docs workflow that publishes the site.
+      - name: Verify the documentation index
+        shell: powershell
+        run: .\scripts\build_docs_index.ps1 -Verify
+
       - name: Check formatting
         run: cargo fmt --all -- --check
 

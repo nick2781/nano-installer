@@ -1,0 +1,58 @@
+# Nano Installer
+
+> Turn one project folder into one Windows setup executable. / 把一个项目目录做成一个 Windows 安装包。
+
+Every page of this site is a Markdown file served beside the HTML viewer, and every link below points at that file. Fetch the file; the viewer needs a browser and a script. / 本站每一页都是与网页并列发布的 Markdown 文件，下面每条链接都直接指向那个文件——取文件即可，网页需要浏览器和脚本才能读。
+
+## Start here / 从这里开始
+
+- [Documentation home / 文档首页](https://nick2781.github.io/nano-installer/README.md): 中英双语的总览：这个站点有什么、先读哪一篇，以及产品现在能不能用于正式发布。 / The bilingual overview: what this site holds, where to start, and whether the product is ready to ship.
+
+## English
+
+- [English documentation](https://nick2781.github.io/nano-installer/en/README.md): The English entry point: what this is, what a setup does today, and where to go next.
+- [Quick start](https://nick2781.github.io/nano-installer/en/QUICK_START.md): Build the sample setup, install it in a virtual machine, and see what each page does.
+- [Visual builder](https://nick2781.github.io/nano-installer/en/GUI.md): The Windows 10+ visual builder: what it edits, what it refuses, and how it matches the command line.
+- [Configuration reference](https://nick2781.github.io/nano-installer/en/CONFIG_REFERENCE.md): Every setting in installer_config.json that changes what your setup does, and the keys the builder refuses.
+- [Page layout](https://nick2781.github.io/nano-installer/en/XML_LAYOUT_GUIDE.md): Pages, controls, flow layout, images, actions and conditions, as the layout XML spells them.
+- [Languages](https://nick2781.github.io/nano-installer/en/LOCALIZATION.md): One UTF-8 JSON file per language, the eleven built-in languages, and how a page finds its own text.
+- [Custom install and uninstall steps](https://nick2781.github.io/nano-installer/en/SCRIPT_API.md): The Rhai primitives an install.rhai or uninstall.rhai script may call, and what happens when one fails.
+- [Plugin ABI](https://nick2781.github.io/nano-installer/en/PLUGIN_API.md): The header a third-party DLL is built against, the services the host lends it, and the rules that let an uninstall take its writes back.
+- [Migrating from NSIS](https://nick2781.github.io/nano-installer/en/MIGRATION_FROM_NSIS.md): Every NSIS construct: what it becomes here, what is mapped to something else, and what is refused on purpose.
+- [Architecture](https://nick2781.github.io/nano-installer/en/ARCHITECTURE.md): What each crate owns, how a project folder becomes one bundle, and how the runtime draws and drives a page.
+- [Project layout](https://nick2781.github.io/nano-installer/en/PROJECT_STRUCTURE.md): The repository tree, a product project folder, where build outputs land, and how this documentation site is published.
+- [Windows compatibility](https://nick2781.github.io/nano-installer/en/WINDOWS_COMPATIBILITY.md): The x86_64-win7-windows-msvc baseline, the system calls a build may use, and how that is checked.
+- [Build and release](https://nick2781.github.io/nano-installer/en/BUILD_AND_RELEASE.md): The build scripts, the toolchain, the release gate, and the files a release publishes.
+- [Test plan](https://nick2781.github.io/nano-installer/en/TEST_PLAN.md): The layers of the suite, how a case is named and described, and what each run proves.
+- [Test coverage](https://nick2781.github.io/nano-installer/en/TEST_COVERAGE.md): Every behaviour the documentation promises and the automated case that holds it.
+- [Production status](https://nick2781.github.io/nano-installer/en/PRODUCTION_STATUS.md): What is finished, what is missing, and the blockers that stand between this and a production release.
+
+## 中文
+
+- [中文文档](https://nick2781.github.io/nano-installer/zh-CN/README.md): 中文入口：这是什么、现在装出来是什么样、接下来看哪里。
+- [快速开始](https://nick2781.github.io/nano-installer/zh-CN/QUICK_START.md): 生成示例安装包，在虚拟机里装一遍，看清每个页面在做什么。
+- [可视化构建](https://nick2781.github.io/nano-installer/zh-CN/GUI.md): Windows 10+ 的可视化构建：它能改什么、会拒绝什么、怎么和命令行保持一致。
+- [配置参考](https://nick2781.github.io/nano-installer/zh-CN/CONFIG_REFERENCE.md): `installer_config.json` 里所有真的会改变安装包行为的设置，以及构建会拒绝的键。
+- [页面布局](https://nick2781.github.io/nano-installer/zh-CN/XML_LAYOUT_GUIDE.md): 页面、控件、流式布局、图片、动作与条件，在布局 XML 里的写法。
+- [多语言](https://nick2781.github.io/nano-installer/zh-CN/LOCALIZATION.md): 每种语言一个 UTF-8 JSON 文件、内置的 11 种语言，以及页面怎么找到自己的文案。
+- [自定义安装与卸载步骤](https://nick2781.github.io/nano-installer/zh-CN/SCRIPT_API.md): `install.rhai` / `uninstall.rhai` 能调用的 Rhai 原语，以及脚本失败时会发生什么。
+- [插件 ABI](https://nick2781.github.io/nano-installer/zh-CN/PLUGIN_API.md): 第三方 DLL 照着编的头文件、宿主借给它的服务，以及让卸载能把插件写下的东西收回去的那几条规矩。
+- [从 NSIS 迁移](https://nick2781.github.io/nano-installer/zh-CN/MIGRATION_FROM_NSIS.md): 每个 NSIS 构造分别变成什么、被映射到哪里、哪些是故意不做的。
+- [架构](https://nick2781.github.io/nano-installer/zh-CN/ARCHITECTURE.md): 每个 crate 负责什么、项目目录怎么变成一个 bundle、运行时怎么画出一页并驱动它。
+- [项目结构](https://nick2781.github.io/nano-installer/zh-CN/PROJECT_STRUCTURE.md): 仓库目录树、一个项目目录长什么样、构建产物落在哪里，以及这份文档站是怎么发布的。
+- [Windows 兼容性](https://nick2781.github.io/nano-installer/zh-CN/WINDOWS_COMPATIBILITY.md): `x86_64-win7-windows-msvc` 基线、每次构建允许使用的系统调用，以及这套约束怎么被检查。
+- [构建与发布](https://nick2781.github.io/nano-installer/zh-CN/BUILD_AND_RELEASE.md): 构建脚本、工具链、发布门禁，以及一次发布到底发出哪些文件。
+- [测试计划](https://nick2781.github.io/nano-installer/zh-CN/TEST_PLAN.md): 套件的分层、用例的命名与说明规矩，以及每次运行证明了什么。
+- [测试覆盖](https://nick2781.github.io/nano-installer/zh-CN/TEST_COVERAGE.md): 文档承诺的每一条行为，以及守住它的那条自动化用例。
+- [用例说明](https://nick2781.github.io/nano-installer/zh-CN/TEST_CASES.md): 测试报告里「检查什么」一列的中文文本，一条用例一行。
+- [当前生产状态](https://nick2781.github.io/nano-installer/zh-CN/PRODUCTION_STATUS.md): 已经完成什么、还缺什么，以及挡在正式发布前面的那两个阻塞项。
+
+## In the repository / 仓库里的文件
+
+- [Repository README](https://raw.githubusercontent.com/nick2781/nano-installer/main/README.md): What the product is, what it does today, and what blocks a release.
+- [Examples](https://raw.githubusercontent.com/nick2781/nano-installer/main/examples/README.md): The three example projects and what each one proves.
+- [Plugin ABI header](https://raw.githubusercontent.com/nick2781/nano-installer/main/include/nano_plugin.h): The three rules a plugin follows, and the host table it is built against.
+- [Contributing](https://raw.githubusercontent.com/nick2781/nano-installer/main/CONTRIBUTING.md): How to set up a working tree, the checks a change must pass, and the rules this repository keeps.
+- [Security policy](https://raw.githubusercontent.com/nick2781/nano-installer/main/SECURITY.md): How to report a vulnerability privately, and what is knowingly not one.
+- [Repository conventions for a coding agent](https://raw.githubusercontent.com/nick2781/nano-installer/main/AGENTS.md): Layout, build and test commands, and the change boundaries a coding agent has to respect.
+- [Changelog](https://raw.githubusercontent.com/nick2781/nano-installer/main/CHANGELOG.md): What changed in each release. Written in Chinese / 中文。

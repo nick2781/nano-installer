@@ -1,0 +1,7 @@
+# Every page of this site is a Markdown file published beside the HTML
+# viewer, and /llms.txt is the index written for agents.
+
+User-agent: *
+Allow: /
+
+Sitemap: https://nick2781.github.io/nano-installer/sitemap.xml

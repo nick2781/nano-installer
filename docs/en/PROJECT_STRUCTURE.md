@@ -11,11 +11,15 @@ crates/
 ├── nano-installer-stub-zlib/   # ZIP runtime, links only zip/deflate
 └── nano-installer-uninstaller/ # uninstaller runtime, no archive backend
 docs/
+├── index.html                  # the docsify shell the site is served from
+├── llms.txt                    # every page, listed for an agent to read
+├── robots.txt, sitemap.xml     # the same page list for crawlers
 ├── en/                         # English documentation
 └── zh-CN/                      # Chinese documentation
 examples/TapTap/                # validation project
 examples/nsis-migration/        # a project migrated off NSIS, with the script that checks it
-scripts/                        # build, smoke test, PE audit
+examples/plugin-c/              # the plugin ABI written in C and built with MSVC alone
+scripts/                        # build, smoke test, PE audit, docs index generator
 ```
 
 The raw runtime stubs carry no product resources. The builder injects icons, version info, and
@@ -57,3 +61,28 @@ it wrapped.
 
 `target/x86_64-win7-windows-msvc/` is Cargo's cross-target cache, not a second set of release
 files. Example setups land in `examples/TapTap/dist/` and are not part of a release.
+
+## Documentation site
+
+The published site is a [docsify](https://docsify.js.org/) shell: `docs/index.html` renders Markdown
+in the browser, and it is the only HTML GitHub Pages serves. Every page is also a Markdown file
+published beside that shell, so the site reads without a browser as well -- which is what a coding
+agent has instead. The pages it renders are the sources: nothing is generated for the reader.
+
+Three files make the pages findable to something that cannot run the viewer, and
+`scripts/build_docs_index.ps1` writes them from `scripts/docs_index.json`:
+
+| File | What it holds |
+| --- | --- |
+| `docs/llms.txt` | Every page, one line each, linked to the page's own Markdown file with a one-line description; then the repository files outside the site that are worth knowing about |
+| `docs/robots.txt` | Everything public, and where the sitemap is |
+| `docs/sitemap.xml` | The same list as XML. Its entries are the Markdown files rather than the viewer's fragment addresses, because a fragment is not a page a crawler can fetch |
+
+`.\scripts\build_docs_index.ps1 -Verify` is the check, and it is the same code that writes them, so
+the two cannot disagree. A page with no entry in `scripts/docs_index.json`, an entry naming a file
+that is not there, an empty title or description, a title that disagrees with the page's own
+`# heading`, a repository file that has moved, and a page that belongs to no group are all failures.
+Adding a page therefore means adding its line to that data file, in the same change.
+
+The sidebar files (`_sidebar.md`, `_navbar.md`) are navigation rather than pages, and the index
+leaves out every file whose name begins with an underscore for that reason.

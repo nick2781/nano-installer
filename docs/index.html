@@ -7,6 +7,40 @@
   <title>Nano Installer documentation</title>
   <meta name="description" content="Nano Installer documentation: build a single Windows setup executable from a project folder.">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify@4/lib/themes/vue.css">
+  <style>
+    /* The note every page carries, saying that the page is also a Markdown file. */
+    .nano-markdown-note {
+      margin: 0 0 1.4em;
+      padding: .6em .8em;
+      border: 1px solid #e3e3e3;
+      border-radius: 4px;
+      font-size: .85em;
+      line-height: 1.5;
+      opacity: .85;
+    }
+  </style>
+  <!-- This shell holds no prose: every page is a Markdown file published beside
+       it, and those files are what a reader of the site and an agent both take.
+       What a machine arriving here needs is where they are, which is /llms.txt. -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": "Nano Installer documentation",
+    "alternateName": "Nano Installer 文档",
+    "url": "https://nick2781.github.io/nano-installer/",
+    "inLanguage": ["en", "zh-CN"],
+    "description": "Documentation for Nano Installer, which turns one project folder into one Windows setup executable. Every page is also published as Markdown, and llms.txt indexes them.",
+    "license": "https://github.com/nick2781/nano-installer/blob/main/LICENSE",
+    "isPartOf": {
+      "@type": "SoftwareApplication",
+      "name": "Nano Installer",
+      "applicationCategory": "DeveloperApplication",
+      "operatingSystem": "Windows",
+      "url": "https://github.com/nick2781/nano-installer"
+    }
+  }
+  </script>
 </head>
 <body>
   <div id="app"></div>
@@ -24,7 +58,30 @@
         paths: 'auto',
         placeholder: 'Search / 搜索',
         noData: 'Nothing found / 没有结果'
-      }
+      },
+      // A page here is a Markdown file that this viewer renders, and the same
+      // file is published beside the viewer, which is what an agent reads and
+      // what llms.txt indexes. Every page therefore says so at the top. The name
+      // comes from the address and is stripped to path characters, and anything
+      // unexpected drops the note rather than the page: a note may not cost a
+      // reader the documentation under it.
+      plugins: [
+        function (hook) {
+          hook.afterEach(function (html, next) {
+            try {
+              var file = (window.location.hash || '').replace(/^#\/?/, '').split('?')[0];
+              file = file.replace(/[^A-Za-z0-9_.\/-]/g, '');
+              if (!file || file.slice(-1) === '/') { file += 'README.md'; }
+              if (!/\.md$/i.test(file)) { file += '.md'; }
+              next('<p class="nano-markdown-note">This page as Markdown / 本页 Markdown: ' +
+                '<a href="' + file + '">' + file + '</a> &middot; ' +
+                'index for agents / 给 agent 的索引: <a href="llms.txt">llms.txt</a></p>' + html);
+            } catch (error) {
+              next(html);
+            }
+          });
+        }
+      ]
     };
   </script>
   <script src="https://cdn.jsdelivr.net/npm/docsify@4"></script>
