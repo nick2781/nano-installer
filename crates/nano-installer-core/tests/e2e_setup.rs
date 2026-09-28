@@ -7320,9 +7320,11 @@ try {{ plugin_call("nowhere::Add", []); }} catch (error) {{ write_file(out, read
 /// `examples/plugin-c/sample.c`, with no Rust toolchain involved. It answers
 /// values, reports the installation directory and the argument count through
 /// the services, writes a file and a registry value through the host with the
-/// uninstall taking both back, and fails with a code of its own. A second
-/// implementation is what says the layout and the calling convention are the
-/// header's and not one compiler's.
+/// uninstall taking both back, and fails with a code of its own. The uninstall
+/// script calls it as well, which is a different run of a different image: the
+/// uninstaller carries its own bundle, so a plugin has to travel in that one
+/// too. A second implementation is what says the layout and the calling
+/// convention are the header's and not one compiler's.
 #[test]
 fn a_plugin_written_in_c_is_called_the_same_way() -> anyhow::Result<()> {
     let Some(dll) = c_plugin() else {
@@ -7352,6 +7354,20 @@ try {{ plugin_call("plugin-c::Refuse", []); }} catch (error) {{ write_file(out, 
 "#
     );
     fixture.plugin_project(&script, &dll)?;
+    // A plugin is callable from the uninstall script too, which is a different
+    // run of a different image: the uninstaller carries its own bundle, and what
+    // this proves is that the plugins travel in that one as well.
+    let uninstall_report = fixture.case_path("c-plugin-uninstall-report.txt");
+    let uninstall_out = script_literal(&uninstall_report.to_string_lossy());
+    fixture.write_script(
+        "uninstall.rhai",
+        &format!(
+            r#"
+write_file({uninstall_out}, "uninstall=" + plugin_call("plugin-c::Sum", ["40", "2"]) + "\n");
+run_tracked_uninstall(10.0, 90.0);
+"#
+        ),
+    )?;
     fixture.build()?;
     let output = fixture.install()?;
     anyhow::ensure!(
@@ -7407,6 +7423,11 @@ try {{ plugin_call("plugin-c::Refuse", []); }} catch (error) {{ write_file(out, 
         read_registry_string(&key, "Sample")?,
         None,
         "the registry value the C plugin wrote survived the uninstall"
+    );
+    let uninstalled_report = std::fs::read_to_string(&uninstall_report).unwrap_or_default();
+    assert_eq!(
+        uninstalled_report, "uninstall=42\n",
+        "the uninstall script could not call the plugin"
     );
     Ok(())
 }

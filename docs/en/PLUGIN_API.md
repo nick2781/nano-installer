@@ -112,7 +112,8 @@ Anything else, and any key this product does not own, is refused.
 
 During an uninstall there is no manifest left to record into — the manifest is
 what is being replayed — which is the same position a project's uninstall script
-is in.
+is in. A plugin is callable from that script as well: the uninstaller carries its
+own bundle, and the project's plugins travel in it.
 
 ## Failure
 

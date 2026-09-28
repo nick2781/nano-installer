@@ -89,7 +89,8 @@ NANO_PLUGIN_EXPORT int32_t NANO_PLUGIN_CALL Hello(nano_plugin_host *host, int32_
 `write_registry` 的 `kind` 是 `string`、`expand`、`dword`、`qword` 四种。别的类型，以及不属于这个产品的
 键，都会被拒绝。
 
-卸载期间没有 manifest 可记——正在重放的就是它——这和工程的卸载脚本所处的处境一样。
+卸载期间没有 manifest 可记——正在重放的就是它——这和工程的卸载脚本所处的处境一样。插件在卸载脚本里
+一样可以调用：卸载程序带的是自己那份 bundle，工程的插件也随那份走。
 
 ## 失败
 

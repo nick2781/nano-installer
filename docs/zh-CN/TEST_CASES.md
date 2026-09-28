@@ -77,7 +77,7 @@ Rust doc comment，再退回用例名。
 | `a_plugin_that_fails_is_reported_to_the_script` | 第三方代码两种可报告的失败各走一遍：插件解释一句再返回失败码，以及插件拒绝一个它不认识的 ABI；脚本用 `try` 接住，错误里带插件文件名、函数名与返回码。另外两种失败是调用本身的问题——DLL 里没有那个导出、安装包根本没带那个插件——也各有各的说法。插件 panic 不在这条里：Rust 在 panic 要穿过 `extern "system"` 边界时直接中止进程，宿主来不及报告，这条写进了 `nano_plugin.h`。 |
 | `a_plugin_that_is_not_an_image_is_refused` | 插件目录里那个不是映像的文件同样在构建时被点名拒绝，理由里必须有文件名。 |
 | `a_plugins_writes_are_taken_back_by_the_uninstall` | 插件经宿主写的东西跟着卸载走：它写进安装目录的 `plugin-sample.txt` 与它写下的注册表值，安装后都读得到，卸载之后两样都不在了。同一轮里它试过往安装目录外写文件，宿主当场拒绝并把原因交回给插件——「插件只写卸载会收回的地方」不靠作者自觉。 |
-| `a_plugin_written_in_c_is_called_the_same_way` | ABI 是头文件的事，不是某一种语言的事：这一条装的安装包里带的是一个用 C 写的插件（只用 MSVC 编 `examples/plugin-c/sample.c`，不经过 Rust 工具链），它交回值、经服务说出安装目录与参数个数、经宿主写下一个文件与一个注册表值（卸载把两样都收回），并以自己的返回码失败。第二个实现就是「结构与调用约定属于头文件、不属于某一个编译器」这句话的证据。 |
+| `a_plugin_written_in_c_is_called_the_same_way` | ABI 是头文件的事，不是某一种语言的事：这一条装的安装包里带的是一个用 C 写的插件（只用 MSVC 编 `examples/plugin-c/sample.c`，不经过 Rust 工具链），它交回值、经服务说出安装目录与参数个数、经宿主写下一个文件与一个注册表值（卸载把两样都收回），并以自己的返回码失败；卸载脚本也调它一次，而那是另一个映像的另一次运行——卸载程序带的是自己那份 bundle，所以这条同时说明插件在那份里也随包走。第二个实现就是「结构与调用约定属于头文件、不属于某一个编译器」这句话的证据。 |
 | `a_product_name_is_stored_whole_or_the_build_is_refused` | 包里的表按构建机的 ANSI 代码页存（实测如此，声明哪个代码页都改不了它），所以产品名要么原样存进去、要么这次构建就被拒绝——绝不允许存成一串替换字符。用例按这台机器能做什么来要求：能存就要求读回原样，不能存就要求报错并点出机器用的代码页。 |
 | `a_name_too_long_for_a_short_name_carries_one_the_file_system_can_keep` | 产品名太长或不是拉丁字母时，安装目录声明成「短名|长名」：短名由名字里的 ASCII 字母数字生成、两个字符的标记取名字里的数字（没有数字就取摘要），产品名照原样跟在竖线后面；Windows 留给设备的那些名字（`CON` 等）也会拿到短名；同一个名字每次都得到同一个短名。 |
 | `a_nested_container_reports_the_extent_its_children_need` | 没声明尺寸的面板有多大由内容决定：沿自己的轴把子项和间距相加，垂直于轴取最大的子项，自己的内边距只算一次。外层容器用同样的量法放置它，版面不必给包装层声明尺寸。 |
