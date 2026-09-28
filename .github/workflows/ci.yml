@@ -68,7 +68,11 @@ jobs:
           done
 
   native-win7-build:
-    name: Native Win7+ Build
+    # The job says whether it was narrowed, because the release gate has to tell
+    # a dispatched run of the whole suite from one that was given targets of its
+    # own -- and a `suite_command` is exactly that difference. A push run has no
+    # input and so is never narrowed. See `scripts/audit_release_evidence.ps1`.
+    name: Native Win7+ Build${{ inputs.suite_command && ' (narrowed)' || '' }}
     needs: supersede
     runs-on: windows-latest
     timeout-minutes: 60

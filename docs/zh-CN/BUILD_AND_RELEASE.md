@@ -36,9 +36,13 @@ DPI 行为是否与项目配置一致，所以悄悄丢掉提权声明的安装�
 `uninst.exe`，单独审计它的 Windows 7 导入与版本资源。
 
 发布只从**套件绿过的提交**发出。tag 是手推的，发布 job 自己不跑套件，所以它先去问 GitHub：这个提交上
-最新的一次 **push** 运行是不是成功（`scripts/audit_release_evidence.ps1`，在花时间构建之前就跑）。
-派发的运行不算——派发的运行可以只跑指定的 target；而这在这里不是形式：本仓库的运行经常因为下一次推送
-被取代，所以某个提交的最后一句往往是 cancelled，而不是结论。
+最新的一次**整套套件**运行是不是成功（`scripts/audit_release_evidence.ps1`，在花时间构建之前就跑）。push
+的运行一律是整套；派发的运行只有在没有自带 target 时才算整套——这一点写在被它影响的 job 名字里
+（`ci.yml` 在 `suite_command` 非空时把那个 job 叫 `Native Win7+ Build (narrowed)`），而提交上的工作流
+文件还没有这个标记时，它上面的派发运行一概不算，因为事后没有办法分辨这两种。这在这里不是形式：本仓库
+的运行经常因为下一次推送被取代，所以某个提交的最后一句往往是 cancelled，而不是结论；这也正是那条退路
+——push 运行被取消的 tag，在它自己上面派发一次整套套件（`gh workflow run ci.yml --ref <tag>`）跑绿之后
+再发布，不必为此多推一个提交。
 
 发布还会写出 `SHA256SUMS.txt`（`scripts/release_manifest.ps1`）并和 5 个可执行文件一起挂在 release 上：
 每个文件一行摘要，格式是 `sha256sum -c`、`shasum -c` 认的那种，下载之后可以这样核对：

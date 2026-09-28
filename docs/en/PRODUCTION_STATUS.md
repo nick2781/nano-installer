@@ -295,11 +295,16 @@ checks rather than assumes:
 
 - **The commit the tag names has a green suite behind it.** A run of this repository is ended routinely
   when a newer push supersedes it, so a commit's last word is often a cancellation rather than a verdict.
-  The release job asks GitHub for the runs of the commit and refuses to build unless the newest push run
-  succeeded (`scripts/audit_release_evidence.ps1`, before anything expensive runs). A dispatched run does
-  not count, because a dispatched run can be given targets of its own. A run that stopped answering
-  therefore leaves no green evidence, and the gate refuses the tag until the suite has run on that commit
-  again -- see the changelog for what is known about that and what the suite does about it.
+  The release job asks GitHub for the runs of the commit and refuses to build unless the newest
+  **whole-suite** run succeeded (`scripts/audit_release_evidence.ps1`, before anything expensive runs). A
+  push run is always the whole suite; a dispatched run is the whole suite when it was not given targets of
+  its own, which the name of the job that runs them records (`ci.yml` appends `(narrowed)` to that job's
+  name when `suite_command` is set), and a dispatched run of a commit whose workflow file predates that
+  marker is not counted at all. A run that stopped
+  answering therefore leaves no green evidence -- and the way back is to dispatch the whole suite on the
+  tag itself (`gh workflow run ci.yml --ref <tag>`), which needs no new commit; the gate opens once that
+  run is green. What is known about the run that stops answering, and what the suite does about it, is in
+  the changelog.
 - **The five assets are published with their digests.** `scripts/release_manifest.ps1` writes
   `SHA256SUMS.txt`, one digest per file in the form `sha256sum -c` reads, and the workflow attaches it to
   the release and to its artifact. Downloading is the one step of an install nobody can check afterwards,

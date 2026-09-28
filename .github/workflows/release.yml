@@ -56,8 +56,11 @@ jobs:
       # Before anything expensive is built: the binaries this job publishes are
       # only as tested as the CI run behind the commit the tag names, and a run of
       # this repository is ended routinely when a newer push supersedes it. A
-      # commit whose newest push run is not a success is refused here, in seconds,
-      # rather than published and cleaned up afterwards.
+      # commit whose newest whole-suite run is not a success is refused here, in
+      # seconds, rather than published and cleaned up afterwards. A run dispatched
+      # with no targets of its own counts as the whole suite, so a tag whose push
+      # run was cancelled is recovered by dispatching the suite on the tag rather
+      # than by pushing another commit.
       - name: Check the commit has a green suite behind it
         if: startsWith(github.ref, 'refs/tags/v')
         shell: powershell

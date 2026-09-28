@@ -43,11 +43,16 @@ version resource on its own.
 
 A release is published only from a commit whose suite passed. The tag is pushed by hand and the release
 job does not run the suite itself, so the job asks GitHub for the runs of the commit the tag names and
-refuses to build unless the newest **push** run of that commit succeeded
-(`scripts/audit_release_evidence.ps1`, which runs before anything expensive). A dispatched run does not
-count, because a dispatched run can be given targets of its own; and this is not a formality here, since a
-run of this repository is ended routinely when a newer push supersedes it, so a commit's last word is
-often a cancellation rather than a verdict.
+refuses to build unless the newest **whole-suite** run of that commit succeeded
+(`scripts/audit_release_evidence.ps1`, which runs before anything expensive). A push run is always the
+whole suite; a dispatched run is the whole suite when it was not given targets of its own, which the
+workflow records in the name of the job that runs them (`ci.yml` calls that job
+`Native Win7+ Build (narrowed)` when `suite_command` is set), and a dispatched run of a commit whose
+workflow file predates that marker is not counted at all, because afterwards there is no way to tell the
+two apart. This is not a formality here, since a run of this repository is ended routinely when a newer
+push supersedes it, so a commit's last word is often a cancellation rather than a verdict -- and it is
+also the way back: a tag whose push run was cancelled is published after the whole suite is dispatched on
+the tag itself (`gh workflow run ci.yml --ref <tag>`), with no new commit pushed for it.
 
 The job also writes `SHA256SUMS.txt` (`scripts/release_manifest.ps1`) and attaches it to the release
 beside the five executables: one digest per file, in the form `sha256sum -c` and `shasum -c` read, so a
