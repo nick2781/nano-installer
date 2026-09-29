@@ -16,8 +16,9 @@ users install first.
 <img src="assets/setup-welcome-en-US.png" alt="The first page of a setup built from the TapTap example: the product logo, a tagline, the installation options, and an Install Now button" width="720">
 
 That page is the first page of `examples/TapTap`, captured by
-`scripts/capture_setup_snapshots.ps1` — the script builds the example and photographs every page it
-declares, so the picture is what the runtime drew rather than a mock-up.
+`scripts/capture_setup_snapshots.ps1` at 200% display scaling — the file is 1440x900 for a layout of
+720x450, so it stays sharp on a display that scales. The script builds the example and photographs
+every page it declares, so the picture is what the runtime drew rather than a mock-up.
 
 ## What you get
 

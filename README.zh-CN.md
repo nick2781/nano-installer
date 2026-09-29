@@ -13,8 +13,9 @@ Installer 把它打包成一个 Windows 安装包。图标、界面和文案都�
 
 <img src="assets/setup-welcome-zh-CN.png" alt="用 TapTap 示例构建出的安装包首屏：产品 logo、一句标语、安装选项，以及「立即安装」按钮" width="720">
 
-这张图就是 `examples/TapTap` 的首屏，由 `scripts/capture_setup_snapshots.ps1` 拍下来——它会把示例真的
-构建出来，再逐页截图并对照工程自己的布局检查，所以图上是运行时画出来的样子，不是效果图。
+这张图就是 `examples/TapTap` 的首屏，由 `scripts/capture_setup_snapshots.ps1` 在 200% 显示缩放下拍下来——
+版面 720x450、图 1440x900，所以在会缩放的屏幕上不会糊。脚本会把示例真的构建出来，再逐页截图并对照
+工程自己的布局检查，所以图上是运行时画出来的样子，不是效果图。
 
 ## 它给你什么
 

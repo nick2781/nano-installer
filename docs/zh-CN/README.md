@@ -13,8 +13,9 @@ Installer 把它打包成一个 Windows 安装包。图标、界面和文案都�
 
 <img src="https://github.com/nick2781/nano-installer/raw/main/assets/setup-welcome-zh-CN.png" alt="用 TapTap 示例构建出来的安装包第一页" width="640">
 
-上面这张是 `examples/TapTap` 装出来的第一页，由 `scripts/capture_setup_snapshots.ps1` 在 96 dpi 下
-截取：脚本会把示例声明的每一页都拍下来，并拿工程自己的版面逐项核对。
+上面这张是 `examples/TapTap` 装出来的第一页，由 `scripts/capture_setup_snapshots.ps1` 在 192 dpi 下
+截取：脚本会把示例声明的每一页都拍下来，并拿工程自己的版面逐项核对。版面是 720x450，图是 1440x900，
+每个版面像素两个像素——所以在会缩放的屏幕上依然清晰，而且图上是运行时画出来的样子，不是效果图。
 
 ## 它给你什么
 

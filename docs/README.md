@@ -21,8 +21,9 @@ file with your logo, your pages and your wording, and your users install nothing
 
 <img src="https://github.com/nick2781/nano-installer/raw/main/assets/setup-welcome-en-US.png" alt="A setup built from the TapTap example, first page" width="640">
 
-上面这张是 `examples/TapTap` 装出来的第一页，由 `scripts/capture_setup_snapshots.ps1` 在 96 dpi 下截取，页面本身经过工程自己的版面核对。The picture above is the first page of `examples/TapTap`, captured at
-96 dpi by `scripts/capture_setup_snapshots.ps1` and checked against the project's own layout.
+上面这张是 `examples/TapTap` 装出来的第一页，由 `scripts/capture_setup_snapshots.ps1` 在 192 dpi 下截取，页面本身经过工程自己的版面核对；版面 720x450、图 1440x900，所以在会缩放的屏幕上依然清晰。The picture above is the first page of `examples/TapTap`, captured at
+192 dpi by `scripts/capture_setup_snapshots.ps1` and checked against the project's own layout: the
+page is laid out as 720x450 and the file is 1440x900, so it stays sharp where a display scales.
 
 ## 从这里开始 / Start here
 

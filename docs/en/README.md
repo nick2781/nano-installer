@@ -15,9 +15,11 @@ file with your logo, your pages and your wording, and your users install nothing
 
 <img src="https://github.com/nick2781/nano-installer/raw/main/assets/setup-welcome-en-US.png" alt="The first page of a setup built from the TapTap example" width="640">
 
-That is the first page of `examples/TapTap`, captured at 96 dpi by
+That is the first page of `examples/TapTap`, captured at 192 dpi by
 `scripts/capture_setup_snapshots.ps1`, which photographs every page the example declares and
-checks each one against the project's own layout.
+checks each one against the project's own layout. The file is 1440x900 for a page laid out as
+720x450: two pixels per layout pixel, so it stays sharp on a display that scales, and it is the
+page as the runtime drew it rather than a mock-up.
 
 ## What you get
 
