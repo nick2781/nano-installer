@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
@@ -17,6 +17,30 @@
       font-size: .85em;
       line-height: 1.5;
       opacity: .85;
+    }
+
+    /* The language switch. It sits in the top bar on every page, so the way to the
+       other language is the same control wherever a reader is, and a page holds
+       one language rather than two. */
+    .nano-language {
+      display: inline-block;
+      margin: 0 0 0 1rem;
+      padding: .15em .3em;
+      font: inherit;
+      font-size: .95em;
+      color: #42b983;
+      background-color: #fff;
+      border: 1px solid #42b983;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    /* Used only where a directory has no top bar of its own to put the switch in. */
+    .nano-language-bar {
+      position: fixed;
+      top: 14px;
+      right: 24px;
+      z-index: 20;
     }
   </style>
   <!-- This shell holds no prose: every page is a Markdown file published beside
@@ -45,51 +69,205 @@
 <body>
   <div id="app"></div>
   <script>
-    window.$docsify = {
-      name: 'nano-installer',
-      repo: 'nick2781/nano-installer',
-      loadSidebar: true,
-      loadNavbar: true,
-      subMaxLevel: 2,
-      auto2top: true,
-      homepage: 'README.md',
-      relativePath: true,
-      search: {
-        paths: 'auto',
-        placeholder: 'Search / 搜索',
-        noData: 'Nothing found / 没有结果'
-      },
-      // A page here is a Markdown file that this viewer renders, and the same
-      // file is published beside the viewer, which is what an agent reads and
-      // what llms.txt indexes. Every page says so at the top, in the language the
-      // page itself is written in -- the address decides which, and a Chinese
-      // page is not given an English sentence to read. The name comes from the
-      // address and is stripped to path characters, and anything unexpected drops
-      // the note rather than the page: a note may not cost a reader the
-      // documentation under it.
-      plugins: [
-        function (hook) {
-          hook.afterEach(function (html, next) {
-            try {
-              var file = (window.location.hash || '').replace(/^#\/?/, '').split('?')[0];
-              file = file.replace(/[^A-Za-z0-9_.\/-]/g, '');
-              if (!file || file.slice(-1) === '/') { file += 'README.md'; }
-              if (!/\.md$/i.test(file)) { file += '.md'; }
-              var link = '<a href="' + file + '">' + file + '</a>';
-              var index = '<a href="llms.txt">llms.txt</a>';
-              var note = /^zh-CN\//.test(file)
-                ? '<p class="nano-markdown-note">本页同时是一个 Markdown 文件：' + link +
-                  ' &middot; 给 agent 的索引：' + index + '</p>'
-                : '<p class="nano-markdown-note">This page is also a Markdown file: ' + link +
-                  ' &middot; index for agents: ' + index + '</p>';
-              next(note + html);
-            } catch (error) {
-              next(html);
-            }
-          });
+    (function () {
+      // The site is two trees of the same pages, and the language switch moves a
+      // reader from a page to the same page in the other tree. That works only
+      // while the two trees carry the same names, so the paired names are listed
+      // here once and scripts/audit_docs_languages.ps1 compares this list with the
+      // files on disk: a page added to one tree without its twin, or a twin added
+      // without a line here, fails the docs workflow instead of sending a reader
+      // to a file that is not there.
+      var PAGES = [
+        /* nano-language-pages:start */
+        'README.md',
+        'QUICK_START.md',
+        'GUI.md',
+        'CONFIG_REFERENCE.md',
+        'XML_LAYOUT_GUIDE.md',
+        'LOCALIZATION.md',
+        'SCRIPT_API.md',
+        'PLUGIN_API.md',
+        'MIGRATION_FROM_NSIS.md',
+        'ARCHITECTURE.md',
+        'PROJECT_STRUCTURE.md',
+        'WINDOWS_COMPATIBILITY.md',
+        'BUILD_AND_RELEASE.md',
+        'TEST_PLAN.md',
+        'TEST_COVERAGE.md',
+        'PRODUCTION_STATUS.md'
+        /* nano-language-pages:end */
+      ];
+
+      var LANGUAGES = [
+        { id: 'zh-CN', label: '中文', searching: '搜索', nothing: '没有结果' },
+        { id: 'en', label: 'English', searching: 'Search', nothing: 'Nothing found' }
+      ];
+      var STORAGE_KEY = 'nano-docs-language';
+
+      function readStored() {
+        try { return window.localStorage.getItem(STORAGE_KEY) || ''; } catch (error) { return ''; }
+      }
+
+      function store(id) {
+        try { window.localStorage.setItem(STORAGE_KEY, id); } catch (error) { /* private mode */ }
+      }
+
+      function isLanguage(id) {
+        for (var i = 0; i < LANGUAGES.length; i++) {
+          if (LANGUAGES[i].id === id) { return true; }
         }
-      ]
-    };
+        return false;
+      }
+
+      function entry(id) {
+        for (var i = 0; i < LANGUAGES.length; i++) {
+          if (LANGUAGES[i].id === id) { return LANGUAGES[i]; }
+        }
+        return LANGUAGES[1];
+      }
+
+      // Which language the reader gets when nothing has been chosen yet: the one
+      // their browser asks for, and English for anything that is not Chinese.
+      function preferred() {
+        var stored = readStored();
+        if (isLanguage(stored)) { return stored; }
+        var tags = (navigator.languages && navigator.languages.length)
+          ? navigator.languages
+          : [navigator.language || ''];
+        for (var i = 0; i < tags.length; i++) {
+          if (/^zh\b/i.test(tags[i] || '')) { return 'zh-CN'; }
+        }
+        return 'en';
+      }
+
+      function routePath() {
+        return (window.location.hash || '').replace(/^#\/?/, '').split('?')[0];
+      }
+
+      function languageOf(path) {
+        var match = /^(en|zh-CN)\//.exec(path || '');
+        return match ? match[1] : '';
+      }
+
+      // The same page in the other tree. A page only one tree carries, and a page
+      // outside the trees -- the language chooser, or the agent guide -- send the
+      // reader to that language's own landing page rather than to a missing file.
+      function twin(path, target) {
+        var match = /^(?:en|zh-CN)\/(.+)$/.exec(path || '');
+        var name = match ? match[1] : '';
+        if (name && PAGES.indexOf(name) > -1) { return target + '/' + name; }
+        return target + '/README.md';
+      }
+
+      // The site root picks a language and rewrites the address to that landing
+      // page, so the URL, the page and the switch all say the same thing. A
+      // reader who asks for the chooser by name still gets it.
+      var landing = preferred();
+      var hash = window.location.hash || '';
+      if (hash === '' || hash === '#' || hash === '#/') {
+        window.location.replace(
+          window.location.pathname + window.location.search + '#/' + landing + '/README.md');
+      }
+
+      function buildSelect() {
+        var select = document.createElement('select');
+        select.id = 'nano-language';
+        select.className = 'nano-language';
+        select.setAttribute('aria-label', 'Language / 语言');
+        for (var i = 0; i < LANGUAGES.length; i++) {
+          var option = document.createElement('option');
+          option.value = LANGUAGES[i].id;
+          option.textContent = LANGUAGES[i].label;
+          select.appendChild(option);
+        }
+        select.addEventListener('change', function () {
+          store(select.value);
+          window.location.hash = '#/' + twin(routePath(), select.value);
+        });
+        return select;
+      }
+
+      function placeLanguage() {
+        var host = document.querySelector('.app-nav');
+        if (!host) {
+          host = document.getElementById('nano-language-bar');
+          if (!host) {
+            host = document.createElement('div');
+            host.id = 'nano-language-bar';
+            host.className = 'nano-language-bar';
+            document.body.appendChild(host);
+          }
+        }
+        var select = document.getElementById('nano-language');
+        if (!select) { select = buildSelect(); }
+        if (select.parentNode !== host) { host.insertBefore(select, host.firstChild); }
+
+        var path = routePath();
+        var current = languageOf(path) || landing;
+        if (select.value !== current) { select.value = current; }
+        document.documentElement.lang = current;
+        var box = document.querySelector('.search input');
+        if (box) {
+          box.setAttribute('placeholder', entry(current).searching);
+          box.setAttribute('aria-label', entry(current).searching);
+        }
+      }
+
+      window.$docsify = {
+        name: 'nano-installer',
+        repo: 'nick2781/nano-installer',
+        loadSidebar: true,
+        loadNavbar: true,
+        subMaxLevel: 2,
+        auto2top: true,
+        homepage: landing + '/README.md',
+        relativePath: true,
+        search: {
+          paths: 'auto',
+          placeholder: entry(landing).searching,
+          noData: entry(landing).nothing
+        },
+        // A page here is a Markdown file that this viewer renders, and the same
+        // file is published beside the viewer, which is what an agent reads and
+        // what llms.txt indexes. Every page says so at the top, in the language the
+        // page itself is written in -- the address decides which, and a Chinese
+        // page is not given an English sentence to read. The name comes from the
+        // address and is stripped to path characters, and anything unexpected drops
+        // the note rather than the page: a note may not cost a reader the
+        // documentation under it.
+        plugins: [
+          function (hook, vm) {
+            hook.afterEach(function (html, next) {
+              try {
+                var path = (vm && vm.route && vm.route.path) || window.location.hash || '';
+                var file = path.replace(/^#\/?/, '').split('?')[0].replace(/[^A-Za-z0-9_.\/-]/g, '');
+                if (!file || file.slice(-1) === '/') { file += 'README.md'; }
+                if (!/\.md$/i.test(file)) { file += '.md'; }
+                var link = '<a href="' + file + '">' + file + '</a>';
+                var index = '<a href="llms.txt">llms.txt</a>';
+                var note = /^zh-CN\//.test(file)
+                  ? '<p class="nano-markdown-note">本页同时是一个 Markdown 文件：' + link +
+                    ' &middot; 给 agent 的索引：' + index + '</p>'
+                  : '<p class="nano-markdown-note">This page is also a Markdown file: ' + link +
+                    ' &middot; index for agents: ' + index + '</p>';
+                next(note + html);
+              } catch (error) {
+                next(html);
+              }
+            });
+            // The top bar is rebuilt when the reader crosses into the other tree,
+            // so the switch is placed again on every page rather than once -- and
+            // once more a moment later, because the bar arrives with its own fetch.
+            hook.doneEach(function () {
+              try {
+                placeLanguage();
+                window.setTimeout(placeLanguage, 300);
+              } catch (error) { /* a switch may not cost the page */ }
+            });
+          }
+        ]
+      };
+    })();
   </script>
   <script src="https://cdn.jsdelivr.net/npm/docsify@4"></script>
   <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/plugins/search.min.js"></script>

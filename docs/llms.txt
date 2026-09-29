@@ -8,7 +8,7 @@ Every English page in one document: https://nick2781.github.io/nano-installer/ll
 
 ## Start here
 
-- [Documentation home](https://nick2781.github.io/nano-installer/README.md): The site's landing page: a short introduction in Chinese and in English, with a link into either language tree.
+- [Documentation home](https://nick2781.github.io/nano-installer/README.md): The site's landing page: one link into each language tree, plus the two index files written for agents.
 - [Documentation map for agents](https://nick2781.github.io/nano-installer/AGENTS.md): Which page answers which question, how the two languages relate, and where the machine-readable entry points are. English only, on purpose.
 
 ## English

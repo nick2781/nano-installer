@@ -1,6 +1,6 @@
 # Nano Installer documentation
 
-Every English page of this site in one document, for a reader that would rather fetch once. The test coverage table is left out: it is a long table rather than reading, and llms.txt links it by URL. The site's landing page is not here either, because it is written in both languages.
+Every English page of this site in one document, for a reader that would rather fetch once. The test coverage table is left out: it is a long table rather than reading, and llms.txt links it by URL. The site's landing page is not here either, because it is a chooser between the two languages rather than a page to read.
 
 ---
 
@@ -12,7 +12,8 @@ This page says which document answers which question, so a reader -- a person or
 straight to one file instead of walking the site.
 
 **It has no Chinese twin, deliberately.** The pages it maps are paired (`docs/en/X.md` and
-`docs/zh-CN/X.md` are the same document), but this one is read by the same agents that already read
+`docs/zh-CN/X.md` are the same document, and the switch in the site's top bar is how a reader
+crosses between them), but this one is read by the same agents that already read
 `AGENTS.md` and `CONTRIBUTING.md`, which are English, and a translation would drift from the map it
 points at. `docs/zh-CN/TEST_CASES.md` is the other document that carries one language on purpose.
 
@@ -71,15 +72,14 @@ from `scripts/docs_index.json`, and `-Verify` is the same code, so the writer an
 disagree. A new page therefore needs a line in that data file, titled exactly like the page's own
 `# heading`; without one the check fails rather than letting the page vanish from the index. Whether
 a page is in `llms-full.txt` is the group's answer, and a single page can override it: the site's
-landing page, `README.md`, is written in both languages and is kept out of the English file that way.
+landing page, `README.md`, is a chooser between the two languages rather than a page to read, and
+it is kept out of the English file that way.
 
 ---
 
 Source: https://nick2781.github.io/nano-installer/en/README.md
 
 <h1 align="center"><img src="https://nick2781.github.io/nano-installer/assets/nano-technology.png" width="48" height="48" align="texttop" alt="Nano Installer icon"> Nano Installer</h1>
-
-<p align="center"><b>English</b> | <a href="https://nick2781.github.io/nano-installer/#/zh-CN/README.md">简体中文</a> | <a href="https://nick2781.github.io/nano-installer/">All docs</a></p>
 
 <p align="center"><a href="https://github.com/nick2781/nano-installer/actions/workflows/ci.yml"><img src="https://github.com/nick2781/nano-installer/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status"></a></p>
 
@@ -146,6 +146,10 @@ same engine from the [visual builder](GUI.md).
 - [Windows compatibility](WINDOWS_COMPATIBILITY.md)
 - [Build and release](BUILD_AND_RELEASE.md)
 - [Test plan](TEST_PLAN.md)
+
+---
+
+Read this in Chinese: [中文文档](../zh-CN/README.md).
 
 ---
 

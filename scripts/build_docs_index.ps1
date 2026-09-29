@@ -127,8 +127,8 @@ foreach ($page in @($data.pages)) {
     }
 
     # Whether this page is in the one-document file is answered by the group it belongs to, and a
-    # page may override that answer: the site's landing page is written in both languages, so it is
-    # listed in the index but is not part of the English document.
+    # page may override that answer: the site's landing page is a chooser between the two languages
+    # rather than a page to read, so it is listed in the index but is not part of the English document.
     $override = $null
     $overrideProperty = $page.PSObject.Properties["inFull"]
     if ($null -ne $overrideProperty) {

@@ -19,4 +19,3 @@
   * [当前生产状态](PRODUCTION_STATUS.md)
 * [参与开发](https://github.com/nick2781/nano-installer/blob/main/CONTRIBUTING.md)
 * [安全策略](https://github.com/nick2781/nano-installer/blob/main/SECURITY.md)
-* [English docs](../en/README.md)

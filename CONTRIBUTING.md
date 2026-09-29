@@ -32,6 +32,8 @@ cargo clippy --locked --workspace --all-targets -- -D warnings
 .\scripts\audit_script_encoding.ps1     # scripts must be pure ASCII or carry a BOM
 .\scripts\audit_case_descriptions.ps1   # every case has a row in docs/zh-CN/TEST_CASES.md
 .\scripts\build_docs_index.ps1 -Verify  # every documentation page has a line in scripts/docs_index.json
+.\scripts\audit_docs_languages.ps1     # both language trees hold the same pages, and the language switch knows them
+node scripts/check_language_switch.js   # the switch in the site's top bar moves a page to the same page in the other tree
 .\scripts\verify_reports.ps1            # a run's report survives a run that did nothing
 .\scripts\audit_workflow_images.ps1     # every job names the image it runs on, and a release is audited on the image it is built on
 ```

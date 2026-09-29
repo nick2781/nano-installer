@@ -55,6 +55,21 @@ jobs:
         shell: pwsh
         run: ./scripts/build_docs_index.ps1 -Verify
 
+      # The pages come in two languages, and the switch in the top bar is how a
+      # reader crosses between them. It can only pair what both trees hold, so
+      # this fails when a page is added to one tree alone, or when the switch's
+      # own list of pages drifts from the files beside it.
+      - name: Audit the language pairs
+        shell: pwsh
+        run: ./scripts/audit_docs_languages.ps1
+
+      # The switch is script in the viewer, and a runner has no browser, so
+      # its routing is checked against a stand-in for one: which language the
+      # site root opens in, where a switch moves to, and where a page with no
+      # twin sends a reader.
+      - name: Check the language switch
+        run: node scripts/check_language_switch.js
+
       - name: Upload docs artifact
         uses: actions/upload-pages-artifact@v5
         with:

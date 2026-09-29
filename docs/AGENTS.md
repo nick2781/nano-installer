@@ -4,7 +4,8 @@ This page says which document answers which question, so a reader -- a person or
 straight to one file instead of walking the site.
 
 **It has no Chinese twin, deliberately.** The pages it maps are paired (`docs/en/X.md` and
-`docs/zh-CN/X.md` are the same document), but this one is read by the same agents that already read
+`docs/zh-CN/X.md` are the same document, and the switch in the site's top bar is how a reader
+crosses between them), but this one is read by the same agents that already read
 `AGENTS.md` and `CONTRIBUTING.md`, which are English, and a translation would drift from the map it
 points at. `docs/zh-CN/TEST_CASES.md` is the other document that carries one language on purpose.
 
@@ -63,4 +64,5 @@ from `scripts/docs_index.json`, and `-Verify` is the same code, so the writer an
 disagree. A new page therefore needs a line in that data file, titled exactly like the page's own
 `# heading`; without one the check fails rather than letting the page vanish from the index. Whether
 a page is in `llms-full.txt` is the group's answer, and a single page can override it: the site's
-landing page, `README.md`, is written in both languages and is kept out of the English file that way.
+landing page, `README.md`, is a chooser between the two languages rather than a page to read, and
+it is kept out of the English file that way.

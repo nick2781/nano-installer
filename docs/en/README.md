@@ -1,7 +1,5 @@
 <h1 align="center"><img src="https://nick2781.github.io/nano-installer/assets/nano-technology.png" width="48" height="48" align="texttop" alt="Nano Installer icon"> Nano Installer</h1>
 
-<p align="center"><b>English</b> | <a href="https://nick2781.github.io/nano-installer/#/zh-CN/README.md">简体中文</a> | <a href="https://nick2781.github.io/nano-installer/">All docs</a></p>
-
 <p align="center"><a href="https://github.com/nick2781/nano-installer/actions/workflows/ci.yml"><img src="https://github.com/nick2781/nano-installer/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status"></a></p>
 
 Hand someone a single `.exe` and your product is installed. You keep the configuration, the artwork
@@ -67,3 +65,7 @@ same engine from the [visual builder](GUI.md).
 - [Windows compatibility](WINDOWS_COMPATIBILITY.md)
 - [Build and release](BUILD_AND_RELEASE.md)
 - [Test plan](TEST_PLAN.md)
+
+---
+
+Read this in Chinese: [中文文档](../zh-CN/README.md).

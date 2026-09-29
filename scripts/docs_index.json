@@ -24,7 +24,7 @@
     {
       "path": "README.md",
       "title": "Documentation home",
-      "description": "The site's landing page: a short introduction in Chinese and in English, with a link into either language tree.",
+      "description": "The site's landing page: one link into each language tree, plus the two index files written for agents.",
       "inFull": false
     },
     {
@@ -242,7 +242,7 @@
   "full": {
     "label": "Every English page in one document",
     "title": "Nano Installer documentation",
-    "note": "Every English page of this site in one document, for a reader that would rather fetch once. The test coverage table is left out: it is a long table rather than reading, and llms.txt links it by URL. The site's landing page is not here either, because it is written in both languages.",
+    "note": "Every English page of this site in one document, for a reader that would rather fetch once. The test coverage table is left out: it is a long table rather than reading, and llms.txt links it by URL. The site's landing page is not here either, because it is a chooser between the two languages rather than a page to read.",
     "exclude": [
       "en/TEST_COVERAGE.md"
     ]
