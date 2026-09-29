@@ -2,10 +2,10 @@
 
 插件是随安装包一起发出的一个 DLL，脚本按名字调用它。这是这个框架的扩展方式：不改框架本身，
 形状和 NSIS 一样（`DllName::Function`），而规范写在 [`include/nano_plugin.h`](../../include/nano_plugin.h)
-里——那份头文件就是契约。这一页是同一份契约的说明，把作者第一次读要用到的部分讲清楚。
+里：那份头文件就是契约。这一页是同一份契约的说明，把作者第一次读要用到的部分讲清楚。
 
 插件需要的都在这里，别的都不用猜：插件是装在安装进程里的原生代码，想*读*什么、*查*什么，直接调
-Win32 API 就行。它不可以做的，是背着安装器往机器上放文件或注册表值——见
+Win32 API 就行。它不可以做的，是背着安装器往机器上放文件或注册表值，见
 [经宿主写入](#经宿主写入)。
 
 ## 三条规则
@@ -39,7 +39,7 @@ let all = plugin_values("tapcore::ListDevices", []);
 
 构建会拒绝这个运行时永远加载不了的 DLL，并说清是哪个文件、为什么：32 位映像（这个运行时只有 64 位）、
 ARM64 映像、不是 DLL 的可执行文件、或者根本不是 Windows 映像的文件。在构建时知道这件事才是检查的意义
-所在——在别人的机器上得到一句「不是有效的 Win32 应用程序」，对作者没有任何帮助。
+所在：在别人的机器上得到一句「不是有效的 Win32 应用程序」，对作者没有任何帮助。
 
 ## 导出
 
@@ -68,7 +68,7 @@ NANO_PLUGIN_EXPORT int32_t NANO_PLUGIN_CALL Hello(nano_plugin_host *host, int32_
 | 服务 | 作用 |
 | --- | --- |
 | `push(host, value)` | 给脚本要读的那组答案加一个值，按调用顺序排 |
-| `log(host, level, message)` | 往这次运行的日志写一行——失败的安装留下的就是这份文件 |
+| `log(host, level, message)` | 往这次运行的日志写一行，失败的安装留下的就是这份文件 |
 | `window(host)` | 向导窗口；无窗口运行给 `0` |
 | `cancelled(host)` | 用户是否已经要求这次运行停下 |
 | `install_dir(host)` | 产品装到哪个目录 |
@@ -89,7 +89,7 @@ NANO_PLUGIN_EXPORT int32_t NANO_PLUGIN_CALL Hello(nano_plugin_host *host, int32_
 `write_registry` 的 `kind` 是 `string`、`expand`、`dword`、`qword` 四种。别的类型，以及不属于这个产品的
 键，都会被拒绝。
 
-卸载期间没有 manifest 可记——正在重放的就是它——这和工程的卸载脚本所处的处境一样。插件在卸载脚本里
+卸载期间没有 manifest 可记（正在重放的就是它），这和工程的卸载脚本一样。插件在卸载脚本里
 一样可以调用：卸载程序带的是自己那份 bundle，工程的插件也随那份走。
 
 ## 失败
@@ -119,5 +119,5 @@ NANO_PLUGIN_EXPORT int32_t NANO_PLUGIN_CALL Hello(nano_plugin_host *host, int32_
 
 `crates/nano-installer-plugin-sample` 是一份能用的 Rust 插件：它会回答一个值、把参数加起来、经宿主写一个
 文件和一个注册表值、拒绝安装目录外的路径，也会按需要失败。`examples/plugin-c/sample.c` 是同一个插件的 C
-版本，只用 MSVC 和那份头文件编出来——它证明这套 ABI 是头文件的，不是某一种语言的。安装包级用例会各装一次
+版本，只用 MSVC 和那份头文件编出来，它证明这套 ABI 属于头文件，不属于某一种语言。安装包级用例会各装一次
 带它们的安装包，把每个函数都驱动一遍，所以它们同时也是「ABI 与这一页说法一致」的持有者。

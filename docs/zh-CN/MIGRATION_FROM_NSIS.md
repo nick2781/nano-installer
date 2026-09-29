@@ -276,7 +276,7 @@ NSIS migration report for D:\src\legacy.nsi
 - `layouts/`：七页，欢迎、选项、进度、完成、对话框，加上两个卸载页。`MUI_PAGE_COMPONENTS` 与
   `MUI_PAGE_DIRECTORY` 在这里合成了一页，因为这里的一页是一个版面，不是一个宏。
 - `locales/zh-CN.json` 与 `locales/en-US.json`：原来 `LangString` 写下的东西。
-- `scripts/install.rhai`：核心那段，按 NSIS 脚本原来的顺序走：关掉正在运行的那份、展开载荷与这次选
+- `scripts/install.rhai`：核心那段，按 NSIS 脚本原来的顺序走，关掉正在运行的那份、展开载荷与这次选
   中的组件、装上必需的依赖、跑随包带的迁移工具并在它失败时停下、按页面上的勾选建快捷方式、写下工程
   自己留着的那一个注册表值。
 - `scripts/uninstall.rhai`：一次 `run_tracked_uninstall` 收走 manifest 记下的一切，再清掉产品自己
