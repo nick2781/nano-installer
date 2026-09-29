@@ -239,7 +239,11 @@
           function (hook, vm) {
             hook.afterEach(function (html, next) {
               try {
-                var path = (vm && vm.route && vm.route.path) || window.location.hash || '';
+                // The address is what the reader is looking at; docsify's own route
+                // is still the homepage while the first page renders, and the note
+                // may not disagree with the page it sits on.
+                var route = ((vm && vm.route && vm.route.path) || '');
+                var path = (window.location.hash || '').replace(/^#\/?/, '').split('?')[0] || route;
                 var file = path.replace(/^#\/?/, '').split('?')[0].replace(/[^A-Za-z0-9_.\/-]/g, '');
                 if (!file || file.slice(-1) === '/') { file += 'README.md'; }
                 if (!/\.md$/i.test(file)) { file += '.md'; }

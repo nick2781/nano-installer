@@ -125,13 +125,32 @@ function load(language, stored, hash) {
 
   new Function('window', 'document', 'navigator', code)(window, document, navigator);
 
+  let render = null;
   window.$docsify.plugins[0](
-    { afterEach() {}, doneEach(handler) { handler(); } },
-    { route: { path: window.location.hash.replace(/^#\/?/, '') } }
+    {
+      afterEach(handler) {
+        render = handler;
+      },
+      doneEach(handler) {
+        handler();
+      }
+    },
+    // docsify's own route is still the homepage while a page renders, so it is
+    // deliberately stale here: the address is what the reader is looking at.
+    { route: { path: 'STALE.md' } }
   );
 
+  // What the shell puts above the page: the note naming the Markdown file beside
+  // it, in the language of the page itself.
+  let note = null;
+  if (render) {
+    render('<h1>a page</h1>', (html) => {
+      note = html;
+    });
+  }
+
   const select = document.getElementById('nano-language');
-  return { window, document, searchBox, select, replacements };
+  return { window, document, searchBox, select, replacements, note };
 }
 
 function switchTo(page, languageId) {
@@ -159,6 +178,11 @@ check('a page with no twin', switchTo(load('en-US', '', '#/zh-CN/TEST_CASES.md')
 const agentGuide = load('en-US', '', '#/AGENTS.md');
 check('a page outside the trees', agentGuide.window.location.hash, '#/AGENTS.md');
 check('a page outside the trees, switched', switchTo(agentGuide, 'zh-CN'), '#/zh-CN/README.md');
+
+// The note above the page is written in the language of the page below it.
+check('the note is Chinese on a Chinese page', /本页同时是一个 Markdown 文件/.test(quickStart.note), true);
+check('the note is English on an English page', /This page is also a Markdown file/.test(load('en-US', '', '#/en/QUICK_START.md').note), true);
+check('the note names the page it is on', /QUICK_START\.md/.test(quickStart.note), true);
 
 // Two details a reader notices: the document language, and the search box.
 check('the document language follows the page', agentGuide.document.documentElement.lang, 'en');
