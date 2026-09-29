@@ -175,6 +175,17 @@ jobs:
         shell: powershell
         run: .\scripts\build_docs_index.ps1 -Verify
 
+      # A report is the evidence for a run, and the page a failed run leaves
+      # behind is the least exercised path in these scripts: an absent build
+      # passes null where a working one passes a collection, and a null read
+      # under Set-StrictMode ends the script before it has written the report
+      # that says what happened. That is how a failed dependency build produced
+      # "the runtime build failed" and then no report at all. This renders both
+      # shapes in a second, without a suite or a desktop.
+      - name: Verify the report renderer
+        shell: powershell
+        run: .\scripts\verify_reports.ps1
+
       - name: Check formatting
         run: cargo fmt --all -- --check
 

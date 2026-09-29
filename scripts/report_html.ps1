@@ -103,6 +103,21 @@ function Write-ReportHtml {
         $Text = Get-ReportText -Language $Language
     }
 
+    # A run that did nothing passes null where a run that worked passes a
+    # collection, and this is the page that has to survive exactly that: it is the
+    # page that says the run did not happen. Null is read as empty once, here,
+    # rather than at every table below.
+    if ($null -eq $Fields) { $Fields = @() }
+    if ($null -eq $Stats) { $Stats = @() }
+    if ($null -eq $Tables) { $Tables = @() }
+    if ($null -eq $Cases) { $Cases = @() }
+    if ($null -eq $Coverage) { $Coverage = @() }
+    if ($null -eq $Uncovered) { $Uncovered = @() }
+    if ($null -eq $Images) { $Images = @() }
+    if ($null -eq $Sections) { $Sections = @() }
+    if ($null -eq $Notes) { $Notes = @() }
+    if ($null -eq $Guide) { $Guide = @() }
+
     # Every word the page says is read here once, so a language is a data file
     # rather than a search through this script.
     $runHeading = Get-ReportPhrase -Text $Text -Key "run.heading"

@@ -390,12 +390,19 @@ else {
     $lines.Add((Get-ReportPhrase -Text $text -Key "text.notrun"))
 }
 $lines.Add("")
-$lines.Add("$ $($pluginC.Command)")
-if ($null -ne $cPlugins) {
-    $lines.AddRange([string[]]$cPlugins.Output)
+if ($null -ne $pluginC) {
+    $lines.Add("$ $($pluginC.Command)")
+    if ($null -ne $cPlugins) {
+        $lines.AddRange([string[]]$cPlugins.Output)
+    }
+    else {
+        $lines.Add((Get-ReportPhrase -Text $text -Key "text.notrun"))
+    }
 }
 else {
-    $lines.Add((Get-ReportPhrase -Text $text -Key "text.notrun"))
+    # The C sample needs tools this machine may not have, which is a different
+    # absence from a build that was skipped because an earlier one failed.
+    $lines.Add((Get-ReportPhrase -Text $text -Key "console.cpluginskipped"))
 }
 $lines.Add("")
 $lines.Add("$ $suiteCommand")
@@ -445,9 +452,26 @@ $fields = @(
     @{ Label = (Get-ReportPhrase -Text $text -Key "fields.suite"); Value = $suiteCommand }
 )
 $sections = New-Object System.Collections.Generic.List[object]
+# A build that never ran has no output to read, and reading it would end this
+# script before it wrote the report that explains the absence: the Rust plugin
+# build is skipped when the runtime build failed, and the C sample needs tools
+# this machine may not have. Each absent build is named instead.
+$pluginLines = @()
+if ($null -ne $plugins) {
+    $pluginLines = @($plugins.Output)
+}
+$cPluginLines = @()
+if ($null -ne $cPlugins) {
+    $cPluginLines = @($cPlugins.Output)
+}
+$cPluginSummary = if ($null -ne $pluginC) {
+    "$ $($pluginC.Command)"
+} else {
+    (Get-ReportPhrase -Text $text -Key "console.cpluginskipped")
+}
 $sections.Add(@{ Heading = (Get-ReportPhrase -Text $text -Key "sections.runtimeBuild"); Summary = "$ $stubCommand"; Lines = $stubs.Output; Open = ($stubs.ExitCode -ne 0) })
-$sections.Add(@{ Heading = (Get-ReportPhrase -Text $text -Key "sections.pluginBuild"); Summary = "$ $pluginCommand"; Lines = @($plugins.Output); Open = ($null -eq $plugins -or $plugins.ExitCode -ne 0) })
-$sections.Add(@{ Heading = (Get-ReportPhrase -Text $text -Key "sections.cPluginBuild"); Summary = "$ $($pluginC.Command)"; Lines = @($cPlugins.Output); Open = ($null -ne $pluginC -and ($null -eq $cPlugins -or $cPlugins.ExitCode -ne 0)) })
+$sections.Add(@{ Heading = (Get-ReportPhrase -Text $text -Key "sections.pluginBuild"); Summary = "$ $pluginCommand"; Lines = $pluginLines; Open = ($null -eq $plugins -or $plugins.ExitCode -ne 0) })
+$sections.Add(@{ Heading = (Get-ReportPhrase -Text $text -Key "sections.cPluginBuild"); Summary = $cPluginSummary; Lines = $cPluginLines; Open = ($null -ne $pluginC -and ($null -eq $cPlugins -or $cPlugins.ExitCode -ne 0)) })
 if ($null -ne $suite) {
     $sections.Add(@{ Heading = (Get-ReportPhrase -Text $text -Key "sections.suite"); Summary = "$ $suiteCommand"; Lines = $suite.Output; Open = ($code -ne 0) })
 }

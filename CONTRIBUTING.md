@@ -32,6 +32,7 @@ cargo clippy --locked --workspace --all-targets -- -D warnings
 .\scripts\audit_script_encoding.ps1     # scripts must be pure ASCII or carry a BOM
 .\scripts\audit_case_descriptions.ps1   # every case has a row in docs/zh-CN/TEST_CASES.md
 .\scripts\build_docs_index.ps1 -Verify  # every documentation page has a line in scripts/docs_index.json
+.\scripts\verify_reports.ps1            # a run's report survives a run that did nothing
 ```
 
 A change to what a setup *does* also updates the documents that promise it: `CHANGELOG.md`,
