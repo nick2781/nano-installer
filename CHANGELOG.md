@@ -65,6 +65,15 @@
   现在 `ci.yml` 只在分支推送、PR 与手工派发时跑；同一个提交测两遍本来也买不到什么。按 tag 派发整套套件
   这条退路不受影响，它是 `workflow_dispatch`，与 `push` 的过滤无关。
 
+- 依赖升级本身不改产品行为，但**两个各自绿的 PR 只要都动 `Cargo.lock`，合并后的那一份就可能不一致**：
+  这次 `rfd 0.17` 的 diff 删掉了 `windows-sys 0.48.x` 全家，而 `winapi-util` 仍在引用
+  `windows-sys 0.48.0`，于是合并后的 lock 指向一个已经不存在的包。表现是 CI 里那条 `--locked` 构建
+  0.6 秒就退出，报告里只有一句 cargo 的原话：`the lock file needs to be updated but --locked was
+  passed`。修复是 cargo 自己解出的一行（`winapi-util` 改引 `windows-sys 0.52.0`），并做了前后对照：
+  把提交里的那份还原，`cargo metadata --locked` 退出 101；换回修复版退出 0。写在这里是因为它不是
+  代码错，而是合并本身的产物——两张都绿的 PR 之间 main 仍可能构建不起来，而只有合并后的那份文件
+  会被真正构建。
+
 ### 已验证
 
 - 插件这条路的证据分三层。九条单元用例：宿主交给插件的那张表逐字段对得上头文件、`dll::function` 的写法、
