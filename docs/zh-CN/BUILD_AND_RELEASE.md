@@ -186,6 +186,29 @@ release 正文。`scripts/audit_script_encoding.ps1` 会在每次构建开始时
 段落中 `<!-- release-notes:end -->` 之后是技术细节，只留在仓库日志里；发布出去的正文是标记之前
 的产品向说明。需要发布完整段落时加 `-Full`。
 
+issue 表单在「版本」一栏里写着某个 release，所以那个占位符跟着版本走，而不是停在两个版本之前：
+`.github/ISSUE_TEMPLATE/*.yml` 现在是 `v2026.9.29`，直到下一次发版。
+
+## 核对一个已发布的版本
+
+发布 job 检查的一切都发生在发布之前：tag 与 `Cargo.toml` 的版本同名、提交背后套件是绿的、二进制
+过了 Windows 7 导入审计、摘要清单是按上传的那些文件写的。但这些都没有回答「下载下来到底是什么」。
+`scripts/smoke_release.ps1` 检查的是下载：
+
+```powershell
+.\scripts\smoke_release.ps1 -Tag v2026.9.29
+.\scripts\smoke_release.ps1 -Tag v2026.9.29 -SkipUi
+.\scripts\smoke_release.ps1 -Tag v2026.9.17 -AllowNoDigests -SkipUi
+```
+
+它把该 tag 的全部资源取下来，逐个重算摘要与 `SHA256SUMS.txt` 对照，读构建器与 GUI 的版本资源并要求
+与 tag 同名；然后（除非 `-SkipUi`）用**下载来的**构建器与 stub 把 TapTap 示例构建出来，把它声明的
+每一页真的跑一遍并对照工程自己的版面检查。最后这一步是值得做的那个：用户收到的字节真的画出了向导，
+而不是「源码构建出来的东西能画出向导」。它要求 `gh` 已登录，最后一步还要求有桌面会话。
+
+摘要清单是「下载可被核对」这件事的前提，它从 `v2026.9.28` 开始才有，所以更早的版本用
+`-AllowNoDigests` 核对：容忍它缺失，但不会假装摘要验过了。
+
 ## 构建器参数
 
 ```text

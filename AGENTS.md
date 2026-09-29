@@ -23,6 +23,7 @@
 - Backend smoke test: `.\scripts\smoke_backends.ps1`
 - Example-only rebuild: `.\target\release\nano-installer-native-x64.exe build --project examples\TapTap`
 - Setup screenshots: `.\scripts\capture_setup_snapshots.ps1`
+- Release smoke test: `.\scripts\smoke_release.ps1 -Tag v<tag>` (checks a published release; `-SkipUi` on a machine with no desktop)
 
 All published executables target `x86_64-win7-windows-msvc`. Do not introduce a Win32, ANSI, or separate Windows 10 artifact.
 

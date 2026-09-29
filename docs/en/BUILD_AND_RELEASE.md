@@ -235,6 +235,34 @@ Pass `-Full` to publish the whole section.
 `scripts/changelog_notes.ps1` is saved with a UTF-8 BOM because it contains a Chinese footer and
 Windows PowerShell decodes a BOM-less script with the ANSI code page. Without the BOM the footer
 looks correct on a UTF-8 development machine and reaches the published notes as mojibake.
+
+The issue forms name a release in their version field, so that placeholder moves with the version
+rather than advertising one two releases back; `.github/ISSUE_TEMPLATE/*.yml` says `v2026.9.29`
+until the next release is cut.
+
+## Checking a published release
+
+Everything the release job checks, it checks before publishing: the tag names the version in
+`Cargo.toml`, the suite behind the commit is green, the binaries pass the Windows 7 import audit,
+and the digest list is written from the files that are uploaded. None of that says what a download
+turns out to be. `scripts/smoke_release.ps1` checks the download:
+
+```powershell
+.\scripts\smoke_release.ps1 -Tag v2026.9.29
+.\scripts\smoke_release.ps1 -Tag v2026.9.29 -SkipUi
+.\scripts\smoke_release.ps1 -Tag v2026.9.17 -AllowNoDigests -SkipUi
+```
+
+It fetches every asset of the tag, recomputes each digest against `SHA256SUMS.txt`, reads the version
+resource out of the builder and the GUI and requires the version the tag names, and then — unless
+`-SkipUi` — builds the TapTap example with the downloaded builder and the downloaded stubs and runs
+every page it declares, checking each against the project's own layout. That last step is the one
+worth having: the bytes a user receives draw the wizard, rather than a build from the sources. It
+needs `gh` to be authenticated, and that step needs a desktop session.
+
+The digest list is what makes a download checkable at all; it began with `v2026.9.28`, so an older
+release is checked with `-AllowNoDigests`, which tolerates its absence without pretending the digests
+were verified.
 `scripts/audit_script_encoding.ps1` runs at the start of every build and fails if a script carrying
 non-ASCII text has no BOM. `scripts/verify_release_notes.ps1` runs the generator the way the release
 job does and compares the resulting footer with the decoded literal, which catches the same
