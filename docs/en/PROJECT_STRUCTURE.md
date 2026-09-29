@@ -86,11 +86,19 @@ that is not there, an empty title or description, a title that disagrees with th
 the one-document file that is not a page, and no page that would be in that file at all are all
 failures. Adding a page therefore means adding its line to that data file, in the same change -- and
 it joins `llms-full.txt` because of the group it is in, not because a list was updated. One page may
-override its group's answer, which is how the landing page stays out of it: that page is written in
-both languages, so it is not an English page.
+override its group's answer, which is how the landing page stays out of it: that page is a chooser
+between the two languages rather than a page to read, so it is not an English page.
 
 The sidebar files (`_sidebar.md`, `_navbar.md`) are navigation rather than pages, and the index
 leaves out every file whose name begins with an underscore for that reason.
+
+A reader crosses between the two trees with the switch in the site's top bar, which is script in
+`docs/index.html` rather than a link written into every page: it states the language of the page it
+is on and moves to the same page in the other language. The names it can pair are listed in that
+file, and two checks hold the list to the trees. `scripts/audit_docs_languages.ps1` compares the
+pairs with the files in `docs/en` and `docs/zh-CN`, and `scripts/check_language_switch.js` runs the
+switch itself against a stand-in for a browser, because a runner has none. The docs workflow runs
+both, beside the index check.
 
 `docs/AGENTS.md` is the map of the documentation itself: which page answers which question, how the
 two languages relate, and where the machine-readable entry points are. It is one of the two
