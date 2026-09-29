@@ -91,7 +91,10 @@ Work that is more than a small fix belongs on its own branch and comes back thro
   written. Two things this project adds on top of it: English and Chinese are both welcome —
   nobody is asked to write in a language they are guessing at — and the argument stays about
   the code rather than the person. "This reads the registry without checking the view" is a
-  review; "you clearly do not know Win32" is not.
+  review; "you clearly do not know Win32" is not. A direct message or an issue reaches the
+  maintainer; anything that has to stay out of public view — including a report about the
+  maintainer, since there is nobody else here to read it — can go to GitHub's
+  [report abuse](https://github.com/contact/report-abuse) form instead.
 
 ## Licence
 
