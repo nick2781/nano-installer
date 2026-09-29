@@ -33,6 +33,7 @@ cargo clippy --locked --workspace --all-targets -- -D warnings
 .\scripts\audit_case_descriptions.ps1   # every case has a row in docs/zh-CN/TEST_CASES.md
 .\scripts\build_docs_index.ps1 -Verify  # every documentation page has a line in scripts/docs_index.json
 .\scripts\verify_reports.ps1            # a run's report survives a run that did nothing
+.\scripts\audit_workflow_images.ps1     # every job names the image it runs on, and a release is audited on the image it is built on
 ```
 
 A change to what a setup *does* also updates the documents that promise it: `CHANGELOG.md`,

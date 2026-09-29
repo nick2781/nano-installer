@@ -22,6 +22,10 @@ Windows generation to the next without a line in this repository, and a released
 toolchain cannot be named afterwards is one nobody can rebuild. The Ubuntu jobs name `ubuntu-24.04`
 for the same reason, `ubuntu-latest` being announced to move to Ubuntu 26 on 2026-10-19. Moving any
 of these names is a commit, and CI tests that commit like any other.
+`scripts/audit_workflow_images.ps1` is what keeps them named: it fails when a job goes back to
+`-latest`, when an image is decided by an expression it cannot read, and when the release job and
+the suite that backs a tag stop naming the same Windows image -- because then the binaries that were
+audited are not the ones being shipped.
 
 ## Release contents
 

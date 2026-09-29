@@ -138,6 +138,9 @@
   提交的情况下换过一代 Windows。这两个名字就是今天 `-latest` 解析到的东西（job 日志里写着
   `Image: windows-2025-vs2026` 与 `Image: ubuntu-24.04`），所以现在什么都不变；等 GitHub 挪动 label，
   改这一行才是那个刻意的动作。`ubuntu-latest` 已宣布 2026-10-19 迁到 Ubuntu 26，这也是顺手避开的坑。
+  注释不是机器能检查的承诺，所以配了 `scripts/audit_workflow_images.ps1`：某个 job 退回 `-latest`、
+  镜像写成它读不出来的表达式、或者**发布 job 与给 tag 背书的那套套件不再用同一个 Windows 镜像**
+  （那时被审计的二进制就不是发出去的那个），它都会失败。两条失败路径都实测过。
 - 七个 crate 一律 `publish = false`。它们是这个仓自己的构建单元，不是给别人 `cargo add` 的库：只在 Windows 上
   编、由 `scripts/build.ps1` 一起建，其中几个存在的唯一理由是不让某个归档后端进到另一个二进制里。单独发一个
   出去，等于发布一个「入口是生成出来的可执行文件」的库。理由写在 `Cargo.toml` 的注释里。

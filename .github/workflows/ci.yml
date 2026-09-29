@@ -192,6 +192,14 @@ jobs:
         shell: powershell
         run: .\scripts\verify_reports.ps1
 
+      # The images are named rather than `-latest` so that the machine which
+      # builds a release changes in a commit. This is the check that keeps them
+      # named, and that keeps the release job and the suite that backs a tag on
+      # the same Windows image.
+      - name: Audit the workflow images
+        shell: powershell
+        run: .\scripts\audit_workflow_images.ps1
+
       - name: Check formatting
         run: cargo fmt --all -- --check
 
