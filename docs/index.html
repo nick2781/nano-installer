@@ -72,11 +72,11 @@
     (function () {
       // The site is two trees of the same pages, and the language switch moves a
       // reader from a page to the same page in the other tree. That works only
-      // while the two trees carry the same names, so the paired names are listed
-      // here once and scripts/audit_docs_languages.ps1 compares this list with the
-      // files on disk: a page added to one tree without its twin, or a twin added
-      // without a line here, fails the docs workflow instead of sending a reader
-      // to a file that is not there.
+      // while every page has a twin, so the paired names are listed here once and
+      // scripts/audit_docs_languages.ps1 compares both lists below with the files
+      // on disk: a page added to one tree without its twin, or a twin added without
+      // a line here, fails the docs workflow instead of sending a reader to a file
+      // that is not there.
       var PAGES = [
         /* nano-language-pages:start */
         'README.md',
@@ -94,8 +94,19 @@
         'BUILD_AND_RELEASE.md',
         'TEST_PLAN.md',
         'TEST_COVERAGE.md',
+        'TEST_CASES.md',
         'PRODUCTION_STATUS.md'
         /* nano-language-pages:end */
+      ];
+
+      // Pages that sit at the top of docs/ rather than inside a tree. The agent map
+      // is English there, so its Chinese twin is the same name inside the Chinese
+      // tree; the site's landing page is not listed, because it is a chooser between
+      // the two languages rather than a document.
+      var ROOT_PAGES = [
+        /* nano-language-root-pages:start */
+        'AGENTS.md'
+        /* nano-language-root-pages:end */
       ];
 
       var LANGUAGES = [
@@ -149,13 +160,25 @@
         return match ? match[1] : '';
       }
 
-      // The same page in the other tree. A page only one tree carries, and a page
-      // outside the trees -- the language chooser, or the agent guide -- send the
-      // reader to that language's own landing page rather than to a missing file.
+      // The same page in the other tree. A page inside a tree is paired by name; a
+      // page at the top of docs/ is English, so its twin is that name inside the
+      // Chinese tree. The landing chooser falls back to the language's own start
+      // page, which is also where a reader would land if a page ever arrived without
+      // its twin -- a state the language audit refuses.
       function twin(path, target) {
-        var match = /^(?:en|zh-CN)\/(.+)$/.exec(path || '');
-        var name = match ? match[1] : '';
-        if (name && PAGES.indexOf(name) > -1) { return target + '/' + name; }
+        var inTree = /^(?:en|zh-CN)\/(.+)$/.exec(path || '');
+        if (inTree) {
+          var name = inTree[1];
+          if (PAGES.indexOf(name) > -1) { return target + '/' + name; }
+          if (ROOT_PAGES.indexOf(name) > -1) {
+            return target === 'zh-CN' ? 'zh-CN/' + name : name;
+          }
+          return target + '/README.md';
+        }
+        var atRoot = /^([^\/]+\.md)$/.exec(path || '');
+        if (atRoot && ROOT_PAGES.indexOf(atRoot[1]) > -1) {
+          return target === 'zh-CN' ? 'zh-CN/' + atRoot[1] : atRoot[1];
+        }
         return target + '/README.md';
       }
 

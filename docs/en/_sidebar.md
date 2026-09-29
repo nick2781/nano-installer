@@ -15,6 +15,7 @@
   * [Build and release](BUILD_AND_RELEASE.md)
   * [Test plan](TEST_PLAN.md)
   * [Test coverage](TEST_COVERAGE.md)
+  * [Test cases](TEST_CASES.md)
   * [Production status](PRODUCTION_STATUS.md)
 * [Contributing](https://github.com/nick2781/nano-installer/blob/main/CONTRIBUTING.md)
 * [Security policy](https://github.com/nick2781/nano-installer/blob/main/SECURITY.md)

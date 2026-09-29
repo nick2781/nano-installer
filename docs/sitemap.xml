@@ -55,10 +55,16 @@
     <loc>https://nick2781.github.io/nano-installer/en/TEST_COVERAGE.md</loc>
   </url>
   <url>
+    <loc>https://nick2781.github.io/nano-installer/en/TEST_CASES.md</loc>
+  </url>
+  <url>
     <loc>https://nick2781.github.io/nano-installer/en/PRODUCTION_STATUS.md</loc>
   </url>
   <url>
     <loc>https://nick2781.github.io/nano-installer/zh-CN/README.md</loc>
+  </url>
+  <url>
+    <loc>https://nick2781.github.io/nano-installer/zh-CN/AGENTS.md</loc>
   </url>
   <url>
     <loc>https://nick2781.github.io/nano-installer/zh-CN/QUICK_START.md</loc>

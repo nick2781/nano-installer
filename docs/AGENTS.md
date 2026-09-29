@@ -3,11 +3,13 @@
 This page says which document answers which question, so a reader -- a person or an agent -- can go
 straight to one file instead of walking the site.
 
-**It has no Chinese twin, deliberately.** The pages it maps are paired (`docs/en/X.md` and
-`docs/zh-CN/X.md` are the same document, and the switch in the site's top bar is how a reader
-crosses between them), but this one is read by the same agents that already read
-`AGENTS.md` and `CONTRIBUTING.md`, which are English, and a translation would drift from the map it
-points at. `docs/zh-CN/TEST_CASES.md` is the other document that carries one language on purpose.
+**Every page has a twin.** The pages it maps are paired: `docs/en/X.md` and `docs/zh-CN/X.md` are
+the same document, and the switch in the site's top bar is how a reader crosses between them. This
+map is one of the two files that sit at the top of `docs/` rather than inside a tree -- its Chinese
+side is [`zh-CN/AGENTS.md`](zh-CN/AGENTS.md), and the other is the site's landing page, which is a
+chooser rather than a document. No page here is written in one language only, and
+`scripts/audit_docs_languages.ps1` is what holds that: it fails when a page in one tree has no page
+in the other, and when the switch's own list of pages has drifted from the files beside it.
 
 ## Take these first
 
@@ -36,7 +38,7 @@ generated for the reader.
 | How does the installer work inside? | [Architecture](en/ARCHITECTURE.md) | [架构](zh-CN/ARCHITECTURE.md) |
 | Which Windows versions, and which system calls? | [Windows compatibility](en/WINDOWS_COMPATIBILITY.md) | [Windows 兼容性](zh-CN/WINDOWS_COMPATIBILITY.md) |
 | How is it built and released? | [Build and release](en/BUILD_AND_RELEASE.md), [Project layout](en/PROJECT_STRUCTURE.md) | [构建与发布](zh-CN/BUILD_AND_RELEASE.md)、[项目结构](zh-CN/PROJECT_STRUCTURE.md) |
-| What is tested, and what is only promised? | [Test plan](en/TEST_PLAN.md), [Test coverage](en/TEST_COVERAGE.md) | [测试计划](zh-CN/TEST_PLAN.md)、[测试覆盖](zh-CN/TEST_COVERAGE.md)、[用例说明](zh-CN/TEST_CASES.md) |
+| What is tested, and what is only promised? | [Test plan](en/TEST_PLAN.md), [Test coverage](en/TEST_COVERAGE.md), [Test cases](en/TEST_CASES.md) | [测试计划](zh-CN/TEST_PLAN.md)、[测试覆盖](zh-CN/TEST_COVERAGE.md)、[用例说明](zh-CN/TEST_CASES.md) |
 
 ## In the repository
 
@@ -64,5 +66,6 @@ from `scripts/docs_index.json`, and `-Verify` is the same code, so the writer an
 disagree. A new page therefore needs a line in that data file, titled exactly like the page's own
 `# heading`; without one the check fails rather than letting the page vanish from the index. Whether
 a page is in `llms-full.txt` is the group's answer, and a single page can override it: the site's
-landing page, `README.md`, is a chooser between the two languages rather than a page to read, and
-it is kept out of the English file that way.
+landing page, `README.md`, is a chooser between the two languages rather than a page to read. The
+case tables are left out for the reason the coverage table is: they are tables to look things up in
+rather than reading.

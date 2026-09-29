@@ -101,5 +101,6 @@ switch itself against a stand-in for a browser, because a runner has none. The d
 both, beside the index check.
 
 `docs/AGENTS.md` is the map of the documentation itself: which page answers which question, how the
-two languages relate, and where the machine-readable entry points are. It is one of the two
-documents that carry a single language on purpose.
+two languages relate, and where the machine-readable entry points are. It sits at the top of `docs/`
+rather than inside a tree, and its Chinese side is `docs/zh-CN/AGENTS.md`; every other page has its
+twin beside it in the other tree.

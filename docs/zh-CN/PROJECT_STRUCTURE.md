@@ -91,5 +91,5 @@ Markdown，GitHub Pages 上只有这一个 HTML。每一页同时就是它自己
 核对，`scripts/check_language_switch.js` 则在没有浏览器的情况下把这段脚本跑一遍。两个检查都在文档工作流
 里，和索引检查并排。
 
-`docs/AGENTS.md` 是这套文档自己的地图：哪个问题看哪一页、两种语言怎么对应、机器可读的入口在哪。它和
-`docs/zh-CN/TEST_CASES.md` 一样，是故意只写一种语言的两份文件之一。
+`docs/AGENTS.md` 是这套文档自己的地图：哪个问题看哪一页、两种语言怎么对应、机器可读的入口在哪。它在
+`docs/` 根目录下而不是在两棵树里，中文版是 `docs/zh-CN/AGENTS.md`；其余页面都在另一棵树里有对照的一份。

@@ -30,7 +30,7 @@ cargo clippy --locked --workspace --all-targets -- -D warnings
 .\scripts\run_tests.ps1
 .\scripts\run_e2e_setup.ps1             # builds the stubs and the sample plugin, then the setup-level cases
 .\scripts\audit_script_encoding.ps1     # scripts must be pure ASCII or carry a BOM
-.\scripts\audit_case_descriptions.ps1   # every case has a row in docs/zh-CN/TEST_CASES.md
+.\scripts\audit_case_descriptions.ps1   # every case has a row in the case table of each language
 .\scripts\build_docs_index.ps1 -Verify  # every documentation page has a line in scripts/docs_index.json
 .\scripts\audit_docs_languages.ps1     # both language trees hold the same pages, and the language switch knows them
 node scripts/check_language_switch.js   # the switch in the site's top bar moves a page to the same page in the other tree
@@ -40,10 +40,11 @@ node scripts/check_language_switch.js   # the switch in the site's top bar moves
 
 A change to what a setup *does* also updates the documents that promise it: `CHANGELOG.md`,
 `docs/{en,zh-CN}/TEST_COVERAGE.md` (the counts, and the row for the behaviour), and
-`docs/zh-CN/TEST_CASES.md` (one row per case — the audit refuses a case without one). Documentation
-exists in both languages; a change to one side is a change to both. Two files carry one language on
-purpose, and each says so in its own text: `docs/zh-CN/TEST_CASES.md` supplies the Chinese column of
-the test report, and `docs/AGENTS.md` is read by the same agents that read this file.
+`docs/{en,zh-CN}/TEST_CASES.md` (one row per case — the audit refuses a case without one, in either
+language). Every page exists in both languages and a change to one side is a change to both: the
+site switches a reader between `docs/en/X.md` and `docs/zh-CN/X.md`, and the documentation map is
+paired with `docs/zh-CN/AGENTS.md`. `scripts/audit_docs_languages.ps1` refuses a page that only one
+tree carries.
 
 ## Branches, and what `main` protects
 

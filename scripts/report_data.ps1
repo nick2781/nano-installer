@@ -8,9 +8,9 @@
       crates/: the doc comment above a #[test] says what the case checks, and
       the covered behaviours come from docs/<language>/TEST_COVERAGE.md, so the
       chips beside a case read in the report's language. What a case checks is
-      read from docs/<language>/TEST_CASES.md where that document exists, since
-      the doc comments are the sources' own English; a case it does not name
-      falls back to the doc comment above it, or to its own name.
+      read from docs/<language>/TEST_CASES.md, the table of case descriptions
+      each language keeps; a case it does not name falls back to the doc comment
+      above it in the sources, or to its own name.
     - Get-TestCoverage reads that same document the other way round: every
       behaviour it promises with the cases it names for it, and the part of it
       that admits no case covers a thing. A report that lists a behaviour's
@@ -163,7 +163,7 @@ function Get-TestCatalog {
         }
     }
 
-    # The report's own language may keep a table of its own words for the cases,
+    # The report's own language keeps a table of its own words for the cases,
     # one row per case, beside the coverage document. A case the table names is
     # described in the reader's language; a case it does not name keeps the doc
     # comment above it, or its own name. The table is read last on purpose: when

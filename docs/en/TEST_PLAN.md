@@ -31,9 +31,9 @@ The whole workspace suite runs through a script too, and writes the same kind of
 `target/test-report.txt` holds the commit, the toolchain, the command, the whole output, the result
 line of every target and the totals, and `target/test-report.html` is the same run as a page: a
 verdict, a figure per outcome, every case that failed first, a row per target, one row per case and
-the output with its result lines coloured. A case row says what that case holds: the doc comment
-above it in the sources, or its own name when it carries none -- the Chinese page reads its own table
-of case descriptions instead, docs/zh-CN/TEST_CASES.md -- and the behaviours and settings
+the output with its result lines coloured. A case row says what that case holds: the language's own table of case descriptions,
+[Test cases](TEST_CASES.md); where that table has no row, the doc comment above the case in the
+sources answers instead, or the case's own name when it carries none; and the behaviours and settings
 [Test coverage](TEST_COVERAGE.md) says break when it fails. The page keeps its two readings
 of one run tied together: a target's row links to the cases that ran in it, and the closing note
 states the totals the case rows and the result lines agree on. A behaviour card lists every

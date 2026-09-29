@@ -171,13 +171,19 @@ check('shows the language of the page', quickStart.select.value, 'zh-CN');
 check('offers both languages', quickStart.select.children.map((option) => option.textContent), ['中文', 'English']);
 check('moves to the same page', switchTo(quickStart, 'en'), '#/en/QUICK_START.md');
 
-// A page one tree carries goes to the same page in the other tree, and a page no
-// tree carries goes to that language's landing page.
+// Every page has a twin, and a page at the top of docs/ has its twin at the same
+// name in the Chinese tree.
 check('a paired page', switchTo(load('en-US', '', '#/en/TEST_COVERAGE.md'), 'zh-CN'), '#/zh-CN/TEST_COVERAGE.md');
-check('a page with no twin', switchTo(load('en-US', '', '#/zh-CN/TEST_CASES.md'), 'en'), '#/en/README.md');
+check('the case table', switchTo(load('en-US', '', '#/en/TEST_CASES.md'), 'zh-CN'), '#/zh-CN/TEST_CASES.md');
+check('the case table, the other way', switchTo(load('zh-CN', '', '#/zh-CN/TEST_CASES.md'), 'en'), '#/en/TEST_CASES.md');
 const agentGuide = load('en-US', '', '#/AGENTS.md');
-check('a page outside the trees', agentGuide.window.location.hash, '#/AGENTS.md');
-check('a page outside the trees, switched', switchTo(agentGuide, 'zh-CN'), '#/zh-CN/README.md');
+check('the agent map is where it was asked for', agentGuide.window.location.hash, '#/AGENTS.md');
+check('the agent map has a Chinese side', switchTo(agentGuide, 'zh-CN'), '#/zh-CN/AGENTS.md');
+check('and comes back to the English one', switchTo(load('en-US', '', '#/zh-CN/AGENTS.md'), 'en'), '#/AGENTS.md');
+
+// The landing chooser is not a document, so it is the one page whose switch goes
+// to a language's start page rather than to a twin.
+check('the chooser', switchTo(load('en-US', '', '#/README.md'), 'zh-CN'), '#/zh-CN/README.md');
 
 // The note above the page is written in the language of the page below it.
 check('the note is Chinese on a Chinese page', /本页同时是一个 Markdown 文件/.test(quickStart.note), true);
@@ -190,21 +196,28 @@ check('the search box follows the page', agentGuide.searchBox.attributes.placeho
 check('the search box in Chinese', load('zh-CN', '', '#/zh-CN/QUICK_START.md').searchBox.attributes.placeholder, '搜索');
 
 // The switch's list against the trees it switches between.
-const listed = code
-  .slice(code.indexOf('/* nano-language-pages:start */'), code.indexOf('/* nano-language-pages:end */'))
-  .match(/'[^']+\.md'/g)
-  .map((entry) => entry.slice(1, -1));
+function listedIn(name) {
+  return code
+    .slice(code.indexOf('/* nano-language-' + name + ':start */'), code.indexOf('/* nano-language-' + name + ':end */'))
+    .match(/'[^']+\.md'/g)
+    .map((entry) => entry.slice(1, -1));
+}
 const names = (tree) =>
   fs
     .readdirSync(path.join(docsDirectory, tree))
     .filter((name) => name.endsWith('.md') && !name.startsWith('_'));
 const english = names('en');
 const chinese = names('zh-CN');
+const atRoot = names('.').filter((name) => name !== 'README.md');
 const paired = english.filter((name) => chinese.includes(name));
-check('the switch lists the paired pages', listed.slice().sort(), paired.slice().sort());
-check('every paired page is in the switch', paired.every((name) => listed.includes(name)), true);
+
+check('every English page has a twin', english.filter((name) => !chinese.includes(name)), []);
+check('every Chinese page has a twin', chinese.filter((name) => !english.includes(name) && !atRoot.includes(name)), []);
+check('every page at the top of docs/ has a Chinese twin', atRoot.filter((name) => !chinese.includes(name)), []);
+check('the switch lists the paired pages', listedIn('pages').slice().sort(), paired.slice().sort());
+check('the switch lists the pages at the top of docs/', listedIn('root-pages').slice().sort(), atRoot.slice().sort());
 
 console.log(failures === 0
-  ? 'Language switch checked: ' + paired.length + ' paired page(s), ' + listed.length + ' page(s) in the switch'
+  ? 'Language switch checked: ' + paired.length + ' paired page(s), ' + atRoot.length + ' page(s) at the top of docs/, ' + (paired.length + atRoot.length) + ' page(s) in the switch'
   : failures + ' check(s) failed');
 process.exit(failures === 0 ? 0 : 1);

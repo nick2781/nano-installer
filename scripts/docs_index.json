@@ -30,7 +30,7 @@
     {
       "path": "AGENTS.md",
       "title": "Documentation map for agents",
-      "description": "Which page answers which question, how the two languages relate, and where the machine-readable entry points are. English only, on purpose."
+      "description": "Which page answers which question, how the two languages relate, and where the machine-readable entry points are."
     },
     {
       "path": "en/README.md",
@@ -108,6 +108,11 @@
       "description": "Every behaviour the documentation promises and the automated case that holds it."
     },
     {
+      "path": "en/TEST_CASES.md",
+      "title": "Test cases",
+      "description": "The English text of the test report's column of case descriptions, one row per case."
+    },
+    {
       "path": "en/PRODUCTION_STATUS.md",
       "title": "Production status",
       "description": "What is finished, what is missing, and the blockers that stand between this and a production release."
@@ -116,6 +121,11 @@
       "path": "zh-CN/README.md",
       "title": "中文文档",
       "description": "中文入口：这是什么、现在装出来是什么样、接下来看哪里。"
+    },
+    {
+      "path": "zh-CN/AGENTS.md",
+      "title": "给 agent 的文档地图",
+      "description": "中文的文档地图：哪个问题看哪一页、两种语言怎么对应、机器可读的入口在哪。"
     },
     {
       "path": "zh-CN/QUICK_START.md",
@@ -242,9 +252,10 @@
   "full": {
     "label": "Every English page in one document",
     "title": "Nano Installer documentation",
-    "note": "Every English page of this site in one document, for a reader that would rather fetch once. The test coverage table is left out: it is a long table rather than reading, and llms.txt links it by URL. The site's landing page is not here either, because it is a chooser between the two languages rather than a page to read.",
+    "note": "Every English page of this site in one document, for a reader that would rather fetch once. The two tables are left out: the coverage table and the case table are long tables to look things up in rather than reading, and llms.txt links both by URL. The site's landing page is not here either, because it is a chooser between the two languages rather than a page to read.",
     "exclude": [
-      "en/TEST_COVERAGE.md"
+      "en/TEST_COVERAGE.md",
+      "en/TEST_CASES.md"
     ]
   }
 }

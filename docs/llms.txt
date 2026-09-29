@@ -9,7 +9,7 @@ Every English page in one document: https://nick2781.github.io/nano-installer/ll
 ## Start here
 
 - [Documentation home](https://nick2781.github.io/nano-installer/README.md): The site's landing page: one link into each language tree, plus the two index files written for agents.
-- [Documentation map for agents](https://nick2781.github.io/nano-installer/AGENTS.md): Which page answers which question, how the two languages relate, and where the machine-readable entry points are. English only, on purpose.
+- [Documentation map for agents](https://nick2781.github.io/nano-installer/AGENTS.md): Which page answers which question, how the two languages relate, and where the machine-readable entry points are.
 
 ## English
 
@@ -28,11 +28,13 @@ Every English page in one document: https://nick2781.github.io/nano-installer/ll
 - [Build and release](https://nick2781.github.io/nano-installer/en/BUILD_AND_RELEASE.md): The build scripts, the toolchain, the release gate, and the files a release publishes.
 - [Test plan](https://nick2781.github.io/nano-installer/en/TEST_PLAN.md): The layers of the suite, how a case is named and described, and what each run proves.
 - [Test coverage](https://nick2781.github.io/nano-installer/en/TEST_COVERAGE.md): Every behaviour the documentation promises and the automated case that holds it.
+- [Test cases](https://nick2781.github.io/nano-installer/en/TEST_CASES.md): The English text of the test report's column of case descriptions, one row per case.
 - [Production status](https://nick2781.github.io/nano-installer/en/PRODUCTION_STATUS.md): What is finished, what is missing, and the blockers that stand between this and a production release.
 
 ## 中文
 
 - [中文文档](https://nick2781.github.io/nano-installer/zh-CN/README.md): 中文入口：这是什么、现在装出来是什么样、接下来看哪里。
+- [给 agent 的文档地图](https://nick2781.github.io/nano-installer/zh-CN/AGENTS.md): 中文的文档地图：哪个问题看哪一页、两种语言怎么对应、机器可读的入口在哪。
 - [快速开始](https://nick2781.github.io/nano-installer/zh-CN/QUICK_START.md): 生成示例安装包，在虚拟机里装一遍，看清每个页面在做什么。
 - [可视化构建](https://nick2781.github.io/nano-installer/zh-CN/GUI.md): Windows 10+ 的可视化构建：它能改什么、会拒绝什么、怎么和命令行保持一致。
 - [配置参考](https://nick2781.github.io/nano-installer/zh-CN/CONFIG_REFERENCE.md): `installer_config.json` 里所有真的会改变安装包行为的设置，以及构建会拒绝的键。
