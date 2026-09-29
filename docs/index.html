@@ -61,10 +61,12 @@
       },
       // A page here is a Markdown file that this viewer renders, and the same
       // file is published beside the viewer, which is what an agent reads and
-      // what llms.txt indexes. Every page therefore says so at the top. The name
-      // comes from the address and is stripped to path characters, and anything
-      // unexpected drops the note rather than the page: a note may not cost a
-      // reader the documentation under it.
+      // what llms.txt indexes. Every page says so at the top, in the language the
+      // page itself is written in -- the address decides which, and a Chinese
+      // page is not given an English sentence to read. The name comes from the
+      // address and is stripped to path characters, and anything unexpected drops
+      // the note rather than the page: a note may not cost a reader the
+      // documentation under it.
       plugins: [
         function (hook) {
           hook.afterEach(function (html, next) {
@@ -73,9 +75,14 @@
               file = file.replace(/[^A-Za-z0-9_.\/-]/g, '');
               if (!file || file.slice(-1) === '/') { file += 'README.md'; }
               if (!/\.md$/i.test(file)) { file += '.md'; }
-              next('<p class="nano-markdown-note">This page as Markdown / 本页 Markdown: ' +
-                '<a href="' + file + '">' + file + '</a> &middot; ' +
-                'index for agents / 给 agent 的索引: <a href="llms.txt">llms.txt</a></p>' + html);
+              var link = '<a href="' + file + '">' + file + '</a>';
+              var index = '<a href="llms.txt">llms.txt</a>';
+              var note = /^zh-CN\//.test(file)
+                ? '<p class="nano-markdown-note">本页同时是一个 Markdown 文件：' + link +
+                  ' &middot; 给 agent 的索引：' + index + '</p>'
+                : '<p class="nano-markdown-note">This page is also a Markdown file: ' + link +
+                  ' &middot; index for agents: ' + index + '</p>';
+              next(note + html);
             } catch (error) {
               next(html);
             }

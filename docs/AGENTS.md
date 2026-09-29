@@ -61,4 +61,6 @@ These sit outside the published site, so the links leave it:
 `scripts/build_docs_index.ps1` writes `llms.txt`, `llms-full.txt`, `robots.txt` and `sitemap.xml`
 from `scripts/docs_index.json`, and `-Verify` is the same code, so the writer and the check cannot
 disagree. A new page therefore needs a line in that data file, titled exactly like the page's own
-`# heading`; without one the check fails rather than letting the page vanish from the index.
+`# heading`; without one the check fails rather than letting the page vanish from the index. Whether
+a page is in `llms-full.txt` is the group's answer, and a single page can override it: the site's
+landing page, `README.md`, is written in both languages and is kept out of the English file that way.

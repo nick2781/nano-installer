@@ -1,67 +1,65 @@
 <h1 align="center"><img src="assets/nano-technology.png" width="48" height="48" align="texttop" alt="Nano Installer icon"> Nano Installer</h1>
 
-<p align="center"><a href="en/">English documentation</a> &middot; <a href="zh-CN/">中文文档</a></p>
+<p align="center"><b>简体中文</b> &middot; <a href="en/README.md">English</a></p>
 
-你交付的只有一个 exe，用户双击就能装上你的产品。配置、素材和应用文件都放在同一个目录里，Nano
-Installer 把它打包成一个 Windows 安装包。图标、界面和文案都由你决定。用户的机器上不用预装任何
-东西。
+## 中文
 
-Hand someone a single `.exe` and your product is installed. You keep the configuration, the artwork
-and your application files in one folder. Nano Installer turns that folder into one Windows setup
-file with your logo, your pages and your wording, and your users install nothing first.
+把一个项目目录做成一个 Windows 安装包。配置、素材和应用文件都放在同一个目录里，图标、页面和文案都由你决定；用户的机器上不用预装任何东西。
 
-> **状态 / Status:** 早期实现，尚不适合对外发布产品。安装动作请只在一次性虚拟机中测试；
-> 未签名的安装包、尚未在真机上验收的 Windows 7 支持这些已知缺口，逐条记在
-> [当前生产状态](zh-CN/PRODUCTION_STATUS.md)里。
->
-> Early implementation, not ready for production distribution. Test install actions only in a
-> disposable VM. The missing code signature and the Windows 7 acceptance that has not happened
-> on a real machine are listed one by one in the
-> [production status](en/PRODUCTION_STATUS.md).
+<img src="https://github.com/nick2781/nano-installer/raw/main/assets/setup-welcome-zh-CN.png" alt="用 TapTap 示例构建出来的安装包第一页" width="640">
 
-<img src="https://github.com/nick2781/nano-installer/raw/main/assets/setup-welcome-en-US.png" alt="A setup built from the TapTap example, first page" width="640">
+上面这张是 `examples/TapTap` 装出来的第一页，由 `scripts/capture_setup_snapshots.ps1` 在 192 dpi 下截图，并对照工程自己的版面逐项检查过——所以图上是运行时画出来的样子，不是效果图。
 
-上面这张是 `examples/TapTap` 装出来的第一页，由 `scripts/capture_setup_snapshots.ps1` 在 192 dpi 下截取，页面本身经过工程自己的版面核对；版面 720x450、图 1440x900，所以在会缩放的屏幕上依然清晰。The picture above is the first page of `examples/TapTap`, captured at
-192 dpi by `scripts/capture_setup_snapshots.ps1` and checked against the project's own layout: the
-page is laid out as 720x450 and the file is 1440x900, so it stays sharp where a display scales.
+> **状态**：早期实现，尚不适合对外发布产品。安装动作会写入文件和注册表，请在一次性虚拟机里测试。安装包没有代码签名，Windows 7 支持也还没在真机上验收过，逐条记在[当前生产状态](zh-CN/PRODUCTION_STATUS.md)里。
 
-## 从这里开始 / Start here
+先读[快速开始](zh-CN/QUICK_START.md)：构建一次示例安装包，再在虚拟机里点一遍。
 
-想要快速看到结果，先读[快速开始](zh-CN/QUICK_START.md)：构建一次示例安装包，然后在虚拟机里点一遍。
-想了解产品现在能做什么、还差什么才能发布，看[当前生产状态](zh-CN/PRODUCTION_STATUS.md)。
-
-Start with the [quick start](en/QUICK_START.md) to build a sample setup and click through it in a
-VM. The [production status](en/PRODUCTION_STATUS.md) page lists what works today and what still
-blocks a release.
-
-| 中文 | English |
+| 指南 | 说明 |
 | --- | --- |
-| [快速开始](zh-CN/QUICK_START.md) | [Quick start](en/QUICK_START.md) |
-| [可视化构建](zh-CN/GUI.md) | [Visual builder](en/GUI.md) |
-| [配置参考](zh-CN/CONFIG_REFERENCE.md) | [Configuration](en/CONFIG_REFERENCE.md) |
-| [页面布局](zh-CN/XML_LAYOUT_GUIDE.md) | [Page layout](en/XML_LAYOUT_GUIDE.md) |
-| [多语言](zh-CN/LOCALIZATION.md) | [Languages](en/LOCALIZATION.md) |
-| [自定义步骤](zh-CN/SCRIPT_API.md) | [Custom steps](en/SCRIPT_API.md) |
-| [从 NSIS 迁移](zh-CN/MIGRATION_FROM_NSIS.md) | [Migrating from NSIS](en/MIGRATION_FROM_NSIS.md) |
-| [插件 ABI](zh-CN/PLUGIN_API.md) | [Plugin ABI](en/PLUGIN_API.md) |
-| [当前生产状态](zh-CN/PRODUCTION_STATUS.md) | [Production status](en/PRODUCTION_STATUS.md) |
+| [快速开始](zh-CN/QUICK_START.md) | 构建第一个安装包，并在虚拟机里试用 |
+| [可视化构建](zh-CN/GUI.md) | Windows 10 及以上的图形界面 |
+| [配置参考](zh-CN/CONFIG_REFERENCE.md) | 产品信息、安装行为、输出文件名 |
+| [页面布局](zh-CN/XML_LAYOUT_GUIDE.md) | 页面、控件、流式布局、链接与动作 |
+| [多语言](zh-CN/LOCALIZATION.md) | 发布带译文的安装包 |
+| [自定义步骤](zh-CN/SCRIPT_API.md) | 用 Rhai 编写安装与卸载逻辑 |
+| [插件 ABI](zh-CN/PLUGIN_API.md) | 第三方 DLL 照着编的头文件，以及宿主借给它的服务 |
+| [从 NSIS 迁移](zh-CN/MIGRATION_FROM_NSIS.md) | 哪些对应得上，哪些是故意不做的 |
+| [当前生产状态](zh-CN/PRODUCTION_STATUS.md) | 现在能做什么、还差什么才能发布 |
 
-## 技术说明 / Technical notes
+技术说明（架构、项目结构、Windows 兼容性、构建与发布、测试计划、测试覆盖、用例说明）面向维护者，列在左侧。
 
-架构、构建发布与测试计划按语言归档，内容面向维护者而非产品接入方。
+本站每一页同时是一个 Markdown 文件，不用浏览器也能读：[llms.txt](llms.txt) 是全部页面的索引，[llms-full.txt](llms-full.txt) 把英文文档合成了一份。
 
-Architecture, build and release, and the test plan live under each language tree and are written for
-maintainers rather than for product onboarding.
+仓库根目录的文件不在本站：[README](https://github.com/nick2781/nano-installer/blob/main/README.zh-CN.md)、[贡献指南](https://github.com/nick2781/nano-installer/blob/main/CONTRIBUTING.md)、[安全策略](https://github.com/nick2781/nano-installer/blob/main/SECURITY.md)、[行为准则](https://github.com/nick2781/nano-installer/blob/main/CODE_OF_CONDUCT.md)。
 
-| 中文 | English |
+---
+
+## English
+
+Hand someone a single `.exe` and your product is installed. The configuration, the artwork and your application files live in one folder; the icon, the pages and the wording are yours. Your users install nothing first.
+
+<img src="https://github.com/nick2781/nano-installer/raw/main/assets/setup-welcome-en-US.png" alt="The first page of a setup built from the TapTap example" width="640">
+
+That is the first page of `examples/TapTap`, captured at 192 dpi by `scripts/capture_setup_snapshots.ps1` and checked against the project's own layout — so it is what the runtime drew, not a mock-up.
+
+> **Status:** early implementation, not ready for production distribution. Install actions write files and registry entries, so test only inside a disposable VM. Neither a setup nor the installer package around it is code-signed, and Windows 7 support has not been accepted on a real machine yet; both are listed in the [production status](en/PRODUCTION_STATUS.md).
+
+Start with the [quick start](en/QUICK_START.md): build a sample setup, then click through it in a VM.
+
+| Guide | What it covers |
 | --- | --- |
-| [架构](zh-CN/ARCHITECTURE.md) | [Architecture](en/ARCHITECTURE.md) |
-| [项目结构](zh-CN/PROJECT_STRUCTURE.md) | [Project layout](en/PROJECT_STRUCTURE.md) |
-| [Windows 兼容性](zh-CN/WINDOWS_COMPATIBILITY.md) | [Windows compatibility](en/WINDOWS_COMPATIBILITY.md) |
-| [构建与发布](zh-CN/BUILD_AND_RELEASE.md) | [Build and release](en/BUILD_AND_RELEASE.md) |
-| [测试计划](zh-CN/TEST_PLAN.md) | [Test plan](en/TEST_PLAN.md) |
+| [Quick start](en/QUICK_START.md) | Build your first setup and try it in a VM |
+| [Visual builder](en/GUI.md) | The Windows 10+ app you build setups with |
+| [Configuration reference](en/CONFIG_REFERENCE.md) | Product identity, install behaviour, output names |
+| [Page layout](en/XML_LAYOUT_GUIDE.md) | Pages, controls, flow layout, links and actions |
+| [Languages](en/LOCALIZATION.md) | Shipping translated installers |
+| [Custom steps](en/SCRIPT_API.md) | Install and uninstall logic in Rhai |
+| [Plugin ABI](en/PLUGIN_API.md) | The header a third-party DLL is built against, and what the host lends it |
+| [Migrating from NSIS](en/MIGRATION_FROM_NSIS.md) | What maps onto what, and what is refused on purpose |
+| [Production status](en/PRODUCTION_STATUS.md) | What works today and what blocks a release |
 
-本页只发布 `docs/`，所以仓库根目录的文件得回 GitHub 上看：[README（English）](https://github.com/nick2781/nano-installer/blob/main/README.md)、[README（简体中文）](https://github.com/nick2781/nano-installer/blob/main/README.zh-CN.md)、[贡献指南](https://github.com/nick2781/nano-installer/blob/main/CONTRIBUTING.md)、[安全策略](https://github.com/nick2781/nano-installer/blob/main/SECURITY.md)。
+The technical notes — architecture, project layout, Windows compatibility, build and release, the test plan, test coverage — are written for maintainers and are listed in the sidebar.
 
-Only `docs/` is published as this site, so the files at the repository root live on GitHub:
-[English README](https://github.com/nick2781/nano-installer/blob/main/README.md), [Chinese README](https://github.com/nick2781/nano-installer/blob/main/README.zh-CN.md), [contributing guide](https://github.com/nick2781/nano-installer/blob/main/CONTRIBUTING.md), [security policy](https://github.com/nick2781/nano-installer/blob/main/SECURITY.md).
+Every page here is also a Markdown file, so the site reads without a browser: [llms.txt](llms.txt) indexes all of them, and [llms-full.txt](llms-full.txt) is the English documentation in one file.
+
+Files at the repository root are not published here: [README](https://github.com/nick2781/nano-installer/blob/main/README.md), [contributing](https://github.com/nick2781/nano-installer/blob/main/CONTRIBUTING.md), [security policy](https://github.com/nick2781/nano-installer/blob/main/SECURITY.md), [code of conduct](https://github.com/nick2781/nano-installer/blob/main/CODE_OF_CONDUCT.md).

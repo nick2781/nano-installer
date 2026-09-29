@@ -80,8 +80,8 @@ what happened, or that it was not covered and why. Then, in the repository:
 
 - the Verified list in `docs/{en,zh-CN}/PRODUCTION_STATUS.md` gains what was observed, and the note at
   the top of that document stops saying that Windows 7 was never observed;
-- `CHANGELOG.md` gains a `已验证` entry naming the build, the release the run covers, and what it did
-  not cover.
+- `CHANGELOG.md` gains a verified entry (`已验证`) naming the build, the release the run covers, and
+  what it did not cover.
 
 One run does not have to be repeated for every release. Repeat it when something the run exercised
 changes -- the runtime, a kind of page, the manifest, the uninstaller, a Win32 call -- and say which

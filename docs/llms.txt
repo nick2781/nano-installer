@@ -1,14 +1,14 @@
 # Nano Installer
 
-> Turn one project folder into one Windows setup executable. / 把一个项目目录做成一个 Windows 安装包。
+> Turn one project folder into one Windows setup executable.
 
-Every page of this site is a Markdown file served beside the HTML viewer, and every link below points at that file. Fetch the file; the viewer needs a browser and a script. / 本站每一页都是与网页并列发布的 Markdown 文件，下面每条链接都直接指向那个文件——取文件即可，网页需要浏览器和脚本才能读。
+Every page of this site is a Markdown file served beside the HTML viewer, and every link below points at that file. Fetch the file; the viewer needs a browser and a script.
 
-Every English page in one document / 英文页面合成的一份: https://nick2781.github.io/nano-installer/llms-full.txt
+Every English page in one document: https://nick2781.github.io/nano-installer/llms-full.txt
 
-## Start here / 从这里开始
+## Start here
 
-- [Documentation home / 文档首页](https://nick2781.github.io/nano-installer/README.md): 中英双语的总览：这个站点有什么、先读哪一篇，以及产品现在能不能用于正式发布。 / The bilingual overview: what this site holds, where to start, and whether the product is ready to ship.
+- [Documentation home](https://nick2781.github.io/nano-installer/README.md): The site's landing page: a short introduction in Chinese and in English, with a link into either language tree.
 - [Documentation map for agents](https://nick2781.github.io/nano-installer/AGENTS.md): Which page answers which question, how the two languages relate, and where the machine-readable entry points are. English only, on purpose.
 
 ## English
@@ -50,7 +50,7 @@ Every English page in one document / 英文页面合成的一份: https://nick27
 - [用例说明](https://nick2781.github.io/nano-installer/zh-CN/TEST_CASES.md): 测试报告里「检查什么」一列的中文文本，一条用例一行。
 - [当前生产状态](https://nick2781.github.io/nano-installer/zh-CN/PRODUCTION_STATUS.md): 已经完成什么、还缺什么，以及挡在正式发布前面的那两个阻塞项。
 
-## In the repository / 仓库里的文件
+## In the repository
 
 - [Repository README](https://raw.githubusercontent.com/nick2781/nano-installer/main/README.md): What the product is, what it does today, and what blocks a release.
 - [Examples](https://raw.githubusercontent.com/nick2781/nano-installer/main/examples/README.md): The three example projects and what each one proves.

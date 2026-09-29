@@ -1,12 +1,12 @@
 {
   "site": "https://nick2781.github.io/nano-installer/",
   "title": "Nano Installer",
-  "summary": "Turn one project folder into one Windows setup executable. / 把一个项目目录做成一个 Windows 安装包。",
-  "note": "Every page of this site is a Markdown file served beside the HTML viewer, and every link below points at that file. Fetch the file; the viewer needs a browser and a script. / 本站每一页都是与网页并列发布的 Markdown 文件，下面每条链接都直接指向那个文件——取文件即可，网页需要浏览器和脚本才能读。",
+  "summary": "Turn one project folder into one Windows setup executable.",
+  "note": "Every page of this site is a Markdown file served beside the HTML viewer, and every link below points at that file. Fetch the file; the viewer needs a browser and a script.",
   "groups": [
     {
       "prefix": "",
-      "heading": "Start here / 从这里开始",
+      "heading": "Start here",
       "inFull": true
     },
     {
@@ -23,8 +23,9 @@
   "pages": [
     {
       "path": "README.md",
-      "title": "Documentation home / 文档首页",
-      "description": "中英双语的总览：这个站点有什么、先读哪一篇，以及产品现在能不能用于正式发布。 / The bilingual overview: what this site holds, where to start, and whether the product is ready to ship."
+      "title": "Documentation home",
+      "description": "The site's landing page: a short introduction in Chinese and in English, with a link into either language tree.",
+      "inFull": false
     },
     {
       "path": "AGENTS.md",
@@ -198,7 +199,7 @@
     }
   ],
   "repository": {
-    "heading": "In the repository / 仓库里的文件",
+    "heading": "In the repository",
     "base": "https://raw.githubusercontent.com/nick2781/nano-installer/main/",
     "files": [
       {
@@ -239,9 +240,9 @@
     ]
   },
   "full": {
-    "label": "Every English page in one document / 英文页面合成的一份",
+    "label": "Every English page in one document",
     "title": "Nano Installer documentation",
-    "note": "Every English page of this site in one document, for a reader that would rather fetch once. The test coverage table is left out: it is a long table rather than reading, and llms.txt links it by URL. / 本站的英文页面合成一份，便于只取一次；测试覆盖表没有收进来——那是一张长表而不是通读内容，llms.txt 里有它的地址。",
+    "note": "Every English page of this site in one document, for a reader that would rather fetch once. The test coverage table is left out: it is a long table rather than reading, and llms.txt links it by URL. The site's landing page is not here either, because it is written in both languages.",
     "exclude": [
       "en/TEST_COVERAGE.md"
     ]

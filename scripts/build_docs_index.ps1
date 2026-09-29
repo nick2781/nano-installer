@@ -126,10 +126,20 @@ foreach ($page in @($data.pages)) {
         $failures += "$path is headed ""$heading"" but $dataPath calls it ""$title"""
     }
 
+    # Whether this page is in the one-document file is answered by the group it belongs to, and a
+    # page may override that answer: the site's landing page is written in both languages, so it is
+    # listed in the index but is not part of the English document.
+    $override = $null
+    $overrideProperty = $page.PSObject.Properties["inFull"]
+    if ($null -ne $overrideProperty) {
+        $override = [bool]$overrideProperty.Value
+    }
+
     $entries += [pscustomobject]@{
         Path        = $path
         Title       = $title
         Description = $description
+        InFull      = $override
     }
 }
 foreach ($path in $onDisk.Keys) {
@@ -211,8 +221,19 @@ foreach ($group in $groups) {
         $inFull[$member.Path] = $true
     }
 }
+foreach ($entry in $entries) {
+    if ($null -eq $entry.InFull) {
+        continue
+    }
+    if ($entry.InFull) {
+        $inFull[$entry.Path] = $true
+    }
+    else {
+        $inFull.Remove($entry.Path) | Out-Null
+    }
+}
 if ($inFull.Count -eq 0) {
-    $failures += "no group in $dataPath is marked for llms-full.txt, so that file would be empty"
+    $failures += "no page would be in llms-full.txt, so that file would be empty"
 }
 
 if ($failures.Count -gt 0) {

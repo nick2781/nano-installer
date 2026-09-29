@@ -83,9 +83,11 @@ Three files make the pages findable to something that cannot run the viewer, and
 the two cannot disagree. A page with no entry in `scripts/docs_index.json`, an entry naming a file
 that is not there, an empty title or description, a title that disagrees with the page's own
 `# heading`, a repository file that has moved, a page that belongs to no group, a name excluded from
-the one-document file that is not a page, and no group asking for that file at all are all failures.
-Adding a page therefore means adding its line to that data file, in the same change -- and it joins
-`llms-full.txt` because of the group it is in, not because a list was updated.
+the one-document file that is not a page, and no page that would be in that file at all are all
+failures. Adding a page therefore means adding its line to that data file, in the same change -- and
+it joins `llms-full.txt` because of the group it is in, not because a list was updated. One page may
+override its group's answer, which is how the landing page stays out of it: that page is written in
+both languages, so it is not an English page.
 
 The sidebar files (`_sidebar.md`, `_navbar.md`) are navigation rather than pages, and the index
 leaves out every file whose name begins with an underscore for that reason.
