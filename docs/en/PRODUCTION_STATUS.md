@@ -327,7 +327,10 @@ product, and the hooks described under [Signing](#signing) are where that pipeli
 
 1. No acceptance run on a real Windows 7 SP1 machine. The suites and the snapshots run on Windows 11;
    Windows 7 SP1 is a platform a setup claims to support and the one nothing has been observed on,
-   and no such machine is available at the moment.
+   and no such machine is available at the moment. What that run has to cover, and where its result
+   is recorded, is written out in
+   [Windows compatibility](WINDOWS_COMPATIBILITY.md#running-the-acceptance): it is a procedure someone
+   can follow, not a formality.
 
 Until that run happens, the automated results are what there is: they hold on Windows 11, and on
 Windows 7 SP1 nothing has been observed.

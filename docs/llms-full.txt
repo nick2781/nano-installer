@@ -2559,6 +2559,58 @@ after a run on a clean machine covering PNG decoding, text rendering, mouse inpu
 behaviour, extraction, installation, and uninstallation. Those machines should also have update
 KB3033929 (SHA-2 code signing support) installed.
 
+## Running the acceptance
+
+The paragraph above is the requirement; this is how it is met, so that a run leaves evidence rather
+than an impression.
+
+**Prepare.** A clean Windows 7 SP1 x64 machine or virtual machine, build 7601, with update KB3033929
+installed, and a checkpoint to go back to afterwards, because the run installs software. If the
+project declares a dependency it downloads, the machine also needs KB3140245 and later for TLS 1.2,
+or that step is recorded as not covered. Build the setup on a machine that has the toolchain -- the
+published builder and stubs are enough:
+
+```powershell
+.\target\release\nano-installer-native-x64.exe build --project <your project> --stubs <stubs directory>
+```
+
+Then copy that one setup file to the Windows 7 machine. A project that exercises the pages, more than
+one language, PNG artwork, a payload, a shortcut and an uninstall is a better subject than an empty
+one; `examples/TapTap` with a payload of your own is the shape this documentation is validated with.
+
+**Observe, in this order.** Each line is something a claim in this repository rests on:
+
+1. Run it as a standard user: the window opens borderless with rounded corners, the background bitmap
+   and the logo are drawn (PNG decoding, alpha blending, GDI), the text reads in the project's
+   language, and the pointer becomes a hand over anything clickable.
+2. Drag the window by its background, minimize it, restore it.
+3. Switch the language if the project ships more than one, and watch the page redraw.
+4. Walk every page, including a progress page that names its steps and the finish page starting the
+   deployed program if the project configures that.
+5. Install it, then look at the machine: the files, the shortcuts (desktop, Start menu, autostart),
+   the uninstall entry, and the manifest the uninstaller will read.
+6. If the project ships `scripts/install.rhai`, check what that script did as well.
+7. Uninstall from the uninstall entry: the product's files and shortcuts are gone, user data is kept
+   unless the box was cleared, and an empty installation folder is removed.
+8. With a screen reader running (Narrator or NVDA), have it read the page, the focus, and a field as
+   it is typed.
+9. If the project installs a service, check that the service exists, starts, and is gone after the
+   uninstall.
+
+**Record.** Write down the build (`winver`: "Version 6.1 (Build 7601: Service Pack 1)"), the setup's
+version or tag, the project it was built from, whether it ran elevated, and each observation above --
+what happened, or that it was not covered and why. Then, in the repository:
+
+- the Verified list in `docs/{en,zh-CN}/PRODUCTION_STATUS.md` gains what was observed, and the note at
+  the top of that document stops saying that Windows 7 was never observed;
+- `CHANGELOG.md` gains a `已验证` entry naming the build, the release the run covers, and what it did
+  not cover.
+
+One run does not have to be repeated for every release. Repeat it when something the run exercised
+changes -- the runtime, a kind of page, the manifest, the uninstaller, a Win32 call -- and say which
+release it covers. It cannot prove every Windows 7 installation either: 32-bit Windows 7 and ARM64
+are not supported at all, and a machine without SP1 is not the baseline these artifacts claim.
+
 ---
 
 Source: https://nick2781.github.io/nano-installer/en/BUILD_AND_RELEASE.md
@@ -3566,7 +3618,10 @@ product, and the hooks described under [Signing](#signing) are where that pipeli
 
 1. No acceptance run on a real Windows 7 SP1 machine. The suites and the snapshots run on Windows 11;
    Windows 7 SP1 is a platform a setup claims to support and the one nothing has been observed on,
-   and no such machine is available at the moment.
+   and no such machine is available at the moment. What that run has to cover, and where its result
+   is recorded, is written out in
+   [Windows compatibility](WINDOWS_COMPATIBILITY.md#running-the-acceptance): it is a procedure someone
+   can follow, not a formality.
 
 Until that run happens, the automated results are what there is: they hold on Windows 11, and on
 Windows 7 SP1 nothing has been observed.
