@@ -36,6 +36,13 @@ All published executables target `x86_64-win7-windows-msvc`. Do not introduce a 
 - Keep raw stubs free of icons and product resources. The builder injects project resources into generated executables.
 - Do not edit or commit generated files under `target/` or example `dist/` directories.
 
+## Branches
+
+`main` is the release line and is protected: a force push or a deletion is refused for everyone, and
+the two suite jobs are its required checks. Open a branch for anything larger than a small fix and
+bring it back through a pull request; a small fix may be committed straight to `main`. The rules and
+how each one binds are in [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
 ## Documentation
 
 - `docs/AGENTS.md` is the map: which page answers which question, how the two languages relate, and where the machine-readable entry points are. Read it before searching the docs.
