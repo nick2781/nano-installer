@@ -43,6 +43,21 @@ exists in both languages; a change to one side is a change to both. Two files ca
 purpose, and each says so in its own text: `docs/zh-CN/TEST_CASES.md` supplies the Chinese column of
 the test report, and `docs/AGENTS.md` is read by the same agents that read this file.
 
+## Branches, and what `main` protects
+
+`main` is the release line: every tag is cut from it, and the CI runs on a commit are the evidence the
+release gate reads back. Two things are set on the branch today, and they bind differently:
+
+- **Its history.** `main` cannot be force-pushed and cannot be deleted — by anyone. A repository
+  ruleset with no exemption says so, and both refusals were observed on a scratch ref before it was
+  applied here.
+- **The suite.** `Native Win7+ Build` and `Setup End to End` are required checks, and they are what a
+  pull request has to satisfy. A maintainer pushing a reviewed commit straight to `main` is still
+  allowed today, and the checks then run on that commit; switching that off is one setting, and the
+  checks are already in place for the day it happens.
+
+Work that is more than a small fix belongs on its own branch and comes back through a pull request.
+
 ## What a change has to respect
 
 - **The release baseline.** Every published executable targets `x86_64-win7-windows-msvc` with

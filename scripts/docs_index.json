@@ -220,7 +220,7 @@
       {
         "path": "CONTRIBUTING.md",
         "title": "Contributing",
-        "description": "How to set up a working tree, the checks a change must pass, and the rules this repository keeps."
+        "description": "How to set up a working tree, the checks a change must pass, where work branches from, and the rules this repository keeps."
       },
       {
         "path": "SECURITY.md",

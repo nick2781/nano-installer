@@ -55,7 +55,7 @@ Every English page in one document: https://nick2781.github.io/nano-installer/ll
 - [Repository README](https://raw.githubusercontent.com/nick2781/nano-installer/main/README.md): What the product is, what it does today, and what blocks a release.
 - [Examples](https://raw.githubusercontent.com/nick2781/nano-installer/main/examples/README.md): The three example projects and what each one proves.
 - [Plugin ABI header](https://raw.githubusercontent.com/nick2781/nano-installer/main/include/nano_plugin.h): The three rules a plugin follows, and the host table it is built against.
-- [Contributing](https://raw.githubusercontent.com/nick2781/nano-installer/main/CONTRIBUTING.md): How to set up a working tree, the checks a change must pass, and the rules this repository keeps.
+- [Contributing](https://raw.githubusercontent.com/nick2781/nano-installer/main/CONTRIBUTING.md): How to set up a working tree, the checks a change must pass, where work branches from, and the rules this repository keeps.
 - [Security policy](https://raw.githubusercontent.com/nick2781/nano-installer/main/SECURITY.md): How to report a vulnerability privately, and what is knowingly not one.
 - [Repository conventions for a coding agent](https://raw.githubusercontent.com/nick2781/nano-installer/main/AGENTS.md): Layout, build and test commands, and the change boundaries a coding agent has to respect.
 - [Changelog](https://raw.githubusercontent.com/nick2781/nano-installer/main/CHANGELOG.md): What changed in each release. Written in Chinese / 中文。
