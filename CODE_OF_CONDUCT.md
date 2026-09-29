@@ -81,15 +81,3 @@ For answers to common questions about this code of conduct, see the FAQ at [http
 [Mozilla CoC]: https://github.com/mozilla/diversity
 [FAQ]: https://www.contributor-covenant.org/faq
 [translations]: https://www.contributor-covenant.org/translations
-
-## Notes for this project
-
-The text above is used whole, with the enforcement contact filled in. Two things this project's own
-contributors should know on top of it:
-
-- **English and Chinese are both welcome.** Issues, reviews and commit messages may be written in
-  either; nobody is asked to write in a language they are guessing at.
-- **Argue about the code, not the person.** "This reads the registry without checking the view" is a
-  review; "you clearly do not know Win32" is not. Say what breaks, on which Windows version, and how
-  you saw it — a report that names the log, the version and the step is worth more than one that
-  names a feeling.

@@ -87,7 +87,11 @@ Work that is more than a small fix belongs on its own branch and comes back thro
   have to ask for. The run log at `%TEMP%\nano-installer\` is usually the fastest evidence — a failed
   install leaves one behind and names it.
 - **Security**: do not open a public issue. See [`SECURITY.md`](SECURITY.md).
-- **Conduct**: what is expected of everyone here is in [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
+- **Conduct**: what is expected of everyone here is in [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md), which is the Contributor Covenant 2.1 text as
+  written. Two things this project adds on top of it: English and Chinese are both welcome —
+  nobody is asked to write in a language they are guessing at — and the argument stays about
+  the code rather than the person. "This reads the registry without checking the view" is a
+  review; "you clearly do not know Win32" is not.
 
 ## Licence
 
