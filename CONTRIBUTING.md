@@ -71,6 +71,11 @@ Work that is more than a small fix belongs on its own branch and comes back thro
   always will be — and the three parameters of a plugin function never change.
   `NANO_PLUGIN_ABI_VERSION` moves only for a change that breaks a plugin built against an older
   header, and such a change needs the reasoning written down in the changelog.
+- **The conduct file stays canonical.** GitHub recognises `CODE_OF_CONDUCT.md` as the Contributor
+  Covenant only while the text is the template with the contact placeholder replaced by something
+  short — at the time of writing, one account link. Rewriting the enforcement sentence around it, or
+  adding a section for this project's own notes, is enough for the community profile to fall back to
+  an unrecognised file. The notes that used to sit at the end of that file live in this document.
 - **Configuration keys are validated.** The builder refuses a key it does not read, so adding one
   means adding it to `crates/nano-installer-core/src/config.rs` and to
   `docs/{en,zh-CN}/CONFIG_REFERENCE.md` in the same change.
