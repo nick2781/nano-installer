@@ -42,7 +42,10 @@ jobs:
   # refuses must not stop a build that would otherwise be green.
   supersede:
     name: Supersede older runs
-    runs-on: ubuntu-latest
+    # Named rather than `-latest`: `ubuntu-latest` is announced to move to
+    # Ubuntu 26 on 2026-10-19, and a job that ends other runs is not a good place
+    # to find out. `ubuntu-24.04` is what the label resolves to today.
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       actions: write
@@ -81,7 +84,10 @@ jobs:
     # input and so is never narrowed. See `scripts/audit_release_evidence.ps1`.
     name: Native Win7+ Build${{ inputs.suite_command && ' (narrowed)' || '' }}
     needs: supersede
-    runs-on: windows-latest
+    # The same image the release job builds on, named for the same reason: what
+    # this job audits has to be what a release would build, and both have to move
+    # together. `windows-latest` is this image today.
+    runs-on: windows-2025-vs2026
     timeout-minutes: 60
     # The suite posts each phase as a commit status, so a run that was cancelled
     # while wedged still says which command it stopped on. The job's own checks
@@ -302,7 +308,9 @@ jobs:
   setup-end-to-end:
     name: Setup End to End
     needs: supersede
-    runs-on: windows-latest
+    # The same image as the build job: this is where a setup is actually
+    # installed, so it is the last place an image change should arrive unnoticed.
+    runs-on: windows-2025-vs2026
     timeout-minutes: 60
 
     steps:

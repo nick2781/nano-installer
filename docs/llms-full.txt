@@ -2580,6 +2580,14 @@ Release builds use the pinned `nightly-2025-11-08` toolchain with `rust-src`, `-
 both runtimes and compares SHA-256 hashes; `scripts\smoke_backends.ps1` runs the same check on its
 own.
 
+The workflows name their images instead of using `-latest`. A release is built on
+`windows-2025-vs2026`, and the suite that has to be green behind the tag runs on the same image, so
+what a release is made of does not change on GitHub's schedule: `windows-latest` has moved from one
+Windows generation to the next without a line in this repository, and a released executable whose
+toolchain cannot be named afterwards is one nobody can rebuild. The Ubuntu jobs name `ubuntu-24.04`
+for the same reason, `ubuntu-latest` being announced to move to Ubuntu 26 on 2026-10-19. Moving any
+of these names is a commit, and CI tests that commit like any other.
+
 ## Release contents
 
 ```text

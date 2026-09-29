@@ -26,7 +26,10 @@ concurrency:
 jobs:
   restart:
     name: Start a run where one stopped answering
-    runs-on: ubuntu-latest
+    # Named rather than `-latest`, like the other jobs of this repository: a
+    # scheduled job whose whole purpose is to end a wedged pipeline should not
+    # also be where an image migration shows up.
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     steps:

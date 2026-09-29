@@ -25,7 +25,10 @@ concurrency:
 jobs:
   publish-docs:
     name: Publish docs
-    runs-on: ubuntu-latest
+    # Named rather than `-latest`: `ubuntu-latest` is announced to move to
+    # Ubuntu 26 on 2026-10-19, and this job publishes the site. `ubuntu-24.04` is
+    # what the label resolves to today.
+    runs-on: ubuntu-24.04
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

@@ -132,6 +132,12 @@
 
 ### 变更
 
+- 工作流里的 runner 镜像改成写死名字：Windows 那几个 job（含**发布**的那个）用 `windows-2025-vs2026`，
+  Ubuntu 那几个用 `ubuntu-24.04`。理由和固定 nightly 一样——发布出去的可执行文件由哪套镜像编出来，
+  应该由一个能被读、能被测的提交决定，而不是由 GitHub 的日历决定：`windows-latest` 已经在我们没有任何
+  提交的情况下换过一代 Windows。这两个名字就是今天 `-latest` 解析到的东西（job 日志里写着
+  `Image: windows-2025-vs2026` 与 `Image: ubuntu-24.04`），所以现在什么都不变；等 GitHub 挪动 label，
+  改这一行才是那个刻意的动作。`ubuntu-latest` 已宣布 2026-10-19 迁到 Ubuntu 26，这也是顺手避开的坑。
 - 七个 crate 一律 `publish = false`。它们是这个仓自己的构建单元，不是给别人 `cargo add` 的库：只在 Windows 上
   编、由 `scripts/build.ps1` 一起建，其中几个存在的唯一理由是不让某个归档后端进到另一个二进制里。单独发一个
   出去，等于发布一个「入口是生成出来的可执行文件」的库。理由写在 `Cargo.toml` 的注释里。

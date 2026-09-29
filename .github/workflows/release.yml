@@ -14,7 +14,16 @@ permissions:
 jobs:
   native-win7-release:
     name: Native Win7+ Release
-    runs-on: windows-latest
+    # Named rather than `-latest`. This job builds the executables a release
+    # publishes, so the machine behind them has to change by a commit that can be
+    # read and tested rather than by GitHub's schedule: `-latest` moves from one
+    # Windows generation to the next on its own, and a release built on an image
+    # nothing names is a release whose toolchain cannot be described afterwards.
+    # This is what `windows-latest` resolves to today -- a run's own log says
+    # `Image: windows-2025-vs2026` -- so nothing changes until GitHub moves the
+    # label, and moving this line is then the deliberate step. The Rust toolchain
+    # is pinned separately, in rust-toolchain.toml.
+    runs-on: windows-2025-vs2026
 
     steps:
       - name: Checkout
