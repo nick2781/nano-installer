@@ -107,6 +107,10 @@ MyApp/
 
 文档站点：**https://nick2781.github.io/nano-installer/**
 
+站点只是那些 Markdown 文件的一个浏览器视图，所以不用浏览器也能读：
+[`docs/llms.txt`](docs/llms.txt) 是写给 agent 的索引，[`docs/llms-full.txt`](docs/llms-full.txt)
+是英文文档合成的一份。
+
 使用指南：[快速开始](docs/zh-CN/QUICK_START.md) &middot;
 [可视化构建](docs/zh-CN/GUI.md) &middot;
 [配置参考](docs/zh-CN/CONFIG_REFERENCE.md) &middot;

@@ -123,6 +123,10 @@ lists all three examples and what each one proves.
 
 Documentation site: **https://nick2781.github.io/nano-installer/**
 
+That site is a viewer over the Markdown files published beside it, so it reads without a browser too:
+[`docs/llms.txt`](docs/llms.txt) indexes every page for a coding agent, and
+[`docs/llms-full.txt`](docs/llms-full.txt) is the English documentation in one file.
+
 Product guides: [Quick start](docs/en/QUICK_START.md) &middot;
 [Visual builder](docs/en/GUI.md) &middot;
 [Configuration](docs/en/CONFIG_REFERENCE.md) &middot;
