@@ -80,5 +80,5 @@ Markdown 文件，所以 [`docs/llms.txt`](docs/llms.txt) 是给 agent 的索引
 [贡献指南](CONTRIBUTING.md)；[issue 表单](.github/ISSUE_TEMPLATE)会要版本号和运行日志，缺了它们就得
 多一个来回。安全问题请走[私下上报](SECURITY.md)，不要开 issue，那一页也列了哪些是已知的、不算漏洞。
 这里对每个人的要求写在[行为准则](CODE_OF_CONDUCT.md)。Rust 源码是 [MIT 许可](LICENSE)；`examples/TapTap`
-里的商标、图片与文案归 易玩（上海）网络科技有限公司 及其权利人所有，不是 MIT 许可，`assets/` 下的截图
-就是那个示例的截图。
+里的商标、图片与文案归易玩（上海）网络科技有限公司所有，不是 MIT 许可，`assets/` 下的截图就是那个
+示例的截图。
