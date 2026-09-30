@@ -4,61 +4,52 @@
 
 <p align="center"><a href="https://github.com/nick2781/nano-installer/actions/workflows/ci.yml"><img src="https://github.com/nick2781/nano-installer/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status"></a></p>
 
-Hand someone a single `.exe` and your product is installed. You keep the configuration, the artwork
-and your application files in one folder; Nano Installer turns that folder into one Windows setup
-file with your logo, your pages and your wording. There is no framework to host, and nothing your
-users install first.
+One folder in, one setup `.exe` out. Keep your configuration, artwork and application files in a
+project folder; Nano Installer builds them into a single Windows installer carrying your logo, your
+pages and your wording. Nothing to host, and nothing your users install first.
 
-> **Status:** early implementation, not ready for production distribution. Install actions write
-> files and registry entries, so test only inside a disposable VM. See
-> [production status](docs/en/PRODUCTION_STATUS.md) before you plan a release.
+> **Early implementation, not ready for production distribution.** Test in a disposable VM: an
+> install writes files and registry entries. Setups are unsigned, and Windows 7 support is untested —
+> every build targets Windows 7 SP1 x64 and later, but no setup has ever been run on a real one. See
+> [production status](docs/en/PRODUCTION_STATUS.md).
 
-<img src="assets/setup-welcome-en-US.png" alt="The first page of a setup built from the TapTap example: the product logo, a tagline, the installation options, and an Install Now button" width="720">
+<img src="assets/setup-welcome-en-US.png" alt="First page of a setup built from the TapTap example: the product logo, a tagline, the installation options, and an Install Now button" width="720">
 
-That page is the first page of `examples/TapTap`, captured by
-`scripts/capture_setup_snapshots.ps1` at 200% display scaling — the file is 1440x900 for a layout of
-720x450, so it stays sharp on a display that scales. The script builds the example and photographs
-every page it declares, so the picture is what the runtime drew rather than a mock-up.
+The first page of `examples/TapTap`, built and photographed by `scripts/capture_setup_snapshots.ps1`:
+what the runtime drew, not a mock-up.
+
+## Build your first setup
+
+Nothing to install and nothing to compile — every
+[release](https://github.com/nick2781/nano-installer/releases/latest) publishes the builder, the
+runtimes it needs and a digest for each file.
+
+```powershell
+# 1. Download the releases files into one folder
+# 2. Point the builder at a project folder
+.\nano-installer-native-x64.exe build --project C:\path\to\my-project
+```
+
+The setup lands in `dist/<installer_name>`. Prefer clicking? `nano-installer-gui-x64.exe` from the
+same release drives the same engine. Full walkthrough:
+[quick start](docs/en/QUICK_START.md).
 
 ## What you get
 
 | | |
 | --- | --- |
-| One file to ship | A single setup `.exe` carrying your icon, version info, and branding |
-| Runs on a clean machine | Built for Windows 7 SP1 x64 and later, and the user installs nothing first. Windows 7 itself is untested: see below |
-| Your pages and controls | Described in XML, using your own backgrounds and buttons |
-| Eleven UI languages | Built in, and you can add more in plain JSON |
-| Upgrades and rollback | Re-running the setup upgrades in place, and returns to the previous state if a step fails |
-| Update packages | `--delta-from` ships only the files whose bytes changed, and the setup checks what is already on the machine before it writes |
-| Uninstall | Takes back what it put down, and keeps user data by default |
-| Administrator rights | Requested from Windows when the config asks for them |
-| Progress and finish pages | Live progress names the current step, and the finish page can start what it installed |
-| Screen readers | A reader in another process is told the page, the focus, the value of a field as it is typed, the words a running task publishes, and the card a question is drawn on — through MSAA, and through `IDispatch` for clients that ask by name |
-| Plugins | A third party extends a setup with a DLL built against [`include/nano_plugin.h`](docs/en/PLUGIN_API.md), called from the project's script |
-| GUI, or a command line | Click through the visual builder, or drive the same engine from CI |
-
-## Get started
-
-Nothing has to be installed and nothing has to be compiled to make a setup: every release publishes
-the builder, the three runtimes it needs, and a digest for each file.
-
-```powershell
-# 1. Download nano-installer-native-x64.exe, the three stubs and SHA256SUMS.txt
-#    from https://github.com/nick2781/nano-installer/releases/latest into one folder
-
-# 2. Build a setup from a project folder
-.\nano-installer-native-x64.exe build --project C:\path\to\my-project
-```
-
-Your setup lands in `dist/<installer_name>` inside the project. If you would rather click than type,
-start `nano-installer-gui-x64.exe` from the same release and pick the project folder there.
-
-Full walkthrough: [Quick start](docs/en/QUICK_START.md).
-
-Working on the tools themselves is a different job: clone the repository, run `git lfs install`
-once (the icons, the example's images and the archiver under `tools/` are Git LFS objects, so a
-source ZIP arrives without them), and build with `scripts\build.ps1`. [Contributing](CONTRIBUTING.md)
-lists the checks a change has to pass.
+| One file to ship | A single setup `.exe` with your icon, version info and branding |
+| A clean machine | No runtime and no framework: the setup carries what it needs |
+| Your pages | XML layouts drawn with your own backgrounds and buttons |
+| Eleven UI languages | Built in, and one JSON file adds another |
+| Progress and finish pages | The current step is named live, and the finish page can start what it installed |
+| Upgrade, rollback, update packages | Re-running upgrades in place, a failed step rolls back, and `--delta-from` ships only what changed |
+| Uninstall | Takes back what it wrote, and keeps user data by default |
+| Administrator rights | Asked of Windows only when the project says so |
+| Scripts and plugins | Rhai install and uninstall steps, plus DLLs built against [`include/nano_plugin.h`](docs/en/PLUGIN_API.md) |
+| Screen readers | The page, the focus, typed text and live progress are announced, over MSAA and `IDispatch` |
+| GUI or command line | The Windows 10+ visual builder, or the same engine driven from CI |
+| Also a package | `--msi` wraps the setup for an estate that deploys through Windows Installer |
 
 ## A project folder
 
@@ -68,114 +59,36 @@ MyApp/
   layouts/                  XML pages: welcome, progress, finish, uninstall
   assets/                   backgrounds, buttons, icons (1x and @2x variants)
   locales/                  one JSON file per language
-  scripts/                  optional install/uninstall logic
+  scripts/                  optional install and uninstall logic
   payload/app.7z            your application files, zipped or 7z-compressed
 ```
 
-Paths in the configuration are relative to the project folder, so you can move a project anywhere. The
-quickest start is to copy `examples/TapTap` and replace what is inside — the shape of the
-configuration, not the artwork, which belongs to its rights holders. [`examples/`](examples/README.md)
-lists all three examples and what each one proves.
-
-## What your setup does today
-
-- One executable installs and uninstalls. It is built for Windows 7 SP1 x64 and later, and
-  everything listed here has been observed on Windows 10 and 11; Windows 7 itself has not, so
-  test your setup there before you ship it to one.
-- Hand it a ZIP or a 7z payload. It reads the file itself and picks the matching runtime, so you never
-  set a format option.
-- Your users watch live progress with the current step named, and the finish page can launch what it
-  installed.
-- Run the same setup again and it upgrades in place. If a step fails, the machine goes back to the
-  version it had.
-- Desktop, Start menu and autostart entries are created only when the user asks for them, and cleaned
-  up again on uninstall.
-- Users keep their data on uninstall unless they clear that option themselves.
-- Eleven UI languages switch instantly, and a page can link to your terms of service or privacy
-  policy.
-- Users pick the install directory with the standard Windows folder chooser, or type and edit the
-  path: mouse or double-click selection, copy and paste, undo.
-- East Asian text goes in through a proper IME composition window, with the candidate list under the
-  caret.
-- When a project sets `install.require_admin`, the setup asks Windows for administrator rights, so
-  nobody has to right-click and choose Run as administrator.
-- The setup asks a localized question before it closes the window.
-- The installation folder disappears as soon as an uninstall finishes. If the user put files there,
-  it stays.
-- Colours, rounded corners and outlines are drawn as your layout asks for them, and the pointer turns
-  into a hand over anything clickable.
-- When the built-in steps are not enough, a small script file can drive install and uninstall. A
-  failing script rolls back and never leaves a half-installed product.
-- A project can ship its own plugins: a 64-bit DLL built against
-  [`include/nano_plugin.h`](docs/en/PLUGIN_API.md), embedded in the setup and called from the script
-  as `plugin_call("dll::function", [...])`. What a plugin writes goes through the host, so the
-  uninstall still takes it back.
-- A page is announced to a screen reader, not just drawn: the focus, a field's value as it is typed,
-  the words and the bar a running task publishes, and the card a question is drawn on. A client that
-  asks by member name over `IDispatch` gets the same answers as one using `MSAA`.
-- A build can also wrap the finished setup in the package a larger estate deploys: `--msi <file>`
-  writes a `.msi` that installs the product with no window through Windows Installer and removes it
-  again, and a newer package upgrades the release an older one installed.
-- The visual builder for Windows 10 and later produces byte-for-byte the same result as the command
-  line.
-
-## Not there yet
-
-- Neither a setup nor the installer package around it is code-signed, so Windows SmartScreen warns
-  about an unknown publisher; installing the package for the whole machine needs an elevated session.
-- **Windows 7 support is theoretical.** Every build is audited against the system calls Windows 7
-  has, so nothing depends on a newer API by accident, but no setup has ever been run on a real
-  Windows 7 SP1 machine. Treat the baseline as a claim until someone makes that run, and test your
-  own setup on Windows 7 before you ship it to one:
-  [Windows compatibility](docs/en/WINDOWS_COMPATIBILITY.md#running-the-acceptance).
+Paths are relative to the folder, so a project moves anywhere. The quickest start is to copy
+[`examples/TapTap`](examples/README.md) and replace what is inside — the shape of the configuration,
+not the artwork, which belongs to its rights holders.
 
 ## Documentation
 
-Documentation site: **https://nick2781.github.io/nano-installer/**
+[Quick start](docs/en/QUICK_START.md) &middot; [Configuration](docs/en/CONFIG_REFERENCE.md) &middot;
+[Page layout](docs/en/XML_LAYOUT_GUIDE.md) &middot; [Languages](docs/en/LOCALIZATION.md) &middot;
+[Custom steps](docs/en/SCRIPT_API.md) &middot; [Plugins](docs/en/PLUGIN_API.md) &middot;
+[Visual builder](docs/en/GUI.md) &middot; [Migrating from NSIS](docs/en/MIGRATION_FROM_NSIS.md)
 
-That site is a viewer over the Markdown files published beside it, so it reads without a browser too:
-[`docs/llms.txt`](docs/llms.txt) indexes every page for a coding agent, and
-[`docs/llms-full.txt`](docs/llms-full.txt) is the English documentation in one file.
+Site: **https://nick2781.github.io/nano-installer/**, and Chinese pages live in
+[`docs/zh-CN`](docs/zh-CN/). Every page is also a Markdown file, so
+[`docs/llms.txt`](docs/llms.txt) indexes them for an agent and
+[`docs/llms-full.txt`](docs/llms-full.txt) is the English documentation in one file. Architecture,
+build and release, Windows compatibility, the test plan and the production status are in
+[`docs/en`](docs/en/) for maintainers.
 
-Product guides: [Quick start](docs/en/QUICK_START.md) &middot;
-[Visual builder](docs/en/GUI.md) &middot;
-[Configuration](docs/en/CONFIG_REFERENCE.md) &middot;
-[Page layout](docs/en/XML_LAYOUT_GUIDE.md) &middot;
-[Languages](docs/en/LOCALIZATION.md) &middot;
-[Custom steps](docs/en/SCRIPT_API.md) &middot;
-[Plugin ABI](docs/en/PLUGIN_API.md) &middot;
-[Migrating from NSIS](docs/en/MIGRATION_FROM_NSIS.md)
+## Contributing, security, licence
 
-Technical notes: [Architecture](docs/en/ARCHITECTURE.md) &middot;
-[Build and release](docs/en/BUILD_AND_RELEASE.md) &middot;
-[Windows compatibility](docs/en/WINDOWS_COMPATIBILITY.md) &middot;
-[Test plan](docs/en/TEST_PLAN.md) &middot;
-[Production status](docs/en/PRODUCTION_STATUS.md) &middot;
-[Project layout](docs/en/PROJECT_STRUCTURE.md)
-
-Releases carry the five executables and a `SHA256SUMS.txt` beside them, so a download can be checked
-with `sha256sum -c SHA256SUMS.txt`.
-
-Chinese documentation lives in [docs/zh-CN](docs/zh-CN/).
-
-## Contributing
-
-[CONTRIBUTING.md](CONTRIBUTING.md) has the working-tree setup, the checks a change has to pass, and
-the rules this repository keeps. Bugs, plugin problems, feature requests and questions each have an
-[issue form](.github/ISSUE_TEMPLATE); every form asks for the version and the run log, because a
-report without them costs a round trip.
-
-Please report security problems through private vulnerability reporting rather than in an issue —
-see [SECURITY.md](SECURITY.md), which also lists the things that are knowingly not vulnerabilities
-here, such as the missing code signature. What is expected of everyone in this repository is in
-[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
-
-## Rights and license
-
-- The Rust source in this repository is licensed under the [MIT License](LICENSE).
-- `examples/TapTap` is a validation project. The TapTap trademarks, images, and copy in it belong
-  to **易玩（上海）网络科技有限公司** and their respective rights holders; they are not
-  MIT-licensed. The screenshots in `assets/` are captures of that example, so the same applies to
-  them.
-- Setups you generate carry the resources you configure for your own product, under your own
-  licensing.
+[CONTRIBUTING.md](CONTRIBUTING.md) has the working tree, the checks a change passes and the rules this
+repository keeps, including that work reaches `main` through a pull request.
+[Issue forms](.github/ISSUE_TEMPLATE) ask for the version and the run log, because a report without
+them costs a round trip. Security problems go through
+[private vulnerability reporting](SECURITY.md), not an issue; that page also lists what is knowingly
+not a vulnerability here. Everyone in this repository is held to
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). The Rust source is [MIT licensed](LICENSE), while the
+trademarks, images and copy of `examples/TapTap` belong to 易玩（上海）网络科技有限公司 and are not
+MIT-licensed — the screenshots in `assets/` are captures of that example.
