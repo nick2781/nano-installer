@@ -8,8 +8,10 @@ file with your logo, your pages and your wording, and your users install nothing
 
 > **Status:** early implementation, not ready for production distribution. Install actions write
 > files and registry entries, so test only inside a disposable VM; neither a setup nor the
-> installer package around it is code-signed, and Windows 7 support has not been accepted on a
-> real machine yet. See [production status](PRODUCTION_STATUS.md).
+> installer package around it is code-signed. Windows 7 support has not been accepted on a real
+> machine yet, so treat it as theoretical and test your setup there before you ship it to one;
+> see [production status](PRODUCTION_STATUS.md) and
+> [Windows compatibility](WINDOWS_COMPATIBILITY.md#running-the-acceptance).
 
 <img src="https://github.com/nick2781/nano-installer/raw/main/assets/setup-welcome-en-US.png" alt="The first page of a setup built from the TapTap example" width="640">
 
@@ -24,7 +26,7 @@ page as the runtime drew it rather than a mock-up.
 | | |
 | --- | --- |
 | One file to ship | A single setup `.exe` carrying your icon, version info, and branding |
-| Runs on a clean machine | Windows 7 SP1 x64 or later, with nothing to install first |
+| Runs on a clean machine | Built for Windows 7 SP1 x64 and later, and the user installs nothing first. Windows 7 itself is untested, as the status above says |
 | Your pages and controls | Described in XML, using your own backgrounds and buttons |
 | Eleven UI languages | Built in, and you can add more in plain JSON |
 | Upgrades and rollback | Re-running the setup upgrades in place, and returns to the previous state if a step fails |

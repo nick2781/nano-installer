@@ -25,7 +25,7 @@ every page it declares, so the picture is what the runtime drew rather than a mo
 | | |
 | --- | --- |
 | One file to ship | A single setup `.exe` carrying your icon, version info, and branding |
-| Runs on a clean machine | Windows 7 SP1 x64 or later, with nothing to install first |
+| Runs on a clean machine | Built for Windows 7 SP1 x64 and later, and the user installs nothing first. Windows 7 itself is untested: see below |
 | Your pages and controls | Described in XML, using your own backgrounds and buttons |
 | Eleven UI languages | Built in, and you can add more in plain JSON |
 | Upgrades and rollback | Re-running the setup upgrades in place, and returns to the previous state if a step fails |
@@ -79,7 +79,9 @@ lists all three examples and what each one proves.
 
 ## What your setup does today
 
-- One executable installs and uninstalls, on Windows 7 SP1 x64 and later.
+- One executable installs and uninstalls. It is built for Windows 7 SP1 x64 and later, and
+  everything listed here has been observed on Windows 10 and 11; Windows 7 itself has not, so
+  test your setup there before you ship it to one.
 - Hand it a ZIP or a 7z payload. It reads the file itself and picks the matching runtime, so you never
   set a format option.
 - Your users watch live progress with the current step named, and the finish page can launch what it
@@ -121,8 +123,11 @@ lists all three examples and what each one proves.
 
 - Neither a setup nor the installer package around it is code-signed, so Windows SmartScreen warns
   about an unknown publisher; installing the package for the whole machine needs an elevated session.
-- Windows 7 support is checked automatically against the system calls each build uses, but has not
-  yet been signed off on a real Windows 7 SP1 machine.
+- **Windows 7 support is theoretical.** Every build is audited against the system calls Windows 7
+  has, so nothing depends on a newer API by accident, but no setup has ever been run on a real
+  Windows 7 SP1 machine. Treat the baseline as a claim until someone makes that run, and test your
+  own setup on Windows 7 before you ship it to one:
+  [Windows compatibility](docs/en/WINDOWS_COMPATIBILITY.md#running-the-acceptance).
 
 ## Documentation
 

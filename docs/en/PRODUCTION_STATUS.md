@@ -334,7 +334,8 @@ product, and the hooks described under [Signing](#signing) are where that pipeli
    can follow, not a formality.
 
 Until that run happens, the automated results are what there is: they hold on Windows 11, and on
-Windows 7 SP1 nothing has been observed.
+Windows 7 SP1 nothing has been observed. Treat the baseline as theoretical in the meantime, and
+test your own setup on Windows 7 before you ship it to one.
 
 ## Known limitations
 
@@ -343,7 +344,8 @@ Windows 7 SP1 nothing has been observed.
   rather than prompts for under `/qn`.
 
 - The runtime stubs embed the Rhai engine, which raised each stub from roughly 0.57-0.66 MB to
-  about 1.8-1.9 MB.
+  2.01-2.10 MB, measured on this machine: the uninstaller is the smallest at 2.01 MB and the LZMA
+  stub the largest at 2.10 MB, with the ZIP stub at 2.07 MB.
 - An elevated setup and its uninstaller run at high integrity, so a product that writes only to
   `%LOCALAPPDATA%` should leave `install.require_admin` off.
 - Display scaling on a multi-monitor desktop: a setup declares both `dpiAware` (read by

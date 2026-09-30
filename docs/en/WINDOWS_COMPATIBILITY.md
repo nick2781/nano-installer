@@ -4,7 +4,14 @@ Everything you ship targets `x86_64-win7-windows-msvc`, with Windows 7 SP1 x64 a
 supported system. There are no 32-bit or ANSI variants to keep in sync.
 
 The visual builder (`nano-installer-gui-x64.exe`) runs on Windows 10 x64 and later because it uses
-eframe/egui. It only creates installers; the setup it produces still runs on Windows 7 SP1.
+eframe/egui. It only creates installers; the setup it produces is built to run on Windows 7 SP1.
+
+**Windows 7 support has never been observed.** The baseline above is what every build targets and
+what the import audit checks, so nothing a setup calls was added after Windows 7. That is an
+argument about imports rather than a measurement, though, and no setup has been run on a Windows 7
+SP1 machine. Treat the baseline as a claim: test your own setup on Windows 7 before you ship it to
+one. [Running the acceptance](#running-the-acceptance) is the procedure that turns the claim into a
+fact, and it is written to be followed by whoever has the machine.
 
 ## What the runtime relies on
 
@@ -31,7 +38,8 @@ Every build audits the PE imports of the builder, all three stubs, and each setu
 fails if a blocked Windows 8 or Windows 10 API appears, so the files cannot statically depend on a
 newer system API.
 
-Static checks do not prove the installer works. You can only claim formal Windows 7 SP1 x64 support
+Static checks do not prove the installer works, and nothing below has been observed yet. You can
+only claim formal Windows 7 SP1 x64 support
 after a run on a clean machine covering PNG decoding, text rendering, mouse input, window
 behaviour, extraction, installation, and uninstallation. Those machines should also have update
 KB3033929 (SHA-2 code signing support) installed.

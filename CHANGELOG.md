@@ -56,6 +56,14 @@
   站点根目录按浏览器语言选一个落地，并从 `/en/`、`/zh-CN/` 进来时记住这个选择。页名写在 `docs/index.html`
   里，`scripts/audit_docs_languages.ps1` 拿它和两个目录逐个核对，路由本身由 `scripts/check_language_switch.js`
   在没有浏览器的情况下跑一遍；两个检查都在文档工作流里。
+- `PRODUCTION_STATUS`（两语）里的运行时体积按实测改准：三个运行时是 2.01-2.10 MB，原文写的
+  「约 1.8-1.9 MB」已经差了一成左右。顺带核对了 `time` 0.3.55 升级后的体积，五个产物与 v2026.9.29
+  完全一致（0.68 / 3.84 / 2.10 / 2.07 / 2.01 MB），这个发布指标没有变化。
+- Windows 7 的说法改准了。功能表里的「Windows 7 SP1 x64 及以上」原来读起来像已经支持，现在写成
+  「面向它构建、但 Windows 7 本身未验证」，并在两个首页的状态提示、`WINDOWS_COMPATIBILITY`（两语）
+  与 `PRODUCTION_STATUS`（两语）里说清楚：基线是每次构建的目标、导入审计守着它，但这只是关于导入的
+  论证而不是实测，没有任何安装包在真实 Windows 7 SP1 机器上跑过——要发给 Win7 用户，请照验收流程
+  自己测一遍。
 - 项目自己的两个 JSON 现在容忍 UTF-8 BOM。`installer_config.json` 与 `locales/*.json` 只要带 BOM
   （Windows 上的编辑器、PowerShell 的 `Set-Content -Encoding UTF8` 都会写），原来会被 `serde_json` 当成
   「expected value at line 1 column 1」直接拒绝，而文档恰恰是让人手写这两个文件。现在读的时候先摘掉 BOM：

@@ -92,8 +92,10 @@ file with your logo, your pages and your wording, and your users install nothing
 
 > **Status:** early implementation, not ready for production distribution. Install actions write
 > files and registry entries, so test only inside a disposable VM; neither a setup nor the
-> installer package around it is code-signed, and Windows 7 support has not been accepted on a
-> real machine yet. See [production status](PRODUCTION_STATUS.md).
+> installer package around it is code-signed. Windows 7 support has not been accepted on a real
+> machine yet, so treat it as theoretical and test your setup there before you ship it to one;
+> see [production status](PRODUCTION_STATUS.md) and
+> [Windows compatibility](WINDOWS_COMPATIBILITY.md#running-the-acceptance).
 
 <img src="https://github.com/nick2781/nano-installer/raw/main/assets/setup-welcome-en-US.png" alt="The first page of a setup built from the TapTap example" width="640">
 
@@ -108,7 +110,7 @@ page as the runtime drew it rather than a mock-up.
 | | |
 | --- | --- |
 | One file to ship | A single setup `.exe` carrying your icon, version info, and branding |
-| Runs on a clean machine | Windows 7 SP1 x64 or later, with nothing to install first |
+| Runs on a clean machine | Built for Windows 7 SP1 x64 and later, and the user installs nothing first. Windows 7 itself is untested, as the status above says |
 | Your pages and controls | Described in XML, using your own backgrounds and buttons |
 | Eleven UI languages | Built in, and you can add more in plain JSON |
 | Upgrades and rollback | Re-running the setup upgrades in place, and returns to the previous state if a step fails |
@@ -2506,7 +2508,14 @@ Everything you ship targets `x86_64-win7-windows-msvc`, with Windows 7 SP1 x64 a
 supported system. There are no 32-bit or ANSI variants to keep in sync.
 
 The visual builder (`nano-installer-gui-x64.exe`) runs on Windows 10 x64 and later because it uses
-eframe/egui. It only creates installers; the setup it produces still runs on Windows 7 SP1.
+eframe/egui. It only creates installers; the setup it produces is built to run on Windows 7 SP1.
+
+**Windows 7 support has never been observed.** The baseline above is what every build targets and
+what the import audit checks, so nothing a setup calls was added after Windows 7. That is an
+argument about imports rather than a measurement, though, and no setup has been run on a Windows 7
+SP1 machine. Treat the baseline as a claim: test your own setup on Windows 7 before you ship it to
+one. [Running the acceptance](#running-the-acceptance) is the procedure that turns the claim into a
+fact, and it is written to be followed by whoever has the machine.
 
 ## What the runtime relies on
 
@@ -2533,7 +2542,8 @@ Every build audits the PE imports of the builder, all three stubs, and each setu
 fails if a blocked Windows 8 or Windows 10 API appears, so the files cannot statically depend on a
 newer system API.
 
-Static checks do not prove the installer works. You can only claim formal Windows 7 SP1 x64 support
+Static checks do not prove the installer works, and nothing below has been observed yet. You can
+only claim formal Windows 7 SP1 x64 support
 after a run on a clean machine covering PNG decoding, text rendering, mouse input, window
 behaviour, extraction, installation, and uninstallation. Those machines should also have update
 KB3033929 (SHA-2 code signing support) installed.
@@ -3610,7 +3620,8 @@ product, and the hooks described under [Signing](#signing) are where that pipeli
    can follow, not a formality.
 
 Until that run happens, the automated results are what there is: they hold on Windows 11, and on
-Windows 7 SP1 nothing has been observed.
+Windows 7 SP1 nothing has been observed. Treat the baseline as theoretical in the meantime, and
+test your own setup on Windows 7 before you ship it to one.
 
 ## Known limitations
 
@@ -3619,7 +3630,8 @@ Windows 7 SP1 nothing has been observed.
   rather than prompts for under `/qn`.
 
 - The runtime stubs embed the Rhai engine, which raised each stub from roughly 0.57-0.66 MB to
-  about 1.8-1.9 MB.
+  2.01-2.10 MB, measured on this machine: the uninstaller is the smallest at 2.01 MB and the LZMA
+  stub the largest at 2.10 MB, with the ZIP stub at 2.07 MB.
 - An elevated setup and its uninstaller run at high integrity, so a product that writes only to
   `%LOCALAPPDATA%` should leave `install.require_admin` off.
 - Display scaling on a multi-monitor desktop: a setup declares both `dpiAware` (read by
