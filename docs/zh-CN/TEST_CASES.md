@@ -16,6 +16,7 @@ Rust doc comment，再退回用例名。
 | `a_button_state_image_falls_back_to_the_normal_one` | 只画了部分状态的版面照样画得出按钮：缺 `hover-image`、`pressed-image` 或 `disabled-image` 时退回 `normal-image`。被条件挡住的按钮优先用 `disabled-image`，没有 id 的控件则完全收不到悬停和按下。 |
 | `a_button_waits_for_each_state_its_condition_can_name` | `enabled-when` 让一个控件取决于另一个控件，指南列的 `checked`、`unchecked`、`visible`、`hidden` 四种状态按它们点名的复选框或面板判断；条件写成一串用逗号隔开的条件时全部成立才算成立，多打的逗号留下的空条件算不成立；运行时看不懂的状态、页面上找不到的控件都会把按钮挡住而不是放过点击，没写条件的按钮可用，说明这个属性是可选的。 |
 | `a_button_waits_for_the_field_its_condition_names` | `enabled-when` 点名一个输入框时，按钮等的是那个值合不合格：字段还空着（`required` 说的就是这种）时安装键既不登记点击区域也不登记悬停，填进一个工程接受的路径就把点击还回来，清空后又收回去；同一个页面上写 `dir:invalid` 的那个按钮正好相反。 |
+| `a_byte_order_mark_on_a_project_json_file_is_taken_off` | 开头带 UTF-8 BOM 的 `installer_config.json` 与 `locales/*.json` 照样读得进来：Windows 上的编辑器会写这个标记，原来解析直接失败；现在读的时候先摘掉，也不会带进安装包让运行时再摔一次。版面 XML 一直不受影响。 |
 | `a_call_is_two_names_and_a_path_is_not_one` | `plugin_call` 的第一个参数只有 `dll::function` 一种写法：两段都齐的照收；少一段、只有一段、或者写成路径的（带分隔符或 `..`）当场拒绝，插件按工程带在包里的 DLL 名认，不按路径认。 |
 | `a_caret_sits_after_the_characters_before_it` | 文本光标画在前面的字符之后，位置随下标右移；下标超出文本长度时仍然留在输入框内。 |
 | `a_cancel_button_stops_the_project_script_and_leaves_nothing_installed` | 页面上放一个 `action="cancel"` 的按钮，在真窗口里点它：正在跑的任务在脚本那一步停下，向导回到任务起始的那一页，脚本已经建出来的目录被撤掉，一个字节都没留下。 |
