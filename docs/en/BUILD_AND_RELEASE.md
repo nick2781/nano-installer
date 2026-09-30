@@ -237,6 +237,18 @@ Within a section, everything after `<!-- release-notes:end -->` is technical det
 the repository changelog. The published notes carry the product-facing summary above the marker.
 Pass `-Full` to publish the whole section.
 
+The published half is what a reader sees beside a download, so it holds only what changed for them:
+a capability that appeared, a behaviour that improved, a defect that is gone, a limit that was made
+honest. How the release job is wired is not part of that — repository script paths, workflow files,
+branch protection, dependency bots and the pipeline's own tests all go below the marker, where they
+stay in the repository's record. The product's own vocabulary is not repository vocabulary: a project
+keeps its install logic in `scripts/`, and a release note about that folder belongs above the marker.
+`scripts/audit_release_notes.ps1` fails a section whose published half carries the repository's, and
+it names the line and the word it refused. CI runs it beside the generator check, and the release job
+runs it again before it builds the body. It reads the working section and every release from
+`2026.9.30` on; sections published before that were written before the rule and are left as they were
+published.
+
 `scripts/changelog_notes.ps1` is saved with a UTF-8 BOM because it contains a Chinese footer and
 Windows PowerShell decodes a BOM-less script with the ANSI code page. Without the BOM the footer
 looks correct on a UTF-8 development machine and reaches the published notes as mojibake.
