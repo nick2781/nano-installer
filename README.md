@@ -25,7 +25,7 @@ Nothing to install and nothing to compile — every
 runtimes it needs and a digest for each file.
 
 ```powershell
-# 1. Download the releases files into one folder
+# 1. Download the release files into one folder
 # 2. Point the builder at a project folder
 .\nano-installer-native-x64.exe build --project C:\path\to\my-project
 ```
