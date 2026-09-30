@@ -190,7 +190,7 @@ release 正文。`scripts/audit_script_encoding.ps1` 会在每次构建开始时
 的产品向说明。需要发布完整段落时加 `-Full`。
 
 issue 表单的「版本」一栏拿某个 release 举例，这个例子要跟着版本走，别落后几个版本：
-`.github/ISSUE_TEMPLATE/*.yml` 现在是 `v2026.9.29`，下次发版时一起改。
+它跟着版本一起改，是发版步骤的一部分。
 
 ## 核对一个已发布的版本
 
