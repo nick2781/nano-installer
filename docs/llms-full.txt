@@ -99,28 +99,25 @@ file with your logo, your pages and your wording, and your users install nothing
 
 <img src="https://github.com/nick2781/nano-installer/raw/main/assets/setup-welcome-en-US.png" alt="The first page of a setup built from the TapTap example" width="640">
 
-That is the first page of `examples/TapTap`, captured at 192 dpi by
-`scripts/capture_setup_snapshots.ps1`, which photographs every page the example declares and
-checks each one against the project's own layout. The file is 1440x900 for a page laid out as
-720x450: two pixels per layout pixel, so it stays sharp on a display that scales, and it is the
-page as the runtime drew it rather than a mock-up.
+That is the first page of `examples/TapTap`, built and photographed by
+`scripts/capture_setup_snapshots.ps1`: the page as the runtime drew it, not a mock-up.
 
 ## What you get
 
 | | |
 | --- | --- |
-| One file to ship | A single setup `.exe` carrying your icon, version info, and branding |
-| Runs on a clean machine | Built for Windows 7 SP1 x64 and later, and the user installs nothing first. Windows 7 itself is untested, as the status above says |
-| Your pages and controls | Described in XML, using your own backgrounds and buttons |
-| Eleven UI languages | Built in, and you can add more in plain JSON |
-| Upgrades and rollback | Re-running the setup upgrades in place, and returns to the previous state if a step fails |
-| Uninstall | Takes back what it put down, and keeps user data by default |
-| Administrator rights | Requested from Windows when the config asks for them |
-| Progress and finish pages | Live progress names the current step, and the finish page can start what it installed |
-| Update packages | `--delta-from` ships only the files whose bytes changed, and the setup checks what is already on the machine before it writes |
-| Screen readers | A reader in another process is told the page, the focus, the value of a field as it is typed, the words a running task publishes, and the card a question is drawn on |
-| Plugins | A third party extends a setup with a DLL built against [`include/nano_plugin.h`](PLUGIN_API.md), called from the project's script |
-| GUI, or a command line | Click through the visual builder, or drive the same engine from CI |
+| One file to ship | A single setup `.exe` with your icon, version info and branding |
+| A clean machine | No runtime and no framework: the setup carries what it needs |
+| Your pages | XML layouts drawn with your own backgrounds and buttons |
+| Eleven UI languages | Built in, and one JSON file adds another |
+| Progress and finish pages | The current step is named live, and the finish page can start what it installed |
+| Upgrade, rollback, update packages | Re-running upgrades in place, a failed step rolls back, and `--delta-from` ships only what changed |
+| Uninstall | Takes back what it wrote, and keeps user data by default |
+| Administrator rights | Asked of Windows only when the project says so |
+| Scripts and plugins | Rhai install and uninstall steps, plus DLLs built against [`include/nano_plugin.h`](PLUGIN_API.md) |
+| Screen readers | The page, the focus, typed text and live progress are announced, over MSAA and `IDispatch` |
+| GUI or command line | The Windows 10+ visual builder, or the same engine driven from CI |
+| Also a package | `--msi` wraps the setup for an estate that deploys through Windows Installer |
 
 ## Start
 
