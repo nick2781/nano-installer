@@ -38,10 +38,11 @@ All published executables target `x86_64-win7-windows-msvc`. Do not introduce a 
 
 ## Branches
 
-`main` is the release line and is protected: a force push or a deletion is refused for everyone, and
-the two suite jobs are its required checks. Open a branch for anything larger than a small fix and
-bring it back through a pull request; a small fix may be committed straight to `main`. The rules and
-how each one binds are in [`CONTRIBUTING.md`](CONTRIBUTING.md).
+`main` is the release line and is closed to direct pushes: a change reaches it through a pull
+request, whose head has to pass the two suite jobs, and the branch's history can be neither
+force-pushed nor deleted. None of that is bypassable, so a commit made on `main` and pushed will be
+refused -- branch first, always. The rules and how each one binds are in
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Documentation
 

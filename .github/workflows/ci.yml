@@ -181,6 +181,18 @@ jobs:
         shell: powershell
         run: .\scripts\build_docs_index.ps1 -Verify
 
+      # The pages come in two languages, and the switch in the site's top bar is how
+      # a reader crosses between them: it can only pair what both trees hold. The docs
+      # workflow runs both of these too, on the push that publishes the site; they are
+      # here so that a change to a page, or to either check, is answered on the pull
+      # request that brings it rather than after it has landed.
+      - name: Audit the language pairs
+        shell: powershell
+        run: .\scripts\audit_docs_languages.ps1
+
+      - name: Check the language switch
+        run: node scripts\check_language_switch.js
+
       # A report is the evidence for a run, and the page a failed run leaves
       # behind is the least exercised path in these scripts: an absent build
       # passes null where a working one passes a collection, and a null read

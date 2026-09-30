@@ -66,10 +66,13 @@
   社区档案现在把它认成 Contributor Covenant。之前多写了一句说明、又在文末加了一节项目自己的话，
   GitHub 就不认了，所以项目自己的两条约定（中英文都能写、只争代码不争人）与上报路径改放在
   `CONTRIBUTING.md` 的行为一节。
-- `main` 上了分支保护，两条规矩绑得不一样：强推与删除分支由一条没有豁免的 ruleset 挡住，管理员也一样
-  （先在一条临时 ref 上试过才落到 `main`）；`Native Win7+ Build` 与 `Setup End to End` 是必需检查，
-  今天仍允许直接推送 `main`，推完照常在那个提交上跑检查，新功能开分支、走 PR 的习惯已经就位。这条
-  规矩写进了 `CONTRIBUTING.md`。
+- `main` 上了分支保护，现在三条规矩对管理员同样生效：强推与删除分支由一条没有豁免的 ruleset 挡住
+  （先在一条临时 ref 上试过才落到 `main`）；改动一律经 PR 进入，因为必需检查得在落地那个提交上是绿
+  的，而直推的提交在推上去之前根本没法先跑检查；`Native Win7+ Build` 与 `Setup End to End` 就是那两项
+  必需检查，分支还要先与 `main` 同步。PR 不需要批准（一个人维护的仓库，这条规矩管的是检查），合并后分支
+  自动删除。规矩写进了 `CONTRIBUTING.md` 与 `AGENTS.md`。
+- 仓库安全设置打开了：secret scanning、push protection 与 Dependabot 安全更新（另外两项 secret
+  scanning 能力属于付费档，公开仓库也开不了）。
 
 
 

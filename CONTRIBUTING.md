@@ -49,17 +49,20 @@ tree carries.
 ## Branches, and what `main` protects
 
 `main` is the release line: every tag is cut from it, and the CI runs on a commit are the evidence the
-release gate reads back. Two things are set on the branch today, and they bind differently:
+release gate reads back. Three rules are enforced on it, and none of them can be bypassed, this
+repository's administrator included:
 
-- **Its history.** `main` cannot be force-pushed and cannot be deleted — by anyone. A repository
-  ruleset with no exemption says so, and both refusals were observed on a scratch ref before it was
-  applied here.
-- **The suite.** `Native Win7+ Build` and `Setup End to End` are required checks, and they are what a
-  pull request has to satisfy. A maintainer pushing a reviewed commit straight to `main` is still
-  allowed today, and the checks then run on that commit; switching that off is one setting, and the
-  checks are already in place for the day it happens.
+- **Its history.** `main` cannot be force-pushed and cannot be deleted. A repository ruleset with no
+  exemption says so, and both refusals were observed on a scratch ref before it was applied here.
+- **A pull request.** Work reaches `main` through one, because the suite has to be green on the commit
+  that lands and a direct push cannot be checked before it exists. No approval is required: this is a
+  one-maintainer repository, so the rule is about the checks rather than about a second reader.
+- **The suite.** `Native Win7+ Build` and `Setup End to End` are the required checks, and the branch
+  has to be up to date with `main` before the pull request can merge. A branch is deleted once it has
+  merged, so the branch list stays a list of work in flight.
 
-Work that is more than a small fix belongs on its own branch and comes back through a pull request.
+So the shape of a change is: branch, pull request, two green jobs, merge. That is the whole of it --
+there is no short path for a small fix, which is what makes the two jobs mean something.
 
 ## What a change has to respect
 

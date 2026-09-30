@@ -10,6 +10,10 @@ on:
       # The index files under docs/ are generated from this data file, so a change
       # to it alone changes what the site publishes.
       - "scripts/docs_index.json"
+      # The two checks this workflow runs beside the index, so that a change to
+      # either of them alone is still a change to what the site is held to.
+      - "scripts/audit_docs_languages.ps1"
+      - "scripts/check_language_switch.js"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 
