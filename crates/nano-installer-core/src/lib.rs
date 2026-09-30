@@ -1940,11 +1940,29 @@ impl Drop for TemporaryExecutable {
     }
 }
 
+/// A UTF-8 byte order mark, which a Windows editor writes without being asked.
+const BYTE_ORDER_MARK: [u8; 3] = [0xEF, 0xBB, 0xBF];
+
+/// The same bytes without a leading byte order mark.
+///
+/// `serde_json` reads the bytes as UTF-8 and refuses the mark as a value, so a
+/// project whose configuration or locale was saved by a Windows editor failed
+/// with `expected value at line 1 column 1` -- and writing those two files by
+/// hand is what the documentation asks a reader to do, in whatever editor they
+/// have. The mark therefore comes off the way in, rather than being passed to a
+/// parser, and never reaches the bundle the runtime reads.
+fn without_byte_order_mark(data: &[u8]) -> &[u8] {
+    match data.strip_prefix(&BYTE_ORDER_MARK[..]) {
+        Some(rest) => rest,
+        None => data,
+    }
+}
+
 fn read_project_config(project: &Path) -> Result<serde_json::Value> {
     let path = project.join("installer_config.json");
     let data = std::fs::read(&path)
         .with_context(|| format!("missing project file: {}", path.display()))?;
-    serde_json::from_slice(&data)
+    serde_json::from_slice(without_byte_order_mark(&data))
         .with_context(|| format!("invalid project config: {}", path.display()))
 }
 
@@ -2198,11 +2216,12 @@ fn locale_scale_warnings(project: &Path, config: &serde_json::Value) -> Result<V
         let Some(locale) = path.file_stem().and_then(|stem| stem.to_str()) else {
             continue;
         };
-        let keys: HashSet<String> =
-            serde_json::from_slice::<HashMap<String, String>>(&std::fs::read(path)?)
-                .with_context(|| format!("invalid locale file: {}", path.display()))?
-                .into_keys()
-                .collect();
+        let keys: HashSet<String> = serde_json::from_slice::<HashMap<String, String>>(
+            without_byte_order_mark(&std::fs::read(path)?),
+        )
+        .with_context(|| format!("invalid locale file: {}", path.display()))?
+        .into_keys()
+        .collect();
         keys_by_locale.push((locale.to_string(), keys));
     }
     let default_keys = keys_by_locale
@@ -2344,12 +2363,15 @@ fn pack_project_with_progress(
     let config_path = project.join("installer_config.json");
     let config_data = std::fs::read(&config_path)
         .with_context(|| format!("missing project file: {}", config_path.display()))?;
-    let config: serde_json::Value = serde_json::from_slice(&config_data)?;
+    let config: serde_json::Value = serde_json::from_slice(without_byte_order_mark(&config_data))?;
     progress(format!(
         "Adding installer_config.json ({})",
         format_build_size(config_data.len() as u64)
     ));
-    files.push(("installer_config.json".to_string(), config_data));
+    files.push((
+        "installer_config.json".to_string(),
+        without_byte_order_mark(&config_data).to_vec(),
+    ));
 
     for (key, default) in [
         ("layouts_dir", "layouts"),
@@ -2557,7 +2579,15 @@ fn collect_file(root: &Path, path: &Path, files: &mut Vec<(String, Vec<u8>)>) ->
         .strip_prefix(root)?
         .to_string_lossy()
         .replace('\\', "/");
-    files.push((name, std::fs::read(path)?));
+    let data = std::fs::read(path)?;
+    // A locale file is JSON the runtime parses out of the bundle, so the mark
+    // comes off here as well rather than being carried into a setup.
+    let data = if name.to_ascii_lowercase().ends_with(".json") {
+        without_byte_order_mark(&data).to_vec()
+    } else {
+        data
+    };
+    files.push((name, data));
     Ok(())
 }
 
@@ -10035,6 +10065,52 @@ mod tests {
     use anyhow::Context;
     use std::collections::HashMap;
     use std::path::Path;
+
+    #[test]
+    fn a_byte_order_mark_on_a_project_json_file_is_taken_off() -> anyhow::Result<()> {
+        // A Windows editor writes a UTF-8 byte order mark, and PowerShell's own
+        // `Set-Content -Encoding UTF8` does too. A project saved that way used to
+        // be refused with `expected value at line 1 column 1`.
+        let temp = tempfile::tempdir()?;
+        let project = temp.path();
+        for directory in ["layouts", "assets", "locales"] {
+            std::fs::create_dir(project.join(directory))?;
+        }
+        let mark: &[u8] = &[0xEF, 0xBB, 0xBF];
+        let mut config = mark.to_vec();
+        config.extend_from_slice(
+            br#"{"project":{"name":"Marked"},"resources":{"payload_file":"payload/app.7z"},"wizard":{"pages":[{"layout":"layouts/config.xml"}]}}"#,
+        );
+        std::fs::write(project.join("installer_config.json"), &config)?;
+        std::fs::write(
+            project.join("layouts/config.xml"),
+            br#"<Page width="720" height="450" />"#,
+        )?;
+        std::fs::write(project.join("assets/background.png"), b"png")?;
+        let mut locale = mark.to_vec();
+        locale.extend_from_slice(br#"{"hello":"Hello"}"#);
+        std::fs::write(project.join("locales/zh-CN.json"), &locale)?;
+        std::fs::create_dir(project.join("payload"))?;
+        std::fs::write(project.join("payload/app.7z"), b"payload")?;
+
+        // The builder's own read of the configuration.
+        let parsed = crate::read_project_config(project)?;
+        assert_eq!(parsed["project"]["name"], "Marked");
+        // The pass that reads every locale file, which fails on JSON it cannot parse.
+        crate::locale_scale_warnings(project, &parsed)?;
+
+        // What a setup carries: the runtime parses these bytes the same way, so the
+        // mark may not travel into the bundle.
+        let packed = pack_project(project, None)?;
+        let files = parse_bundle(&packed)?;
+        for name in ["installer_config.json", "locales/zh-CN.json"] {
+            let data = files.get(name).expect("packed file is there");
+            assert!(!data.starts_with(mark), "{name} carries the mark");
+            serde_json::from_slice::<serde_json::Value>(data)
+                .with_context(|| format!("{name} does not parse after packing"))?;
+        }
+        Ok(())
+    }
 
     #[test]
     fn project_bundle_roundtrips_layout_assets_and_locales() -> anyhow::Result<()> {
