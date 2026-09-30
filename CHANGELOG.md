@@ -56,6 +56,11 @@
   站点根目录按浏览器语言选一个落地，并从 `/en/`、`/zh-CN/` 进来时记住这个选择。页名写在 `docs/index.html`
   里，`scripts/audit_docs_languages.ps1` 拿它和两个目录逐个核对，路由本身由 `scripts/check_language_switch.js`
   在没有浏览器的情况下跑一遍；两个检查都在文档工作流里。
+- 项目自己的两个 JSON 现在容忍 UTF-8 BOM。`installer_config.json` 与 `locales/*.json` 只要带 BOM
+  （Windows 上的编辑器、PowerShell 的 `Set-Content -Encoding UTF8` 都会写），原来会被 `serde_json` 当成
+  「expected value at line 1 column 1」直接拒绝，而文档恰恰是让人手写这两个文件。现在读的时候先摘掉 BOM：
+  构建器读配置、逐语言检查、以及打进安装包的字节都过同一处，所以 BOM 也不会跟着进安装包、让运行时再摔一次。
+  布局 XML 一直没事，XML 解析器本来就按规范处理 BOM。
 - 文档改成按用户的路子讲。`QUICK_START` 与两个首页原来让读者先装 Rust、先跑 `scripts/build.ps1`，
   再用 `target/release/...` 那个 exe；现在第一步是从 Releases 下载 `nano-installer-native-x64.exe`
   与三个运行时（外加 `SHA256SUMS.txt` 校验），直接对着项目目录跑。构建器找运行时的顺序（自己旁边、
