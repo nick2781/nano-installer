@@ -124,6 +124,16 @@ jobs:
             target/release/stubs/uninst-stub-native.exe
             tmp/SHA256SUMS.txt
 
+      # The published body is cut out of CHANGELOG.md by the step below, and the
+      # cut only knows where the marker is, not what is above it. Refuse to
+      # publish a section whose product-facing half describes the repository: the
+      # release page is what a reader sees, and it is the last place this can be
+      # caught before it is public.
+      - name: Audit what the release notes would publish
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: powershell
+        run: .\scripts\audit_release_notes.ps1
+
       - name: Build release notes from CHANGELOG.md
         if: startsWith(github.ref, 'refs/tags/v')
         shell: powershell

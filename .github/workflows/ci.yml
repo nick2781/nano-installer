@@ -150,6 +150,15 @@ jobs:
         shell: powershell
         run: .\scripts\verify_release_notes.ps1
 
+      # The generator cuts a section at `<!-- release-notes:end -->` and can
+      # only notice that the marker is missing. This audit reads what the cut
+      # would publish and fails when it describes the repository instead of the
+      # product, which is what a section fills up with when the release commit
+      # sorts it in a hurry.
+      - name: Audit release notes scope
+        shell: powershell
+        run: .\scripts\audit_release_notes.ps1
+
       # A release number is a date, and the date has to be the project's
       # calendar day for the commit it releases, and has to name the version in
       # Cargo.toml. These cases pin those rules down.
