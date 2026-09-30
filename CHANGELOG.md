@@ -56,6 +56,12 @@
   站点根目录按浏览器语言选一个落地，并从 `/en/`、`/zh-CN/` 进来时记住这个选择。页名写在 `docs/index.html`
   里，`scripts/audit_docs_languages.ps1` 拿它和两个目录逐个核对，路由本身由 `scripts/check_language_switch.js`
   在没有浏览器的情况下跑一遍；两个检查都在文档工作流里。
+- 文档改成按用户的路子讲。`QUICK_START` 与两个首页原来让读者先装 Rust、先跑 `scripts/build.ps1`，
+  再用 `target/release/...` 那个 exe；现在第一步是从 Releases 下载 `nano-installer-native-x64.exe`
+  与三个运行时（外加 `SHA256SUMS.txt` 校验），直接对着项目目录跑。构建器找运行时的顺序（自己旁边、
+  旁边的 `stubs`、`--stubs`、`NANO_INSTALLER_NATIVE_STUB_DIR`）、输出的默认落点、以及未签名会触发
+  SmartScreen 提示都写明了；从源码构建挪到页面末尾的一节，明确标成贡献者的路径。GUI 页、
+  `BUILD_AND_RELEASE` 的开头与仓库根目录的两个 README 也按同一口径改了。
 - 文档里不再有只写一种语言的页，补上了两份对照：`docs/en/TEST_CASES.md` 是用例说明的英文版（386 条；
   源码里 216 条用例没有 doc comment，所以是逐条翻译的，翻完逐条核对用例名、代码片段与数字）和
   `docs/zh-CN/AGENTS.md`（agent 文档地图的中文版）。语言检查因此不再允许例外：一棵树里有的页，另一棵树
@@ -71,6 +77,10 @@
   的，而直推的提交在推上去之前根本没法先跑检查；`Native Win7+ Build` 与 `Setup End to End` 就是那两项
   必需检查，分支还要先与 `main` 同步。PR 不需要批准（一个人维护的仓库，这条规矩管的是检查），合并后分支
   自动删除。规矩写进了 `CONTRIBUTING.md` 与 `AGENTS.md`。
+- `ci.yml` 的触发收窄到 `main` 与 PR。一次分支推送会同时产生 push 与 pull_request 两次同样的套件，
+  supersede 会结束较旧的那次，于是同一个提交上留下 cancelled 的检查记录；而必需检查一旦是 cancelled，
+  分支保护就直接拒绝合并（实测报 `2 of 2 required status checks are cancelled`）。现在分支由它的 PR
+  回答，`main` 由自己 push 的那轮回答，发布门禁读的正是后者。
 - 仓库安全设置打开了：secret scanning、push protection 与 Dependabot 安全更新（另外两项 secret
   scanning 能力属于付费档，公开仓库也开不了）。
 

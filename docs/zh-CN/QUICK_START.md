@@ -1,43 +1,55 @@
 # 快速开始
 
-你用一个示例项目生成安装包，再在虚拟机里跑一遍。
+一个项目目录进去，一个安装包出来。不需要先装什么，也不需要编译：构建器就是一个下载下来就能跑的
+exe，它生成的安装包在用户机器上不依赖你自己带的任何运行时。
 
-## 1. 准备环境
+## 1. 下载构建器
 
-- Windows x64，装好 MSVC 与 Windows SDK（Visual Studio 2022 Build Tools）
-- Rust，用仓库固定的工具链，并带上 `rust-src` 组件
+每次发布都会把构建所需的可执行文件连同摘要一起发出来：
 
-```powershell
-rustup toolchain install nightly-2025-11-08 --component rust-src,rustfmt,clippy
-```
+| 文件 | 是什么 |
+| --- | --- |
+| `nano-installer-native-x64.exe` | 命令行构建器 |
+| `nano-installer-gui-x64.exe` | 可视化构建器，Windows 10 及以上 |
+| `lzma-stub-native.exe` | 载荷是 7z 时安装包里带的运行时 |
+| `zlib-stub-native.exe` | 载荷是 zip 时安装包里带的运行时 |
+| `uninst-stub-native.exe` | 安装包里带的卸载程序 |
+| `SHA256SUMS.txt` | 上面每个文件一行的摘要 |
 
-## 2. 构建工具
+到[最新发布](https://github.com/nick2781/nano-installer/releases/latest)把它们取下来，放在同一个目录里。
+构建器会先在自己旁边找这三个运行时，也会看旁边的 `stubs` 子目录；`--stubs <目录>` 可以指到别处，
+`NANO_INSTALLER_NATIVE_STUB_DIR` 环境变量也一样。
 
-在仓库根目录执行：
-
-```powershell
-.\scripts\build.ps1
-```
-
-脚本会把构建器、两个运行时和卸载运行时都构建出来，再用真实的 ZIP 与 7z 归档验证解包是否正确。
-最后对每个生成的文件做一遍 Windows 7 基线审计。结果都在 `target/release/`。
-
-## 3. 生成示例安装包
+校验下载只要一条命令，比对的是 `SHA256SUMS.txt` 里那一行：
 
 ```powershell
-.\scripts\build.ps1 -Project examples\TapTap
+certutil -hashfile nano-installer-native-x64.exe SHA256
 ```
 
-示例项目会生成 `examples/TapTap/dist/TapTap_Setup.exe`。它的应用文件（payload）放在
-`examples/TapTap/payload/app.7z`，仓库里没有这个文件，构建之前你要自己放一个 7z 归档进去。
+这里发布的东西目前都没有代码签名，所以第一次运行时 Windows 可能提示「未知发布者」；
+[当前生产状态](PRODUCTION_STATUS.md) 写明了它影响什么、不影响什么。
 
-在构建器上再加一个 `--msi dist\\TapTap.msi`，就能同时拿到企业按 MSI 分发的那个包；
-它做什么、怎么部署见[构建与发布](BUILD_AND_RELEASE.md#安装包外的-msi)。
+## 2. 让它对着项目目录跑
 
-你也可以运行 `target/release/nano-installer-gui-x64.exe`，打开项目目录后点 **Build setup**。
-GUI 走的是同一套构建引擎，生成的安装包完全一致。详见[可视化构建](GUI.md)。
+项目目录里有 `installer_config.json`、版面 XML、每种语言一个 JSON 文件、你的素材，以及载荷
+（你的应用文件，zip 或 7z 归档）。它能包含哪些文件见[配置参考](CONFIG_REFERENCE.md)与
+[页面布局](XML_LAYOUT_GUIDE.md)；仓库里的 `examples/TapTap` 就是一个完整的项目目录。
 
-## 4. 在虚拟机中试用
+```powershell
+.\nano-installer-native-x64.exe build --project C:\path\to\my-project
+```
+
+生成的安装包放在项目的 `dist/<output.installer_name>` 里。加上 `--msi dist\MyProduct.msi` 还能同时
+拿到企业按 MSI 分发的那个包，它做什么见[构建与发布](BUILD_AND_RELEASE.md#安装包外的-msi)。
+
+想从示例开始，就把仓库克隆下来，让构建器对着 `examples\TapTap` 跑。示例的图片与 `tools/` 下的压缩
+工具都存在 Git LFS 里，直接下载源码 ZIP 拿到的是指针文件；它的载荷 `examples\TapTap\payload\app.7z`
+仓库里根本没有，构建前你要自己放一个 7z 归档进去。
+
+喜欢点界面的话，从同一次发布里取 `nano-installer-gui-x64.exe`，打开项目目录后点 **Build setup**。
+GUI 走的是同一套引擎，生成的安装包完全一致，详见[可视化构建](GUI.md)。
+
+## 3. 在虚拟机中试用
 
 把安装包复制到一台干净的虚拟机里。示例打开了 `install.require_admin`，
 默认安装路径也落在 `Program Files` 下，所以双击之后 Windows 会先弹一个提权确认框。
@@ -64,3 +76,10 @@ GUI 走的是同一套构建引擎，生成的安装包完全一致。详见[可
 你在界面上选的目录只在本次运行中覆盖配置的默认值，旁边的可用空间读数也会跟着变。
 
 不要在普通工作站上执行示例的安装动作：它会写入文件和注册表。
+
+## 想改工具本身
+
+上面这些都不需要编译器。从源码构建工具是贡献者做的事：[构建与发布](BUILD_AND_RELEASE.md) 讲了
+`scripts\build.ps1`，它会在 `target/release/` 下产出同样的五个可执行文件；
+[贡献指南](https://github.com/nick2781/nano-installer/blob/main/CONTRIBUTING.md) 讲了工作副本与一个改动
+要过的检查。

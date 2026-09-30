@@ -39,22 +39,26 @@ every page it declares, so the picture is what the runtime drew rather than a mo
 
 ## Get started
 
-You need Windows x64 with the MSVC build tools, plus the Rust toolchain pinned in this repository.
-Clone with `git clone`, and run `git lfs install` once: the icons, the example's images and the
-archiver under `tools/` are stored in Git LFS, so a source ZIP download arrives without them.
+Nothing has to be installed and nothing has to be compiled to make a setup: every release publishes
+the builder, the three runtimes it needs, and a digest for each file.
 
 ```powershell
-# 1. Build the tools (once per checkout)
-.\scripts\build.ps1
+# 1. Download nano-installer-native-x64.exe, the three stubs and SHA256SUMS.txt
+#    from https://github.com/nick2781/nano-installer/releases/latest into one folder
 
 # 2. Build a setup from a project folder
-.\target\release\nano-installer-native-x64.exe build --project .\examples\TapTap
+.\nano-installer-native-x64.exe build --project C:\path\to\my-project
 ```
 
 Your setup lands in `dist/<installer_name>` inside the project. If you would rather click than type,
-start `target/release/nano-installer-gui-x64.exe` and pick the project folder there.
+start `nano-installer-gui-x64.exe` from the same release and pick the project folder there.
 
 Full walkthrough: [Quick start](docs/en/QUICK_START.md).
+
+Working on the tools themselves is a different job: clone the repository, run `git lfs install`
+once (the icons, the example's images and the archiver under `tools/` are Git LFS objects, so a
+source ZIP arrives without them), and build with `scripts\build.ps1`. [Contributing](CONTRIBUTING.md)
+lists the checks a change has to pass.
 
 ## A project folder
 

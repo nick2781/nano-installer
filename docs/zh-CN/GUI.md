@@ -1,12 +1,15 @@
 # 可视化构建
 
 可视化构建是 Windows 10+ 的前端，和 CLI 用同一套构建引擎，不会把 CLI 当子进程启动。
+从[最新发布](https://github.com/nick2781/nano-installer/releases/latest)取
+`nano-installer-gui-x64.exe` 与那三个运行时，放在同一个目录里，然后启动它：
 
 ```powershell
-.\target\release\nano-installer-gui-x64.exe
+.\nano-installer-gui-x64.exe
 ```
 
-启动后是一个空工作区，不会自动打开任何示例。
+启动后是一个空工作区，不会自动打开任何示例。从源码构建出来的可执行文件在 `target/release/` 下，
+那是贡献者走的路。
 
 ## 五步完成一次构建
 

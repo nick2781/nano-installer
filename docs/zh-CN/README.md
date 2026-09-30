@@ -33,13 +33,15 @@ Installer 把它打成一份 Windows 安装包；图标、界面和文案都由�
 
 ## 上手
 
+从[最新发布](https://github.com/nick2781/nano-installer/releases/latest)取构建器，以及它会在自己旁边
+找的那三个运行时，然后让它对着项目目录跑：
+
 ```powershell
-.\scripts\build.ps1
-.\target\release\nano-installer-native-x64.exe build --project .\examples\TapTap
+.\nano-installer-native-x64.exe build --project C:\path\to\my-project
 ```
 
-接着看[快速开始](QUICK_START.md)，照着生成第一个安装包并在虚拟机里试一遍；也可以改用
-[可视化构建](GUI.md)，它操作的是同一套引擎。
+接着看[快速开始](QUICK_START.md)，生成第一个安装包并在虚拟机里试一遍；也可以改用
+[可视化构建](GUI.md)，它操作的是同一套引擎。从源码构建工具是贡献者的事，见[构建与发布](BUILD_AND_RELEASE.md)。
 
 ## 指南
 

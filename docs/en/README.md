@@ -38,13 +38,17 @@ page as the runtime drew it rather than a mock-up.
 
 ## Start
 
+Take the builder, and the three runtimes it looks for beside itself, from the [latest
+release](https://github.com/nick2781/nano-installer/releases/latest), then point it at a project
+folder:
+
 ```powershell
-.\scripts\build.ps1
-.\target\release\nano-installer-native-x64.exe build --project .\examples\TapTap
+.\nano-installer-native-x64.exe build --project C:\path\to\my-project
 ```
 
-Then read the [quick start](QUICK_START.md) to build your first setup and try it in a VM, or drive the
-same engine from the [visual builder](GUI.md).
+Then read the [quick start](QUICK_START.md) to make your first setup and try it in a VM, or drive the
+same engine from the [visual builder](GUI.md). Building the tools from source is for contributors, and
+[build and release](BUILD_AND_RELEASE.md) covers it.
 
 ## Guides
 
