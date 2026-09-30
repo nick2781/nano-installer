@@ -242,8 +242,7 @@ Windows PowerShell decodes a BOM-less script with the ANSI code page. Without th
 looks correct on a UTF-8 development machine and reaches the published notes as mojibake.
 
 The issue forms name a release in their version field, so that placeholder moves with the version
-rather than advertising one two releases back; `.github/ISSUE_TEMPLATE/*.yml` says `v2026.9.29`
-until the next release is cut.
+rather than advertising one two releases back; it is updated as part of cutting a release.
 
 ## Checking a published release
 
