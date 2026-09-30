@@ -1,5 +1,10 @@
 # Build and release
 
+This page is for someone working on the tools themselves. A project that only wants a setup
+builds nothing: it downloads the builder from a release and runs it, as the
+[quick start](QUICK_START.md) describes. Everything below is how the published executables are
+produced.
+
 ## One release baseline
 
 The CLI, the runtimes, and every setup you generate use `x86_64-win7-windows-msvc`, with Windows 7

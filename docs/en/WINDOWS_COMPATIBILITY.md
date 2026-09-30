@@ -44,11 +44,12 @@ than an impression.
 **Prepare.** A clean Windows 7 SP1 x64 machine or virtual machine, build 7601, with update KB3033929
 installed, and a checkpoint to go back to afterwards, because the run installs software. If the
 project declares a dependency it downloads, the machine also needs KB3140245 and later for TLS 1.2,
-or that step is recorded as not covered. Build the setup on a machine that has the toolchain -- the
-published builder and stubs are enough:
+or that step is recorded as not covered. Building the setup needs no toolchain: take the builder and
+the three runtimes from a release, as the [quick start](QUICK_START.md) describes, put them in one
+folder, and point the builder at the project.
 
 ```powershell
-.\target\release\nano-installer-native-x64.exe build --project <your project> --stubs <stubs directory>
+.\nano-installer-native-x64.exe build --project <your project>
 ```
 
 Then copy that one setup file to the Windows 7 machine. A project that exercises the pages, more than

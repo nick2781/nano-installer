@@ -1,13 +1,16 @@
 # Visual builder
 
 The visual builder gives you a Windows 10+ window on the same build engine the CLI uses. It never
-spawns the CLI as a child process.
+spawns the CLI as a child process. Take `nano-installer-gui-x64.exe` and the three runtimes from
+the [latest release](https://github.com/nick2781/nano-installer/releases/latest), put them in one
+folder, and start it:
 
 ```powershell
-.\target\release\nano-installer-gui-x64.exe
+.\nano-installer-gui-x64.exe
 ```
 
-It opens with an empty workspace and does not load any example for you.
+It opens with an empty workspace and does not load any example for you. Building the tools from
+source puts the same executable under `target/release/`, which is the path a contributor takes.
 
 ## A build in five steps
 

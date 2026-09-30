@@ -36,22 +36,25 @@ Installer 把它打包成一个 Windows 安装包。图标、界面和文案都�
 
 ## 上手
 
-需要 Windows x64、MSVC 构建工具，以及本仓库固定的 Rust 工具链。请用 `git clone` 取代码，并先跑一次
-`git lfs install`：图标、示例图片和 `tools/` 下的压缩工具都存在 Git LFS 里，直接下载源码 ZIP 拿到的是
-指针文件而不是它们本身。
+生成一个安装包既不用先装什么，也不用编译：每次发布都会把构建器、它需要的三个运行时，以及每个文件
+一行的摘要一起发出来。
 
 ```powershell
-# 1. 构建工具（每个检出做一次）
-.\scripts\build.ps1
+# 1. 到 https://github.com/nick2781/nano-installer/releases/latest 把
+#    nano-installer-native-x64.exe、三个 stub 与 SHA256SUMS.txt 下到同一个目录
 
 # 2. 用项目目录生成安装包
-.\target\release\nano-installer-native-x64.exe build --project .\examples\TapTap
+.\nano-installer-native-x64.exe build --project C:\path\to\my-project
 ```
 
-生成的安装包放在项目的 `dist/<installer_name>` 里。不想敲命令的话，启动
-`target/release/nano-installer-gui-x64.exe`，在里面选项目目录也一样。
+生成的安装包放在项目的 `dist/<installer_name>` 里。不想敲命令的话，从同一次发布里取
+`nano-installer-gui-x64.exe`，在里面选项目目录也一样。
 
 完整步骤见[快速开始](docs/zh-CN/QUICK_START.md)。
+
+要改工具本身是另一件事：把仓库克隆下来，先跑一次 `git lfs install`（图标、示例图片和 `tools/` 下的
+压缩工具都是 Git LFS 对象，直接下载源码 ZIP 拿到的是指针文件），再用 `scripts\build.ps1` 构建。
+一个改动要过哪些检查见[贡献指南](CONTRIBUTING.md)。
 
 ## 一个项目目录长这样
 

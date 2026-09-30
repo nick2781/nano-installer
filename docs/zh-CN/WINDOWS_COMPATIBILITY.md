@@ -37,10 +37,11 @@ Windows 8 或 Windows 10 API，构建就失败。这样能证明文件在静态�
 
 **准备。** 一台干净的 Windows 7 SP1 x64 机器或虚拟机，内部版本 7601，装好 KB3033929；先做快照，
 因为验收会往机器上装软件。工程若要下载依赖，机器还需 KB3140245 及之后的更新才支持 TLS 1.2，否则
-这一步记为「未覆盖」。安装包在有工具链的机器上构建，用已发布的构建器与运行时即可：
+这一步记为「未覆盖」。构建这一步不需要工具链：从发布里取构建器与那三个运行时
+（见[快速开始](QUICK_START.md)），放进同一个目录，再让它对着工程跑：
 
 ```powershell
-.\target\release\nano-installer-native-x64.exe build --project <你的工程> --stubs <运行时目录>
+.\nano-installer-native-x64.exe build --project <你的工程>
 ```
 
 再把生成的那一个 exe 拷到 Windows 7 机器上。验收用的工程最好页面齐全、语言不止一种、带 PNG 素材和

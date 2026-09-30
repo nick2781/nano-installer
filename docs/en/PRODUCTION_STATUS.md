@@ -305,8 +305,9 @@ checks rather than assumes:
   when a newer push supersedes it, so a commit's last word is often a cancellation rather than a verdict.
   The release job asks GitHub for the runs of the commit and refuses to build unless the newest
   **whole-suite** run succeeded (`scripts/audit_release_evidence.ps1`, before anything expensive runs) --
-  `ci.yml` does not run for tag pushes, so that run is the branch's own push run rather than one the tag
-  itself started. A
+  `ci.yml` does not run for tag pushes, so that run is `main`'s own push run rather than one the tag
+  itself started; a branch's suite is the one its pull request ran, which is what the required checks on
+  `main` read before a merge. A
   push run is always the whole suite; a dispatched run is the whole suite when it was not given targets of
   its own, which the name of the job that runs them records (`ci.yml` appends `(narrowed)` to that job's
   name when `suite_command` is set), and a dispatched run of a commit whose workflow file predates that

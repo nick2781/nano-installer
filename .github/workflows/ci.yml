@@ -1,14 +1,21 @@
 name: CI
 
 on:
-  # Branch pushes only. A tag push is a release event: `release.yml` builds and
-  # publishes from it, and the release gate reads this workflow's runs as the
-  # evidence behind the tagged commit. A run started by the tag push would arrive
-  # as a newer whole-suite run that is still going, and the gate would refuse a
-  # commit whose suite had just passed -- which is what happened when v2026.9.28
-  # was cut. Testing the same commit twice buys nothing either.
+  # Pushes to the release line, and every pull request. A tag push is a release
+  # event: `release.yml` builds and publishes from it, and the release gate reads
+  # this workflow's runs as the evidence behind the tagged commit. A run started
+  # by the tag push would arrive as a newer whole-suite run that is still going,
+  # and the gate would refuse a commit whose suite had just passed -- which is what
+  # happened when v2026.9.28 was cut.
+  #
+  # A branch is answered by its pull request rather than by its own push. Both
+  # events fire for the same commit, and the supersede job below ends the older
+  # run: that leaves `cancelled` check runs beside the successful ones on one
+  # commit, and a required check that is cancelled is a branch protection that
+  # refuses to merge (`2 of 2 required status checks are cancelled`). One suite
+  # per commit is also what the same commit deserves.
   push:
-    branches: ["**"]
+    branches: ["main"]
   pull_request:
   workflow_dispatch:
     inputs:
