@@ -245,13 +245,15 @@ NSIS 的产品去签：NSIS 只提供 `!finalize` 与 `!uninstfinalize` 两个�
    [Windows 兼容性](WINDOWS_COMPATIBILITY.md#怎么跑这次验收)：那是一份能照着做的流程，不是一句要求。
 
 在这次验收跑完之前，能拿出来的就是这些自动化结果：它们在 Windows 11 上成立，在 Windows 7 SP1 上还没有观察。
+在那之前请把这条基线当成理论能力，发给 Win7 用户之前自己先在那台机器上测一遍。
 
 ## 已知限制
 
 - MSI 包同样没有签名，SmartScreen 仍会提示「未知发布者」；要装给整台机器需要提权的会话，静默
   安装时 Windows Installer 会直接拒绝而不是弹提权框。
 
-- 运行时内嵌 Rhai 引擎，每个运行时体积从约 0.57-0.66 MB 增至约 1.8-1.9 MB。
+- 运行时内嵌 Rhai 引擎，每个运行时体积从约 0.57-0.66 MB 增至 2.01-2.10 MB（本机实测）：卸载程序
+  最小，2.01 MB；ZIP 那个 2.07 MB；LZMA 那个最大，2.10 MB。
 - 提权后的安装包与卸载程序都以高完整性运行，
   只往 `%LOCALAPPDATA%` 写数据的产品应该关掉 `install.require_admin`。
 - 多显示器下的缩放：安装包同时申请 `dpiAware`（Windows 7/8.1 读取）
