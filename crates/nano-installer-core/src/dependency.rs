@@ -283,6 +283,10 @@ fn run(program: &Path, arguments: &[String], task: &Cancellation) -> Result<i64>
         // setup that is running silently must not flash a console window for
         // one.
         .creation_flags(CREATE_NO_WINDOW.0)
+        // And it is not handed this run's standard input: a setup started from
+        // an elevated console has none to give, and passing the invalid handle
+        // on makes `CreateProcess` refuse the spawn.
+        .stdin(std::process::Stdio::null())
         .spawn()
         .with_context(|| format!("cannot run {}", program.display()))?;
     loop {

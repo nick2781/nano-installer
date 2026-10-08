@@ -962,6 +962,13 @@ fn extract_archive(setup: &Path, archive: &Path, target: &Path, task: &Cancellat
         .arg("--extract")
         .arg(archive)
         .arg(target)
+        // The backend reads nothing from the console, and saying so is not a
+        // formality: a setup started from an elevated console has no valid
+        // standard input to inherit, and `CreateProcess` refuses the whole
+        // spawn with `ERROR_INVALID_HANDLE` when one is handed to it anyway.
+        // That is a silent install failing on a machine where the same command
+        // run unelevated works, which is what Windows 7 acceptance found.
+        .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()

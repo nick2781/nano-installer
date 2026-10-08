@@ -356,6 +356,16 @@ product, and the hooks described under [Signing](#signing) are where that pipeli
    `finalize.installer` and `finalize.uninstaller` hooks described under [Signing](#signing). Once
    that is in place, a product can follow the shape of `examples/TapTap`.
 
+2. A project that writes its own `scripts/install.rhai` cannot install over its own previous version.
+   The built-in flow (a project with no install script) replaces an existing installation correctly;
+   the script-driven flow does not, because it decides what the script deployed by diffing the
+   directory before and after, and on a re-install every payload file is already there, so the diff
+   is empty and the run stops with `the install script did not deploy TapTap.exe` and rolls back.
+   This is the third defect the Windows 7 acceptance found: installing a newer version over an older
+   one and re-installing the same version both end this way. Fixing it means having the script API's
+   extraction primitives record what they deployed instead of comparing directories afterwards;
+   until then, "re-running the setup upgrades in place" holds only for the built-in flow.
+
 The Windows 7 SP1 x64 acceptance run has happened (see [Verified](#verified)); what it left unobserved
 is in the next section.
 

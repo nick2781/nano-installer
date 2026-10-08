@@ -6,12 +6,12 @@ supported system. There are no 32-bit or ANSI variants to keep in sync.
 The visual builder (`nano-installer-gui-x64.exe`) runs on Windows 10 x64 and later because it uses
 eframe/egui. It only creates installers; the setup it produces is built to run on Windows 7 SP1.
 
-**Windows 7 support has never been observed.** The baseline above is what every build targets and
-what the import audit checks, so nothing a setup calls was added after Windows 7. That is an
-argument about imports rather than a measurement, though, and no setup has been run on a Windows 7
-SP1 machine. Treat the baseline as a claim: test your own setup on Windows 7 before you ship it to
-one. [Running the acceptance](#running-the-acceptance) is the procedure that turns the claim into a
-fact, and it is written to be followed by whoever has the machine.
+**Windows 7 SP1 x64 has been through one acceptance run**: build 7601, Ultimate, in a disposable
+virtual machine, with a setup built by the current builder. The baseline above is what every build
+targets and what the import audit checks, so nothing a setup calls was added after Windows 7; that
+run turned the argument about imports into a measurement, and what it covered and what it did not is
+recorded in [Production status](PRODUCTION_STATUS.md). To walk the same ground on your own machine,
+follow [Running the acceptance](#running-the-acceptance).
 
 ## What the runtime relies on
 
@@ -38,11 +38,13 @@ Every build audits the PE imports of the builder, all three stubs, and each setu
 fails if a blocked Windows 8 or Windows 10 API appears, so the files cannot statically depend on a
 newer system API.
 
-Static checks do not prove the installer works, and nothing below has been observed yet. You can
-only claim formal Windows 7 SP1 x64 support
-after a run on a clean machine covering PNG decoding, text rendering, mouse input, window
-behaviour, extraction, installation, and uninstallation. Those machines should also have update
-KB3033929 (SHA-2 code signing support) installed.
+Static checks do not prove the installer works, so there is an acceptance run on a real machine, and
+it has happened: on build 7601, PNG decoding, text rendering, mouse input, window behaviour,
+extraction, installation, and uninstallation were all reached, item by item, in
+[Production status](PRODUCTION_STATUS.md). What that run did not reach is the screen reader
+(Narrator or NVDA), window dragging and multi-monitor scaling, cursor shapes, and installing or
+removing a service. Machines should also have update KB3033929 (SHA-2 code signing support)
+installed, and one whose setup downloads a dependency needs KB3140245 and later as well.
 
 ## Running the acceptance
 

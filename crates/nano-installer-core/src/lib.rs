@@ -1152,6 +1152,10 @@ fn self_delete_current_image() {
     let _ = std::process::Command::new("cmd.exe")
         .raw_arg(format!("/c \"{}\"", script.display()))
         .creation_flags(CREATE_NO_WINDOW.0)
+        // The cleanup script reads nothing from the console, and a setup that
+        // was started from an elevated console has no valid standard input to
+        // hand it: passing that handle on makes the spawn fail outright.
+        .stdin(std::process::Stdio::null())
         .spawn();
 }
 
@@ -9612,6 +9616,10 @@ fn launch_installed_app() -> Result<()> {
         .context("installed application has no parent")?;
     std::process::Command::new(&app)
         .current_dir(directory)
+        // A product is started to run on its own, not to read this run's
+        // console: an elevated setup has no standard input to pass on, and
+        // handing the invalid handle over would refuse the launch instead.
+        .stdin(std::process::Stdio::null())
         .spawn()
         .with_context(|| format!("failed to launch {}", app.display()))?;
     Ok(())
