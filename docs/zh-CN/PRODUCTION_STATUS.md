@@ -295,8 +295,12 @@ Windows 7 SP1 x64 一次验收已经跑过（见[已验证](#已验证)），这
 - MSI 包同样没有签名，SmartScreen 仍会提示「未知发布者」；要装给整台机器需要提权的会话，静默
   安装时 Windows Installer 会直接拒绝而不是弹提权框。
 
-- 运行时内嵌 Rhai 引擎，每个运行时体积从约 0.57-0.66 MB 增至 2.02-2.11 MB（本机实测）：卸载程序
-  最小，2.02 MB；ZIP 那个 2.07 MB；LZMA 那个最大，2.11 MB。
+- 运行时内嵌 Rhai 引擎，引擎是每个运行时体积的大头：不含它时约 0.57-0.66 MB，含它之后本机实测
+  1.47-1.54 MB（卸载程序 1.47 MB、ZIP 那个 1.52 MB、LZMA 那个 1.54 MB）。此前是 2.02-2.11 MB，
+  那次精简按逐项实测取舍：`opt-level = "z"` 约 −350 KB，链接器的 `/OPT:ICF=3` 约 −170 KB
+  （MSVC 链接器默认不做这一级等价折叠），`panic = "immediate-abort"` 约 −170 KB，Rhai 的
+  `no_optimize` 与 `no_time` 合计约 −45 KB（脚本 API 两者都到不了）。同一批参数把构建器从 702 KB
+  压到 583 KB；可视化构建器另有 `gui` profile，因为 `z` 会让它反而增大 400 KB。
 - 提权后的安装包与卸载程序都以高完整性运行，
   只往 `%LOCALAPPDATA%` 写数据的产品应该关掉 `install.require_admin`。
 - 多显示器下的缩放：安装包同时申请 `dpiAware`（Windows 7/8.1 读取）

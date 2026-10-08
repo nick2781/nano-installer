@@ -409,9 +409,14 @@ The gaps this run left, written down rather than left looking tested:
   installing it for the whole machine needs an elevated session, which Windows Installer refuses
   rather than prompts for under `/qn`.
 
-- The runtime stubs embed the Rhai engine, which raised each stub from roughly 0.57-0.66 MB to
-  2.02-2.11 MB, measured on this machine: the uninstaller is the smallest at 2.02 MB and the LZMA
-  stub the largest at 2.11 MB, with the ZIP stub at 2.07 MB.
+- The runtime stubs embed the Rhai engine, which is where a stub's size goes: 0.57-0.66 MB without
+  it, and 1.47-1.54 MB with it, measured on this machine (the uninstaller 1.47 MB, the ZIP stub
+  1.52 MB, the LZMA stub 1.54 MB). It used to be 2.02-2.11 MB, and the difference was chosen by
+  measuring one lever at a time: `opt-level = "z"` by about 350 KB, the linker's `/OPT:ICF=3` by
+  about 170 KB (the MSVC linker does not fold at that level by default), `panic =
+  "immediate-abort"` by about 170 KB, and Rhai's `no_optimize` and `no_time` by about 45 KB
+  together, neither of which the script API can reach. The same flags took the builder from 702 KB
+  to 583 KB; the visual builder has a `gui` profile of its own, because `z` makes it 400 KB larger.
 - An elevated setup and its uninstaller run at high integrity, so a product that writes only to
   `%LOCALAPPDATA%` should leave `install.require_admin` off.
 - Display scaling on a multi-monitor desktop: a setup declares both `dpiAware` (read by

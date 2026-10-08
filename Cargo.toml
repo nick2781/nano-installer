@@ -33,13 +33,25 @@ winres = "0.1"
 image = { version = "0.25.8", default-features = false, features = ["png"] }
 sevenz-rust = { version = "0.6.1", default-features = false }
 zip = { version = "0.6.6", default-features = false, features = ["deflate"] }
-rhai = { version = "1.24", default-features = false, features = ["std", "only_i64", "no_module", "no_custom_syntax"] }
+rhai = { version = "1.24", default-features = false, features = ["std", "only_i64", "no_module", "no_custom_syntax", "no_optimize", "no_time"] }
 eframe = { version = "0.35.0", default-features = false, features = ["default_fonts", "glow"] }
 rfd = { version = "0.17.2", default-features = false }
 
 [profile.release]
-opt-level = "s"
+# Size is the metric a setup is judged by before it is run, and the runtime is
+# embedded in every setup a project ships: `z` trades a little speed on paths
+# that are dominated by file I/O and painting anyway. rhai is built without its
+# optimizer and its timestamp type for the same reason -- neither is reachable
+# from the script API this project documents.
+opt-level = "z"
 lto = true
 codegen-units = 1
 strip = true
 panic = "abort"
+
+# The visual builder is a desktop application, not something a project ships, and
+# `z` costs it more than it saves: it grew by 400 KB when the runtime's profile
+# became size-first.
+[profile.gui]
+inherits = "release"
+opt-level = "s"
