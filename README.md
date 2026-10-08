@@ -10,8 +10,7 @@ pages and your wording. Nothing to host, and nothing your users install first.
 
 > **Early implementation, not ready for production distribution.** Test in a disposable VM: an
 > install writes files and registry entries. Setups are unsigned, so Windows warns about an unknown
-> publisher. Windows 7 SP1 x64 has been through one acceptance run — install, uninstall and two
-> windowless runs on build 7601 — and what that run did not cover is written down. See
+> publisher. **Requires Windows 7 SP1 x64 or later.** See
 > [production status](docs/en/PRODUCTION_STATUS.md).
 
 <img src="assets/setup-welcome-en-US.png" alt="First page of a setup built from the TapTap example: the product logo, a tagline, the installation options, and an Install Now button" width="720">
