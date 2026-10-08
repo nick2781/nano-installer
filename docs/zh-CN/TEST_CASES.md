@@ -165,6 +165,7 @@ Rust doc comment，再退回用例名。
 | `a_silent_run_installs_the_components_the_project_defaults_to` | 没有页面的安装只能照工程自己的答案办：写了 `required` 的装上，`default` 为真的装上，两者都不是的不装。每个组件只带一个文件，装出来的东西在盘上直接读得到。 |
 | `a_silent_run_installs_the_dependency_the_machine_is_missing` | 机器缺什么就补什么，然后产品照常落地：依赖的规则看的是它安装程序留下的那个文件，用例读的也是同一件东西，装之前不在，装完就在，产品自己也在。中间没有一样是模拟的，跑起来的是真程序、真参数。 |
 | `a_spacer_takes_what_the_fixed_items_leave` | `Spacer` 自己不画东西，它把后面的项推到另一端：两个定宽按钮之间剩下的 200 像素全被它吸收。 |
+| `a_stale_probe_registration_is_reaped_and_a_live_one_is_left_alone` | 探针留在这台机器上的登记项，会在一次运行开始构建任何东西之前被清掉——那是唯一没有用例拥有它的时刻，也是被中断的运行留下的东西唯一能被收回的时机；安装目录还在机器上的那一个，留给拥有它的用例。 |
 | `a_styled_image_draws_into_a_sub_rectangle_at_the_opacity_it_declares` | `file='...' dest='...' fade='...'` 这种写法把图片画进控件内的一个子矩形，并按 `fade` 给透明度；目标矩形相对控件而不是页面，跟着控件一起被缩放。 |
 | `a_supported_locale_without_a_file_is_reported` | 工程声明支持、却没有对应语言文件的语言会被报告出来，因为别的环节不会报：运行时会退回默认语言，产品只是显示成另一种语言而已。 |
 | `a_system_colour_reads_as_an_opaque_layout_colour` | 机器报出来的系统颜色是 `0x00BBGGRR`，转成版面的写法要把字节反过来并补上不透明的 `FF`：`0x00112233` 读成 `#FF332211`，黑与白两个端点也各对一次。 |
