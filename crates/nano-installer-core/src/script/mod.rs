@@ -244,11 +244,17 @@ fn finish_install(context: &ScriptContext, exe_name: &str, prep: &InstallPrep) -
     let uninstaller_name = prep.uninstaller_name.as_str();
     let mut state = context.state();
     let after = Snapshot::take(&destination);
+    // What the script's own primitives wrote is part of the installation
+    // whether or not it was already there: an upgrade overwrites the files the
+    // previous version put in the same directory, and a manifest built from the
+    // difference alone would name none of them.
+    //
     // The uninstaller and the manifest are recorded by their own fields, so
     // they never belong in the file list the uninstaller deletes.
     let mut files = after
         .files_added_since(&state.before)
         .into_iter()
+        .chain(state.owned.iter().cloned())
         .filter(|path| path != Path::new(uninstaller_name))
         .filter(|path| path != Path::new(install::MANIFEST_NAME))
         .collect::<Vec<_>>();
@@ -258,6 +264,7 @@ fn finish_install(context: &ScriptContext, exe_name: &str, prep: &InstallPrep) -
     // manifest that dropped them would call them stale on the next upgrade.
     files.extend(state.kept.iter().cloned());
     files.sort();
+    files.dedup();
     if !files.iter().any(|path| path == Path::new(exe_name)) {
         bail!("the install script did not deploy {exe_name}")
     }

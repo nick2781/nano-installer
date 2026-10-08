@@ -4,9 +4,10 @@
 acceptance run**: build 7601, Ultimate, in a disposable virtual machine, where a setup built by the
 current builder was installed, uninstalled and run twice without a window. Everything that run
 covered is in [Verified](#verified); what it did not cover is in its own section after it, rather than
-left looking tested. The run also found and fixed a defect: a folder directly below a drive root was
-refused as an installation target (`--dir C:\MyApp` failed with "install path cannot be a drive
-root").
+left looking tested. The run also found and fixed three defects: a folder directly below a drive root
+was refused as an installation target (`--dir C:\MyApp` failed with "install path cannot be a drive
+root"), a windowless install started from an elevated console failed with an invalid handle, and a
+project driving its own install from a script could not install over its own previous version.
 
 Install actions write files and registry entries, so a new project's setup is still worth trying in a
 disposable virtual machine first; that is true of any installer.
@@ -29,7 +30,15 @@ disposable virtual machine first; that is true of any installer.
   own directory; the uninstall closing the running product and taking the payload, both shortcuts and
   both registry keys away; and `--silent` installs and uninstalls each exiting 0 and leaving a log
   where `--log` asked for it, naming the machine's version and bitness, the interface language,
-  whether the run was elevated, the product and its path, and every step it took.
+  whether the run was elevated, the product and its path, and every step it took. An in-place upgrade
+  was walked on the same machine: a second release installed over the first, dropping the file the
+  new payload no longer ships, landing the one only it carries, replacing the shared ones, moving the
+  version in the uninstall entry, and an uninstall then taking away everything the upgrade deployed.
+  The run also found and fixed three defects (see the [changelog](../../CHANGELOG.md)): a folder
+  directly below a drive root being refused, a windowless install started from an elevated console
+  failing on an invalid handle, and a script-driven project being unable to install over its own
+  previous version -- that last one found by this upgrade walk, and walked again here once it was
+  fixed.
 - The builder and the runtime are separate binaries; a setup never contains the builder.
 - ZIP and 7z payloads are detected from the file signature and routed to the matching runtime.
 - Both runtimes unpack real archives correctly, checked against expected SHA-256 hashes.
@@ -355,16 +364,6 @@ product, and the hooks described under [Signing](#signing) are where that pipeli
    builder does not sign and should not: the pipeline that publishes them does, through the
    `finalize.installer` and `finalize.uninstaller` hooks described under [Signing](#signing). Once
    that is in place, a product can follow the shape of `examples/TapTap`.
-
-2. A project that writes its own `scripts/install.rhai` cannot install over its own previous version.
-   The built-in flow (a project with no install script) replaces an existing installation correctly;
-   the script-driven flow does not, because it decides what the script deployed by diffing the
-   directory before and after, and on a re-install every payload file is already there, so the diff
-   is empty and the run stops with `the install script did not deploy TapTap.exe` and rolls back.
-   This is the third defect the Windows 7 acceptance found: installing a newer version over an older
-   one and re-installing the same version both end this way. Fixing it means having the script API's
-   extraction primitives record what they deployed instead of comparing directories afterwards;
-   until then, "re-running the setup upgrades in place" holds only for the built-in flow.
 
 The Windows 7 SP1 x64 acceptance run has happened (see [Verified](#verified)); what it left unobserved
 is in the next section.

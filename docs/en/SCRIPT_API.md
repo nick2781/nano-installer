@@ -95,6 +95,13 @@ them, and two archives that carry one relative path fail there and then. An upda
 are verified on the machine before anything is unpacked, and a machine that does not match fails the
 primitive rather than installing half of each version.
 
+Every file a script writes inside the installation directory is named in the manifest, and an
+uninstall removes them by that record: what `extract_payload*` unpacked, what `write_file` wrote,
+what `copy_uninstaller` put down, and what a plugin wrote. What is recorded is what this run wrote,
+not what the directory gained. Installing a new release over an older one leaves the payload's files
+already in the directory, and only the first question keeps the manifest whole -- and keeps an
+uninstall from leaving the upgraded files behind.
+
 `get_tools_dir()` unpacks the directory `resources.tools_dir` names into the setup's own scratch
 directory, keeping the relative paths, and returns that directory, which a script hands to
 `run_command`. A run unpacks the tools once: a second call answers with the same path. A project

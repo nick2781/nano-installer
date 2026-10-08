@@ -2718,6 +2718,64 @@ fn a_failing_run_leaves_its_log_behind_and_names_it() -> anyhow::Result<()> {
 // Upgrade
 // ---------------------------------------------------------------------------
 
+/// A project that drives its own install can be installed over its own previous
+/// version.
+///
+/// The built-in flow knows what it deployed because it deployed it; a script
+/// deploys through the same primitives, so the run has to be able to say what
+/// those wrote. A run that only compared the directory before and after saw
+/// nothing new on a re-install and refused the whole thing with "the install
+/// script did not deploy E2eProbe.exe", which is what Windows 7 acceptance
+/// found when it put a second release over the first.
+#[test]
+fn a_script_driven_install_replaces_its_own_previous_version() -> anyhow::Result<()> {
+    let Some(fixture) = Fixture::new(PayloadFormat::Zip, true, true) else {
+        skip_missing_stubs()?;
+        return Ok(());
+    };
+    fixture.write_script(
+        "install.rhai",
+        r#"
+        copy_uninstaller();
+        if !extract_payload() {
+            return;
+        }
+        "#,
+    )?;
+    fixture.build()?;
+    let log = fixture.destination.with_extension("install.log");
+    let first = run_silent_logged(&fixture.setup, Some(&fixture.destination), &log);
+    anyhow::ensure!(
+        first.is_ok(),
+        "the first install failed:\n{}",
+        std::fs::read_to_string(&log).unwrap_or_else(|_| "no log".to_string())
+    );
+    assert!(
+        fixture.destination.join("E2eProbe.exe").is_file(),
+        "the first install did not deploy the product"
+    );
+
+    // Over the top of itself: every file the payload carries is already there.
+    let second = run_silent_logged(&fixture.setup, Some(&fixture.destination), &log);
+    anyhow::ensure!(
+        second.is_ok(),
+        "the second install failed:\n{}",
+        std::fs::read_to_string(&log).unwrap_or_else(|_| "no log".to_string())
+    );
+    assert!(
+        fixture.destination.join("E2eProbe.exe").is_file(),
+        "the product went missing"
+    );
+
+    // And what it recorded is what an uninstall takes away again.
+    fixture.uninstall()?;
+    assert!(
+        !fixture.destination.join("E2eProbe.exe").is_file(),
+        "the uninstall left the product behind"
+    );
+    Ok(())
+}
+
 /// Installing this version over the previous one replaces the product and drops
 /// the files the new payload no longer ships.
 #[test]

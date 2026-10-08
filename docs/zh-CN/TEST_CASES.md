@@ -254,6 +254,7 @@ Rust doc comment，再退回用例名。
 | `inspects_taptap_project_without_dpi_warnings` | 检查示例工程 TapTap：名字、版本、文件版本、payload 格式、卸载器名字、默认安装路径、卸载器图标和 payload 大小都对得上，而且一条告警都没有。示例 payload 不在仓库里时这条用例跳过。 |
 | `install_button_uses_xml_images_for_interaction_state` | 安装按钮的状态图来自版面：条件没满足时用 `disabled-image`，满足后用 `normal-image`，悬停和按下各自换成对应的图；没有条件的按钮只用普通和禁用两张。 |
 | `installing_over_an_existing_installation_drops_stale_files` | 用这个版本覆盖上一个版本会替换产品，并删掉新 payload 里不再有的文件。 |
+| `a_script_driven_install_replaces_its_own_previous_version` | 安装由工程自己的脚本驱动时，也能装在自己的上一版之上：payload 的文件都已在目录里，运行仍然知道自己部署了什么，卸载仍会把这些文件带走。 |
 | `installs_a_fresh_directory_and_records_the_manifest` | 全新安装把 payload 的文件放到目标目录，manifest 列出这些文件，卸载器也一起放进去。 |
 | `item_spacing_and_gap_leave_the_same_distance_between_items` | `gap` 和 `item-spacing` 在项之间留出同样的距离，两个同时写时用更具体的那个。 |
 | `justify_content_places_the_run_inside_the_room_it_has` | `justify-content` 决定整行在剩余空间里的位置：默认靠左，`center` 居中，`end` 靠右，示例用的 `horizontal-align="right"` 是同一个意思。 |
