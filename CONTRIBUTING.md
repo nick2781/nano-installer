@@ -20,6 +20,13 @@ objects, and a source ZIP download arrives without them.
 .\scripts\run_tests.ps1                 # the whole suite
 ```
 
+The setup-level cases install throwaway products on the machine running them and take them away
+again as they end. A run that is killed — by the suite's watchdog, by Ctrl-C — does not get to, and
+what it leaves is a product in Programs and Features whose uninstaller lived in a temporary
+directory that is gone. `.\scripts\clean_probe_installs.ps1 -DryRun` lists what is left and
+`.\scripts\clean_probe_installs.ps1` removes it; entries a probe installed with administrator rights
+are machine-wide and need an elevated prompt, which the script says when it needs one.
+
 ## What a change has to pass
 
 Run these before opening a pull request; CI runs the same ones.

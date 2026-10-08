@@ -237,6 +237,10 @@ impl Fixture {
         silent: bool,
         include_exe: bool,
     ) -> Option<Self> {
+        // Before anything of this run is registered: what an earlier run left
+        // behind when it was killed is cleared here, and only here, because this
+        // is the moment at which no case of this process owns an entry.
+        reap_stale_probe_installations();
         let temp = tempfile::tempdir().expect("a temporary directory");
         let id = unique_case_id();
         let project = temp.path().join("project");
@@ -1428,6 +1432,157 @@ fn delete_registry_value(key: &str, name: &str) {
         .arg(name)
         .arg("/f")
         .output();
+}
+
+/// Writes one string value, creating the key when it is not there.
+fn write_registry_string(key: &str, name: &str, value: &str) {
+    let _ = Command::new("reg")
+        .arg("add")
+        .arg(key)
+        .arg("/v")
+        .arg(name)
+        .arg("/t")
+        .arg("REG_SZ")
+        .arg("/d")
+        .arg(value)
+        .arg("/f")
+        .output();
+}
+
+/// The names under `HKCU` this repository's probes own, and nothing else does.
+const PROBE_KEY_PREFIX: &str = "nano-installer";
+
+/// The key Programs and Features reads a registration out of.
+const UNINSTALL_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall";
+
+/// Clears what a killed run left registered on the machine running the tests.
+///
+/// [`Fixture`]'s drop guard clears a case's own installation when the case ends,
+/// which is what stops a failing assertion from leaving a product registered. A
+/// process that is killed outright -- by the suite's watchdog, by Ctrl-C, by the
+/// machine going to sleep -- never reaches it, and what survives is worse than a
+/// stray key: Programs and Features lists a product whose uninstaller lived in a
+/// temporary directory that is already gone, so nothing on the machine can take
+/// it away again.
+///
+/// This runs once, before the first case of the process builds anything, which
+/// is the one moment at which no case owns an entry. An entry whose recorded
+/// location is still on disk is left alone, so a case running in another process
+/// is never disturbed.
+fn reap_stale_probe_installations() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(reap_stale_probe_installations_once);
+}
+
+fn reap_stale_probe_installations_once() {
+    for name in registry_child_keys(UNINSTALL_KEY) {
+        if !name.starts_with(PROBE_KEY_PREFIX) {
+            continue;
+        }
+        let entry = format!(r"{UNINSTALL_KEY}\{name}");
+        if installation_is_gone(&entry) {
+            delete_registry_key(&entry);
+            // A case's own scratch key carries the same id as its entry.
+            delete_registry_key(&format!(r"HKCU\Software\{name}"));
+        }
+    }
+    // A package writes the directory it installed into under the publisher's own
+    // key, so that key is where a package's leftovers can be told apart.
+    for parent in registry_child_keys(r"HKCU\Software") {
+        if !parent.starts_with(PROBE_KEY_PREFIX) {
+            continue;
+        }
+        let base = format!(r"HKCU\Software\{parent}");
+        let children = registry_child_keys(&base);
+        for name in &children {
+            let key = format!(r"{base}\{name}");
+            if installation_is_gone(&key) {
+                delete_registry_key(&key);
+            }
+        }
+        // A parent whose every case has just been reaped says nothing about the
+        // machine and goes with them. One that was empty to begin with is left
+        // alone: it may be a case's scratch key, which has no location to read.
+        if !children.is_empty() && registry_child_keys(&base).is_empty() {
+            delete_registry_key(&base);
+        }
+    }
+}
+
+/// Whether a key records an installation that is no longer on disk.
+///
+/// A key that does not say where it installed is not called stale: nothing here
+/// can prove that it is.
+fn installation_is_gone(key: &str) -> bool {
+    let Ok(Some(entry)) = read_uninstall_entry(key) else {
+        return false;
+    };
+    let Some(location) = entry
+        .get("InstallLocation")
+        .and_then(serde_json::Value::as_str)
+    else {
+        return false;
+    };
+    !Path::new(location.trim_end_matches('\\'))
+        .join("uninst.exe")
+        .is_file()
+}
+
+/// The immediate subkeys of a key, by leaf name, or nothing when it is absent.
+fn registry_child_keys(parent: &str) -> Vec<String> {
+    let Ok(output) = Command::new("reg").arg("query").arg(parent).output() else {
+        return Vec::new();
+    };
+    if !output.status.success() {
+        return Vec::new();
+    }
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| line.trim().rsplit('\\').next().map(str::to_string))
+        .filter(|name| !name.is_empty())
+        .collect()
+}
+
+/// A registration whose installation is gone is reaped; one that is still there
+/// is left to its own case.
+#[test]
+fn a_stale_probe_registration_is_reaped_and_a_live_one_is_left_alone() -> anyhow::Result<()> {
+    let id = unique_case_id();
+    let stale = format!(r"{UNINSTALL_KEY}\nano-installer-e2e-reap-stale-{id}");
+    let stale_scratch = format!(r"HKCU\Software\nano-installer-e2e-reap-stale-{id}");
+    let live = format!(r"{UNINSTALL_KEY}\nano-installer-e2e-reap-live-{id}");
+    let live_directory = tempfile::tempdir()?;
+    std::fs::write(live_directory.path().join("uninst.exe"), b"")?;
+
+    write_registry_string(
+        &stale,
+        "InstallLocation",
+        r"C:\nano-installer-reaped-by-this-case",
+    );
+    write_registry_string(&stale_scratch, "Probe", "1");
+    write_registry_string(
+        &live,
+        "InstallLocation",
+        &live_directory.path().display().to_string(),
+    );
+
+    reap_stale_probe_installations_once();
+
+    assert!(
+        !registry_key_exists(&stale),
+        "an entry whose uninstaller is gone is still registered"
+    );
+    assert!(
+        !registry_key_exists(&stale_scratch),
+        "the stale case's own key is still on the machine"
+    );
+    assert!(
+        registry_key_exists(&live),
+        "an installation that is still on disk was reaped"
+    );
+
+    delete_registry_key(&live);
+    Ok(())
 }
 
 /// One value of a registry key with the type the machine stored it as, or
