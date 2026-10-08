@@ -45,6 +45,21 @@
   提到它们是产品说明；而「流水线」这个词留给读者那一侧——构建器把做好的安装包交给项目自己的签名
   流水线，说的是用户的流水线。规矩写进了 `docs/{en,zh-CN}/BUILD_AND_RELEASE.md` 的「发布说明」一节与
   本文件开头。
+- 例行依赖升级：`tempfile` 3.25.0 → 3.27.0（只有测试用到）与 `roxmltree` 0.20.0 → 0.21.1（版面 XML
+  解析，随运行时编进三个 stub）都直接合入，套件全绿。按新的 lock 重建，五个产物与 v2026.9.30 相差
+  几 KB：0.69 / 3.84 / 2.11 / 2.07 / 2.02 MB（v2026.9.30 是 0.68 / 3.84 / 2.10 / 2.07 / 2.01 MB），
+  三个运行时的区间因此是 2.02-2.11 MB，`PRODUCTION_STATUS`（两语）里的区间跟着改准。
+- 可视化构建器的 GUI 框架升到 `eframe` 0.35（0.33 → 0.35）。这一次不是改个版本号就能过的：新版把
+  `App` 的入口从 `update(&Context, &mut Frame)` 换成 `ui(&mut Ui, &mut Frame)`，侧栏与上下两条面板
+  合并成一个 `Panel`（`Panel::left/top/bottom`，`exact_height` → `exact_size`、`default_width` →
+  `default_size`、`width_range` → `size_range`），`Context::style_mut` 换成 `all_styles_mut`，
+  `TextEdit` 的边框从 `bool` 换成 `Frame`，滚动源里的 `drag` 从 `bool` 换成 `DragScroll`。无头绘制
+  用例跟着改用 `Context::run_ui`，与实际窗口走同一套面板。移植只动了这一个文件里的六处，外观没有跟着
+  变：新旧两个二进制各自开窗口拍图，窗口尺寸一致（1093x776），逐像素差别与「同一个构建拍两次」的噪声
+  同量级，也就是没有肉眼可见的差别。
+- 代价如实记下：`nano-installer-gui-x64.exe` 从 3.84 MB 涨到 5.58 MB（+1.74 MB）。egui 0.35 把
+  accesskit 与新的 CPU 光栅器（`vello_cpu`）变成强制依赖，`default-features = false` 也关不掉。
+  涨的只有这一个开发工具：安装包与三个运行时的体积不受影响（0.69 / 2.11 / 2.07 / 2.02 MB）。
 
 ## [2026.9.30]
 
