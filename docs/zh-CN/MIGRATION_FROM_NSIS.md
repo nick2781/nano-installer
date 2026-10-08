@@ -1,4 +1,4 @@
-# 从 NSIS 迁移
+﻿# 从 NSIS 迁移
 
 一份 NSIS 脚本既是配置也是程序：`Section` 块按顺序跑，`File` 复制文件，`WriteRegStr` 写注册表，用户
 看到的每一屏都由 NSIS 运行时按宏画出来。这几件事在 NSIS 里是混在一起的，Nano Installer 把它们分开：
@@ -114,7 +114,7 @@ NSIS migration report for D:\src\legacy.nsi
 | `LicenseText`, `LicenseData` | direct | 许可协议那一页上的文字，或者指向它的链接 |
 | `LicenseForceSelection` | direct | 那一页上一个 `Checkbox`，继续按钮上写 `enabled-when="<它的 id>:checked"` |
 | `DirVar`, `DirVerify` | direct | 目录页的 `TextInput` 装着这个目录，能不能用由它自己的 `required`、`min-length` 与 `pattern` 规矩说了算 |
-| `AllowRootDirInstall` | none | 没有东西禁止装进某个盘符的根目录 |
+| `AllowRootDirInstall` | manual | 安装包拒绝盘符根目录本身；给它一个根目录下面的文件夹 |
 | `BringToFront`, `LockWindow` | none | 向导有自己的窗口，而且是自己画的 |
 
 ### 构建期，以及页面

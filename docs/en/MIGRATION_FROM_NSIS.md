@@ -1,4 +1,4 @@
-# Migrating from NSIS
+﻿# Migrating from NSIS
 
 An NSIS installer is one script that is also the program: `Section` blocks run,
 `File` copies, `WriteRegStr` writes, and everything the user sees is a macro the
@@ -127,7 +127,7 @@ checker reports one as `none`.
 | `LicenseText`, `LicenseData` | direct | the words on the licence page, or a link to them |
 | `LicenseForceSelection` | direct | a `Checkbox` on that page, and `enabled-when="<its id>:checked"` on the button that goes on |
 | `DirVar`, `DirVerify` | direct | the directory page's `TextInput` holds the folder, and its own `required`, `min-length` and `pattern` rules say what may go in it |
-| `AllowRootDirInstall` | none | nothing refuses to install into a drive root |
+| `AllowRootDirInstall` | manual | the setup refuses the drive root itself; name a folder below it |
 | `BringToFront`, `LockWindow` | none | the wizard owns its own window and draws itself |
 
 ### Building, and the pages

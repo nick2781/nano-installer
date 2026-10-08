@@ -6,8 +6,8 @@
 Installer 把它打成一份 Windows 安装包；图标、界面和文案都由你决定，用户的机器上不用预装任何东西。
 
 > **状态：** 早期实现，尚不适合对外发布产品。安装动作会写入文件和注册表，请在一次性虚拟机中测试。
-> 安装包本身没有代码签名。Windows 7 支持还没在真机上验收过，请当成理论能力，发给 Win7 用户之前自己
-> 在那台机器上测一遍；逐条见[当前生产状态](PRODUCTION_STATUS.md)与
+> 安装包本身没有代码签名。Windows 7 SP1 x64 已经在内部版本 7601 上跑过一次验收——装了一次、卸了一次，
+> 另有两次无窗口运行——没覆盖到的部分就写在结果旁边；逐条见[当前生产状态](PRODUCTION_STATUS.md)与
 > [Windows 兼容性](WINDOWS_COMPATIBILITY.md#怎么跑这次验收)。
 
 <img src="https://github.com/nick2781/nano-installer/raw/main/assets/setup-welcome-zh-CN.png" alt="用 TapTap 示例构建出来的安装包第一页" width="640">
