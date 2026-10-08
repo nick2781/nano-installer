@@ -2846,12 +2846,12 @@ a capability that appeared, a behaviour that improved, a defect that is gone, a 
 honest. How the release job is wired is not part of that — repository script paths, workflow files,
 branch protection, dependency bots and the pipeline's own tests all go below the marker, where they
 stay in the repository's record. The product's own vocabulary is not repository vocabulary: a project
-keeps its install logic in `scripts/`, and a release note about that folder belongs above the marker.
+keeps its install logic in `scripts/`, and a note about the builder handing a finished setup to the
+project's own signing pipeline describes the reader's pipeline, not this repository's.
 `scripts/audit_release_notes.ps1` fails a section whose published half carries the repository's, and
 it names the line and the word it refused. CI runs it beside the generator check, and the release job
-runs it again before it builds the body. It reads the working section and every release from
-`2026.9.30` on; sections published before that were written before the rule and are left as they were
-published.
+runs it again before it builds the body. It reads every section in the file, which is why the bodies
+published before the rule existed were rewritten to match it rather than left as they were.
 
 `scripts/changelog_notes.ps1` is saved with a UTF-8 BOM because it contains a Chinese footer and
 Windows PowerShell decodes a BOM-less script with the ANSI code page. Without the BOM the footer

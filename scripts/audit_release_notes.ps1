@@ -10,14 +10,10 @@
     pipeline is what a section tends to fill up with: script paths, workflow
     files, branch protection, dependency bots, cache keys.
 
-    So this audit reads every section that can still change and fails when the
-    published half carries repository machinery. The published half is what the
-    changelog beside a download says, and a reader deciding whether to install
-    the product has no use for how the release job is wired.
-
-    Sections released before $firstAuditedVersion were published before this
-    rule existed; their bodies are already public and are left as they are
-    rather than rewritten to match a rule that did not apply to them.
+    So this audit reads every section and fails when the published half carries
+    repository machinery. The published half is what the changelog beside a
+    download says, and a reader deciding whether to install the product has no
+    use for how the release job is wired.
 
     Run: .\scripts\audit_release_notes.ps1
 #>
@@ -28,23 +24,25 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-# The first version whose section was written under this rule. A section is
-# audited when it is the working section or a release at or after this one.
-$firstAuditedVersion = [version]"2026.9.30"
 $marker = "<!-- release-notes:end -->"
 
 # Everything here describes this repository rather than the product. Each entry
 # is a regular expression and the reason it is refused, because the failure
 # message has to say what to move rather than that something matched.
 #
-# The script pattern names the repository's own tooling by file type on purpose.
-# A project folder keeps its install logic in `scripts/`, which is the product's
-# own vocabulary and belongs in a release note; scripts/build.ps1 does not.
+# These are the unambiguous cases, and three things are deliberately absent.
+# The script pattern names the repository's own tooling by file type, because a
+# project folder keeps its install logic in `scripts/` -- the product's own
+# vocabulary. No entry refuses a source path as such: the example projects a
+# reader is told to copy live under `crates/` and `examples/`, so naming one of
+# them is a product statement. And the word for a pipeline is left alone: a
+# release note about the builder handing a finished setup to the project's own
+# signing pipeline is describing the reader's pipeline, not this repository's.
+# Judgement covers what a pattern cannot.
 $repositoryVocabulary = @(
     @{ Pattern = 'scripts/[\w.\-]+\.(ps1|js|mjs|cjs)\b'; Reason = "a repository script" },
     @{ Pattern = '\.github/'; Reason = "a repository or workflow path" },
     @{ Pattern = '\.ya?ml\b'; Reason = "a workflow or issue-form file" },
-    @{ Pattern = 'crates/'; Reason = "a source-tree path" },
     @{ Pattern = 'Cargo\.(toml|lock)'; Reason = "the Rust manifest" },
     @{ Pattern = '\bcargo\s'; Reason = "a Cargo command" },
     @{ Pattern = 'clippy|rustfmt'; Reason = "a lint or format command" },
@@ -86,14 +84,6 @@ $problems = @()
 
 for ($s = 0; $s -lt $starts.Count; $s++) {
     $section = $starts[$s]
-    $isWorking = $section.Name -eq "未发布"
-    if (-not $isWorking) {
-        # A suffix such as -r2 names a second release on one calendar day; the
-        # date is what decides whether the rule covers the section.
-        $version = [version]($section.Name -replace '-r\d+$', '')
-        if ($version -lt $firstAuditedVersion) { continue }
-    }
-
     $from = $section.Index + 1
     $to = if ($s + 1 -lt $starts.Count) { $starts[$s + 1].Index - 1 } else { $lines.Count - 1 }
     $body = @($lines[$from..$to])
@@ -145,4 +135,4 @@ if ($problems.Count -gt 0) {
     throw "A published release note section carries repository detail. Move it below '$marker'."
 }
 
-Write-Output "Release notes scope audit passed: $audited section(s) in scope, $publishedLines published line(s), no repository detail above the marker"
+Write-Output "Release notes scope audit passed: $audited section(s), $publishedLines published line(s), no repository detail above the marker"
