@@ -8,8 +8,9 @@ file with your logo, your pages and your wording, and your users install nothing
 
 > **Status:** early implementation, not ready for production distribution. Install actions write
 > files and registry entries, so test only inside a disposable VM; neither a setup nor the
-> installer package around it is code-signed. Windows 7 support has not been accepted on a real
-> machine yet, so treat it as theoretical and test your setup there before you ship it to one;
+> installer package around it is code-signed. Windows 7 SP1 x64 has been through one acceptance run
+> on build 7601 -- install, uninstall and two windowless runs -- and what it did not cover is
+> written down beside the result;
 > see [production status](PRODUCTION_STATUS.md) and
 > [Windows compatibility](WINDOWS_COMPATIBILITY.md#running-the-acceptance).
 

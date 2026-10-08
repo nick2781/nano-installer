@@ -9,7 +9,7 @@ use anyhow::{bail, Result};
 use serde_json::Value;
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap, VecDeque};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use super::Mode;
@@ -82,6 +82,11 @@ pub(super) struct ScriptState {
     /// Files an update package verified on the machine and left where they
     /// were, which the installation still owns.
     pub(super) kept: Vec<PathBuf>,
+    /// The files this run wrote inside the installation directory, relative to
+    /// it. What the installation owns is what its primitives put there, which
+    /// is not the same question as what the directory gained: an upgrade
+    /// overwrites the files its own previous version left behind.
+    pub(super) owned: Vec<PathBuf>,
     /// Set once the script replayed the manifest removal itself.
     pub(super) tracked_uninstall: bool,
     /// The directory the bundled tools were unpacked into, once a script asked.
@@ -232,6 +237,7 @@ impl ScriptContext {
                 registry_keys: Vec::new(),
                 services: Vec::new(),
                 kept: Vec::new(),
+                owned: Vec::new(),
                 tracked_uninstall: false,
                 tools: None,
                 plugins: None,
@@ -375,8 +381,26 @@ impl ScriptContext {
     }
 
     /// Records `target` before a script creates or overwrites it.
+    ///
+    /// A target inside the installation directory is also recorded as a file
+    /// this installation owns. The manifest is built from what the primitives
+    /// wrote rather than from what the directory gained, so a run that installs
+    /// over its own previous version still names every file it deployed; that
+    /// is the difference between an upgrade and a fresh install with a
+    /// populated directory, and only the recording can tell them apart.
     pub(super) fn record_write(&self, target: &Path) -> Result<()> {
-        self.state().journal.track(target)
+        let mut state = self.state();
+        if let Ok(relative) = target.strip_prefix(self.inner.install_path.as_path()) {
+            if !relative.as_os_str().is_empty()
+                && !relative
+                    .components()
+                    .any(|component| matches!(component, Component::ParentDir))
+                && !state.owned.iter().any(|recorded| recorded == relative)
+            {
+                state.owned.push(relative.to_path_buf());
+            }
+        }
+        state.journal.track(target)
     }
 
     /// Records the files an update package verified and left where they were.

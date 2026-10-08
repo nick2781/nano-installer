@@ -1,13 +1,44 @@
-﻿# Production status
+# Production status
 
-**Windows 7 SP1 -- the platform these artifacts claim as their minimum -- has never been observed.**
-Everything else in this document was verified on Windows 11 and in CI, and the one thing a release waits
-on is that acceptance run ([Blocking a release](#blocking-a-release)). Install actions write files and
-registry entries, so a new project's setup is worth trying in a disposable virtual machine first; that is
-true of any installer, and it is why the acceptance run is on the list rather than a formality.
+**Windows 7 SP1 x64 — the platform these artifacts claim as their minimum — has been through one
+acceptance run**: build 7601, Ultimate, in a disposable virtual machine, where a setup built by the
+current builder was installed, uninstalled and run twice without a window. Everything that run
+covered is in [Verified](#verified); what it did not cover is in its own section after it, rather than
+left looking tested. The run also found and fixed three defects: a folder directly below a drive root
+was refused as an installation target (`--dir C:\MyApp` failed with "install path cannot be a drive
+root"), a windowless install started from an elevated console failed with an invalid handle, and a
+project driving its own install from a script could not install over its own previous version.
+
+Install actions write files and registry entries, so a new project's setup is still worth trying in a
+disposable virtual machine first; that is true of any installer.
 
 ## Verified
 
+- The acceptance run on Windows 7 SP1 x64 (build 7601 Ultimate, a disposable virtual machine, a
+  standard VGA adapter and a USB pointer device): a setup built by the current builder installs and
+  uninstalls. Of the nine items in [Windows compatibility](WINDOWS_COMPATIBILITY.md#how-to-run-the-acceptance),
+  all but the screen reader, the window dragging and the service were reached -- a borderless window
+  with rounded corners, drawing its background bitmap, its icons and Chinese text from the layout;
+  Windows asking for elevation when `install.require_admin` is on ("Publisher: unknown", because
+  nothing is signed); the install button drawn from `disabled-image` in grey until the agreement is
+  ticked, then in its enabled state (8,994 of the 9,600 pixels inside the same 240 by 40 rectangle
+  changed); the payload landing with its nested directories; a desktop shortcut and start-menu
+  shortcuts (one for the product, one for the uninstall); the uninstall entry with every field
+  Windows' installed-programs list wants; the project's own `install.rhai` creating its `logs`
+  directory, writing its registry values and closing the previous version while it was running;
+  `launch_app` on the finish page starting the installed program, which wrote `launched.txt` into its
+  own directory; the uninstall closing the running product and taking the payload, both shortcuts and
+  both registry keys away; and `--silent` installs and uninstalls each exiting 0 and leaving a log
+  where `--log` asked for it, naming the machine's version and bitness, the interface language,
+  whether the run was elevated, the product and its path, and every step it took. An in-place upgrade
+  was walked on the same machine: a second release installed over the first, dropping the file the
+  new payload no longer ships, landing the one only it carries, replacing the shared ones, moving the
+  version in the uninstall entry, and an uninstall then taking away everything the upgrade deployed.
+  The run also found and fixed three defects (see the [changelog](../../CHANGELOG.md)): a folder
+  directly below a drive root being refused, a windowless install started from an elevated console
+  failing on an invalid handle, and a script-driven project being unable to install over its own
+  previous version -- that last one found by this upgrade walk, and walked again here once it was
+  fixed.
 - The builder and the runtime are separate binaries; a setup never contains the builder.
 - ZIP and 7z payloads are detected from the file signature and routed to the matching runtime.
 - Both runtimes unpack real archives correctly, checked against expected SHA-256 hashes.
@@ -329,16 +360,48 @@ product, and the hooks described under [Signing](#signing) are where that pipeli
 
 ## Blocking a release
 
-1. No acceptance run on a real Windows 7 SP1 machine. The suites and the snapshots run on Windows 11;
-   Windows 7 SP1 is a platform a setup claims to support and the one nothing has been observed on,
-   and no such machine is available at the moment. What that run has to cover, and where its result
-   is recorded, is written out in
-   [Windows compatibility](WINDOWS_COMPATIBILITY.md#running-the-acceptance): it is a procedure someone
-   can follow, not a formality.
+1. Neither the setup nor its uninstaller is signed, so Windows warns about an unknown publisher. The
+   builder does not sign and should not: the pipeline that publishes them does, through the
+   `finalize.installer` and `finalize.uninstaller` hooks described under [Signing](#signing). Once
+   that is in place, a product can follow the shape of `examples/TapTap`.
 
-Until that run happens, the automated results are what there is: they hold on Windows 11, and on
-Windows 7 SP1 nothing has been observed. Treat the baseline as theoretical in the meantime, and
-test your own setup on Windows 7 before you ship it to one.
+The Windows 7 SP1 x64 acceptance run has happened (see [Verified](#verified)); what it left unobserved
+is in the next section.
+
+## Not covered
+
+The gaps this run left, written down rather than left looking tested:
+
+- The screen reader (item 8 of [the acceptance checklist](WINDOWS_COMPATIBILITY.md#how-to-run-the-acceptance)):
+  Narrator and NVDA were never actually running and listened to. An MSAA client read the wizard instead --
+  validated first against Notepad, so that the client itself was known to read an ordinary window -- and
+  Windows 7 and Windows 11 answered byte for byte identically. What it read: the window is named after the
+  product, the language combobox carries "简体中文" as both its name and its value, the agreement checkbox
+  carries its sentence, and buttons whose labels are artwork report the name `accessible-name` gives them.
+  That reading closed two gaps and left one open:
+
+  - A button whose label is artwork has no words to read, so a user heard "button" and nothing else. A
+    layout now names such a control with `accessible-name`, and the example's minimize, close and
+    custom-options buttons use it.
+  - The checkbox's name kept its inline link markup (`[《服务协议》](agreement)`); it is now the sentence
+    without the markup.
+  - **A disabled control is not in the accessibility tree at all.** The install button is unavailable
+    until the agreement is ticked, and until then it is not an element: a user cannot hear that the page
+    has one or what it is waiting for, and it appears, named, only once the box is ticked. The tree is
+    built from the Tab order, and an unavailable control is not in the Tab order. This one was left
+    alone: it is not a platform matter (Windows 11 behaves the same), and changing it means deciding
+    where an unavailable control sits in the tree and in what order.
+
+  Narrator itself was never heard, which makes this "the accessibility tree was read on Windows 7" rather
+  than "a screen reader was run against it".
+- Dragging, minimising and restoring the window (item 2), and moving it to a display with a different
+  scale: the virtual machine did neither.
+- Cursor shapes: `screendump` does not capture the hardware cursor, so the hand cursor a page declares
+  was not observed in this run.
+- Services (item 9): the example project installs none, so there was nothing to observe.
+- Dependency downloads: the machine had no KB3140245, so the TLS 1.2 path was not reached, and
+  KB3033929 was not installed either.
+- 32-bit Windows 7 and ARM64 are outside what is claimed, and so is a machine without SP1.
 
 ## Known limitations
 
@@ -362,5 +425,5 @@ test your own setup on Windows 7 before you ship it to one.
   and later); without it the download fails and says so rather than falling back to plain text. An
   http URL is unaffected.
 
-Once signing and the Windows 7 acceptance run are done, you can onboard a product using the
+The Windows 7 acceptance run is done, so once signing is in place, you can onboard a product using the
 `examples/TapTap` structure.

@@ -32,6 +32,8 @@
   "yes": "是",
   "no": "否",
   "close_confirm_message": "安装尚未完成，确定退出安装？",
+  "minimize": "最小化",
+  "close": "关闭",
 
   "config.install": "安装",
   "config.agree": "同意",

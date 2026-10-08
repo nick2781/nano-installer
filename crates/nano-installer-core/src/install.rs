@@ -962,6 +962,13 @@ fn extract_archive(setup: &Path, archive: &Path, target: &Path, task: &Cancellat
         .arg("--extract")
         .arg(archive)
         .arg(target)
+        // The backend reads nothing from the console, and saying so is not a
+        // formality: a setup started from an elevated console has no valid
+        // standard input to inherit, and `CreateProcess` refuses the whole
+        // spawn with `ERROR_INVALID_HANDLE` when one is handed to it anyway.
+        // That is a silent install failing on a machine where the same command
+        // run unelevated works, which is what Windows 7 acceptance found.
+        .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -1670,17 +1677,15 @@ pub(super) fn validate_destination(destination: &Path) -> Result<()> {
     if !destination.is_absolute() || destination.parent().is_none() {
         bail!("install path must be an absolute directory below a drive root")
     }
+    // A destination directly below a drive root is a destination like any other:
+    // `C:\MyApp` is a folder the user named, not the root of the volume. The
+    // first check is what refuses the root itself, and it has to be, because a
+    // root has no parent for the rest of this to look at.
     if destination
         .components()
         .any(|component| matches!(component, Component::ParentDir))
     {
         bail!("install path cannot contain parent traversal")
-    }
-    if destination
-        .parent()
-        .is_some_and(|parent| parent.parent().is_none())
-    {
-        bail!("install path cannot be a drive root")
     }
     Ok(())
 }
@@ -2909,6 +2914,10 @@ mod tests {
     fn refuses_relative_or_root_installation() {
         assert!(validate_destination(Path::new("relative\\path")).is_err());
         assert!(validate_destination(Path::new("C:\\")).is_err());
+        assert!(validate_destination(Path::new("C:\\..\\Example")).is_err());
+        // A folder directly below the root is a folder, not the root: the case
+        // that used to be refused one level too high.
+        assert!(validate_destination(Path::new("C:\\Example")).is_ok());
         assert!(validate_destination(Path::new("C:\\Program Files\\Example")).is_ok());
     }
 

@@ -70,6 +70,20 @@ with 0-255 opacity. A button picks `hover-image`, `pressed-image`, and `disabled
 states and falls back to `normal-image` when a state image is missing. The runtime paints state
 changes into an offscreen bitmap and commits them in one step, so hovering does not flicker.
 
+A button is called by the words it draws, which is what a screen reader reads. A button whose label
+is artwork, or drawn somewhere else on the page, has no words to offer one, and `accessible-name` is
+where it is named:
+
+```xml
+<Button id="close" action="close_confirm" accessible-name="@close"
+        normal-image="assets/btn_close.png" />
+```
+
+An `@key` is looked up in the current language and anything else is used as written; when a control
+declares both `text` and `accessible-name`, a client hears the latter. Link markup inside drawn words
+(`[Terms](agreement)`) is not read out: a client is told the sentence without it. The example's
+minimize, close, and custom-options buttons are named this way.
+
 A button can depend on another control:
 
 ```xml

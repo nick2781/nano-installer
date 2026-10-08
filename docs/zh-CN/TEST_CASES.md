@@ -27,6 +27,7 @@ Rust doc comment，再退回用例名。
 | `a_client_reading_the_page_does_not_take_the_wizard_down` | 有客户程序连着时改输入框不会把向导弄死：客户程序先读一遍这一页，用户把输入框填好再清空，客户程序再读一遍，进程仍然活着。这条守的是一个真实的崩溃：清空后的空输入框会画出一段没有任何字符的文字，空缓冲区的悬垂指针让 `user32` 的 `DrawTextW` 访问违例（`0xc000041d`）。 |
 | `a_click_on_a_radio_is_the_value_the_install_waits_for` | 在真实窗口里点单选按钮：安装键等的是被点中那一行的取值。先点安装键没反应；点亮版面默认选中的那一行再点安装，仍然没反应；改点另一行再点安装，窗口切到任务页，产品装进配置指定的目录。版面级用例只证明点击会变成一个动作，这条证明窗口真的记下了被点的是哪一行。 |
 | `a_client_names_a_child_with_what_it_is_told_to` | 客户程序用数字指名一个控件、用空变体指名窗口本身，两者都读成它们各自的意思；指名一个「对象子项」时被拒绝，而不是被答成另一个控件：向导的控件都是简单子项，没有对象子项可给。 |
+| `a_control_is_named_by_what_it_declares_when_it_draws_no_words` | 画不出字的控件仍然能被读屏叫出名字：`accessible-name` 写 `@key` 时按当前语言查表、写普通文本时原样使用，同时声明 `text` 时以它为准；画出来的字里带的链接标记不会被念出来，客户端读到的是去掉标记的那句。 |
 | `a_control_is_reported_as_what_a_screen_reader_calls_it` | 版面记下的控件类型各自对应 `oleacc.h` 里的那个角色：按钮、链接、复选框、单选按钮、下拉框、输入框，客户端读到的必须是这几个，读错了念出来的东西就不对。 |
 | `a_closed_language_select_draws_its_arrow_over_its_fill_and_outline` | 收起的 `Select` 由底色、描边和箭头三层组成，箭头从远端边向内缩一段并垂直居中，跟着显示缩放一起变大；收起时画向下的那张，展开时画向上的那张。 |
 | `a_component_project_is_refused_an_update_package` | 内容切成组件的工程做不出更新包：没有一个归档可以拿来比对，构建时当场拒绝并让人照旧发完整安装包，拒绝之后一个安装包文件都不留。 |
@@ -254,6 +255,7 @@ Rust doc comment，再退回用例名。
 | `inspects_taptap_project_without_dpi_warnings` | 检查示例工程 TapTap：名字、版本、文件版本、payload 格式、卸载器名字、默认安装路径、卸载器图标和 payload 大小都对得上，而且一条告警都没有。示例 payload 不在仓库里时这条用例跳过。 |
 | `install_button_uses_xml_images_for_interaction_state` | 安装按钮的状态图来自版面：条件没满足时用 `disabled-image`，满足后用 `normal-image`，悬停和按下各自换成对应的图；没有条件的按钮只用普通和禁用两张。 |
 | `installing_over_an_existing_installation_drops_stale_files` | 用这个版本覆盖上一个版本会替换产品，并删掉新 payload 里不再有的文件。 |
+| `a_script_driven_install_replaces_its_own_previous_version` | 安装由工程自己的脚本驱动时，也能装在自己的上一版之上：payload 的文件都已在目录里，运行仍然知道自己部署了什么，卸载仍会把这些文件带走。 |
 | `installs_a_fresh_directory_and_records_the_manifest` | 全新安装把 payload 的文件放到目标目录，manifest 列出这些文件，卸载器也一起放进去。 |
 | `item_spacing_and_gap_leave_the_same_distance_between_items` | `gap` 和 `item-spacing` 在项之间留出同样的距离，两个同时写时用更具体的那个。 |
 | `justify_content_places_the_run_inside_the_room_it_has` | `justify-content` 决定整行在剩余空间里的位置：默认靠左，`center` 居中，`end` 靠右，示例用的 `horizontal-align="right"` 是同一个意思。 |

@@ -23,14 +23,14 @@
     <Option value="ru" text="Русский" />
   </Select>
 
-  <Button id="btnMinimize" action="minimize"
+  <Button id="btnMinimize" accessible-name="@minimize" action="minimize"
           position="absolute" left="640" top="12" width="34" height="34"
           normal-image="file='assets/btn_minimize.png' dest='7,7,27,27' fade='160'"
           hover-image="file='assets/btn_minimize.png' dest='7,7,27,27'"
           pressed-image="file='assets/btn_minimize.png' dest='7,7,27,27'"
           cursor="hand" />
 
-  <Button id="close" action="close_confirm"
+  <Button id="close" accessible-name="@close" action="close_confirm"
           position="absolute" left="674" top="12" width="34" height="34"
           normal-image="file='assets/btn_close.png' dest='7,7,27,27' fade='160'"
           hover-image="file='assets/btn_close.png' dest='7,7,27,27'"
@@ -171,7 +171,7 @@
 
     <Spacer flex-grow="1" />
 
-    <Button id="btnShowMore_wrap" action="toggle_panel:moreconfiginfo:show"
+    <Button id="btnShowMore_wrap" accessible-name="@show_more" action="toggle_panel:moreconfiginfo:show"
             width="184" height="56"
             flex-shrink="0"
             font-family="Microsoft YaHei"
@@ -198,7 +198,7 @@
       </Content>
     </Button>
 
-    <Button id="btnHideMore_wrap" action="toggle_panel:moreconfiginfo:hide"
+    <Button id="btnHideMore_wrap" accessible-name="@hide_more" action="toggle_panel:moreconfiginfo:hide"
             width="184" height="56" visible="false"
             flex-shrink="0"
             font-family="Microsoft YaHei"

@@ -6,14 +6,14 @@
       border-color="#26FFFFFF"
       border-width="1">
 
-  <Button id="btnMinimize" action="minimize"
+  <Button id="btnMinimize" accessible-name="@minimize" action="minimize"
           position="absolute" left="640" top="12" width="34" height="34"
           normal-image="file='assets/btn_minimize.png' dest='7,7,27,27' fade='160'"
           hover-image="file='assets/btn_minimize.png' dest='7,7,27,27'"
           pressed-image="file='assets/btn_minimize.png' dest='7,7,27,27'"
           cursor="hand" />
 
-  <Button id="close" action="finish"
+  <Button id="close" accessible-name="@close" action="finish"
           position="absolute" left="674" top="12" width="34" height="34"
           normal-image="file='assets/btn_close.png' dest='7,7,27,27' fade='160'"
           hover-image="file='assets/btn_close.png' dest='7,7,27,27'"

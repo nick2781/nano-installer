@@ -1152,6 +1152,10 @@ fn self_delete_current_image() {
     let _ = std::process::Command::new("cmd.exe")
         .raw_arg(format!("/c \"{}\"", script.display()))
         .creation_flags(CREATE_NO_WINDOW.0)
+        // The cleanup script reads nothing from the console, and a setup that
+        // was started from an elevated console has no valid standard input to
+        // hand it: passing that handle on makes the spawn fail outright.
+        .stdin(std::process::Stdio::null())
         .spawn();
 }
 
@@ -4176,14 +4180,24 @@ fn control_kind(node: roxmltree::Node<'_, '_>, action: &WindowAction) -> Control
 }
 
 /// The words a control draws, which is what a screen reader calls it.
+///
+/// A control whose label is artwork, or drawn somewhere else on the page, has no
+/// words of its own to be read: `accessible-name` is what it is called then. It
+/// wins over the words whenever it is there, because a button that declares both
+/// has said which of them a client should hear.
 fn control_name(node: roxmltree::Node<'_, '_>, context: &LayoutContext<'_>) -> String {
+    if let Some(declared) = node.attribute("accessible-name") {
+        return resolve_text(declared, context.translations);
+    }
     if node.has_tag_name("TextInput") {
         // A field's words are its value, and the bridge reads that as the
         // value: its name is a label beside it, which is found where it sits.
         return String::new();
     }
     if let Some((text, _)) = text_for_node(node, context.translations) {
-        return text;
+        // A layout writes a link as `[words](target)`, and the page draws the
+        // words: a client is told those, not the markup around them.
+        return visible_text(&text);
     }
     if node.has_tag_name("Select") {
         // A select draws the option it shows rather than words of its own.
@@ -9612,6 +9626,10 @@ fn launch_installed_app() -> Result<()> {
         .context("installed application has no parent")?;
     std::process::Command::new(&app)
         .current_dir(directory)
+        // A product is started to run on its own, not to read this run's
+        // console: an elevated setup has no standard input to pass on, and
+        // handing the invalid handle over would refuse the launch instead.
+        .stdin(std::process::Stdio::null())
         .spawn()
         .with_context(|| format!("failed to launch {}", app.display()))?;
     Ok(())
@@ -10045,8 +10063,8 @@ mod tests {
     use super::{
         anchored_left, anchored_top, button_enabled, button_image, byte_index, caret_layer,
         centered_bounds, clamped_bounds, composition_points, container_intrinsic_size, contrast,
-        cross_alignment, cross_alignment_for_item, disk_free_bytes, disk_root, field_state,
-        flow_axis, flow_item_for_node, flow_widths, format_size_bytes, forward_page,
+        control_name, cross_alignment, cross_alignment_for_item, disk_free_bytes, disk_root,
+        field_state, flow_axis, flow_item_for_node, flow_widths, format_size_bytes, forward_page,
         initial_interaction, insets_for_node, inspect_project, installer_version_info, load_layout,
         main_alignment, mask_matches, measure_layout_text_width, next_focus_index, pack_project,
         pack_project_with_progress, page_id, page_index_of_id, parse_bundle, parse_color,
@@ -11372,6 +11390,64 @@ mod tests {
             action_for("browse"),
             Some(WindowAction::PickDirectory { ref id }) if id == "editDir"
         ));
+    }
+
+    /// A control with no words of its own can still say what it is called.
+    ///
+    /// The example's buttons draw their labels as artwork, so there is no text
+    /// for a screen reader to read: the reading the Windows 7 acceptance run
+    /// took found four buttons that announced nothing at all. `accessible-name`
+    /// is how a layout says what such a control is, and it wins over the words
+    /// whenever a control declares both.
+    #[test]
+    fn a_control_is_named_by_what_it_declares_when_it_draws_no_words() {
+        let config = serde_json::Value::Null;
+        let files = HashMap::new();
+        let translations = HashMap::from([
+            ("install_now".to_string(), "立即安装".to_string()),
+            (
+                "agree".to_string(),
+                "我同意[《协议》](agreement)与[《政策》](policy)".to_string(),
+            ),
+        ]);
+        let interaction = InteractionState::default();
+        let context = LayoutContext {
+            dpi: DpiContext {
+                scale: 1.0,
+                use_2x: false,
+            },
+            files: &files,
+            config: &config,
+            locale: "zh-CN",
+            translations: &translations,
+            interaction: &interaction,
+            fields: HashMap::new(),
+            open_select: None,
+            contrast: None,
+        };
+        let layout = roxmltree::Document::parse(
+            r##"<Page width="100" height="100">
+                 <Button id="install" accessible-name="@install_now" position="absolute" left="0" top="0" width="10" height="10" />
+                 <Button id="painted" text="@agree" linkcolor="#00C4B2" position="absolute" left="0" top="20" width="10" height="10" />
+                 <Button id="silent" position="absolute" left="0" top="40" width="10" height="10" />
+               </Page>"##,
+        )
+        .expect("layout parses");
+        let name_of = |id: &str| {
+            let node = layout
+                .descendants()
+                .find(|node| node.attribute("id") == Some(id))
+                .expect("the control is on the page");
+            control_name(node, &context)
+        };
+        // Artwork draws no words, so the layout supplies the ones to read.
+        assert_eq!(name_of("install"), "立即安装");
+        // A link is drawn as its words, and a client is told those rather than
+        // the markup they were written in.
+        assert_eq!(name_of("painted"), "我同意《协议》与《政策》");
+        // A control that draws nothing and declares nothing stays unnamed, which
+        // is what a layout has to notice.
+        assert_eq!(name_of("silent"), "");
     }
 
     #[test]
