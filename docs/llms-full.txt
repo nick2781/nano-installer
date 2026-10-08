@@ -3638,8 +3638,8 @@ test your own setup on Windows 7 before you ship it to one.
   rather than prompts for under `/qn`.
 
 - The runtime stubs embed the Rhai engine, which raised each stub from roughly 0.57-0.66 MB to
-  2.01-2.10 MB, measured on this machine: the uninstaller is the smallest at 2.01 MB and the LZMA
-  stub the largest at 2.10 MB, with the ZIP stub at 2.07 MB.
+  2.02-2.11 MB, measured on this machine: the uninstaller is the smallest at 2.02 MB and the LZMA
+  stub the largest at 2.11 MB, with the ZIP stub at 2.07 MB.
 - An elevated setup and its uninstaller run at high integrity, so a product that writes only to
   `%LOCALAPPDATA%` should leave `install.require_admin` off.
 - Display scaling on a multi-monitor desktop: a setup declares both `dpiAware` (read by

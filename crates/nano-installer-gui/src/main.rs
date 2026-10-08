@@ -1160,7 +1160,7 @@ impl BuilderApp {
                     .max_height(log_height)
                     .stick_to_bottom(true)
                     .scroll_source(egui::scroll_area::ScrollSource {
-                        drag: false,
+                        drag: egui::scroll_area::DragScroll::Never,
                         ..Default::default()
                     })
                     .show(ui, |ui| {
@@ -1176,7 +1176,7 @@ impl BuilderApp {
                                 .layouter(&mut layouter)
                                 .desired_width(f32::INFINITY)
                                 .desired_rows(self.logs.len().max(1))
-                                .frame(false),
+                                .frame(egui::Frame::NONE),
                         );
                     });
             });
@@ -1421,16 +1421,20 @@ impl BuilderApp {
 }
 
 impl eframe::App for BuilderApp {
-    fn update(&mut self, context: &egui::Context, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        // The trait hands the app a `Ui` rather than a `Context`, and the
+        // callbacks below take a `Context`; the handle is cheap to clone.
+        let context = ui.ctx().clone();
+        let context = &context;
         self.poll_worker();
-        egui::TopBottomPanel::top("menu")
-            .exact_height(28.0)
+        egui::Panel::top("menu")
+            .exact_size(28.0)
             .frame(egui::Frame::new().fill(PANEL_BG).inner_margin(4))
-            .show(context, |ui| self.show_menu(context, ui));
-        egui::TopBottomPanel::bottom("status_bar")
-            .exact_height(30.0)
+            .show(ui, |ui| self.show_menu(context, ui));
+        egui::Panel::bottom("status_bar")
+            .exact_size(30.0)
             .frame(egui::Frame::new().fill(PANEL_BG).inner_margin(8))
-            .show(context, |ui| {
+            .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     status_line(ui, self.status_tone, &self.status);
                     if self.project_dirty {
@@ -1438,12 +1442,12 @@ impl eframe::App for BuilderApp {
                     }
                 });
             });
-        egui::SidePanel::left("project_panel")
+        egui::Panel::left("project_panel")
             .resizable(true)
-            .default_width(310.0)
-            .width_range(260.0..=380.0)
+            .default_size(310.0)
+            .size_range(260.0..=380.0)
             .frame(egui::Frame::new().fill(PANEL_BG).inner_margin(16))
-            .show(context, |ui| {
+            .show(ui, |ui| {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, true])
                     .show(ui, |ui| self.show_project_panel(ui));
@@ -1452,7 +1456,7 @@ impl eframe::App for BuilderApp {
         let parameters_label = self.text("parameters");
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(PAGE_BG).inner_margin(20))
-            .show(context, |ui| {
+            .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     if ui
                         .add_sized(
@@ -1717,7 +1721,7 @@ fn configure_style(context: &egui::Context) {
     visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, ACCENT);
     visuals.window_corner_radius = 6.into();
     context.set_visuals(visuals);
-    context.style_mut(|style| {
+    context.all_styles_mut(|style| {
         style.spacing.item_spacing = egui::vec2(8.0, 7.0);
         style.spacing.button_padding = egui::vec2(11.0, 6.0);
     });
@@ -2006,7 +2010,7 @@ mod tests {
         panic!("the build worker did not finish");
     }
 
-    /// Draws the window's panels, which is everything `update` does but the
+    /// Draws the window's panels, which is everything `ui` does but the
     /// frame, because a frame needs a window.
     ///
     /// Laying the panels out is not allowed to change what they show, so the
@@ -2014,10 +2018,12 @@ mod tests {
     fn draw_panels(app: &mut BuilderApp, context: &egui::Context) {
         let logs = app.logs.clone();
         let status = app.status.clone();
-        let _ = context.run(egui::RawInput::default(), |context| {
-            egui::TopBottomPanel::top("menu").show(context, |ui| app.show_menu(context, ui));
-            egui::SidePanel::left("project_panel").show(context, |ui| app.show_project_panel(ui));
-            egui::CentralPanel::default().show(context, |ui| match app.tab {
+        let _ = context.run_ui(egui::RawInput::default(), |ui| {
+            let context = ui.ctx().clone();
+            let context = &context;
+            egui::Panel::top("menu").show(ui, |ui| app.show_menu(context, ui));
+            egui::Panel::left("project_panel").show(ui, |ui| app.show_project_panel(ui));
+            egui::CentralPanel::default().show(ui, |ui| match app.tab {
                 WorkspaceTab::Build => app.show_build_tab(context, ui),
                 WorkspaceTab::Parameters => app.show_parameters_tab(ui),
             });
