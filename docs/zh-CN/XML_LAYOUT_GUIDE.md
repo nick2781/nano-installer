@@ -64,6 +64,18 @@ assets/logo@2x.png
 `disabled-image`，缺少状态图时回退 `normal-image`。状态变化会先绘制到离屏位图再一次性提交，所以
 鼠标悬停不会闪烁。
 
+按钮的名字是它画出来的字，读屏读的也是这一句。文字画在图片里、或者画在页面别处的按钮没有字可给读屏，
+`accessible-name` 就是给它起名的地方：
+
+```xml
+<Button id="close" action="close_confirm" accessible-name="@close"
+        normal-image="assets/btn_close.png" />
+```
+
+它写 `@key` 时按当前语言查表，写普通文本时原样使用；同时声明 `text` 与 `accessible-name` 时，读屏
+读到的是后者。画出来的字里的链接标记（`[《协议》](agreement)`）不会被念出来，读屏读到的是去掉标记的
+那句。示例工程的最小化、关闭与「自定义选项」三个按钮就是这么起名的。
+
 按钮可以依赖其他控件：
 
 ```xml

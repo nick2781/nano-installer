@@ -851,6 +851,20 @@ with 0-255 opacity. A button picks `hover-image`, `pressed-image`, and `disabled
 states and falls back to `normal-image` when a state image is missing. The runtime paints state
 changes into an offscreen bitmap and commits them in one step, so hovering does not flicker.
 
+A button is called by the words it draws, which is what a screen reader reads. A button whose label
+is artwork, or drawn somewhere else on the page, has no words to offer one, and `accessible-name` is
+where it is named:
+
+```xml
+<Button id="close" action="close_confirm" accessible-name="@close"
+        normal-image="assets/btn_close.png" />
+```
+
+An `@key` is looked up in the current language and anything else is used as written; when a control
+declares both `text` and `accessible-name`, a client hears the latter. Link markup inside drawn words
+(`[Terms](agreement)`) is not read out: a client is told the sentence without it. The example's
+minimize, close, and custom-options buttons are named this way.
+
 A button can depend on another control:
 
 ```xml
@@ -3739,14 +3753,25 @@ The gaps this run left, written down rather than left looking tested:
 - The screen reader (item 8 of [the acceptance checklist](WINDOWS_COMPATIBILITY.md#how-to-run-the-acceptance)):
   Narrator and NVDA were never actually running and listened to. An MSAA client read the wizard instead --
   validated first against Notepad, so that the client itself was known to read an ordinary window -- and
-  Windows 7 and Windows 11 answered byte for byte identically: the window is named after the product, the
-  language combobox carries "简体中文" as both its name and its value, the agreement checkbox carries its
-  sentence, and the four buttons are listed. That reading also turned up two shortcomings: those four
-  buttons draw their labels as artwork and have no accessible name at all, so a user hears "button" four
-  times, and the checkbox's name keeps the inline link markup (`[《服务协议》](agreement)`) rather than
-  just the words. Both are the same on Windows 11, so neither is a platform matter. Narrator itself was
-  never heard, which makes this "the accessibility tree was read on Windows 7" rather than "a screen
-  reader was run against it".
+  Windows 7 and Windows 11 answered byte for byte identically. What it read: the window is named after the
+  product, the language combobox carries "简体中文" as both its name and its value, the agreement checkbox
+  carries its sentence, and buttons whose labels are artwork report the name `accessible-name` gives them.
+  That reading closed two gaps and left one open:
+
+  - A button whose label is artwork has no words to read, so a user heard "button" and nothing else. A
+    layout now names such a control with `accessible-name`, and the example's minimize, close and
+    custom-options buttons use it.
+  - The checkbox's name kept its inline link markup (`[《服务协议》](agreement)`); it is now the sentence
+    without the markup.
+  - **A disabled control is not in the accessibility tree at all.** The install button is unavailable
+    until the agreement is ticked, and until then it is not an element: a user cannot hear that the page
+    has one or what it is waiting for, and it appears, named, only once the box is ticked. The tree is
+    built from the Tab order, and an unavailable control is not in the Tab order. This one was left
+    alone: it is not a platform matter (Windows 11 behaves the same), and changing it means deciding
+    where an unavailable control sits in the tree and in what order.
+
+  Narrator itself was never heard, which makes this "the accessibility tree was read on Windows 7" rather
+  than "a screen reader was run against it".
 - Dragging, minimising and restoring the window (item 2), and moving it to a display with a different
   scale: the virtual machine did neither.
 - Cursor shapes: `screendump` does not capture the hardware cursor, so the hand cursor a page declares

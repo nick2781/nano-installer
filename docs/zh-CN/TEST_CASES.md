@@ -27,6 +27,7 @@ Rust doc comment，再退回用例名。
 | `a_client_reading_the_page_does_not_take_the_wizard_down` | 有客户程序连着时改输入框不会把向导弄死：客户程序先读一遍这一页，用户把输入框填好再清空，客户程序再读一遍，进程仍然活着。这条守的是一个真实的崩溃：清空后的空输入框会画出一段没有任何字符的文字，空缓冲区的悬垂指针让 `user32` 的 `DrawTextW` 访问违例（`0xc000041d`）。 |
 | `a_click_on_a_radio_is_the_value_the_install_waits_for` | 在真实窗口里点单选按钮：安装键等的是被点中那一行的取值。先点安装键没反应；点亮版面默认选中的那一行再点安装，仍然没反应；改点另一行再点安装，窗口切到任务页，产品装进配置指定的目录。版面级用例只证明点击会变成一个动作，这条证明窗口真的记下了被点的是哪一行。 |
 | `a_client_names_a_child_with_what_it_is_told_to` | 客户程序用数字指名一个控件、用空变体指名窗口本身，两者都读成它们各自的意思；指名一个「对象子项」时被拒绝，而不是被答成另一个控件：向导的控件都是简单子项，没有对象子项可给。 |
+| `a_control_is_named_by_what_it_declares_when_it_draws_no_words` | 画不出字的控件仍然能被读屏叫出名字：`accessible-name` 写 `@key` 时按当前语言查表、写普通文本时原样使用，同时声明 `text` 时以它为准；画出来的字里带的链接标记不会被念出来，客户端读到的是去掉标记的那句。 |
 | `a_control_is_reported_as_what_a_screen_reader_calls_it` | 版面记下的控件类型各自对应 `oleacc.h` 里的那个角色：按钮、链接、复选框、单选按钮、下拉框、输入框，客户端读到的必须是这几个，读错了念出来的东西就不对。 |
 | `a_closed_language_select_draws_its_arrow_over_its_fill_and_outline` | 收起的 `Select` 由底色、描边和箭头三层组成，箭头从远端边向内缩一段并垂直居中，跟着显示缩放一起变大；收起时画向下的那张，展开时画向上的那张。 |
 | `a_component_project_is_refused_an_update_package` | 内容切成组件的工程做不出更新包：没有一个归档可以拿来比对，构建时当场拒绝并让人照旧发完整安装包，拒绝之后一个安装包文件都不留。 |

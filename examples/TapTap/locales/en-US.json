@@ -32,6 +32,8 @@
   "yes": "Yes",
   "no": "No",
   "close_confirm_message": "Installation is not complete. Exit the installer?",
+  "minimize": "Minimize",
+  "close": "Close",
   "status.preparing": "Preparing...",
   "status.dependencies": "Preparing required components...",
   "status.extracting": "Extracting files...",
