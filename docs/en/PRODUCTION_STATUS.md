@@ -373,8 +373,16 @@ is in the next section.
 The gaps this run left, written down rather than left looking tested:
 
 - The screen reader (item 8 of [the acceptance checklist](WINDOWS_COMPATIBILITY.md#how-to-run-the-acceptance)):
-  neither Narrator nor NVDA was run against it. The accessibility evidence is still only the automated
-  cases that run on Windows 11 and in CI.
+  Narrator and NVDA were never actually running and listened to. An MSAA client read the wizard instead --
+  validated first against Notepad, so that the client itself was known to read an ordinary window -- and
+  Windows 7 and Windows 11 answered byte for byte identically: the window is named after the product, the
+  language combobox carries "简体中文" as both its name and its value, the agreement checkbox carries its
+  sentence, and the four buttons are listed. That reading also turned up two shortcomings: those four
+  buttons draw their labels as artwork and have no accessible name at all, so a user hears "button" four
+  times, and the checkbox's name keeps the inline link markup (`[《服务协议》](agreement)`) rather than
+  just the words. Both are the same on Windows 11, so neither is a platform matter. Narrator itself was
+  never heard, which makes this "the accessibility tree was read on Windows 7" rather than "a screen
+  reader was run against it".
 - Dragging, minimising and restoring the window (item 2), and moving it to a display with a different
   scale: the virtual machine did neither.
 - Cursor shapes: `screendump` does not capture the hardware cursor, so the hand cursor a page declares

@@ -2608,10 +2608,12 @@ newer system API.
 Static checks do not prove the installer works, so there is an acceptance run on a real machine, and
 it has happened: on build 7601, PNG decoding, text rendering, mouse input, window behaviour,
 extraction, installation, and uninstallation were all reached, item by item, in
-[Production status](PRODUCTION_STATUS.md). What that run did not reach is the screen reader
-(Narrator or NVDA), window dragging and multi-monitor scaling, cursor shapes, and installing or
-removing a service. Machines should also have update KB3033929 (SHA-2 code signing support)
-installed, and one whose setup downloads a dependency needs KB3140245 and later as well.
+[Production status](PRODUCTION_STATUS.md). What that run did not reach is window dragging and
+multi-monitor scaling, cursor shapes, and installing or removing a service; the screen reader item
+reached the accessibility tree, which answered identically to Windows 11, but Narrator or NVDA was
+never actually running and listened to. Machines should also have update KB3033929 (SHA-2 code
+signing support) installed, and one whose setup downloads a dependency needs KB3140245 and later as
+well.
 
 ## Running the acceptance
 
@@ -3735,8 +3737,16 @@ is in the next section.
 The gaps this run left, written down rather than left looking tested:
 
 - The screen reader (item 8 of [the acceptance checklist](WINDOWS_COMPATIBILITY.md#how-to-run-the-acceptance)):
-  neither Narrator nor NVDA was run against it. The accessibility evidence is still only the automated
-  cases that run on Windows 11 and in CI.
+  Narrator and NVDA were never actually running and listened to. An MSAA client read the wizard instead --
+  validated first against Notepad, so that the client itself was known to read an ordinary window -- and
+  Windows 7 and Windows 11 answered byte for byte identically: the window is named after the product, the
+  language combobox carries "简体中文" as both its name and its value, the agreement checkbox carries its
+  sentence, and the four buttons are listed. That reading also turned up two shortcomings: those four
+  buttons draw their labels as artwork and have no accessible name at all, so a user hears "button" four
+  times, and the checkbox's name keeps the inline link markup (`[《服务协议》](agreement)`) rather than
+  just the words. Both are the same on Windows 11, so neither is a platform matter. Narrator itself was
+  never heard, which makes this "the accessibility tree was read on Windows 7" rather than "a screen
+  reader was run against it".
 - Dragging, minimising and restoring the window (item 2), and moving it to a display with a different
   scale: the virtual machine did neither.
 - Cursor shapes: `screendump` does not capture the hardware cursor, so the hand cursor a page declares

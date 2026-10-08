@@ -41,10 +41,12 @@ newer system API.
 Static checks do not prove the installer works, so there is an acceptance run on a real machine, and
 it has happened: on build 7601, PNG decoding, text rendering, mouse input, window behaviour,
 extraction, installation, and uninstallation were all reached, item by item, in
-[Production status](PRODUCTION_STATUS.md). What that run did not reach is the screen reader
-(Narrator or NVDA), window dragging and multi-monitor scaling, cursor shapes, and installing or
-removing a service. Machines should also have update KB3033929 (SHA-2 code signing support)
-installed, and one whose setup downloads a dependency needs KB3140245 and later as well.
+[Production status](PRODUCTION_STATUS.md). What that run did not reach is window dragging and
+multi-monitor scaling, cursor shapes, and installing or removing a service; the screen reader item
+reached the accessibility tree, which answered identically to Windows 11, but Narrator or NVDA was
+never actually running and listened to. Machines should also have update KB3033929 (SHA-2 code
+signing support) installed, and one whose setup downloads a dependency needs KB3140245 and later as
+well.
 
 ## Running the acceptance
 
