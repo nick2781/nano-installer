@@ -65,8 +65,9 @@ NSIS migration report for D:\src\legacy.nsi
 ```
 
 只要报告出得来，退出码就是 0，不管报告里写了什么：这份报告是给人读的，不是一道闸。想让它当闸用就加
-`-FailOnUnknown`：本仓库的 CI 就是这么跑 `examples/nsis-migration/legacy.nsi` 的，一份「每种写法都带
-一条」的样例只有在表把它们全收下之后才有意义。
+`-FailOnUnknown`：本仓库的 CI 就是这么跑两份样例的。`legacy.nsi` 是一个产品的安装脚本；`instructions.nsi`
+把 NSIS 文档里的每条指令、每个属性、每个自带头文件的宏各写一行。前者让这张表对着一份真实的脚本较真，
+后者让它对着语言本身较真：NSIS 有而表里没有的写法当场失败，而不是印一行 `unknown` 让人自己去猜。
 
 下面表里的判定词就是上面那五个：`direct` 是配置项或页面元素直接就能做，`script` 是
 `scripts/install.rhai` 或 `scripts/uninstall.rhai` 里的某个原语，`manual` 是没有对应物、得按本页说的
@@ -75,7 +76,9 @@ NSIS migration report for D:\src\legacy.nsi
 ## 对照表
 
 一个命令有多种写法时共用一行。名字末尾的 `*` 表示后面接什么都算，所以 `MUI_PAGE_*` 接住了那些没有
-单独一行的 MUI 页面。
+单独一行的 MUI 页面。NSIS 自带头文件里的宏按脚本调用它的那个名字收录，所以 `${GetSize}` 与 `${StrStr}`
+走的就是 `GetSize` 与 `StrStr` 那两行——`${...}` 不是名字的一部分。标号（`done:`）是一个位置而不是一条
+语句：跳到它的那些跳转由 Rhai 自己的流程控制顶替，所以检查器把它报成 `none`。
 
 ### 产品与它构建出来的文件
 
@@ -88,30 +91,38 @@ NSIS migration report for D:\src\legacy.nsi
 | `RequestExecutionLevel` | direct | `install.require_admin` |
 | `Icon` | direct | `output.installer_icon` |
 | `UninstallIcon` | direct | `output.uninstaller_icon` |
-| `VIProductVersion` | direct | `project.file_version` |
+| `VIProductVersion`, `VIFileVersion` | direct | `project.file_version` |
 | `VIAddVersionKey` | direct | `project.publisher`、`project.copyright`、`project.description` |
 | `ManifestDPIAware` | direct | `ui.dpi_aware`；应用程序清单由构建器写 |
-| `ManifestSupportedOS` | none | 安装包本来就声明支持 Windows 7 SP1 x64 及以后 |
-| `SetCompressor`, `SetCompressorFinal` | none | 载荷由构建器自己压 |
+| `ManifestSupportedOS`, `ManifestLongPathAware` | none | 安装包本来就声明支持 Windows 7 SP1 x64 及以后，清单也由构建器写 |
+| `PEAddResource`, `PERemoveResource` | manual | 构建器注入的是工程自己的图标、版本信息和清单；没有东西再加一份自己的资源 |
+| `SetCompressor`, `SetCompressorFinal`, `SetCompressorDictSize`, `SetCompress`, `FileBufSize` | none | 载荷由构建器自己压，按它自己定的块大小 |
 | `SetDatablockOptimize` | none | 没有要迁移的东西 |
 | `CRCCheck` | none | 载荷自带摘要；没签名的安装包在运行时也校验不了它自己 |
 | `Unicode` | none | 一律是 Unicode |
 | `Target` | none | 安装包是 x64 |
 | `XPStyle` | none | 页面是自己画的 |
-| `ShowInstDetails`, `ShowUninstDetails` | none | 任务在带 `role: "progress"` 的那一页上汇报 |
-| `SetOverwrite` | none | 文件按载荷里的位置落地；升级就是替换上一版 |
-| `BrandingText`, `SetBrandingImage` | none | 文字和图片都在页面上 |
-| `InstallColors`, `SetFont`, `SetCtlColors` | none | 页面的颜色和字体自己带着 |
+| `ShowInstDetails`, `ShowUninstDetails`, `SetDetailsPrint`, `SetDetailsView` | none | 任务在带 `role: "progress"` 的那一页上汇报 |
+| `SetOverwrite`, `SetDateSave`, `AllowSkipFiles` | none | 文件按载荷里的位置落地；升级就是替换上一版，写不下去的文件让这一步失败并回滚 |
+| `BrandingText`, `SetBrandingImage`, `AddBrandingImage`, `BGFont`, `BGGradient`, `CheckBitmap`, `ChangeUI`, `WindowIcon`, `InstProgressFlags` | none | 文字、图片和进度条都在页面上 |
+| `InstallColors`, `SetFont`, `SetCtlColors`, `CreateFont`, `LicenseBkColor` | none | 页面的颜色和字体自己带着 |
 | `AutoCloseWindow`, `SetAutoClose` | none | 完成页由用户关 |
 | `LoadLanguageFile`, `LangFile` | none | 运行时读 `locales/<locale>.json` |
 | `LangString` | direct | `locales/<locale>.json` 里的一个字段，页面用 `text="@键"` 取 |
-| `BringToFront` | none | 向导有自己的窗口 |
+| `Caption` | direct | `wizard.pages` 里那一页的 `title` |
+| `SubCaption`, `CompletedText`, `ComponentText`, `DirText`, `SpaceTexts`, `FileErrorText`, `DetailsButtonText`, `InstallButtonText`, `MiscButtonText`, `UninstallButtonText`, `UninstallCaption`, `UninstallSubCaption`, `UninstallText` | direct | 这些字写在页面自己的版面与 `locales/<locale>.json` 里 |
+| `LicenseText`, `LicenseData` | direct | 许可协议那一页上的文字，或者指向它的链接 |
+| `LicenseForceSelection` | direct | 那一页上一个 `Checkbox`，继续按钮上写 `enabled-when="<它的 id>:checked"` |
+| `DirVar`, `DirVerify` | direct | 目录页的 `TextInput` 装着这个目录，能不能用由它自己的 `required`、`min-length` 与 `pattern` 规矩说了算 |
+| `AllowRootDirInstall` | none | 没有东西禁止装进某个盘符的根目录 |
+| `BringToFront`, `LockWindow` | none | 向导有自己的窗口，而且是自己画的 |
 
 ### 构建期，以及页面
 
 | 命令 | 判定 | 变成什么 |
 | --- | --- | --- |
 | `!define`, `!undef`, `!searchparse`, `!searchreplace`, `!addincludedir` | none | 构建期的文本替换，正式跑之前就展开了 |
+| `!if`, `!ifdef`, `!ifndef`, `!else`, `!endif`, `!error`, `!warning`, `!verbose`, `!echo`, `!pragma`, `!cd`, `!tempfile`, `!delfile`, `!appendfile`, `!getdllversion` | none | 构建期的判断与构建期的文本，正式打包之前就定下了 |
 | `!macro`, `!macroend` | none | 宏体里的语句按它们本来写的位置逐条报出来 |
 | `!insertmacro` | none | 脚本自己定义的宏；宏体里的语句按它们写的位置报 |
 | `!addplugindir` | manual | 编译器没有插件搜索路径：自己的插件放进 `resources.plugins_dir`，随安装包一起发 |
@@ -127,6 +138,7 @@ NSIS migration report for D:\src\legacy.nsi
 | `PageLicense` | direct | 一个放过许可协议文字或链接的页面 |
 | `PageInstFiles` | direct | 配置里 `role: "progress"` 的那一页 |
 | `PageEx` | direct | `wizard.pages` 里的一项 |
+| `PageExEnd` | none | 没有要迁移的东西 |
 | `MUI_PAGE_*` | manual | 没有单独一行的 MUI 页面：用页面元素自己搭出来 |
 | `MUI_UNPAGE_*` | manual | 没有单独一行的卸载页面：用卸载页面的元素自己搭出来 |
 | `MUI_PAGE_WELCOME` | direct | `wizard.pages` 里的一页 |
@@ -154,6 +166,11 @@ NSIS migration report for D:\src\legacy.nsi
 | `SectionGroupEnd` | none | 没有要迁移的东西 |
 | `SectionIn` | direct | `RO` 对应 `required: true`，其余交给页面上的复选框 |
 | `SectionInGroup` | direct | 页面画出来的那几个组件 |
+| `InstType`, `InstTypeSetText`, `InstTypeGetText`, `SectionInstType` | manual | 没有具名的安装类型：组件由页面上的复选框一个个勾，脚本改不了它们 |
+| `SectionSetFlags`, `SectionGetFlags`, `SectionSetText`, `SectionGetText`, `SectionSetSize`, `SectionGetSize`, `SectionSetInstTypes`, `SectionGetInstTypes`, `SetCurInstType`, `GetCurInstType` | manual | 组件由页面上的复选框决定；脚本能用 `is_component_selected` 与 `selected_components` 问，改不了 |
+| `AddSize` | none | 唯一会跑的空间检查是 `install.required_space_mb`；没有东西去累加某个 section 的大小 |
+| `Nop` | none | 没有要迁移的东西 |
+| `SetPluginUnload` | none | 插件活到加载它的那个安装包退出为止 |
 | `SetOutPath` | none | 路径由载荷归档自己带着 |
 | `File` | none | 把文件放进载荷归档，或者放进某个组件的归档 |
 | `CreateDirectory` | script | `create_dir` |
@@ -174,29 +191,40 @@ NSIS migration report for D:\src\legacy.nsi
 | `DeleteRegValue` | script | `reg_delete_value` |
 | `EnumRegKey`, `EnumRegValue` | manual | 没有原语列出一个键的子键或值 |
 | `SetRegView` | direct | 键名上的 `HKLM64` / `HKLM32` 前缀 |
-| `WriteINIStr`, `ReadINIStr`, `DeleteINISec` | manual | 没有 INI 原语：`read_text_file` 与 `write_file`，或者用 `run_command` 跑一条命令 |
+| `WriteINIStr`, `ReadINIStr`, `DeleteINISec`, `DeleteINIStr`, `FlushINI` | manual | 没有 INI 原语：`read_text_file` 与 `write_file`，或者用 `run_command` 跑一条命令 |
 | `RegDLL`, `UnRegDLL` | manual | 用 `run_command` 跑 `regsvr32` |
 | `SetShellVarContext` | manual | 快捷方式建在运行安装包的那个账户下；没有全局开关 |
+| `GetDlgItem`, `SendMessage`, `ShowWindow`, `EnableWindow` | manual | 没有控件句柄可以操作：控件由页面声明，长什么样由版面说了算 |
+| `HideWindow` | manual | 没有东西在某一步跑的时候把向导藏起来；进度页会说明这一步在做什么 |
 | `DetailPrint` | script | 写字面文本用 `set_status`，写语言键用 `set_status_key` |
+| `LogText` | script | `log_info` |
+| `LogSet` | none | 每次运行自己就在磁盘上留一份日志，开不开日志不是脚本说了算的 |
+| `InitPluginsDir` | script | 要一个自己的目录用 `get_temp_path`，要摊开随包带的东西用 `extract_payload` |
+| `GetInstDirError` | manual | 没有错误码可读：目录页自己的规矩在安装开始前就把不合规的值挡住了 |
 | `MessageBox` | script | `show_message`、`show_error` 或 `ask_yes_no`，按 `ui.dialog_layout` 画在窗口里 |
 | `Sleep` | script | `sleep_ms` |
 | `GetTempFileName` | script | `get_temp_path`，再用 `path_join` 拼出文件名 |
 | `GetSize` | script | `get_file_size` |
-| `GetFileTime` | manual | 没有原语读文件时间 |
-| `SetFileAttributes` | manual | 没有原语设文件属性 |
+| `GetDrives` | script | `get_drives` |
+| `DriveSpace` | script | `get_drive_space` |
+| `GetFileName`, `GetBaseName` | script | `path_filename`，扩展名一起带着 |
+| `FindFirst`, `FindNext`, `FindClose` | script | `list_dir` |
+| `GetFileTime`, `GetFileTimeLocal`, `GetTime` | manual | 没有原语读文件时间，也没有原语读时钟 |
+| `SetFileAttributes`, `GetFileAttributes` | manual | 没有原语读写文件属性 |
 | `SearchPath` | manual | `get_env` 能取一个点名的变量；没有东西去搜路径列表 |
 | `GetFullPathName` | manual | 收路径的原语都要求绝对路径 |
+| `GetRoot` | manual | 没有原语返回盘符根目录；`get_drives` 列出有哪些 |
 | `GetParent` | script | `path_parent` |
 | `ReadEnvStr` | script | `get_env` |
-| `ExpandEnvStrings` | none | 多数原语自己展开 `%NAME%`，注册表值则由 `reg_read_expand_string` 展开 |
+| `ExpandEnvStrings` | none | 安装目录、依赖自己的路径和 `reg_read_expand_string` 会展开 `%NAME%`；别的原语按写下的路径原样收 |
 | `FileRead` | script | `read_text_file` |
 | `FileWrite` | script | `write_file` |
-| `FileOpen`, `FileClose` | manual | 没有原语追加写文件，也没有东西替你拿着句柄 |
-| `GetDLLVersion`, `GetDLLVersionLocal` | manual | 没有原语读文件版本；可以用 `run_command_output` 跑一个能读的程序 |
+| `FileOpen`, `FileClose`, `FileWriteByte`, `FileReadByte`, `FileSeek` | manual | 没有原语追加写文件、在文件里移动或写原始字节，也没有东西替你拿着句柄 |
+| `GetDLLVersion`, `GetDLLVersionLocal`, `GetFileVersion` | manual | 没有原语读文件版本；可以用 `run_command_output` 跑一个能读的程序 |
 | `ExecWait` | script | `run_command`；要看退出码和输出就用 `run_command_output` |
 | `Exec` | script | `run_detached` |
-| `ExecShell` | manual | 没有原语打开网址或文档；页面上写了 `action="open_url:<links 的键>"` 的元素可以 |
-| `Reboot`, `IfRebootFlag` | manual | 一次运行绝不重启机器；依赖答 3010 或 1641 就算装好了，继续往下走 |
+| `ExecShell`, `ExecShellWait` | manual | 没有原语打开网址或文档；页面上写了 `action="open_url:<links 的键>"` 的元素可以 |
+| `Reboot`, `IfRebootFlag`, `SetRebootFlag` | manual | 一次运行绝不重启机器；依赖答 3010 或 1641 就算装好了，继续往下走 |
 
 ### 插件、流程，以及 NSIS 自己的运行时
 
@@ -217,24 +245,33 @@ NSIS migration report for D:\src\legacy.nsi
 | `Goto` | manual | Rhai 有 `if`/`else` 和循环；标号没有对应物 |
 | `Abort` | script | 用 `show_error` 说明原因之后从脚本 `return` |
 | `Quit` | script | `return` |
-| `SetErrors`, `ClearErrors` | none | 原语自己返回结果 |
+| `SetErrors`, `ClearErrors`, `GetErrorLevel` | none | 原语自己返回结果 |
 | `SetErrorLevel` | manual | 无窗口运行的退出码是运行时自己的 |
 | `IfErrors` | script | 原语自己返回结果 |
 | `IfFileExists` | script | `file_exists` 与 `is_dir` |
-| `IfSilent` | script | `get_mode()`，加上这次运行拿到的参数 |
+| `IfAbort` | manual | 没有东西设中止标志；脚本自己 `return` 就停下了 |
+| `IfSilent` | manual | 没有原语告诉脚本这次是不是无窗口运行；`show_message`、`show_error` 与 `ask_yes_no` 自己就知道该怎么答，页面也一页都不画 |
 | `StrCmp`, `StrCmpS`, `StrICmp` | script | Rhai 的 `==` |
 | `StrCpy` | script | Rhai 的 `let` |
 | `StrLen` | script | Rhai 的 `.len` |
 | `StrReplace`, `StrStr`, `StrTok`, `StrTrim` | script | Rhai 的字符串方法 |
+| `StrRep`, `StrLoc`, `StrSort`, `StrTrimNewLines`, `WordFind`, `WordReplace`, `WordInsert`, `WordDelete`, `TextCompare` | script | Rhai 的字符串方法 |
+| `LineFind`, `LineRead`, `LineSum`, `FileReadFromEnd`, `FileJoin`, `TrimNewLines` | script | `read_text_file`，再交给 Rhai 自己的字符串处理 |
+| `VersionCompare`, `VersionConvert` | manual | 没有原语比较版本；要问机器就用依赖的 `detect.at_least` |
+| `GetParameters`, `GetOptions` | manual | 无窗口运行只认 `--dir` 与 `--log`，别的参数一律拒绝，所以脚本没有命令行可读 |
+| `DisableX64FSRedirection`, `EnableX64FSRedirection`, `RunningX64` | none | 安装包是 x64 |
+| `AtLeastWin*`, `IsWin*` | manual | 没有原语把 Windows 版本交给脚本；这次运行自己的日志开头记着它 |
 | `IntOp` | script | Rhai 的算术 |
-| `IntCmp` | script | Rhai 的比较 |
+| `IntCmp`, `IntCmpU` | script | Rhai 的比较 |
 | `IntFmt` | manual | 没有东西把数字补成定宽的字符串 |
 | `Push`, `Pop`, `Exch` | manual | Rhai 有变量；NSIS 那个栈没有对应物 |
-| `GetLabelAddress` | manual | 标号没有对应物 |
+| `GetLabelAddress`, `GetFunctionAddress`, `GetCurrentAddress` | manual | 标号与地址都没有对应物 |
 | `SetSilent`, `SilentInstall`, `SilentUninstall` | direct | `advanced.silent_mode_support` 与 `advanced.uninstall_mode_support`；无窗口运行就是 `--silent` |
-| `${If}`, `${Unless}`, `${IfNot}`, `${AndIf}`, `${OrIf}` | script | Rhai 的 `if` |
+| `${If}`, `${Unless}`, `${IfNot}`, `${AndIf}`, `${OrIf}`, `${AndUnless}`, `${OrUnless}` | script | Rhai 的 `if` |
 | `${ElseIf}`, `${Else}` | script | Rhai 的 `else if` 与 `else` |
-| `${EndIf}`, `${While}`, `${EndWhile}`, `${ForEach}`, `${Next}`, `${Do}`, `${Loop}`, `${Break}`, `${Continue}` | script | Rhai 自己的流程控制 |
+| `${EndIf}`, `${EndUnless}`, `${While}`, `${EndWhile}`, `${For}`, `${ForEach}`, `${Next}`, `${Do}`, `${Loop}`, `${Until}`, `${DoWhile}`, `${Break}`, `${Continue}` | script | Rhai 自己的流程控制 |
+| `${Select}`, `${Case}`, `${CaseElse}`, `${Default}`, `${EndSelect}`, `${Switch}`, `${EndSwitch}` | script | Rhai 的 `switch` 与 `if`/`else if` |
+| `${SelectSection}`, `${UnselectSection}` | manual | 组件由页面上的复选框决定；脚本勾不动它 |
 
 ## 没有对应物的那些，以及怎么办
 
@@ -250,6 +287,14 @@ NSIS migration report for D:\src\legacy.nsi
   改成载荷或某个组件。剩下那些没有对应物的，才是自己写插件的用处。
 - **`SetShellVarContext all`。** 快捷方式建在运行安装包的那个账户下。原本写全局快捷方式的安装包得另找
   办法：即使 `require_admin` 装了全机器用的程序，快捷方式仍然写在跑这个安装包的那个账户下。
+- **安装类型。** `InstType`、`SectionInstType`、`SectionSetFlags` 这一族没有对应物：装什么由页面上的
+  复选框当场决定，脚本能问（`is_component_selected`、`selected_components`）却不能勾。原来靠安装类型
+  改组件勾选状态的安装包，得把这个决定搬到页面上、交给用户；一个 `RadioButton` 组可以用
+  `enabled-when="mode:full"` 管住某个 `Button`，但用户眼前的复选框，脚本改不了、页面也不替它改。
+- **控件句柄。** `GetDlgItem`、`SendMessage`、`ShowWindow`、`EnableWindow` 是伸进窗口直接操作控件的。
+  这里没有句柄可拿：控件由页面声明，长什么样、什么时候能用，由版面说了算。
+- **接受许可协议。** `LicenseForceSelection` 是一个页面元素，不是一个设置：许可协议那一页上一个
+  `Checkbox`，继续按钮上写 `enabled-when`，就是 MUI 许可协议页原来把住的那道门。
 - **重启机器。** 这里没有任何东西会重启机器。依赖答 3010 或 1641 就算装好了，继续走；产品非重启不能
   用，就得自己在完成页上说清楚。
 - **NSIS 的栈。** `Push`、`Pop`、`Exch` 之所以存在，是因为 NSIS 只有一个栈、没有函数自己的变量。
@@ -261,7 +306,9 @@ NSIS migration report for D:\src\legacy.nsi
 
 ## 一个完整的例子
 
-`examples/nsis-migration/` 里放着一份有代表性的 NSIS 脚本，以及它迁移之后的工程：
+`examples/nsis-migration/` 里放着一份有代表性的 NSIS 脚本，以及它迁移之后的工程。旁边还有一份
+`instructions.nsi`：那是同一张对照表对着语言本身的较真，NSIS 文档里的每条指令、每个属性、每个自带头
+文件的宏都占一行。
 
 ```powershell
 .\scripts\check_nsi_migration.ps1 -Script .\examples\nsis-migration\legacy.nsi -FailOnUnknown

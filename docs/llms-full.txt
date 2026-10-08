@@ -1925,15 +1925,23 @@ NSIS migration report for D:\src\legacy.nsi
 
 The exit code is 0 whenever a report was produced, whatever it says — the check
 is a reading aid, not a gate. `-FailOnUnknown` makes it fail instead, which is
-what this repository's own CI runs on `examples/nsis-migration/legacy.nsi`: a
-fixture that carries one of every construct is only useful while the table
-covers all of them.
+what this repository's own CI runs over two fixtures. `legacy.nsi` is one
+product's installer, and `instructions.nsi` carries one line for every
+instruction, attribute and header macro NSIS documents: the first holds the table
+to a real script, the second holds it to the language, because a construct NSIS
+has and the table does not fails the check instead of printing `unknown` at
+somebody who then has to guess.
 
 ## The table
 
 Each row says what a command becomes. Where several spellings of the same
 command exist they share a row. `*` at the end of a name matches anything after
-it, so `MUI_PAGE_*` catches the MUI pages that have no row of their own.
+it, so `MUI_PAGE_*` catches the MUI pages that have no row of their own. A macro
+from one of NSIS's own header libraries is listed under the name a script calls
+it by, so `${GetSize}` and `${StrStr}` are the `GetSize` and `StrStr` rows — the
+`${...}` is not part of the name. A label (`done:`) is a place rather than a
+statement: Rhai's own control flow replaces the jumps that reach it, so the
+checker reports one as `none`.
 
 ### The product and the file it builds
 
@@ -1946,30 +1954,38 @@ it, so `MUI_PAGE_*` catches the MUI pages that have no row of their own.
 | `RequestExecutionLevel` | direct | `install.require_admin` |
 | `Icon` | direct | `output.installer_icon` |
 | `UninstallIcon` | direct | `output.uninstaller_icon` |
-| `VIProductVersion` | direct | `project.file_version` |
+| `VIProductVersion`, `VIFileVersion` | direct | `project.file_version` |
 | `VIAddVersionKey` | direct | `project.publisher`, `project.copyright`, `project.description` |
 | `ManifestDPIAware` | direct | `ui.dpi_aware`; the builder writes the application manifest |
-| `ManifestSupportedOS` | none | the setup already claims Windows 7 SP1 x64 and later |
-| `SetCompressor`, `SetCompressorFinal` | none | the builder packs the payload itself |
+| `ManifestSupportedOS`, `ManifestLongPathAware` | none | the setup already claims Windows 7 SP1 x64 and later, and the builder writes the manifest |
+| `PEAddResource`, `PERemoveResource` | manual | the builder injects the project's icon, version information and manifest; nothing adds a resource of its own |
+| `SetCompressor`, `SetCompressorFinal`, `SetCompressorDictSize`, `SetCompress`, `FileBufSize` | none | the builder packs the payload itself, in blocks of its own size |
 | `SetDatablockOptimize` | none | nothing to migrate |
 | `CRCCheck` | none | the payload carries its own digests; an unsigned setup cannot checksum itself at run time |
 | `Unicode` | none | every build is Unicode |
 | `Target` | none | the setup is x64 |
 | `XPStyle` | none | the pages draw themselves |
-| `ShowInstDetails`, `ShowUninstDetails` | none | the task reports through the page carrying `role: "progress"` |
-| `SetOverwrite` | none | files land where the payload puts them; an upgrade replaces the previous version |
-| `BrandingText`, `SetBrandingImage` | none | the pages carry the words and the artwork |
-| `InstallColors`, `SetFont`, `SetCtlColors` | none | the pages carry their own colours and fonts |
+| `ShowInstDetails`, `ShowUninstDetails`, `SetDetailsPrint`, `SetDetailsView` | none | the task reports through the page carrying `role: "progress"` |
+| `SetOverwrite`, `SetDateSave`, `AllowSkipFiles` | none | files land where the payload puts them; an upgrade replaces the previous version, and a file that cannot be written fails the step and rolls it back |
+| `BrandingText`, `SetBrandingImage`, `AddBrandingImage`, `BGFont`, `BGGradient`, `CheckBitmap`, `ChangeUI`, `WindowIcon`, `InstProgressFlags` | none | the pages carry the words, the artwork and the progress bar |
+| `InstallColors`, `SetFont`, `SetCtlColors`, `CreateFont`, `LicenseBkColor` | none | the pages carry their own colours and fonts |
 | `AutoCloseWindow`, `SetAutoClose` | none | the finish page closes when the user says so |
 | `LoadLanguageFile`, `LangFile` | none | the runtime reads `locales/<locale>.json` |
 | `LangString` | direct | a field in `locales/<locale>.json`, asked for with `text="@key"` |
-| `BringToFront` | none | the wizard owns its own window |
+| `Caption` | direct | the `title` of that page in `wizard.pages` |
+| `SubCaption`, `CompletedText`, `ComponentText`, `DirText`, `SpaceTexts`, `FileErrorText`, `DetailsButtonText`, `InstallButtonText`, `MiscButtonText`, `UninstallButtonText`, `UninstallCaption`, `UninstallSubCaption`, `UninstallText` | direct | the page's own words, in the page's layout and `locales/<locale>.json` |
+| `LicenseText`, `LicenseData` | direct | the words on the licence page, or a link to them |
+| `LicenseForceSelection` | direct | a `Checkbox` on that page, and `enabled-when="<its id>:checked"` on the button that goes on |
+| `DirVar`, `DirVerify` | direct | the directory page's `TextInput` holds the folder, and its own `required`, `min-length` and `pattern` rules say what may go in it |
+| `AllowRootDirInstall` | none | nothing refuses to install into a drive root |
+| `BringToFront`, `LockWindow` | none | the wizard owns its own window and draws itself |
 
 ### Building, and the pages
 
 | Command | Verdict | What it becomes |
 | --- | --- | --- |
 | `!define`, `!undef`, `!searchparse`, `!searchreplace`, `!addincludedir` | none | build-time text, expanded by NSIS before anything runs |
+| `!if`, `!ifdef`, `!ifndef`, `!else`, `!endif`, `!error`, `!warning`, `!verbose`, `!echo`, `!pragma`, `!cd`, `!tempfile`, `!delfile`, `!appendfile`, `!getdllversion` | none | build-time tests and build-time text, decided before anything is packaged |
 | `!macro`, `!macroend` | none | the statements inside are reported where they are written |
 | `!insertmacro` | none | a macro the script defines itself; its statements are reported where they are written |
 | `!addplugindir` | manual | the compiler has no plugin search path: a plugin of your own goes in `resources.plugins_dir` and is embedded in the setup |
@@ -1985,6 +2001,7 @@ it, so `MUI_PAGE_*` catches the MUI pages that have no row of their own.
 | `PageLicense` | direct | a page with the licence text, or a link to it |
 | `PageInstFiles` | direct | the page the configuration gives `role: "progress"` |
 | `PageEx` | direct | an entry in `wizard.pages` |
+| `PageExEnd` | none | nothing to migrate |
 | `MUI_PAGE_*` | manual | an MUI page with no row of its own: build it from the page elements |
 | `MUI_UNPAGE_*` | manual | an MUI page with no row of its own: build it from the uninstall page elements |
 | `MUI_PAGE_WELCOME` | direct | a page of its own in `wizard.pages` |
@@ -2012,6 +2029,11 @@ it, so `MUI_PAGE_*` catches the MUI pages that have no row of their own.
 | `SectionGroupEnd` | none | nothing to migrate |
 | `SectionIn` | direct | `required: true` for `RO`; otherwise the checkbox on the page decides |
 | `SectionInGroup` | direct | the components the page shows |
+| `InstType`, `InstTypeSetText`, `InstTypeGetText`, `SectionInstType` | manual | there are no named installation types: the page's checkboxes pick the components one by one, and a script cannot tick one |
+| `SectionSetFlags`, `SectionGetFlags`, `SectionSetText`, `SectionGetText`, `SectionSetSize`, `SectionGetSize`, `SectionSetInstTypes`, `SectionGetInstTypes`, `SetCurInstType`, `GetCurInstType` | manual | the page's checkboxes decide the components; a script asks with `is_component_selected` and `selected_components` and cannot change them |
+| `AddSize` | none | `install.required_space_mb` is the one space check that runs; nothing adds up a section's size |
+| `Nop` | none | nothing to migrate |
+| `SetPluginUnload` | none | a plugin lives as long as the setup that loaded it |
 | `SetOutPath` | none | the payload archive carries the paths |
 | `File` | none | put the files in the payload archive, or in a component's |
 | `CreateDirectory` | script | `create_dir` |
@@ -2032,29 +2054,40 @@ it, so `MUI_PAGE_*` catches the MUI pages that have no row of their own.
 | `DeleteRegValue` | script | `reg_delete_value` |
 | `EnumRegKey`, `EnumRegValue` | manual | no primitive lists the subkeys or the values of a key |
 | `SetRegView` | direct | the `HKLM64` / `HKLM32` prefix on the key |
-| `WriteINIStr`, `ReadINIStr`, `DeleteINISec` | manual | no INI primitive: `read_text_file` and `write_file`, or a command through `run_command` |
+| `WriteINIStr`, `ReadINIStr`, `DeleteINISec`, `DeleteINIStr`, `FlushINI` | manual | no INI primitive: `read_text_file` and `write_file`, or a command through `run_command` |
 | `RegDLL`, `UnRegDLL` | manual | run `regsvr32` through `run_command` |
 | `SetShellVarContext` | manual | shortcuts go to the folders of the account that runs the setup; there is no all-users switch |
+| `GetDlgItem`, `SendMessage`, `ShowWindow`, `EnableWindow` | manual | there are no control handles to poke: the page declares its controls and the layout says what they look like |
+| `HideWindow` | manual | nothing hides the wizard while a step runs; the progress page names the step instead |
 | `DetailPrint` | script | `set_status` for written words, `set_status_key` for a locale key |
+| `LogText` | script | `log_info` |
+| `LogSet` | none | every run keeps its own log on disk, and the log is not something a script turns on |
+| `InitPluginsDir` | script | `get_temp_path` for a folder of its own, `extract_payload` for what the setup carries |
+| `GetInstDirError` | manual | there is no error code to read: the directory page's own rules refuse a value before the install starts |
 | `MessageBox` | script | `show_message`, `show_error` or `ask_yes_no`, drawn inside the window from `ui.dialog_layout` |
 | `Sleep` | script | `sleep_ms` |
 | `GetTempFileName` | script | `get_temp_path`, with `path_join` to name the file |
 | `GetSize` | script | `get_file_size` |
-| `GetFileTime` | manual | no primitive reads a file time |
-| `SetFileAttributes` | manual | no primitive sets file attributes |
+| `GetDrives` | script | `get_drives` |
+| `DriveSpace` | script | `get_drive_space` |
+| `GetFileName`, `GetBaseName` | script | `path_filename`, which keeps the extension |
+| `FindFirst`, `FindNext`, `FindClose` | script | `list_dir` |
+| `GetFileTime`, `GetFileTimeLocal`, `GetTime` | manual | no primitive reads a file time or the clock |
+| `SetFileAttributes`, `GetFileAttributes` | manual | no primitive reads or sets file attributes |
 | `SearchPath` | manual | `get_env` covers a named variable; nothing searches the path list |
 | `GetFullPathName` | manual | the primitives that take a path require it to be absolute |
+| `GetRoot` | manual | no primitive returns a drive root; `get_drives` lists what there is |
 | `GetParent` | script | `path_parent` |
 | `ReadEnvStr` | script | `get_env` |
-| `ExpandEnvStrings` | none | most primitives expand `%NAME%` themselves, and `reg_read_expand_string` does it for a registry value |
+| `ExpandEnvStrings` | none | the install folder, a dependency's own paths and `reg_read_expand_string` expand `%NAME%`; every other primitive takes the path as written |
 | `FileRead` | script | `read_text_file` |
 | `FileWrite` | script | `write_file` |
-| `FileOpen`, `FileClose` | manual | no primitive appends to a file or keeps a handle open |
-| `GetDLLVersion`, `GetDLLVersionLocal` | manual | no primitive reads a file version; `run_command_output` can run a program that does |
+| `FileOpen`, `FileClose`, `FileWriteByte`, `FileReadByte`, `FileSeek` | manual | no primitive appends to a file, moves inside one or writes raw bytes, and nothing holds a handle open for you |
+| `GetDLLVersion`, `GetDLLVersionLocal`, `GetFileVersion` | manual | no primitive reads a file version; `run_command_output` can run a program that does |
 | `ExecWait` | script | `run_command`, or `run_command_output` when the exit code and the output matter |
 | `Exec` | script | `run_detached` |
-| `ExecShell` | manual | no primitive opens a URL or a document; a page element with `action="open_url:<links key>"` does |
-| `Reboot`, `IfRebootFlag` | manual | a run never restarts the machine; a dependency answering 3010 or 1641 counts as installed and the run continues |
+| `ExecShell`, `ExecShellWait` | manual | no primitive opens a URL or a document; a page element with `action="open_url:<links key>"` does |
+| `Reboot`, `IfRebootFlag`, `SetRebootFlag` | manual | a run never restarts the machine; a dependency answering 3010 or 1641 counts as installed and the run continues |
 
 ### Plugins, flow and the NSIS runtime
 
@@ -2075,24 +2108,33 @@ it, so `MUI_PAGE_*` catches the MUI pages that have no row of their own.
 | `Goto` | manual | Rhai has `if`/`else` and loops; labels have no counterpart |
 | `Abort` | script | `return` from the script, after saying why through `show_error` |
 | `Quit` | script | `return` |
-| `SetErrors`, `ClearErrors` | none | the primitives return their own result |
+| `SetErrors`, `ClearErrors`, `GetErrorLevel` | none | the primitives return their own result |
 | `SetErrorLevel` | manual | a windowless run answers with the runtime's own exit code |
 | `IfErrors` | script | the primitives return their own result |
 | `IfFileExists` | script | `file_exists` and `is_dir` |
-| `IfSilent` | script | `get_mode()` and the arguments the run was given |
+| `IfAbort` | manual | nothing sets an abort flag; a script stops itself with `return` |
+| `IfSilent` | manual | no primitive tells a script whether this run is windowless; `show_message`, `show_error` and `ask_yes_no` already answer that question themselves, and no page is drawn |
 | `StrCmp`, `StrCmpS`, `StrICmp` | script | `==` in Rhai |
 | `StrCpy` | script | `let` in Rhai |
 | `StrLen` | script | `.len` in Rhai |
 | `StrReplace`, `StrStr`, `StrTok`, `StrTrim` | script | Rhai's string methods |
+| `StrRep`, `StrLoc`, `StrSort`, `StrTrimNewLines`, `WordFind`, `WordReplace`, `WordInsert`, `WordDelete`, `TextCompare` | script | Rhai's string methods |
+| `LineFind`, `LineRead`, `LineSum`, `FileReadFromEnd`, `FileJoin`, `TrimNewLines` | script | `read_text_file`, then Rhai's own string handling |
+| `VersionCompare`, `VersionConvert` | manual | no primitive compares versions; a dependency's `detect.at_least` is where the machine is asked about one |
+| `GetParameters`, `GetOptions` | manual | a windowless run takes `--dir` and `--log` and refuses anything else, so there is no command line for a script to parse |
+| `DisableX64FSRedirection`, `EnableX64FSRedirection`, `RunningX64` | none | the setup is x64 |
+| `AtLeastWin*`, `IsWin*` | manual | no primitive hands a script the version of Windows; the run's own log records it in its first lines |
 | `IntOp` | script | arithmetic in Rhai |
-| `IntCmp` | script | a comparison in Rhai |
+| `IntCmp`, `IntCmpU` | script | a comparison in Rhai |
 | `IntFmt` | manual | nothing pads a number into a string |
 | `Push`, `Pop`, `Exch` | manual | Rhai has variables; the NSIS stack has no counterpart |
-| `GetLabelAddress` | manual | labels have no counterpart |
+| `GetLabelAddress`, `GetFunctionAddress`, `GetCurrentAddress` | manual | labels and addresses have no counterpart |
 | `SetSilent`, `SilentInstall`, `SilentUninstall` | direct | `advanced.silent_mode_support` and `advanced.uninstall_mode_support`; a windowless run is `--silent` |
-| `${If}`, `${Unless}`, `${IfNot}`, `${AndIf}`, `${OrIf}` | script | `if` in Rhai |
+| `${If}`, `${Unless}`, `${IfNot}`, `${AndIf}`, `${OrIf}`, `${AndUnless}`, `${OrUnless}` | script | `if` in Rhai |
 | `${ElseIf}`, `${Else}` | script | `else if` and `else` in Rhai |
-| `${EndIf}`, `${While}`, `${EndWhile}`, `${ForEach}`, `${Next}`, `${Do}`, `${Loop}`, `${Break}`, `${Continue}` | script | Rhai's own control flow |
+| `${EndIf}`, `${EndUnless}`, `${While}`, `${EndWhile}`, `${For}`, `${ForEach}`, `${Next}`, `${Do}`, `${Loop}`, `${Until}`, `${DoWhile}`, `${Break}`, `${Continue}` | script | Rhai's own control flow |
+| `${Select}`, `${Case}`, `${CaseElse}`, `${Default}`, `${EndSelect}`, `${Switch}`, `${EndSwitch}` | script | `switch` and `if`/`else if` in Rhai |
+| `${SelectSection}`, `${UnselectSection}` | manual | the page's checkboxes decide the components; a script cannot tick one |
 
 ## What has no counterpart, and what to do instead
 
@@ -2115,6 +2157,20 @@ rest of the table.
   the setup. An installer that wrote an all-users shortcut has to place that
   shortcut another way — a per-machine install started with `require_admin` still
   writes the shortcut of the account that ran it.
+- **Installation types.** `InstType`, `SectionInstType`, `SectionSetFlags` and
+  the rest of that family have no counterpart: what gets installed is decided by
+  the checkboxes on the page, and a script can ask (`is_component_selected`,
+  `selected_components`) but cannot tick one. An installer whose type used to set
+  the sections has to move that decision onto the page and let the user make it.
+  A `RadioButton` group can gate a `Button` with `enabled-when="mode:full"`, but
+  nothing — script or page — changes a checkbox the user is looking at.
+- **Control handles.** `GetDlgItem`, `SendMessage`, `ShowWindow` and
+  `EnableWindow` reach into the window and drive a control directly. There are no
+  handles here: the page declares its controls, and the layout says what they
+  look like and when they may be used.
+- **Accepting the licence.** `LicenseForceSelection` is a page element rather
+  than a setting: a `Checkbox` on the licence page, and `enabled-when` on the
+  button that goes on, which is the same gate the MUI licence page enforced.
 - **Restarting the machine.** Nothing here restarts a machine. A dependency
   that answers 3010 or 1641 is reported as installed and the run continues; a
   product that cannot work before a restart has to say so on its finish page.
@@ -2130,7 +2186,9 @@ rest of the table.
 ## A worked example
 
 `examples/nsis-migration/` holds a representative NSIS script and the project it
-becomes:
+becomes. `instructions.nsi` sits beside them: it is the same guide's table held
+to the language, one line for every instruction, attribute and header macro NSIS
+documents.
 
 ```powershell
 .\scripts\check_nsi_migration.ps1 -Script .\examples\nsis-migration\legacy.nsi -FailOnUnknown
@@ -3488,7 +3546,7 @@ true of any installer, and it is why the acceptance run is on the list rather th
   what the first one installed -- the entry reported the new version, the older package had nothing
   left to remove, and the newer one cleaned up completely. A project that never declared a windowless
   run is refused a package, by name of the setting it is missing.
-  Twenty-five of its sixty-nine cases open the wizard window and drive it: one measures the client
+  Twenty-five of its seventy-three cases open the wizard window and drive it: one measures the client
   area it drew, one walks the page actions a project declares, one stops a running task from a cancel
   button, one types a directory into the field a page asks for and starts the install with it, one
   clicks the row a radio group's install button waits for, one rolls the wheel over a list and
@@ -3515,7 +3573,7 @@ true of any installer, and it is why the acceptance run is on the list rather th
   the wizard stays up while it is being asked. They need an interactive
   desktop session, so they skip where there is none and `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` makes the
   skip a failure; the cursor case asks that the session be showing a pointer as well, which a
-  hosted runner is not, and it prints its skip there. Of the other forty-four, three read their
+  hosted runner is not, and it prints its skip there. Of the other forty-eight, three read their
   answer back out of the machine rather than out of the primitive that wrote it: one checks every
   registry type a script named, and the copy of a key a view name selects, one checks the exit code
   and both streams of a command a script ran, and one checks that the service a script installed is
@@ -3558,13 +3616,16 @@ true of any installer, and it is why the acceptance run is on the list rather th
   builds against an empty archive of the same format. A page is drawn rather than reached: the
   uninstaller's pages are in the pictures without an uninstall having run.
 - Moving off NSIS is written down and checked: `docs/{zh-CN,en}/MIGRATION_FROM_NSIS.md` sorts every
-  NSIS command, directive and `${...}` variable into four answers -- it maps onto a setting, it needs a
-  script, only a person can do it, or NSIS ships it and this build has no counterpart -- and says what
-  each of them becomes. `examples/nsis-migration/` is a project written to that guide: a configuration,
-  seven pages of layout, two languages and both scripts, which the real builder turns into a setup that
-  installs. `scripts/check_nsi_migration.ps1` reads the two guides' tables on CI and holds every
-  construct the example uses to a row, with both languages agreeing line for line, and the example
-  configuration passes the builder's own configuration audit.
+  NSIS command, directive and `${...}` macro into five answers -- a setting or a page element does it,
+  a script primitive does it, only a person can do it, there is nothing to migrate, or the table has
+  no row for it yet -- and says what each of them becomes. `examples/nsis-migration/` is a project
+  written to that guide: a configuration, seven pages of layout, two languages and both scripts, which
+  the real builder turns into a setup that installs. `scripts/check_nsi_migration.ps1` reads the two
+  guides' tables on CI and holds every construct of two fixtures to a row: the example's own script,
+  and `instructions.nsi`, which carries one line for every instruction, attribute and header macro
+  NSIS documents, so the table is held to the language and not only to the script beside it. Both
+  languages have to agree line for line, and the example configuration passes the builder's own
+  configuration audit.
 
 ## Signing
 

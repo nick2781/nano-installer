@@ -194,7 +194,7 @@ true of any installer, and it is why the acceptance run is on the list rather th
   what the first one installed -- the entry reported the new version, the older package had nothing
   left to remove, and the newer one cleaned up completely. A project that never declared a windowless
   run is refused a package, by name of the setting it is missing.
-  Twenty-five of its sixty-nine cases open the wizard window and drive it: one measures the client
+  Twenty-five of its seventy-three cases open the wizard window and drive it: one measures the client
   area it drew, one walks the page actions a project declares, one stops a running task from a cancel
   button, one types a directory into the field a page asks for and starts the install with it, one
   clicks the row a radio group's install button waits for, one rolls the wheel over a list and
@@ -221,7 +221,7 @@ true of any installer, and it is why the acceptance run is on the list rather th
   the wizard stays up while it is being asked. They need an interactive
   desktop session, so they skip where there is none and `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` makes the
   skip a failure; the cursor case asks that the session be showing a pointer as well, which a
-  hosted runner is not, and it prints its skip there. Of the other forty-four, three read their
+  hosted runner is not, and it prints its skip there. Of the other forty-eight, three read their
   answer back out of the machine rather than out of the primitive that wrote it: one checks every
   registry type a script named, and the copy of a key a view name selects, one checks the exit code
   and both streams of a command a script ran, and one checks that the service a script installed is
@@ -264,13 +264,16 @@ true of any installer, and it is why the acceptance run is on the list rather th
   builds against an empty archive of the same format. A page is drawn rather than reached: the
   uninstaller's pages are in the pictures without an uninstall having run.
 - Moving off NSIS is written down and checked: `docs/{zh-CN,en}/MIGRATION_FROM_NSIS.md` sorts every
-  NSIS command, directive and `${...}` variable into four answers -- it maps onto a setting, it needs a
-  script, only a person can do it, or NSIS ships it and this build has no counterpart -- and says what
-  each of them becomes. `examples/nsis-migration/` is a project written to that guide: a configuration,
-  seven pages of layout, two languages and both scripts, which the real builder turns into a setup that
-  installs. `scripts/check_nsi_migration.ps1` reads the two guides' tables on CI and holds every
-  construct the example uses to a row, with both languages agreeing line for line, and the example
-  configuration passes the builder's own configuration audit.
+  NSIS command, directive and `${...}` macro into five answers -- a setting or a page element does it,
+  a script primitive does it, only a person can do it, there is nothing to migrate, or the table has
+  no row for it yet -- and says what each of them becomes. `examples/nsis-migration/` is a project
+  written to that guide: a configuration, seven pages of layout, two languages and both scripts, which
+  the real builder turns into a setup that installs. `scripts/check_nsi_migration.ps1` reads the two
+  guides' tables on CI and holds every construct of two fixtures to a row: the example's own script,
+  and `instructions.nsi`, which carries one line for every instruction, attribute and header macro
+  NSIS documents, so the table is held to the language and not only to the script beside it. Both
+  languages have to agree line for line, and the example configuration passes the builder's own
+  configuration audit.
 
 ## Signing
 
