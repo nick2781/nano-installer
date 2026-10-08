@@ -7,6 +7,7 @@ This folder is the worked example of the migration guide:
 | Path | What it is |
 | --- | --- |
 | `legacy.nsi` | A representative NSIS script — one of every construct a real installer uses |
+| `instructions.nsi` | One line for every instruction, attribute and header macro NSIS documents |
 | `migrated/` | The same product as a Nano Installer project: configuration, pages, languages and the two scripts |
 
 `legacy.nsi` is not runnable and installs nothing: there is no `app\`, `docs\`,
@@ -16,6 +17,16 @@ to classify:
 
 ```powershell
 .\scripts\check_nsi_migration.ps1 -Script .\examples\nsis-migration\legacy.nsi
+```
+
+`instructions.nsi` is not runnable either, and does not try to be: it is the
+NSIS language written out one construct per line, so the guide's table can be
+held to the language rather than to the one script next to it. CI runs the
+checker over both with `-FailOnUnknown`, which turns a construct the table has
+no row for into a failing check instead of a line a reader has to interpret.
+
+```powershell
+.\scripts\check_nsi_migration.ps1 -Script .\examples\nsis-migration\instructions.nsi
 ```
 
 `migrated/` is a real project of the shape the guide builds up. Building it

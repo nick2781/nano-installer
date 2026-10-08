@@ -21,7 +21,10 @@
     A row is a table row whose second cell is one of the five verdicts, so the
     prose tables above and below it are ignored. `*` at the end of a command
     matches anything after it, which is how `MUI_PAGE_*` catches the MUI pages
-    that have no row of their own.
+    that have no row of their own. A macro written the way a script writes one --
+    `${GetSize}`, `${StrStr}` -- is looked up under its own name, so the table
+    keeps one row per macro rather than one per spelling of it. A label (`done:`)
+    is a place rather than a statement and is reported as `none`.
 
     Usage:
         .\scripts\check_nsi_migration.ps1 -Script .\examples\nsis-migration\legacy.nsi
@@ -256,8 +259,24 @@ function Get-Verdict {
         }
     }
 
+    # A label is a place rather than a command: `done:` names the line the jumps
+    # above it target. Rhai has `if`/`else` and loops, so the label itself is
+    # nothing to migrate -- and treating one as a statement would report a line
+    # of every function in a real script as unknown, which buries the table's
+    # real gaps under noise nobody can act on.
+    if ($Statement -match '^[A-Za-z_.][A-Za-z0-9_.]*:$') {
+        return @('none', 'a label: Rhai has no labels, and its own control flow replaces the jumps to it')
+    }
+
     $command = ($Statement -split '\s+')[0]
     $row = Get-Row -Name $command
+    if ($null -eq $row -and $command -match '^\$\{(.+)\}$') {
+        # A script uses a macro from one of NSIS's own header libraries as
+        # `${GetSize}` or `${StrStr}`, while the table lists it under its own
+        # name. The literal name is tried first, which is what keeps `${If}`
+        # on LogicLib's row instead of looking for a command called `If`.
+        $row = Get-Row -Name $matches[1].TrimStart('\')
+    }
     if ($null -ne $row) {
         if ($row.Verdict -eq 'unknown') {
             return @('unknown', $Verdicts['unknown'])

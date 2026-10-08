@@ -182,11 +182,17 @@ jobs:
 
       # The migration guide's tables are the table the checker classifies with,
       # and both languages have to carry the same rows. Running the check over
-      # the example that carries one of every NSIS construct keeps both honest:
-      # a row nothing reads, and a construct with no row at all, fail here.
+      # both fixtures keeps the table honest about two different things:
+      # legacy.nsi is one product's installer, so a real construct with no row
+      # fails here; instructions.nsi carries one line for every instruction,
+      # attribute and header macro NSIS documents, so the table is held to the
+      # language rather than to the one script beside it. A row that only one
+      # language carries fails inside the check itself.
       - name: Check the NSIS migration table
         shell: powershell
-        run: .\scripts\check_nsi_migration.ps1 -Script .\examples\nsis-migration\legacy.nsi -FailOnUnknown
+        run: |
+          .\scripts\check_nsi_migration.ps1 -Script .\examples\nsis-migration\legacy.nsi -FailOnUnknown
+          .\scripts\check_nsi_migration.ps1 -Script .\examples\nsis-migration\instructions.nsi -FailOnUnknown
 
       # The published site is a viewer over Markdown files, and docs/llms.txt is
       # how something that cannot run the viewer finds them. The files are
