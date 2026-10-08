@@ -13,7 +13,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $targetTriple = "x86_64-win7-windows-msvc"
 $cargoRelease = Join-Path $repoRoot "target/$targetTriple/release"
 $guiTargetRoot = Join-Path $repoRoot "target/gui-build"
-$guiCargoRelease = Join-Path $guiTargetRoot "release"
+$guiCargoRelease = Join-Path $guiTargetRoot "gui"
 $publishRelease = Join-Path $repoRoot "target/release"
 $publishStubs = Join-Path $publishRelease "stubs"
 if ($Output -and -not $Project) {
@@ -50,21 +50,36 @@ try {
     # version resources in the built binaries telling the same story.
     & (Join-Path $PSScriptRoot "release_version.ps1") -Version $workspaceVersion
 
-    Invoke-Checked {
-        & rustup run $Toolchain cargo build --locked --release `
-            -Z build-std=std,panic_abort `
-            --target $targetTriple `
-            -p nano-installer-native-cli `
-            -p nano-installer-stub-lzma `
-            -p nano-installer-stub-zlib `
-            -p nano-installer-uninstaller
-    } "Win7+ native toolchain build"
+    # The runtime is embedded in every setup a project ships, so its size is part
+    # of the release. Three things buy it here: the linker's identical-code
+    # folding, which the MSVC linker does not do at this level by default; panics
+    # that abort without building a message nobody reads; and `crt-static`, which
+    # has to be repeated because RUSTFLAGS replaces the flags .cargo/config.toml
+    # sets for this target rather than adding to them.
+    $previousRustFlags = $env:RUSTFLAGS
+    try {
+        $env:RUSTFLAGS = "-C target-feature=+crt-static -C link-arg=/OPT:ICF=3 -Zunstable-options -Cpanic=immediate-abort"
+        Invoke-Checked {
+            & rustup run $Toolchain cargo build --locked --release `
+                -Z build-std=std,panic_abort `
+                --target $targetTriple `
+                -p nano-installer-native-cli `
+                -p nano-installer-stub-lzma `
+                -p nano-installer-stub-zlib `
+                -p nano-installer-uninstaller
+        } "Win7+ native toolchain build"
+    } finally {
+        $env:RUSTFLAGS = $previousRustFlags
+    }
 
     $previousRustFlags = $env:RUSTFLAGS
     try {
         $env:RUSTFLAGS = "-C target-feature=+crt-static"
+        # `release` is size-first for the runtime a project ships; the visual
+        # builder is a desktop application instead, and `z` costs it more than it
+        # saves, so it is built with a profile of its own.
         Invoke-Checked {
-            & rustup run $Toolchain cargo build --locked --release `
+            & rustup run $Toolchain cargo build --locked --profile gui `
                 --target-dir $guiTargetRoot `
                 -p nano-installer-gui
         } "Windows 10+ GUI build"

@@ -47,6 +47,13 @@ target/release/
 The runtimes ship without product resources; the builder injects icons, version info, and the
 application manifest per project.
 
+The runtime is embedded in every setup, so its size is a release metric too: on this machine the three
+stubs are 1.47-1.54 MB and the builder is 583 KB. The `release` profile is size-first for that reason
+(`opt-level = "z"`), and the build adds the linker's `/OPT:ICF=3` (the MSVC linker does not fold at
+that level by default), `panic = "immediate-abort"` (a nightly flag: a panic stops there instead of
+building a message nobody reads), and Rhai's `no_optimize` and `no_time`. The visual builder is built
+with a `gui` profile of its own, because `z` makes it larger.
+
 Building a setup also audits it: `scripts/audit_application_manifest.ps1` reads the manifest
 resource back and checks the execution level and DPI behaviour against the project configuration,
 so a setup that silently lost its elevation requirement fails the build instead of shipping.

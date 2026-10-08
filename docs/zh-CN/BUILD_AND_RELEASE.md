@@ -39,6 +39,11 @@ target/release/
 ```
 
 运行时不含产品资源，图标、版本信息与应用程序清单都按项目注入。
+运行时会被嵌进每个安装包，所以它的体积也是发布指标：本机实测三个运行时 1.47-1.54 MB，构建器 583 KB。
+`release` profile 为此选了 `opt-level = "z"`，构建这一批可执行文件时还加了链接器的 `/OPT:ICF=3`
+（MSVC 链接器默认不做这一级等价折叠）、`panic = "immediate-abort"`（nightly 参数：panic 直接中止，
+不拼一条没人读的消息）与 Rhai 的 `no_optimize`、`no_time`。可视化构建器走单独的 `gui` profile，
+因为 `z` 会让它反而增大。
 
 构建安装包时会顺带审计：`scripts/audit_application_manifest.ps1` 读回清单资源，核对权限级别与
 DPI 行为是否与项目配置一致，所以悄悄丢掉提权声明的安装包会让构建失败。

@@ -59,6 +59,9 @@
 
 ### 改进
 
+- 安装包更小了：三个运行时从 2.02-2.11 MB 降到 1.47-1.54 MB，构建器从 702 KB 降到 583 KB。运行时会被
+  嵌进每个安装包，所以这一项直接落在用户下载的那个文件上；可视化构建器体积不变。
+
 - Windows 7 SP1 x64 完成了一次验收：内部版本 7601 旗舰版，一次性虚拟机，一个由当前构建器构建的安装包
   走完安装、卸载与两次无窗口运行。装出来的东西与宣传的一致——无边框圆角窗口、版面画出的背景位图与中文
   文字、`require_admin` 的提权确认、payload 连同嵌套目录落地、桌面与开始菜单快捷方式、字段齐全的卸载
@@ -94,6 +97,16 @@
 <!-- release-notes:end -->
 
 ### 技术细节
+
+- 运行时体积是一次一项测出来的，不是猜的：`opt-level = "z"` 约 −350 KB；链接器 `/OPT:ICF=3` 约
+  −170 KB（MSVC 链接器默认不做这一级等价折叠）；`panic = "immediate-abort"` 约 −170 KB；Rhai 的
+  `no_optimize` 与 `no_time` 合计约 −45 KB（脚本 API 都到不了）。同一批参数让可视化构建器反而增大
+  400 KB，所以它改用继承 release 的 `gui` profile。panic 策略经 RUSTFLAGS 传入，而不是在 Cargo.toml
+  里开那个不稳定特性——后者会让稳定版 cargo 连这份清单都读不了。
+- 瘦身后的产物在 Windows 7 SP1 上重新走了一遍：非提权静默安装（payload 连嵌套目录落地、项目脚本建目录、
+  manifest、卸载程序）、向导把页面画出来（截图上读得到语言选择器）、卸载（日志「the product is
+  removed」，注册表清空）。`scripts/smoke_backends.ps1` 用真实 ZIP 与 7z 过了三个运行时，Win7 导入
+  审计在构建时通过。
 
 - Windows 7 验收是在 QEMU 里跑的，方式记在这里好让下一次可以重来：这台机器上 VBS/HVCI 占着虚拟化，
   WHPX 一启动客户机就报 `Unexpected VP exit code 4`，于是改用 TCG 纯软件模拟（`-accel tcg,thread=multi`），
