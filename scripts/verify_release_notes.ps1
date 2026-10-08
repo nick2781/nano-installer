@@ -1,4 +1,4 @@
-<#
+﻿<#
     Runs the release-notes generator the way the release job does and proves the
     result is readable.
 
@@ -78,4 +78,28 @@ if ($footer.Contains([char]0xFFFD)) {
     throw "The generated footer contains a replacement character, so a byte was lost: $footer"
 }
 
-Write-Output "Release notes verified for ${Tag}: $($notes.Length) characters, footer intact"
+# Text the changelog quotes as code has to reach the body exactly as written.
+# The link promotion above rewrites relative links into absolute ones, and a
+# span that describes `[words](target)` markup is not a link: it was rewritten
+# into one that goes nowhere, and the published body said so. Nothing local
+# notices that -- it shows up in the release -- so it is checked here.
+$changelog = [System.IO.File]::ReadAllText((Join-Path $repoRoot "CHANGELOG.md"), [System.Text.UTF8Encoding]::new($true))
+$version = $Tag -replace "^v", ""
+$heading = "## [$version]"
+$start = $changelog.IndexOf($heading)
+if ($start -lt 0) {
+    throw "CHANGELOG.md has no $heading section, so there is nothing to verify against"
+}
+$section = $changelog.Substring($start)
+$markerAt = $section.IndexOf("<!-- release-notes:end -->")
+if ($markerAt -ge 0) {
+    $section = $section.Substring(0, $markerAt)
+}
+$quoted = @([regex]::Matches($section, '`[^`\r\n]*\]\([^`\r\n]*`') | ForEach-Object { $_.Value })
+foreach ($span in $quoted) {
+    if (-not $notes.Contains($span)) {
+        throw "The release body rewrote a code span from the $heading section:`n  $span"
+    }
+}
+
+Write-Output "Release notes verified for ${Tag}: $($notes.Length) characters, footer intact, $($quoted.Count) quoted span(s) untouched"

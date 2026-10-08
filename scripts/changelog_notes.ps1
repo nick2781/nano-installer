@@ -65,11 +65,25 @@ $repo = $env:GITHUB_REPOSITORY
 
 # Release bodies are not rendered next to the checkout, so relative links such as
 # docs/PRODUCTION_STATUS.md must be promoted to absolute repository links.
+#
+# Text the changelog quotes as code is left exactly as written. A sentence that
+# describes `[words](target)` markup is not a link, and rewriting it publishes a
+# link that goes nowhere -- which is what a section explaining link markup got.
+# Code is cut out first, fenced blocks before inline spans, and only what sits
+# between the spans is rewritten.
 if (-not [string]::IsNullOrEmpty($repo)) {
-    $body = [regex]::Replace($body, '\]\((?![a-zA-Z][a-zA-Z0-9+.-]*:|#)([^)]+)\)', {
-        param($match)
-        "]($('https://github.com/' + $repo + '/blob/main/' + $match.Groups[1].Value))"
-    })
+    $pieces = [regex]::Split($body, '(```[\s\S]*?```|`[^`\r\n]*`)')
+    $promoted = foreach ($piece in $pieces) {
+        if ($piece.StartsWith('`')) {
+            $piece
+        } else {
+            [regex]::Replace($piece, '\]\((?![a-zA-Z][a-zA-Z0-9+.-]*:|#)([^)]+)\)', {
+                param($match)
+                "]($('https://github.com/' + $repo + '/blob/main/' + $match.Groups[1].Value))"
+            })
+        }
+    }
+    $body = $promoted -join ''
 }
 
 # This file is saved with a UTF-8 BOM on purpose. Windows PowerShell decodes a
