@@ -83,6 +83,12 @@ to a real script, the second holds it to the language — a construct NSIS has a
 the table does not fails the check instead of printing `unknown` at somebody who
 then has to guess.
 
+The five verdicts the table below uses are the five printed above: `direct` is what a
+configuration setting or a page element does on its own, and `script` is a primitive in
+`scripts/install.rhai` or `scripts/uninstall.rhai`. `manual` is no equivalent, so this page
+says what to do instead; `none` is build-time or cosmetic, with nothing to migrate; and
+`unknown` is what this page carries no row for yet.
+
 ## The table
 
 Each row says what a command becomes, and several spellings of one command share a
