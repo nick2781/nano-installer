@@ -1611,6 +1611,9 @@ pub fn build_project_with_progress(
         extras,
         update_archive.as_deref(),
         true,
+        // The setup can open every page the project declares, so it carries them
+        // all; only the icons it injects as resources stay out.
+        BundleContents::default(),
         |message| {
             progress(BuildEvent {
                 stage: BuildStage::Packing,
@@ -1857,9 +1860,13 @@ fn build_uninstaller_executable(
     output_name: &str,
     mut progress: impl FnMut(String),
 ) -> Result<Vec<u8>> {
-    let bundle = pack_project_with_progress(project, Vec::new(), None, false, |message| {
-        progress(format!("Uninstaller bundle: {message}"));
-    })?;
+    // The uninstaller shows its own pages and the dialog, and no others, so it
+    // carries the pictures those name rather than the whole assets directory.
+    let contents = uninstaller_bundle_contents(project, config)?;
+    let bundle =
+        pack_project_with_progress(project, Vec::new(), None, false, contents, |message| {
+            progress(format!("Uninstaller bundle: {message}"));
+        })?;
     let temporary = TemporaryExecutable::copy_from(stub)?;
     if let Some(icon_path) = uninstaller_icon_path(project, config) {
         progress(format!(
@@ -2347,13 +2354,130 @@ fn find_native_stub(name: &str, override_directory: Option<&Path>) -> Result<Pat
         .with_context(|| format!("native runtime stub not found: {name}"))
 }
 
+/// What a bundle carries, decided by the runtime that reads it.
+///
+/// The two runtimes show different pages, and neither one reads an icon out of
+/// the bundle: the build injects those into the executable as PE resources, where
+/// `LoadIconW` finds them. Those two facts are what stop a setup from carrying
+/// the same megabytes twice.
+#[derive(Default)]
+struct BundleContents {
+    /// Layout files the uninstaller can show. `None` keeps every page, which is
+    /// what a setup wants: it can open any of them.
+    layouts: Option<HashSet<String>>,
+    /// Asset files the uninstaller can show. `None` keeps every asset.
+    assets: Option<HashSet<String>>,
+}
+
+impl BundleContents {
+    fn keeps(&self, allowed: &Option<HashSet<String>>, name: &str) -> bool {
+        match allowed {
+            Some(set) => set.contains(name),
+            None => true,
+        }
+    }
+}
+
+/// The icons the build injects into the executables as PE resources.
+///
+/// A project names them under `output`, and the file it names also sits in the
+/// assets directory, where the packer would otherwise pick it up a second time.
+fn injected_icon_names(config: &serde_json::Value) -> HashSet<String> {
+    ["installer_icon", "uninstaller_icon"]
+        .iter()
+        .filter_map(|key| config["output"][key].as_str())
+        .map(|path| path.replace('\\', "/"))
+        .collect()
+}
+
+/// The pages the uninstaller can show, and the assets those pages name.
+///
+/// The page list is the runtime's own field, so a project that reorders or renames
+/// its uninstall pages keeps working. A layout names an asset by file name, so an
+/// asset is reachable when its name appears in one of those layouts, and a
+/// high-DPI pair is reachable when the name it pairs with does. A project whose
+/// uninstall pages name no assets gets a bundle with no assets, not a guess.
+fn uninstaller_bundle_contents(
+    project: &Path,
+    config: &serde_json::Value,
+) -> Result<BundleContents> {
+    let Some(pages) = config["wizard"]["uninstall_pages"].as_array() else {
+        // Without a page list the runtime has nothing to show either. A smaller
+        // setup is not worth an uninstall that cannot draw its own window.
+        return Ok(BundleContents::default());
+    };
+    let dialog = config["ui"]["dialog_layout"]
+        .as_str()
+        .unwrap_or(DEFAULT_DIALOG_LAYOUT);
+    let mut layouts = HashSet::new();
+    let mut page_text = String::new();
+    for layout in pages
+        .iter()
+        .filter_map(|page| page["layout"].as_str())
+        .chain(std::iter::once(dialog))
+    {
+        let name = layout.replace('\\', "/");
+        if let Ok(text) = std::fs::read_to_string(project.join(&name)) {
+            page_text.push_str(&text);
+        }
+        layouts.insert(name);
+    }
+    let assets_dir = config["resources"]["assets_dir"]
+        .as_str()
+        .unwrap_or("assets");
+    let mut assets = HashSet::new();
+    let mut names = Vec::new();
+    list_files(project, &project.join(assets_dir), &mut names)?;
+    for name in names {
+        let Some(file_name) = name.rsplit('/').next() else {
+            continue;
+        };
+        let paired = file_name
+            .strip_suffix("@2x.png")
+            .map(|base| format!("{base}.png"));
+        if page_text.contains(file_name) || paired.is_some_and(|base| page_text.contains(&base)) {
+            assets.insert(name);
+        }
+    }
+    Ok(BundleContents {
+        layouts: Some(layouts),
+        assets: Some(assets),
+    })
+}
+
+/// Every file under a directory, named the way the bundle names it.
+fn list_files(root: &Path, directory: &Path, names: &mut Vec<String>) -> Result<()> {
+    for entry in std::fs::read_dir(directory)? {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() {
+            list_files(root, &entry.path(), names)?;
+        } else {
+            names.push(
+                entry
+                    .path()
+                    .strip_prefix(root)?
+                    .to_string_lossy()
+                    .replace('\\', "/"),
+            );
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 fn pack_project(project: &Path, extra: Option<(&str, Vec<u8>)>) -> Result<Vec<u8>> {
     let extras = extra
         .into_iter()
         .map(|(name, data)| (name.to_string(), data))
         .collect();
-    pack_project_with_progress(project, extras, None, true, |_| {})
+    pack_project_with_progress(
+        project,
+        extras,
+        None,
+        true,
+        BundleContents::default(),
+        |_| {},
+    )
 }
 
 fn pack_project_with_progress(
@@ -2361,6 +2485,7 @@ fn pack_project_with_progress(
     extras: Vec<(String, Vec<u8>)>,
     payload_override: Option<&Path>,
     include_payload: bool,
+    contents: BundleContents,
     mut progress: impl FnMut(String),
 ) -> Result<Vec<u8>> {
     let mut files = Vec::new();
@@ -2368,6 +2493,9 @@ fn pack_project_with_progress(
     let config_data = std::fs::read(&config_path)
         .with_context(|| format!("missing project file: {}", config_path.display()))?;
     let config: serde_json::Value = serde_json::from_slice(without_byte_order_mark(&config_data))?;
+    // The build injects these into the executables as PE resources, so the copy in
+    // the bundle is weight no runtime ever opens.
+    let injected = injected_icon_names(&config);
     progress(format!(
         "Adding installer_config.json ({})",
         format_build_size(config_data.len() as u64)
@@ -2386,6 +2514,20 @@ fn pack_project_with_progress(
         let file_count_before = files.len();
         let size_before = collected_size(&files);
         collect_directory(project, &project.join(directory), &mut files)?;
+        // A bundle carries the pages and pictures the runtime reading it can
+        // reach, and nothing else.
+        let filtered = match key {
+            "layouts_dir" => Some(&contents.layouts),
+            "assets_dir" => Some(&contents.assets),
+            _ => None,
+        };
+        if let Some(allowed) = filtered {
+            let prefix = format!("{directory}/");
+            files.retain(|(name, _)| {
+                let in_this_directory = name == directory || name.starts_with(&prefix);
+                !in_this_directory || (contents.keeps(allowed, name) && !injected.contains(name))
+            });
+        }
         let file_count = files.len() - file_count_before;
         let size = collected_size(&files) - size_before;
         progress(format!(
@@ -10073,12 +10215,13 @@ mod tests {
         render_flow_item, render_progress_bar, resolve_asset_path, resolve_link_target,
         resolve_value_source, resolved_text_for_node, restore_snapshot, runtime_layout_path_at,
         runtime_page_count, runtime_page_index_for_role, scale_value, selection_layers,
-        size_attribute, uninstaller_version_info, validate_output_filename, word_end_after,
-        word_range, word_start_before, wrap_lines, wraps, BundleIndex, DialogKind, DialogState,
-        DpiContext, DpiSettings, FieldState, FlowAxis, FlowItem, ImageLayer, Insets,
-        InteractionState, LayerRect, LayoutContext, LayoutOutput, LiveRegionKind, MoveTrouble,
-        PayloadFormat, RuntimeMode, RuntimeUi, TextAlignment, TextHit, TextInputRegion,
-        TextSnapshot, WindowAction, BUNDLE_MAGIC, BUNDLE_VERSION, COLORREF, FOOTER_MAGIC, POINT,
+        size_attribute, uninstaller_bundle_contents, uninstaller_version_info,
+        validate_output_filename, word_end_after, word_range, word_start_before, wrap_lines, wraps,
+        BundleContents, BundleIndex, DialogKind, DialogState, DpiContext, DpiSettings, FieldState,
+        FlowAxis, FlowItem, ImageLayer, Insets, InteractionState, LayerRect, LayoutContext,
+        LayoutOutput, LiveRegionKind, MoveTrouble, PayloadFormat, RuntimeMode, RuntimeUi,
+        TextAlignment, TextHit, TextInputRegion, TextSnapshot, WindowAction, BUNDLE_MAGIC,
+        BUNDLE_VERSION, COLORREF, FOOTER_MAGIC, POINT,
     };
     use anyhow::Context;
     use std::collections::HashMap;
@@ -10127,6 +10270,82 @@ mod tests {
             serde_json::from_slice::<serde_json::Value>(data)
                 .with_context(|| format!("{name} does not parse after packing"))?;
         }
+        Ok(())
+    }
+
+    #[test]
+    fn a_bundle_does_not_carry_an_icon_the_build_injects_as_a_resource() -> anyhow::Result<()> {
+        // The icon travels into the executable's resources, which is where Windows
+        // looks for it. The copy in the bundle is the same bytes a second time,
+        // and nothing opens it.
+        let temp = tempfile::tempdir()?;
+        let project = temp.path();
+        for directory in ["layouts", "assets", "locales", "payload"] {
+            std::fs::create_dir(project.join(directory))?;
+        }
+        std::fs::write(
+            project.join("installer_config.json"),
+            br#"{"project":{"name":"Icons"},"output":{"installer_icon":"assets/logo.ico","uninstaller_icon":"assets/uninst.ico"},"resources":{"payload_file":"payload/app.7z"},"wizard":{"pages":[{"layout":"layouts/config.xml"}]}}"#,
+        )?;
+        std::fs::write(
+            project.join("layouts/config.xml"),
+            br#"<Page width="720" height="450" />"#,
+        )?;
+        std::fs::write(project.join("assets/logo.ico"), b"icon")?;
+        std::fs::write(project.join("assets/uninst.ico"), b"icon")?;
+        std::fs::write(project.join("assets/background.png"), b"png")?;
+        std::fs::write(project.join("payload/app.7z"), b"payload")?;
+
+        let files = parse_bundle(&pack_project(project, None)?)?;
+        assert!(files.contains_key("assets/background.png"));
+        assert!(!files.contains_key("assets/logo.ico"));
+        assert!(!files.contains_key("assets/uninst.ico"));
+        Ok(())
+    }
+
+    #[test]
+    fn an_uninstaller_carries_only_the_pictures_its_own_pages_name() -> anyhow::Result<()> {
+        let temp = tempfile::tempdir()?;
+        let project = temp.path();
+        for directory in ["layouts", "assets", "locales", "payload"] {
+            std::fs::create_dir(project.join(directory))?;
+        }
+        std::fs::write(
+            project.join("installer_config.json"),
+            br#"{"project":{"name":"Scoped"},"resources":{"payload_file":"payload/app.7z"},"wizard":{"pages":[{"layout":"layouts/config.xml"}],"uninstall_pages":[{"layout":"layouts/uninstall.xml"}]}}"#,
+        )?;
+        std::fs::write(
+            project.join("layouts/config.xml"),
+            br#"<Page width="720" height="450" background-image="assets/install_only.png" />"#,
+        )?;
+        std::fs::write(
+            project.join("layouts/uninstall.xml"),
+            br#"<Page width="720" height="450" background-image="assets/used.png" />"#,
+        )?;
+        std::fs::write(project.join("assets/install_only.png"), b"png")?;
+        std::fs::write(project.join("assets/used.png"), b"png")?;
+        std::fs::write(project.join("assets/used@2x.png"), b"png")?;
+        std::fs::write(project.join("assets/never_named.png"), b"png")?;
+        std::fs::write(project.join("payload/app.7z"), b"payload")?;
+
+        let config = crate::read_project_config(project)?;
+        let contents = uninstaller_bundle_contents(project, &config)?;
+        let packed =
+            pack_project_with_progress(project, Vec::new(), None, false, contents, |_| {})?;
+        let files = parse_bundle(&packed)?;
+        // What the uninstall page names travels, and the high-DPI pair with it.
+        assert!(files.contains_key("layouts/uninstall.xml"));
+        assert!(files.contains_key("assets/used.png"));
+        assert!(files.contains_key("assets/used@2x.png"));
+        // The installer's own page and picture, and one nothing names, stay out.
+        assert!(!files.contains_key("layouts/config.xml"));
+        assert!(!files.contains_key("assets/install_only.png"));
+        assert!(!files.contains_key("assets/never_named.png"));
+
+        // The setup can open every page, so it still carries all of them.
+        let setup = parse_bundle(&pack_project(project, None)?)?;
+        assert!(setup.contains_key("layouts/config.xml"));
+        assert!(setup.contains_key("assets/install_only.png"));
         Ok(())
     }
 
@@ -10501,6 +10720,7 @@ mod tests {
             )],
             None,
             true,
+            BundleContents::default(),
             |message| messages.push(message),
         )?;
         let files = parse_bundle(&bundle)?;
@@ -12229,7 +12449,14 @@ mod tests {
     #[test]
     fn taptap_uninstaller_buttons_have_distinct_hit_regions() -> anyhow::Result<()> {
         let project = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/TapTap");
-        let bundle = pack_project_with_progress(&project, Vec::new(), None, false, |_| {})?;
+        let bundle = pack_project_with_progress(
+            &project,
+            Vec::new(),
+            None,
+            false,
+            BundleContents::default(),
+            |_| {},
+        )?;
         let files = parse_bundle(&bundle)?;
         let interaction = initial_interaction(&files, RuntimeMode::Uninstaller)?;
         let ui = load_layout(
@@ -12265,7 +12492,14 @@ mod tests {
         interaction: &InteractionState,
     ) -> anyhow::Result<RuntimeUi> {
         let project = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/TapTap");
-        let bundle = pack_project_with_progress(&project, Vec::new(), None, false, |_| {})?;
+        let bundle = pack_project_with_progress(
+            &project,
+            Vec::new(),
+            None,
+            false,
+            BundleContents::default(),
+            |_| {},
+        )?;
         let files = parse_bundle(&bundle)?;
         let mut interaction = interaction.clone();
         interaction.page_index = page_index;
@@ -13182,7 +13416,14 @@ mod tests {
     fn progress_pages_render_every_control_they_declare() -> anyhow::Result<()> {
         let interaction = {
             let project = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/TapTap");
-            let bundle = pack_project_with_progress(&project, Vec::new(), None, false, |_| {})?;
+            let bundle = pack_project_with_progress(
+                &project,
+                Vec::new(),
+                None,
+                false,
+                BundleContents::default(),
+                |_| {},
+            )?;
             initial_interaction(&parse_bundle(&bundle)?, RuntimeMode::Installer)?
         };
         let ui = taptap_page(RuntimeMode::Installer, 1, &interaction)?;
