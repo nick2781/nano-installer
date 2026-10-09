@@ -36,6 +36,10 @@ Rust doc comment，再退回用例名。
 | `a_container_measures_the_edge_its_children_are_asked_for` | 问 `HBox` 竖直尺寸时，报的是最高的子项加上自己的上下内边距；问水平尺寸时，报子项沿宽度要的总和。内嵌的百分比宽度容器透过自己的子项来量，不会把外层的行撑大或压塌。 |
 | `a_control_names_the_colour_of_its_own_focus_ring` | 焦点环的颜色由控件自己说了算：控件写了 `focus-color` 就用它，没写就用页面写的，页面也没写才用默认的强调色。用例把画出来的那个像素读回来核对。 |
 | `a_control_the_page_keeps_out_of_reach_is_not_in_the_tab_order` | 被挡住的控件不进 Tab 顺序：被 `enabled="false"` 或条件挡住的按钮、`readonly` 的输入框、`visible="false"` 的元素、没声明 `action` 的标签，都收不到键盘。没写 `id` 的输入框也进不去，键盘停在它身上时没有名字可记。 |
+| `a_directory_a_script_created_is_kept_while_it_holds_a_user_file` | 项目脚本建的目录里如果多了安装本身没放过的东西，卸载时目录留在原处，里面的东西一点不动。 |
+| `a_directory_a_script_created_is_removed_with_the_installation` | 项目脚本用 `create_dir` 建的目录会记进清单，卸载时它一空就被删掉；没有 `directories` 字段的安装包按老样子来，一个目录都不删。 |
+| `a_directory_an_earlier_install_created_is_removed_after_an_upgrade` | 升级会把上一版记录过、现在还在磁盘上的目录沿用下来，所以升级之后再卸载也能清掉；已经不再是目录的条目会被丢掉，不会留着。 |
+| `a_disabled_control_is_described_as_unavailable_even_though_the_keyboard_skips_it` | 页面此刻用不了的控件仍留在无障碍树里版面给它安排的位置上，带着名字和「不可用」状态；Tab 环照样跳过它，它的默认动作也会被拒绝。 |
 | `a_damaged_bundle_entry_is_refused_and_leaves_no_copy` | 捆绑索引里每个条目都记着构建时算出的摘要，读的时候核对。被改过一个字节的应用文件按名字报错，说明记录值和实际摘要。同一份包里没动过的条目照旧读得到。流式复制损坏的条目会报错，也不在磁盘上留副本，下一步要拿它解压就无从跑起。 |
 | `a_default_log_is_named_after_the_image_the_moment_and_the_task` | 没点名日志文件时，运行把日志写进临时目录下的 `nano-installer` 目录。文件名带上安装程序自己的名字、这一刻的时间和这次在做的事（安装还是卸载）。同一份安装包在两台机器、两个时刻各跑一次，支持人员靠这个文件名分得开，两次也不会互相覆盖。 |
 | `a_dependency_that_cannot_be_installed_stops_the_install` | 装不上的必需依赖会中止安装，而且在产品落盘之前就中止。报错点出依赖名和安装程序返回的退出码（用例那条命令返回 7），目的目录事后根本不存在。机器给不了产品需要的东西时，你看到的是这句话，而不是一个起不来的产品。 |

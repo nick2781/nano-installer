@@ -293,7 +293,30 @@ fn finish_install(context: &ScriptContext, exe_name: &str, prep: &InstallPrep) -
             }
         }
     }
+    // A directory the run created inside the installation is part of what it
+    // installed, and the file list above cannot describe it: a script that makes
+    // a directory and leaves it empty, or fills it with something the manifest
+    // does not name, would otherwise leave that directory to the uninstall,
+    // which replays the manifest and nothing else. The difference against the
+    // snapshot taken before the script ran is already relative to the
+    // destination and never names the destination itself.
+    let mut directories = after.directories_added_since(&state.before);
+    // An upgrade replaces the manifest that named the directories the version
+    // before it created, so those entries are carried over: this run did not
+    // add them, and an uninstall replaying only the new manifest would leave
+    // them behind. Only the ones still on disk are carried, because an entry
+    // for a directory that is already gone is a step the uninstall takes for
+    // nothing, and only once each, because a directory this run created is
+    // named above already.
+    if let Some(previous) = context.previous() {
+        for relative in install::recorded_directories(&previous.manifest) {
+            if destination.join(&relative).is_dir() && !directories.contains(&relative) {
+                directories.push(relative);
+            }
+        }
+    }
     let artifacts = install::ManifestArtifacts {
+        directories: text_paths(&directories),
         shortcuts: text_paths(&state.shortcuts),
         shortcut_dirs: text_paths(&state.shortcut_dirs),
         autostart: serde_json::Value::Null,
@@ -599,12 +622,35 @@ mod tests {
             selection: InstallSelection,
             task: install::Cancellation,
         ) -> Result<()> {
+            self.install_prep(selection, task, None)
+        }
+
+        /// Installs over the installation the destination already holds, the way
+        /// the wizard does when the user runs a newer version of a product that
+        /// is already installed: the same run, with the previous installation
+        /// the library would have found there.
+        fn upgrade(&self) -> Result<()> {
+            let previous = install::previous_install(&self.destination, &self.config)?;
+            self.install_prep(
+                InstallSelection::default(),
+                install::Cancellation::default(),
+                previous,
+            )
+        }
+
+        fn install_prep(
+            &self,
+            selection: InstallSelection,
+            task: install::Cancellation,
+            previous: Option<install::PreviousInstall>,
+        ) -> Result<()> {
             let bundle = self.bundle()?;
             let key = install::uninstall_registry_key(&self.config)?;
             // The same rule the wizard applies before it runs any step.
             let components = install::selected_components(&self.config, |id, default| {
                 selection.checked(id, default)
             });
+            let upgrade = previous.is_some();
             run_install(InstallRequest {
                 setup: self.setup.clone(),
                 bundle,
@@ -618,8 +664,8 @@ mod tests {
                     uninstaller: b"uninstaller".to_vec(),
                     root: key.root,
                     registry_path: key.path,
-                    previous: None,
-                    upgrade: false,
+                    previous,
+                    upgrade,
                 },
                 cancel: task,
             })
@@ -816,6 +862,52 @@ mod tests {
             std::fs::read_to_string(fixture.destination.join("replayed.txt"))?,
             "false"
         );
+        Ok(())
+    }
+
+    /// A version that creates a directory leaves it in its manifest, and the
+    /// upgrade that follows writes a manifest of its own over that one. The
+    /// entry has to be carried over, because the run writing the new manifest
+    /// did not create the directory -- the version before it did -- and an
+    /// uninstall that replayed only the new manifest would leave the directory
+    /// behind, which is the leak a first install would have had.
+    #[test]
+    fn a_directory_an_earlier_install_created_is_removed_after_an_upgrade() -> Result<()> {
+        let fixture = fixture(
+            &deploying_script(r#"create_dir(path_join(install_path, "plugins/nested"));"#),
+            r#"run_tracked_uninstall(10.0, 90.0);"#,
+        )?;
+        fixture.install()?;
+        assert_eq!(
+            manifest(&fixture)?["directories"],
+            serde_json::json!(["plugins", "plugins\\nested"])
+        );
+
+        // A directory the earlier manifest names can be gone by the time the
+        // upgrade runs: a user can delete it, and a script of the new version
+        // can remove it. The directory is added here rather than created and
+        // deleted, because the fixture installs the same script twice and that
+        // script would make the directory again.
+        let recorded = fixture.destination.join(install::MANIFEST_NAME);
+        let mut stale: serde_json::Value = serde_json::from_slice(&std::fs::read(&recorded)?)?;
+        stale["directories"]
+            .as_array_mut()
+            .expect("the install recorded the directories it created")
+            .push(serde_json::json!("gone"));
+        std::fs::write(&recorded, serde_json::to_vec_pretty(&stale)?)?;
+
+        // The upgrade creates nothing below the destination, so the directory
+        // the version before it made stays the installation's only because the
+        // entry is carried over, and the directory that is already gone is
+        // dropped: an entry for it would be a step taken for nothing.
+        fixture.upgrade()?;
+        assert_eq!(
+            manifest(&fixture)?["directories"],
+            serde_json::json!(["plugins", "plugins\\nested"])
+        );
+
+        fixture.uninstall(true)?;
+        assert!(!fixture.destination.join("plugins").exists());
         Ok(())
     }
 
