@@ -73,3 +73,28 @@ Whether a page is in `llms-full.txt` is the group's answer, but a single page ca
 site's landing page, `README.md`, is a chooser between the two languages rather than a page to read,
 and that override is what keeps it out. The case tables stay out for the same reason the coverage table
 does -- they are tables to look things up in, not to read.
+
+## How these pages are written
+
+The map above says which page holds what. This section is about the writing itself, for a new
+page and for an edit to an old one.
+
+- **One idea per sentence, and vary the length.** A conclusion, a warning or a step can be short;
+  background, conditions and consequences get the room they need, with their clauses joined by the
+  commas they were missing. A page whose every sentence is twenty words long has been written badly.
+- **Keep the connectives**: so, but, because, while, which is why. They carry the logic, and a
+  paragraph stripped of them is a list wearing prose.
+- **One paragraph, one point.** Say what happens, then the condition, the exception or the conse-
+  quence; from the second sentence on, refer back to the subject (it, this, they) instead of naming
+  it again.
+- **Name things the way the platform does.** A quote in a log, a key in the registry, a page in the
+  layout: use the name the documentation and the tooling already use.
+- **Do not repeat a word into the next sentence**, and never let a parenthesis restate the word
+  before it. "The application files (your application files, a zip or 7z archive)" is one idea told
+  twice.
+- **Facts, numbers, commands, paths and field names do not move.** Neither do headings, anchors or
+  link targets: a rewrite changes wording only. Check with `scripts/audit_docs_languages.ps1` and
+  `scripts/build_docs_index.ps1 -Verify` -- the index title has to match the page's own `# heading`
+exactly.
+
+The English and Chinese files are one document: same paragraphs, same order, same claim in each.

@@ -82,6 +82,31 @@ site's landing page, `README.md`, is a chooser between the two languages rather 
 and that override is what keeps it out. The case tables stay out for the same reason the coverage table
 does -- they are tables to look things up in, not to read.
 
+## How these pages are written
+
+The map above says which page holds what. This section is about the writing itself, for a new
+page and for an edit to an old one.
+
+- **One idea per sentence, and vary the length.** A conclusion, a warning or a step can be short;
+  background, conditions and consequences get the room they need, with their clauses joined by the
+  commas they were missing. A page whose every sentence is twenty words long has been written badly.
+- **Keep the connectives**: so, but, because, while, which is why. They carry the logic, and a
+  paragraph stripped of them is a list wearing prose.
+- **One paragraph, one point.** Say what happens, then the condition, the exception or the conse-
+  quence; from the second sentence on, refer back to the subject (it, this, they) instead of naming
+  it again.
+- **Name things the way the platform does.** A quote in a log, a key in the registry, a page in the
+  layout: use the name the documentation and the tooling already use.
+- **Do not repeat a word into the next sentence**, and never let a parenthesis restate the word
+  before it. "The application files (your application files, a zip or 7z archive)" is one idea told
+  twice.
+- **Facts, numbers, commands, paths and field names do not move.** Neither do headings, anchors or
+  link targets: a rewrite changes wording only. Check with `scripts/audit_docs_languages.ps1` and
+  `scripts/build_docs_index.ps1 -Verify` -- the index title has to match the page's own `# heading`
+exactly.
+
+The English and Chinese files are one document: same paragraphs, same order, same claim in each.
+
 ---
 
 Source: https://nick2781.github.io/nano-installer/en/README.md
@@ -3424,6 +3449,14 @@ reports who signed each one and whether it carries a timestamp, and fails on an 
 timestamp. **A timestamp is not optional** -- it is what keeps a short-lived certificate's signature valid
 after the certificate expires, and a test certificate needs `-AllowUntrustedRoot` for the check to get that
 far. This script belongs to the pipeline that ships a product; this repository's own artifacts are unsigned.
+
+What signing changes was measured once. With the example setup signed by a self-signed
+certificate and that certificate's root trusted on the test machine, the Windows prompt went from
+"an unknown publisher" to **"Verified publisher: nano-installer signing test"** (the certificate's
+subject). Only a chain that ends in a trusted root counts: the Trusted Publishers store plays no part,
+and putting a root into the trusted root store **takes a human confirmation**, so a test image is where
+that happens once. For a real certificate, SignPath Foundation signs open-source projects for free,
+without personal identity validation and with the private key held in their HSM.
 
 ## Publishing
 
