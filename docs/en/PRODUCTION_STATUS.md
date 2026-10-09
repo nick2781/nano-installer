@@ -163,6 +163,12 @@ both pass `signtool verify /pa`, with a DigiCert timestamp. `scripts/audit_embed
 still finds the footer, extracts the uninstaller and matches its digest on the signed setup. A signed
 setup installs, registers its uninstall entry, and removes itself cleanly.
 
+Once it is signed, `scripts/verify_signing.ps1` checks it: it reads the setup and the uninstaller inside it,
+reports who signed each one and whether it carries a timestamp, and fails on an untrusted chain or a missing
+timestamp. **A timestamp is not optional** -- it is what keeps a short-lived certificate's signature valid
+after the certificate expires, and a test certificate needs `-AllowUntrustedRoot` for the check to get that
+far. This script belongs to the pipeline that ships a product; this repository's own artifacts are unsigned.
+
 ## Publishing
 
 A release is built and published from a tag, and the tag is pushed by hand. Two things the pipeline
@@ -268,3 +274,4 @@ The gaps this run left, written down rather than left looking tested:
 
 The real-machine run on the minimum supported version is done. Once signing is in place, a product can
 plug in the way `examples/TapTap` does.
+
