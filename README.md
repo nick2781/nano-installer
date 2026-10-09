@@ -8,12 +8,14 @@ One folder in, one setup `.exe` out. Put your configuration, artwork and applica
 project folder, and Nano Installer builds them into one Windows installer; the logo, the pages and the
 wording are yours, and there is nothing to host or for your users to install first.
 
-> **Early implementation, not ready for production distribution.** Test in a disposable VM, because an
-> install writes files and registry entries; setups are unsigned, so Windows warns about an unknown
-> publisher. **Requires Windows 7 SP1 x64 or later.** See
-> [production status](docs/en/PRODUCTION_STATUS.md).
+> **Status:** ready to build and ship with. Setups and MSI packages are unsigned, so Windows warns about
+> an unknown publisher; sign them in your own pipeline through `finalize.installer` and
+> `finalize.uninstaller` before distributing publicly. **Requires Windows 7 SP1 x64 or later.** What the
+> acceptance run covered, and what it did not, is in [production status](docs/en/PRODUCTION_STATUS.md).
 
+<p align="center">
 <img src="assets/setup-welcome-en-US.png" alt="First page of a setup built from the TapTap example: the product logo, a tagline, the installation options, and an Install Now button" width="720">
+</p>
 
 The first page of `examples/TapTap`, built and photographed by `scripts/capture_setup_snapshots.ps1`;
 the runtime drew this, and it is not a mock-up.

@@ -6,13 +6,14 @@ You ship one `.exe`, and a double-click installs your product. Keep the configur
 your application files in one folder, and Nano Installer turns it into one Windows setup; the icon,
 the pages and the wording are yours, and the user's machine needs nothing installed first.
 
-> **Status:** early implementation, not ready for production distribution. Installing writes files
-> and registry entries, so test in a VM you throw away afterwards, and neither a setup nor the
-> installer package around it is code-signed. **Requires Windows 7 SP1 x64 or later.** What a setup
-> calls is in [Windows compatibility](WINDOWS_COMPATIBILITY.md); item-by-item status is in
-> [production status](PRODUCTION_STATUS.md).
+> **Status:** ready to build and ship with. Setups and MSI packages are unsigned, so Windows warns about
+> an unknown publisher; sign them in your own pipeline before distributing publicly. **Requires Windows 7
+> SP1 x64 or later.** What a setup calls is in [Windows compatibility](WINDOWS_COMPATIBILITY.md);
+> item-by-item status is in [production status](PRODUCTION_STATUS.md).
 
+<p align="center">
 <img src="https://github.com/nick2781/nano-installer/raw/main/assets/setup-welcome-en-US.png" alt="The first page of a setup built from the TapTap example" width="640">
+</p>
 
 That is the first page of `examples/TapTap`, built and photographed by
 `scripts/capture_setup_snapshots.ps1`; this is how the runtime drew it, not a mock-up.

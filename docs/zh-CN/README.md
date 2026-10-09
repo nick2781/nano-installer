@@ -5,11 +5,13 @@
 你交付的只有一个 exe，用户双击就能装上你的产品。把配置、素材和应用文件放进一个目录，Nano Installer
 就会把它们打成一份 Windows 安装包；图标、界面和文案都由你定，而用户的机器不用预装任何东西。
 
-> **状态：** 早期实现，还不适合对外发布产品。安装会写入文件和注册表，所以请在临时虚拟机里测；
-> 安装包本身也没有代码签名。**需要 Windows 7 SP1 x64 及以上**。它调用了什么，见
+> **状态：** 可以拿来构建和发布产品。安装包和 MSI 包没有代码签名，Windows 会提示「未知发布者」，
+> 公开分发前请在流水线里自己签。**需要 Windows 7 SP1 x64 及以上**。它调用了什么，见
 > [Windows 兼容性](WINDOWS_COMPATIBILITY.md)；逐条状态见[当前生产状态](PRODUCTION_STATUS.md)。
 
+<p align="center">
 <img src="https://github.com/nick2781/nano-installer/raw/main/assets/setup-welcome-zh-CN.png" alt="用 TapTap 示例构建出来的安装包第一页" width="640">
+</p>
 
 上面这张是 `examples/TapTap` 的第一页，由 `scripts/capture_setup_snapshots.ps1` 构建后拍下来——是运行时
 画出来的样子，不是效果图。
