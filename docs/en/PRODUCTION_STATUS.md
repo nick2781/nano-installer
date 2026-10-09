@@ -169,6 +169,14 @@ timestamp. **A timestamp is not optional** -- it is what keeps a short-lived cer
 after the certificate expires, and a test certificate needs `-AllowUntrustedRoot` for the check to get that
 far. This script belongs to the pipeline that ships a product; this repository's own artifacts are unsigned.
 
+What signing changes was measured once. With the example setup signed by a self-signed
+certificate and that certificate's root trusted on the test machine, the Windows prompt went from
+"an unknown publisher" to **"Verified publisher: nano-installer signing test"** (the certificate's
+subject). Only a chain that ends in a trusted root counts: the Trusted Publishers store plays no part,
+and putting a root into the trusted root store **takes a human confirmation**, so a test image is where
+that happens once. For a real certificate, SignPath Foundation signs open-source projects for free,
+without personal identity validation and with the private key held in their HSM.
+
 ## Publishing
 
 A release is built and published from a tag, and the tag is pushed by hand. Two things the pipeline
@@ -274,4 +282,5 @@ The gaps this run left, written down rather than left looking tested:
 
 The real-machine run on the minimum supported version is done. Once signing is in place, a product can
 plug in the way `examples/TapTap` does.
+
 
