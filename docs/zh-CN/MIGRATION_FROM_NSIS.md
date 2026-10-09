@@ -1,13 +1,13 @@
-﻿# 从 NSIS 迁移
+# 从 NSIS 迁移
 
-一份 NSIS 脚本既是配置也是程序：`Section` 块按顺序跑，`File` 复制文件，`WriteRegStr` 写注册表，用户
-看到的每一屏都由 NSIS 运行时按宏画出来。这几件事在 NSIS 里是混在一起的，Nano Installer 把它们分开：
-产品是什么、装到哪里；页面长什么样；这一次运行具体做什么。最后一件交给你自己写的一小段 Rhai。所以
-迁移大多不是重写，而是把每一行搬到今天该管它的地方。
+一份 NSIS 脚本既是配置，也是程序。`Section` 块按顺序跑，`File` 复制文件，`WriteRegStr` 写注册表。
+用户看到的每一屏，都由 NSIS 运行时按宏画出来。这些事在 NSIS 里混在一起，Nano Installer 把它们分成
+三件：产品是什么、装到哪里；页面长什么样；这一次运行做什么。最后一件交给你写的一小段 Rhai。所以
+迁移大多不是重写，只是把每一行搬到今天管它的地方。
 
 这一页就是那张对照表。它不只是给人看的说明：[`scripts/check_nsi_migration.ps1`](../../scripts/check_nsi_migration.ps1)
-读的就是这张表，所以遇到本页没有收录的写法时，脚本照实报 `unknown`，不去猜。中英两份表还必须逐行
-对得上，对不上检查直接失败。
+读的就是这张表。遇到本页没有收录的写法，脚本照实报 `unknown`，不去猜。中英两份表还得逐行对得上，
+对不上检查直接失败。
 
 ## 工程长什么样
 
@@ -23,8 +23,8 @@
 | `!finalize` 与 `!uninstfinalize` | `finalize.installer` 与 `finalize.uninstaller`，还是这两个钩子、同一件事 |
 | 让插件去做 NSIS 做不到的事 | 脚本里的原语、声明出来的依赖、`run_command`，或者自己按[插件 ABI](PLUGIN_API.md)写一个插件、由脚本调用 |
 
-有两件事过不来，值得早点决定。一是手写的 `Uninstall` 段不必再写：manifest 知道你装了什么，而靠人维护
-一张删除清单，正是产品在用户机器上留垃圾的来路。二是 `SetShellVarContext all` 没有对应物：快捷方式建在
+有两件事过不来，早点决定为好。一是 `Uninstall` 段不用再手写：清单文件知道你装了什么。靠人维护一张
+删除清单，产品早晚会在用户机器上留下垃圾。二是 `SetShellVarContext all` 没有对应物：快捷方式建在
 运行安装包的那个账户下，见下面的表。
 
 ## 先让检查器过一遍脚本
@@ -33,7 +33,7 @@
 .\scripts\check_nsi_migration.ps1 -Script .\legacy.nsi
 ```
 
-它逐行读脚本，跟着读它旁边被 `!include` 进来的文件，把每条语句变成什么印出来：
+它逐行读脚本，也读旁边被 `!include` 进来的文件。每条语句变成什么，它都印出来：
 
 ```
 NSIS migration report for D:\src\legacy.nsi
@@ -64,21 +64,21 @@ NSIS migration report for D:\src\legacy.nsi
   ...
 ```
 
-只要报告出得来，退出码就是 0，不管报告里写了什么：这份报告是给人读的，不是一道闸。想让它当闸用就加
+只要报告出得来，退出码就是 0，不管它写了什么。这份报告是给你读的，不是一道闸。想让它当闸用，加
 `-FailOnUnknown`：本仓库的 CI 就是这么跑两份样例的。`legacy.nsi` 是一个产品的安装脚本；`instructions.nsi`
-把 NSIS 文档里的每条指令、每个属性、每个自带头文件的宏各写一行。前者让这张表对着一份真实的脚本较真，
-后者让它对着语言本身较真：NSIS 有而表里没有的写法当场失败，而不是印一行 `unknown` 让人自己去猜。
+把 NSIS 文档里的每条指令、每个属性、每个自带头文件的宏各写一行。前者拿一份真实脚本较真这张表，
+后者拿语言本身较真：NSIS 有、表里没有的写法当场失败，不会再印一行 `unknown` 让你去猜。
 
-下面表里的判定词就是上面那五个：`direct` 是配置项或页面元素直接就能做，`script` 是
-`scripts/install.rhai` 或 `scripts/uninstall.rhai` 里的某个原语，`manual` 是没有对应物、得按本页说的
-另想办法，`none` 是构建期或纯外观、没有要迁移的东西，`unknown` 是这一页还没收。
+下面表里的判定词就是上面那五个。`direct` 是配置项或页面元素直接就能做。`script` 是
+`scripts/install.rhai` 或 `scripts/uninstall.rhai` 里的某个原语。`manual` 是没有对应物、得按本页说的
+另想办法。`none` 是构建期或纯外观、没有要迁移的东西。`unknown` 是这一页还没收录。
 
 ## 对照表
 
-一个命令有多种写法时共用一行。名字末尾的 `*` 表示后面接什么都算，所以 `MUI_PAGE_*` 接住了那些没有
-单独一行的 MUI 页面。NSIS 自带头文件里的宏按脚本调用它的那个名字收录，所以 `${GetSize}` 与 `${StrStr}`
-走的就是 `GetSize` 与 `StrStr` 那两行——`${...}` 不是名字的一部分。标号（`done:`）是一个位置而不是一条
-语句：跳到它的那些跳转由 Rhai 自己的流程控制顶替，所以检查器把它报成 `none`。
+一个命令有多种写法时，共用一行。名字末尾的 `*` 表示后面接什么都算，所以 `MUI_PAGE_*` 接住了那些没有
+单独一行的 MUI 页面。NSIS 自带头文件里的宏，按脚本调用它的那个名字收录，所以 `${GetSize}` 与 `${StrStr}`
+走的就是 `GetSize` 与 `StrStr` 那两行——`${...}` 不算名字的一部分。标号（`done:`）是一个位置，不是一条
+语句。跳到它的那些跳转由 Rhai 自己的流程控制顶替，所以检查器报成 `none`。
 
 ### 产品与它构建出来的文件
 
@@ -96,21 +96,21 @@ NSIS migration report for D:\src\legacy.nsi
 | `ManifestDPIAware` | direct | `ui.dpi_aware`；应用程序清单由构建器写 |
 | `ManifestSupportedOS`, `ManifestLongPathAware` | none | 安装包本来就声明支持 Windows 7 SP1 x64 及以后，清单也由构建器写 |
 | `PEAddResource`, `PERemoveResource` | manual | 构建器注入的是工程自己的图标、版本信息和清单；没有东西再加一份自己的资源 |
-| `SetCompressor`, `SetCompressorFinal`, `SetCompressorDictSize`, `SetCompress`, `FileBufSize` | none | 载荷由构建器自己压，按它自己定的块大小 |
+| `SetCompressor`, `SetCompressorFinal`, `SetCompressorDictSize`, `SetCompress`, `FileBufSize` | none | 应用文件由构建器自己压，按它自己定的块大小 |
 | `SetDatablockOptimize` | none | 没有要迁移的东西 |
-| `CRCCheck` | none | 载荷自带摘要；没签名的安装包在运行时也校验不了它自己 |
+| `CRCCheck` | none | 应用文件自带摘要；没签名的安装包在运行时也校验不了它自己 |
 | `Unicode` | none | 一律是 Unicode |
 | `Target` | none | 安装包是 x64 |
 | `XPStyle` | none | 页面是自己画的 |
 | `ShowInstDetails`, `ShowUninstDetails`, `SetDetailsPrint`, `SetDetailsView` | none | 任务在带 `role: "progress"` 的那一页上汇报 |
-| `SetOverwrite`, `SetDateSave`, `AllowSkipFiles` | none | 文件按载荷里的位置落地；升级就是替换上一版，写不下去的文件让这一步失败并回滚 |
+| `SetOverwrite`, `SetDateSave`, `AllowSkipFiles` | none | 文件按应用文件里的位置落地；升级就是替换上一版，写不下去的文件让这一步失败并回滚 |
 | `BrandingText`, `SetBrandingImage`, `AddBrandingImage`, `BGFont`, `BGGradient`, `CheckBitmap`, `ChangeUI`, `WindowIcon`, `InstProgressFlags` | none | 文字、图片和进度条都在页面上 |
 | `InstallColors`, `SetFont`, `SetCtlColors`, `CreateFont`, `LicenseBkColor` | none | 页面的颜色和字体自己带着 |
 | `AutoCloseWindow`, `SetAutoClose` | none | 完成页由用户关 |
 | `LoadLanguageFile`, `LangFile` | none | 运行时读 `locales/<locale>.json` |
 | `LangString` | direct | `locales/<locale>.json` 里的一个字段，页面用 `text="@键"` 取 |
 | `Caption` | direct | `wizard.pages` 里那一页的 `title` |
-| `SubCaption`, `CompletedText`, `ComponentText`, `DirText`, `SpaceTexts`, `FileErrorText`, `DetailsButtonText`, `InstallButtonText`, `MiscButtonText`, `UninstallButtonText`, `UninstallCaption`, `UninstallSubCaption`, `UninstallText` | direct | 这些字写在页面自己的版面与 `locales/<locale>.json` 里 |
+| `SubCaption`, `CompletedText`, `ComponentText`, `DirText`, `SpaceTexts`, `FileErrorText`, `DetailsButtonText`, `InstallButtonText`, `MiscButtonText`, `UninstallButtonText`, `UninstallCaption`, `UninstallSubCaption`, `UninstallText` | direct | 这些字写在页面自己的布局与 `locales/<locale>.json` 里 |
 | `LicenseText`, `LicenseData` | direct | 许可协议那一页上的文字，或者指向它的链接 |
 | `LicenseForceSelection` | direct | 那一页上一个 `Checkbox`，继续按钮上写 `enabled-when="<它的 id>:checked"` |
 | `DirVar`, `DirVerify` | direct | 目录页的 `TextInput` 装着这个目录，能不能用由它自己的 `required`、`min-length` 与 `pattern` 规矩说了算 |
@@ -130,7 +130,7 @@ NSIS migration report for D:\src\legacy.nsi
 | `!finalize` | direct | `finalize.installer` |
 | `!uninstfinalize` | direct | `finalize.uninstaller` |
 | `!packhdr` | manual | 构建完到签名之间没有东西会改写安装包 |
-| `Page` | direct | `wizard.pages` 里的一项，版面写成 XML |
+| `Page` | direct | `wizard.pages` 里的一项，布局写成 XML |
 | `UninstPage` | direct | `wizard.uninstall_pages` 里的一项 |
 | `PageCustom` | direct | 自己写的 XML 页面；页序有条件时再配 `scripts/pages.rhai` |
 | `PageComponents` | direct | 一个页面，每个组件一个 `Checkbox` |
@@ -171,8 +171,8 @@ NSIS migration report for D:\src\legacy.nsi
 | `AddSize` | none | 唯一会跑的空间检查是 `install.required_space_mb`；没有东西去累加某个 section 的大小 |
 | `Nop` | none | 没有要迁移的东西 |
 | `SetPluginUnload` | none | 插件活到加载它的那个安装包退出为止 |
-| `SetOutPath` | none | 路径由载荷归档自己带着 |
-| `File` | none | 把文件放进载荷归档，或者放进某个组件的归档 |
+| `SetOutPath` | none | 路径由应用文件归档自己带着 |
+| `File` | none | 把文件放进应用文件归档，或者放进某个组件的归档 |
 | `CreateDirectory` | script | `create_dir` |
 | `RMDir` | script | `delete_dir` |
 | `Delete` | script | `delete_file` |
@@ -194,7 +194,7 @@ NSIS migration report for D:\src\legacy.nsi
 | `WriteINIStr`, `ReadINIStr`, `DeleteINISec`, `DeleteINIStr`, `FlushINI` | manual | 没有 INI 原语：`read_text_file` 与 `write_file`，或者用 `run_command` 跑一条命令 |
 | `RegDLL`, `UnRegDLL` | manual | 用 `run_command` 跑 `regsvr32` |
 | `SetShellVarContext` | manual | 快捷方式建在运行安装包的那个账户下；没有全局开关 |
-| `GetDlgItem`, `SendMessage`, `ShowWindow`, `EnableWindow` | manual | 没有控件句柄可以操作：控件由页面声明，长什么样由版面说了算 |
+| `GetDlgItem`, `SendMessage`, `ShowWindow`, `EnableWindow` | manual | 没有控件句柄可以操作：控件由页面声明，长什么样由布局说了算 |
 | `HideWindow` | manual | 没有东西在某一步跑的时候把向导藏起来；进度页会说明这一步在做什么 |
 | `DetailPrint` | script | 写字面文本用 `set_status`，写语言键用 `set_status_key` |
 | `LogText` | script | `log_info` |
@@ -246,11 +246,11 @@ NSIS migration report for D:\src\legacy.nsi
 | `Abort` | script | 用 `show_error` 说明原因之后从脚本 `return` |
 | `Quit` | script | `return` |
 | `SetErrors`, `ClearErrors`, `GetErrorLevel` | none | 原语自己返回结果 |
-| `SetErrorLevel` | manual | 无窗口运行的退出码是运行时自己的 |
+| `SetErrorLevel` | manual | 静默运行的退出码是运行时自己的 |
 | `IfErrors` | script | 原语自己返回结果 |
 | `IfFileExists` | script | `file_exists` 与 `is_dir` |
 | `IfAbort` | manual | 没有东西设中止标志；脚本自己 `return` 就停下了 |
-| `IfSilent` | manual | 没有原语告诉脚本这次是不是无窗口运行；`show_message`、`show_error` 与 `ask_yes_no` 自己就知道该怎么答，页面也一页都不画 |
+| `IfSilent` | manual | 没有原语告诉脚本这次是不是静默运行；`show_message`、`show_error` 与 `ask_yes_no` 自己就知道该怎么答，页面也一页都不画 |
 | `StrCmp`, `StrCmpS`, `StrICmp` | script | Rhai 的 `==` |
 | `StrCpy` | script | Rhai 的 `let` |
 | `StrLen` | script | Rhai 的 `.len` |
@@ -258,7 +258,7 @@ NSIS migration report for D:\src\legacy.nsi
 | `StrRep`, `StrLoc`, `StrSort`, `StrTrimNewLines`, `WordFind`, `WordReplace`, `WordInsert`, `WordDelete`, `TextCompare` | script | Rhai 的字符串方法 |
 | `LineFind`, `LineRead`, `LineSum`, `FileReadFromEnd`, `FileJoin`, `TrimNewLines` | script | `read_text_file`，再交给 Rhai 自己的字符串处理 |
 | `VersionCompare`, `VersionConvert` | manual | 没有原语比较版本；要问机器就用依赖的 `detect.at_least` |
-| `GetParameters`, `GetOptions` | manual | 无窗口运行只认 `--dir` 与 `--log`，别的参数一律拒绝，所以脚本没有命令行可读 |
+| `GetParameters`, `GetOptions` | manual | 静默运行只认 `--dir` 与 `--log`，别的参数一律拒绝，所以脚本没有命令行可读 |
 | `DisableX64FSRedirection`, `EnableX64FSRedirection`, `RunningX64` | none | 安装包是 x64 |
 | `AtLeastWin*`, `IsWin*` | manual | 没有原语把 Windows 版本交给脚本；这次运行自己的日志开头记着它 |
 | `IntOp` | script | Rhai 的算术 |
@@ -266,7 +266,7 @@ NSIS migration report for D:\src\legacy.nsi
 | `IntFmt` | manual | 没有东西把数字补成定宽的字符串 |
 | `Push`, `Pop`, `Exch` | manual | Rhai 有变量；NSIS 那个栈没有对应物 |
 | `GetLabelAddress`, `GetFunctionAddress`, `GetCurrentAddress` | manual | 标号与地址都没有对应物 |
-| `SetSilent`, `SilentInstall`, `SilentUninstall` | direct | `advanced.silent_mode_support` 与 `advanced.uninstall_mode_support`；无窗口运行就是 `--silent` |
+| `SetSilent`, `SilentInstall`, `SilentUninstall` | direct | `advanced.silent_mode_support` 与 `advanced.uninstall_mode_support`；静默运行就是 `--silent` |
 | `${If}`, `${Unless}`, `${IfNot}`, `${AndIf}`, `${OrIf}`, `${AndUnless}`, `${OrUnless}` | script | Rhai 的 `if` |
 | `${ElseIf}`, `${Else}` | script | Rhai 的 `else if` 与 `else` |
 | `${EndIf}`, `${EndUnless}`, `${While}`, `${EndWhile}`, `${For}`, `${ForEach}`, `${Next}`, `${Do}`, `${Loop}`, `${Until}`, `${DoWhile}`, `${Break}`, `${Continue}` | script | Rhai 自己的流程控制 |
@@ -275,75 +275,75 @@ NSIS migration report for D:\src\legacy.nsi
 
 ## 没有对应物的那些，以及怎么办
 
-费时间的正是这几条，所以值得先看。
+费时间的正是这几条，值得先看。
 
-- **插件。** 现在有插件 ABI 了，但它不是 NSIS 那一套：插件是按
+- **插件。** 现在有插件 ABI 了，但它不是 NSIS 那一套。插件是按
   [`include/nano_plugin.h`](../../include/nano_plugin.h) 编出来的 64 位 DLL，像工程资源一样进安装包，
-  脚本用 `plugin_call("dll::function", [...])` 调用。现成的 NSIS 插件加载不了：它们是 32 位映像，还要
-  通过 `extra_parameters` 回调 NSIS 自己的运行时，所以 `nsDialogs`、`nsisXML`、`InetLoad`、`nsis7z`
-  这些要么重写、要么换掉。它们做过的事大多本来就有对应物：用 `nsDialogs` 搭出来的页面，改写成
-  `layouts/` 里的一页，行为还要看用户怎么选时，再写一个 `scripts/pages.rhai` 的 `next_page(from)`；
-  下载改成 `dependencies.items` 里带 `sha256` 的一条，或者脚本里的 `download_file_with_hash`；解压归档
-  改成载荷或某个组件。剩下那些没有对应物的，才是自己写插件的用处。
+  脚本用 `plugin_call("dll::function", [...])` 调用。现成的 NSIS 插件加载不了：它们是 32 位映像，
+  还要通过 `extra_parameters` 回调 NSIS 自己的运行时。所以 `nsDialogs`、`nsisXML`、`InetLoad`、
+  `nsis7z` 这些要么重写，要么换掉。它们做过的事大多本来就有对应物。用 `nsDialogs` 搭出来的页面，改写成
+  `layouts/` 里的一页；行为还要看用户怎么选时，再写一个 `scripts/pages.rhai` 的 `next_page(from)`。
+  下载改成 `dependencies.items` 里带 `sha256` 的一条，或者脚本里的 `download_file_with_hash`。解压归档
+  改成应用文件或某个组件。剩下那些没有对应物的，才是自己写插件的用处。
 - **`SetShellVarContext all`。** 快捷方式建在运行安装包的那个账户下。原本写全局快捷方式的安装包得另找
-  办法：即使 `require_admin` 装了全机器用的程序，快捷方式仍然写在跑这个安装包的那个账户下。
+  办法：就算 `require_admin` 装了全机器用的程序，快捷方式还是写在跑这个安装包的那个账户下。
 - **安装类型。** `InstType`、`SectionInstType`、`SectionSetFlags` 这一族没有对应物：装什么由页面上的
-  复选框当场决定，脚本能问（`is_component_selected`、`selected_components`）却不能勾。原来靠安装类型
-  改组件勾选状态的安装包，得把这个决定搬到页面上、交给用户；一个 `RadioButton` 组可以用
+  复选框当场决定。脚本能问（`is_component_selected`、`selected_components`），却勾不动。原来靠安装类型
+  改组件勾选状态的安装包，得把这个决定搬到页面上，交给用户。一个 `RadioButton` 组可以用
   `enabled-when="mode:full"` 管住某个 `Button`，但用户眼前的复选框，脚本改不了、页面也不替它改。
 - **控件句柄。** `GetDlgItem`、`SendMessage`、`ShowWindow`、`EnableWindow` 是伸进窗口直接操作控件的。
-  这里没有句柄可拿：控件由页面声明，长什么样、什么时候能用，由版面说了算。
-- **接受许可协议。** `LicenseForceSelection` 是一个页面元素，不是一个设置：许可协议那一页上一个
+  这里没有句柄可拿。控件由页面声明，长什么样、什么时候能用，由布局说了算。
+- **接受许可协议。** `LicenseForceSelection` 是一个页面元素，不是一个设置。许可协议那一页放一个
   `Checkbox`，继续按钮上写 `enabled-when`，就是 MUI 许可协议页原来把住的那道门。
-- **重启机器。** 这里没有任何东西会重启机器。依赖答 3010 或 1641 就算装好了，继续走；产品非重启不能
+- **重启机器。** 这里没有任何东西会重启机器。依赖答 3010 或 1641 就算装好了，继续走。产品非重启不能
   用，就得自己在完成页上说清楚。
-- **NSIS 的栈。** `Push`、`Pop`、`Exch` 之所以存在，是因为 NSIS 只有一个栈、没有函数自己的变量。
+- **NSIS 的栈。** `Push`、`Pop`、`Exch` 之所以存在，是因为 NSIS 只有一个栈，没有函数自己的变量。
   Rhai 两个问题都没有。
 - **窗口外的 `MessageBox`。** 这里的提示是按 `ui.dialog_layout` 画在向导里的卡片，脚本在工作线程上等
-  这一下点击。工程没带这份版面就退回系统对话框；无窗口运行则一次也不弹。
-- **`WriteINIStr`、枚举注册表、文件时间、注册 DLL。** 几个具体的小缺口，上面每一行都写清了顶替它的
+  这一下点击。工程没带这份布局就退回系统对话框。静默运行则一次也不弹。
+- **`WriteINIStr`、枚举注册表、文件时间、注册 DLL。** 几个具体的小缺口。上面每一行都写清了顶替它的
   原语或命令。
 
 ## 一个完整的例子
 
-`examples/nsis-migration/` 里放着一份有代表性的 NSIS 脚本，以及它迁移之后的工程。旁边还有一份
-`instructions.nsi`：那是同一张对照表对着语言本身的较真，NSIS 文档里的每条指令、每个属性、每个自带头
-文件的宏都占一行。
+`examples/nsis-migration/` 里放着一份有代表性的 NSIS 脚本，还有它迁移之后的工程。旁边那份
+`instructions.nsi` 是同一张表对着语言本身的较真：NSIS 文档里的每条指令、每个属性、每个自带头文件的
+宏都占一行。
 
 ```powershell
 .\scripts\check_nsi_migration.ps1 -Script .\examples\nsis-migration\legacy.nsi -FailOnUnknown
 ```
 
 `legacy.nsi` 有 111 行，检查器报 92 条语句：31 条由工程里的配置项直接顶替，43 条落在脚本原语上，
-13 条是构建期或纯外观的，还有 5 条表上写着「没有对应物」。它迁移的结果是
+13 条是构建期或纯外观的，还有 5 条表上写着「没有对应物」。迁移的结果在
 `examples/nsis-migration/migrated/`：
 
 - `installer_config.json`：产品、两个组件、那个依赖、安装登记和页面。`Name`、`OutFile`、`InstallDir`、
   `RequestExecutionLevel`、那几条 `VIAddVersionKey`、`SectionIn RO` 与 `Section /o` 都在这里。
 - `layouts/`：七页，欢迎、选项、进度、完成、对话框，加上两个卸载页。`MUI_PAGE_COMPONENTS` 与
-  `MUI_PAGE_DIRECTORY` 在这里合成了一页，因为这里的一页是一个版面，不是一个宏。
+  `MUI_PAGE_DIRECTORY` 在这里合成了一页，因为这里的一页是一个布局，不是一个宏。
 - `locales/zh-CN.json` 与 `locales/en-US.json`：原来 `LangString` 写下的东西。
-- `scripts/install.rhai`：核心那段，按 NSIS 脚本原来的顺序走，关掉正在运行的那份、展开载荷与这次选
+- `scripts/install.rhai`：核心那段，按 NSIS 脚本原来的顺序走，关掉正在运行的那份、展开应用文件与这次选
   中的组件、装上必需的依赖、跑随包带的迁移工具并在它失败时停下、按页面上的勾选建快捷方式、写下工程
   自己留着的那一个注册表值。
-- `scripts/uninstall.rhai`：一次 `run_tracked_uninstall` 收走 manifest 记下的一切，再清掉产品自己
+- `scripts/uninstall.rhai`：一次 `run_tracked_uninstall` 收走清单文件记下的一切，再清掉产品自己
   往自己目录里写的那两处。
 
 缩得最多的是卸载那段：八条 `Delete`、`RMDir`、`DeleteRegKey` 变成一次调用，因为安装时已经把写下的
-东西记下来了。这一步值得最先做：靠人维护删除清单的产品，等哪天新版本多装了一个文件，就会把它留在
+东西记下来了。这一步值得最先做。靠人维护删除清单的产品，等哪天新版本多装了一个文件，就会把它留在
 用户机器上。
 
 ## 迁移完就自带的东西
 
-这套安装器本来就会做那些 NSIS 脚本通常手写的事，所以这些不必迁移：
+这套安装器本来就会做那些 NSIS 脚本通常手写的事。所以下面这些不必迁移：
 
-- 卸载登记项（显示名、版本、发布者、图标、静默卸载命令、占用大小、`NoModify`、`NoRepair`）按
+- 「程序和功能」里的卸载条目（显示名、版本、发布者、图标、静默卸载命令、占用大小、`NoModify`、`NoRepair`）按
   `registry.uninstall_key` 与工程自己的信息写全。
-- 安装写下的每个文件、快捷方式和注册表值都记进 manifest，卸载照着记录收回。
+- 安装写下的每个文件、快捷方式和注册表值都记进清单文件，卸载照着记录收回。
 - 一步出错就把机器退回安装前的样子。
-- 无窗口运行只要工程声明 `advanced.silent_mode_support`；它认 `--dir` 与 `--log`，别的参数一律拒绝。
+- 静默运行只要工程声明 `advanced.silent_mode_support`。它认 `--dir` 与 `--log`，别的参数一律拒绝。
 - 每次运行都在磁盘上留一份日志，失败时把路径交出来。
-- 再运行一次安装包就是原位升级；更新包可以只带字节变了的文件（`--delta-from`）。
+- 再运行一次安装包就是原位升级。更新包可以只带字节变了的文件（`--delta-from`）。
 - 签名是流水线的事，通过 `finalize.installer` 与 `finalize.uninstaller` 叫进来。
 
 ## 发布前过一遍
@@ -353,6 +353,6 @@ NSIS migration report for D:\src\legacy.nsi
 3. 页面按原来 NSIS 的路子走得通：`wizard.pages`、进度页与完成页的 `role`，以及原本有条件的那几页交给
    `scripts/pages.rhai`。
 4. 组件装出来的东西与原来那几个 section 一致，包括原本默认不勾的那个（`default: false`）。
-5. 在一台一次性虚拟机里静默跑一遍：`MyApp_Setup.exe --silent --dir <路径> --log <文件>`，再
+5. 在一台临时虚拟机里静默跑一遍：`MyApp_Setup.exe --silent --dir <路径> --log <文件>`，再
    `uninst.exe --silent`，然后读那份日志。
 6. 卸载没有留下原来 `Uninstall` 段会删掉的东西。
