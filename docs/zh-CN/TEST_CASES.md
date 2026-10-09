@@ -13,6 +13,7 @@ Rust doc comment，再退回用例名。
 | `a_built_in_step_clears_a_script_step_text` | 内置步骤用自己的 locale 键起名，脚本发布过的文字不会留在这些步骤里。进度同时被夹在 0 到 100 之间，脚本推不过头。 |
 | `a_built_setup_carries_a_readable_bundle_and_real_resources` | 构建产物分三部分：stub、捆绑数据和 Windows 资源。捆绑数据要在文件最末尾描述自己，运行时才找得到。 |
 | `a_built_setup_installs_its_payload_and_registers_an_uninstall_entry` | 安装包存在的意义：应用文件落到磁盘上，清单文件记下写了哪些东西，卸载条目在注册表里登记，应用文件自己的字节也没在途中被改动。 |
+| `a_bundle_does_not_carry_an_icon_the_build_injects_as_a_resource` | 构建时注入到 exe 里的图标不会在 bundle 里再放一份：那边没有谁读它。 |
 | `a_button_state_image_falls_back_to_the_normal_one` | 只画了部分状态的布局照样画得出按钮：缺 `hover-image`、`pressed-image` 或 `disabled-image` 时退回 `normal-image`。被条件挡住的按钮优先用 `disabled-image`，没有 id 的控件收不到悬停和按下。 |
 | `a_button_waits_for_each_state_its_condition_can_name` | `enabled-when` 让一个控件看另一个控件的状态。指南列的 `checked`、`unchecked`、`visible`、`hidden` 四种状态，按它们点名的复选框或面板判断。条件用逗号隔开时，全部成立才算成立；多打的逗号留下的空条件算不成立。运行时看不懂的状态、页面上找不到的控件，都把按钮挡住，而不是放过点击。没写条件的按钮可用，说明这个属性是可选的。 |
 | `a_button_waits_for_the_field_its_condition_names` | `enabled-when` 点名一个输入框时，按钮等的是那个值合不合格。字段还空着（`required` 说的就是这种），安装键既不登记点击区域也不登记悬停；填进一个工程接受的路径，点击就回来了；再清空，又收回去。同一个页面上写 `dir:invalid` 的那个按钮正好相反。 |
@@ -187,6 +188,7 @@ Rust doc comment，再退回用例名。
 | `agreement_links_resolve_through_the_project_links_table` | 链接名通过工程的 `links` 表解析：示例语言里用的 `agreement`、`policy` 别名和完整的 `terms_of_service`，都要落到配置的 URL 上；绝对 URL 绕过这张表；表里没有的名字解析不出目标。 |
 | `agreement_markdown_becomes_colored_visible_runs` | 协议句里的 Markdown 链接变成按链接色着色的文字段：方括号和圆括号被去掉，链接名留在原处，普通文字仍旧用原来的颜色。 |
 | `align_self_overrides_the_alignment_of_its_container` | `align-items` 决定十字轴上的对齐，单个项可以用 `align-self` 脱离它：横向的行里一项居中、一项贴底、一项贴顶。纵向容器量的是页面宽度，`align-self="end"` 于是把项推到右边。 |
+| `an_uninstaller_carries_only_the_pictures_its_own_pages_name` | 卸载程序的 bundle 只放 `wizard.uninstall_pages` 声明的页面和这些页面引用到的图片（含 `@2x` 配对），安装侧独有的页面与图片留在外面。 |
 | `an_absolute_image_and_icon_draw_at_the_rectangle_they_declare` | `Image` 和 `Icon` 是自带图片的标签：绝对定位加上声明的宽高，才会出现在指定的矩形里；图片按自己的尺寸解码。没有尺寸的控件没有东西可画。 |
 | `an_absolutely_placed_checkbox_draws_its_state_image_and_toggles` | 给了坐标的复选框，和在流式容器里的行为一样：按状态画出对应的图，并登记翻转该状态的点击。随包发布的卸载页把它的保留数据框绝对定位；那个页级复选框既拿不到状态图也拿不到点击区域时，框就画成了一段没人能点的说明文字。 |
 | `an_asset_without_its_density_pair_is_reported` | 图片是画页面时按密度选的，缺了另一半的文件只会在另一种缩放比例的显示器上才露馅。构建两个方向都报：只有 1x 没有 2x 的，和只有 2x 没有 1x 的。 |

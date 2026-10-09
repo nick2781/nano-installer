@@ -53,6 +53,9 @@ target/release/
 `panic = "immediate-abort"` 是 nightly 参数，panic 直接中止，不拼一条没人读的消息。
 Rhai 的 `no_optimize` 和 `no_time` 也关掉了。
 可视化构建器走单独的 `gui` profile，因为 `z` 会让它反而更大。
+一个安装包也只带它里面那个运行时能打开的页面和图片。
+卸载程序带的是它自己那几个页面引用到的图片。
+图标不走 bundle：构建时把它作为 PE 资源注入 exe，Windows 用 `LoadIconW` 从自身资源读它。
 
 
 构建安装包时会顺带审计一次。

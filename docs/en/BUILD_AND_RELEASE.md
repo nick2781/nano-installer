@@ -59,6 +59,9 @@ The build adds the linker's `/OPT:ICF=3`, because the MSVC linker does not fold 
 default. It passes `panic = "immediate-abort"`, a nightly flag: a panic stops there instead of
 building a message nobody reads. It turns off Rhai's `no_optimize` and `no_time`. The visual builder
 is built with a `gui` profile of its own, because `z` makes it larger.
+A setup also carries only the pages and pictures the runtime inside it can open. The uninstaller
+takes the pictures its own pages name. An icon does not travel in the bundle at all: the build
+injects it into the executable as a PE resource, which is where `LoadIconW` reads it from.
 
 Building a setup also audits it.
 `scripts/audit_application_manifest.ps1` reads the manifest resource back and checks the execution
