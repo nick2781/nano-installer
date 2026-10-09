@@ -1,25 +1,25 @@
 # 测试覆盖
 
-文档承诺的每一条行为，都有一条自动化测试用例守着。行为坏了，那一行的测试用例就会失败。
-哪条行为没出现在任何一行里，就是没人看着它。
+文档承诺的每一条行为都有自动化测试用例守着：它一旦坏了，那一行的用例就会失败。而哪条行为
+没出现在任何一行里，也就等于没人看着它。
 
 `\scripts\run_tests.ps1` 跑 391 条测试用例，一条命令一个 target：核心库 277 条，真构建并运行安装包的
-75 条，按构建器的方式读工程的 5 条，可视化构建器 32 条，解压运行时 2 条。每个 target 有自己的期限，
-停住的那个由「没结束的那条命令」点名，整个套件不会悄悄停在那里。安装包级的测试用例要真实的运行时
-可执行文件，`.\scripts\run_e2e_setup.ps1` 先把它们构建出来再跑，并把整次运行写进
-`target/e2e-report.txt`；插件那几条还要那个示例插件，同一个脚本也一并构建。
+75 条，按构建器的方式读工程的 5 条，可视化构建器 32 条，解压运行时 2 条。每个 target 都有自己的
+期限，所以停住的那个会被「没结束的那条命令」点名，整个套件不会悄悄停在那里。安装包级的测试用例
+要真实的运行时可执行文件，`.\scripts\run_e2e_setup.ps1` 先把它们构建出来再跑，并把整次运行写进
+`target/e2e-report.txt`；插件那几条还要那个示例插件，也是同一个脚本构建的。
 
 ## 每一层能证明什么
 
 | 层 | 测试用例数 | 能证明 | 不能证明 |
 | --- | --- | --- | --- |
-| 核心库 | 277 | 一页会变成什么：图层、坐标、命中区域、文字。高对比打开时，这些颜色换成系统配色里的哪一个。捆绑数据里装了什么。安装往磁盘和注册表写了什么。每个脚本原语做什么，服务怎么装上、怎么删掉。脚本从页面上取回什么，读到的组件选择是哪些。工程声明的依赖怎么查出来、下载下来、校验、装上。工程能带哪些插件：宿主交给插件的那张表，逐字段对得上 ABI 头文件；调用写成 `dll::function`；构建当场拒绝哪些 DLL（32 位映像、可执行文件、根本不是映像的文件） | 打包出来的安装包能不能走到这些代码。服务装上之后真的跑起来：服务程序是产品自己的，测试用例带不了它 |
-| 安装包级 | 75 | 构建好的安装包在这台机器上真装了一遍，窗口也被真的驱动起来：应用文件字节（被改动过的安装包连目标目录都不建，直接拒绝这次安装）、清单文件（manifest）、卸载项自己那组字段、快捷方式、自启动、项目脚本、脚本要跑的辅助程序、向导窗口。页面钩子把向导送过一页，按来路退回。它自己页面上那些等点击的行为，列表上的滚轮。脚本的提示和提问画成一张卡片，由点击作答。页面上的取值交到脚本手里，勾选决定这次装哪些组件。脚本按类型写下的每个注册表值，视图名选中哪一份拷贝、
-  脚本跑过的命令留下什么退出码，两个输出流写了什么。工程自己的命令在成品上跑一遍，它拒绝的成品不会留下。工程带上的插件由脚本调用：交回来的值、经宿主写下的文件与注册表值（卸载把两样都收回）、往安装目录外写的尝试被当场拒绝、失败或拒绝宿主 ABI 的插件按名字报给脚本，其中一个插件是 C 写的，不是 Rust 写的。
-  工程声明的依赖真的被问了一遍：缺的装上，已经有的不再装一遍，装不上的让整次安装停下，下载来的程序对不上哈希就一次都不跑。还有些事只有指针和键盘真的动起来才会发生：悬停和按下换上的状态位图、三种标准光标形状、用 Tab 按布局顺序走一遍页面上的控件，用 Enter 或空格执行环底下那一个（环画在控件自己的矩形上，走到头绕回另一头）。另一个进程里的读屏被告知这一页是什么、焦点走到哪里。客户程序向窗口要控件清单，连同角色、名字、取值、状态和位置；通过默认动作操作一个控件；按请求把键盘交给另一个控件。Tab 往下走时，窗口主动发出焦点事件。任务报出来的那句话和进度条，读得到，也随变化播报。输入框破坏规矩时那句提示，当字段自己的描述读得到，出现时就播报。输入框里正在敲进去的取值每敲一个字符报一次，只在文字里移动光标的按键一次都不报。走 `IDispatch` 晚绑定、按名字问同一页的客户程序，答案与走接口的测试用例一致，MSAA 没有的名字会被拒绝。提问卡片顶掉页面，只留下两个答案。开着高对比时，向导按系统配色画，不按布局声明的颜色。语言菜单的上下键与 Enter/Escape、选目录对话框。脚本装上的服务在机器上确实存在，随卸载消失。一次静默运行写下的日志，写到点名的文件，失败时把它的路径交回给调用方 | 输入法自己画出来的那两个窗口；在外壳的选目录对话框里选定一个目录之后会写进哪个输入框；不显示指针的会话上光标长什么样（那里这条测试用例打印自己的跳过理由）；按住 Shift 的 Shift+Tab：窗口测试用例发的是按键消息，消息带不上修饰键，往回走那一半由核心库那条走位测试用例守着 |
+| 核心库 | 277 | 一页会变成什么：图层、坐标、命中区域、文字；高对比打开时，这些颜色又换成系统配色里的哪一个。捆绑数据里装了什么，安装往磁盘和注册表写了什么。每个脚本原语做什么，以及服务怎么装上、怎么删掉；脚本从页面上取回什么，读到的组件选择又是哪些。工程声明的依赖怎么查出来、下载下来、校验、装上，工程能带哪些插件：宿主交给插件的那张表逐字段对得上 ABI 头文件，调用写成 `dll::function`，而构建当场拒绝哪些 DLL（32 位映像、可执行文件、根本不是映像的文件） | 打包出来的安装包能不能走到这些代码；服务装上之后是不是真的跑起来——服务程序是产品自己的，测试用例带不了它 |
+| 安装包级 | 75 | 构建好的安装包在这台机器上真装了一遍，窗口也被真的驱动起来：应用文件字节（被改动过的安装包连目标目录都不建，直接拒绝这次安装）、清单文件（manifest）、卸载项自己那组字段、快捷方式、自启动、项目脚本、脚本要跑的辅助程序、向导窗口。页面钩子把向导送过一页，按来路退回；它自己页面上那些等点击的行为、列表上的滚轮，也一并被驱动起来。脚本的提示和提问画成一张卡片，由点击作答。页面上的取值交到脚本手里，勾选则决定这次装哪些组件。脚本按类型写下的每个注册表值，视图名选中哪一份拷贝、
+  脚本跑过的命令留下什么退出码，两个输出流写了什么；工程自己的命令也要在成品上跑一遍，而它拒绝的成品不会留下。工程带上的插件由脚本调用：交回来的值、经宿主写下的文件与注册表值（卸载把两样都收回）、往安装目录外写的尝试被当场拒绝、失败或拒绝宿主 ABI 的插件按名字报给脚本，其中一个插件是 C 写的，不是 Rust 写的。
+  工程声明的依赖真的被问了一遍：缺的装上，已经有的不再装一遍，装不上的让整次安装停下。而下载来的程序对不上哈希，就一次都不跑。还有些事只有指针和键盘真的动起来才会发生：悬停和按下换上的状态位图、三种标准光标形状。用 Tab 也能按布局顺序走一遍页面上的控件，而 Enter 或空格执行环底下那一个（环画在控件自己的矩形上，走到头绕回另一头）。另一个进程里的读屏被告知这一页是什么、焦点走到哪里，而客户程序向窗口要控件清单时，要回来的还有角色、名字、取值、状态和位置。它可以通过默认动作操作一个控件，也可以按请求把键盘交给另一个控件；Tab 往下走时，窗口主动发出焦点事件。任务报出来的那句话和进度条读得到，也随变化播报。输入框破坏规矩时那句提示，当字段自己的描述读得到，出现时就播报；输入框里正在敲进去的取值每敲一个字符报一次，只在文字里移动光标的按键一次都不报。走 `IDispatch` 晚绑定、按名字问同一页的客户程序，答案与走接口的测试用例一致，而 MSAA 没有的名字会被拒绝。提问卡片顶掉页面，只留下两个答案，而开着高对比时，向导按系统配色画，不按布局声明的颜色。语言菜单的上下键与 Enter/Escape、选目录对话框。脚本装上的服务在机器上确实存在，随卸载消失。一次静默运行写下的日志，写到点名的文件，失败时把它的路径交回给调用方 | 输入法自己画出来的那两个窗口；在外壳的选目录对话框里选定一个目录之后会写进哪个输入框；不显示指针的会话上光标长什么样（那里这条测试用例打印自己的跳过理由）；按住 Shift 的 Shift+Tab：窗口测试用例发的是按键消息，消息带不上修饰键，所以往回走那一半由核心库那条走位测试用例守着 |
 | 工程检查 | 5 | 构建之前窗口会显示的那份摘要与告警列表 | |
 | 可视化构建器 | 32 | 窗口自己的状态、参数（含它替这次构建要的 MSI 包）、日志和告警 | 真的去点界面上的控件 |
-| 解压运行时 | 2 | 坏归档会被拒绝，归档里不安全的路径也会被拒绝 | 解压一个完好的归档：安装包级的测试用例用真实运行时解真实应用文件 |
+| 解压运行时 | 2 | 坏归档会被拒绝，而归档里不安全的路径同样过不去 | 解压一个完好的归档：安装包级的测试用例用真实运行时解真实应用文件 |
 | 截图快照 | 6 页 | 示例工程每一页实际长什么样，这是量出来的，不是看出来的 | 字形本身读不读得通；流程走到那一页时会发生什么 |
 
 ## 配置项
@@ -81,7 +81,7 @@
 | `Spacer` | `a_spacer_takes_what_the_fixed_items_leave` |
 | 用 `right`、`bottom`、`inset` 和单边写法贴边 | `an_element_is_pinned_by_the_edge_attribute_it_carries` |
 | `Label` 的文字、字体、对齐和颜色 | `a_label_takes_its_text_font_and_alignment_from_the_layout`、`text_colors_read_as_rgb_with_or_without_an_alpha_channel`、`a_bound_label_shows_its_own_text_beside_the_value_it_reads` |
-| 组件由同名复选框选择，勾选结果就是这次装哪些组件 | `the_boxes_the_page_carries_decide_which_components_install`、`the_page_and_the_project_decide_which_components_install` |
+| 组件由同名复选框选择，勾中的那几个就是这次要装的 | `the_boxes_the_page_carries_decide_which_components_install`、`the_page_and_the_project_decide_which_components_install` |
 | `Checkbox` 的状态图、文字、链接和切换 | `an_absolutely_placed_checkbox_draws_its_state_image_and_toggles` |
 | `RadioButton`：一组一个取值、布局给的默认行，还有点掉它的那一次点击 | `a_radio_group_holds_one_value_at_a_time`、`a_click_on_a_radio_is_the_value_the_install_waits_for` |
 | `Select`：语言列表，还有工程自己声明的选项 | `a_language_menu_lists_its_options_and_marks_the_one_in_use`、`a_closed_language_select_draws_its_arrow_over_its_fill_and_outline`、`a_select_offers_the_options_the_page_declares`、`the_language_menu_answers_to_the_keyboard` |
@@ -98,7 +98,7 @@
 | 只有声明了动作的元素才响应指针 | `an_element_answers_the_pointer_only_when_it_declares_an_action` |
 | 指针形状：按钮上是手型，能输入的输入框上是工字光标，页面空白处是箭头 | `the_pointer_decides_which_cursor_the_wizard_shows` |
 | 键盘：Tab 按布局顺序走遍能到达的控件，两头绕回；`Enter` 和空格执行环底下的控件；环的颜色；哪些控件进不去；菜单或对话框打开时，页面上的环不动 | `tab_reaches_every_control_in_the_order_the_page_lays_them_out`、`the_walk_wraps_at_both_ends_of_the_control_order`、`a_control_the_page_keeps_out_of_reach_is_not_in_the_tab_order`、`the_focus_ring_is_drawn_over_the_control_the_keyboard_is_on`、`a_control_names_the_colour_of_its_own_focus_ring`、`a_dialog_covers_the_page_without_a_focus_ring_behind_it`、`the_keyboard_walks_the_page_and_acts_on_what_it_reaches` |
-| 高对比主题：系统配色换掉布局声明的颜色。页面、控件面、描边、文字、进度条和滚动条各取系统为它留的那一色。图片保持工程画出来的像素。展开的菜单补一条描边，环和菜单里键盘所在的那一行用高亮色。系统没要求时，一页原样画出来 | `the_scheme_replaces_the_colours_a_page_declares`、`a_page_keeps_the_colours_it_declares_while_no_scheme_is_asked_for`、`the_ring_follows_the_scheme_under_high_contrast`、`an_open_menu_marks_the_keyboard_and_the_choice_under_a_scheme`、`a_scrollbar_takes_the_colours_the_scheme_keeps_for_it`、`each_role_reads_the_colour_the_scheme_keeps_for_it`、`a_system_colour_reads_as_an_opaque_layout_colour`、`a_high_contrast_machine_gets_the_colours_the_scheme_keeps` |
+| 高对比主题：系统配色换掉布局声明的颜色，页面、控件面、描边、文字、进度条和滚动条各取系统为它留的那一色。图片保持工程画出来的像素；展开的菜单补一条描边，而环和菜单里键盘所在的那一行用高亮色。系统没要求时，一页原样画出来 | `the_scheme_replaces_the_colours_a_page_declares`、`a_page_keeps_the_colours_it_declares_while_no_scheme_is_asked_for`、`the_ring_follows_the_scheme_under_high_contrast`、`an_open_menu_marks_the_keyboard_and_the_choice_under_a_scheme`、`a_scrollbar_takes_the_colours_the_scheme_keeps_for_it`、`each_role_reads_the_colour_the_scheme_keeps_for_it`、`a_system_colour_reads_as_an_opaque_layout_colour`、`a_high_contrast_machine_gets_the_colours_the_scheme_keeps` |
 | 目录选择器写到哪个输入框 | `pick_directory_writes_to_the_field_the_page_offers_it`、`pick_directory_falls_back_to_the_layout_text_input` |
 | 有 `pick_directory` 动作的按钮打开外壳自己的选目录对话框，关掉它不改变向导 | `a_browse_button_opens_the_folder_picker_and_leaving_it_changes_nothing` |
 | 窗口摆放和缩放 | `a_window_is_centred_and_clamped_to_its_work_area`、`a_placed_window_is_pulled_back_inside_its_work_area`、`a_display_scales_the_layout_by_its_own_dpi` |
@@ -107,8 +107,8 @@
 
 ## 项目脚本
 
-原语清单见 [脚本接口](SCRIPT_API.md)。进程内的测试用例直接驱动脚本驱动层。安装包级那几条证明 `scripts`
-目录和工具目录打包之后仍然活着，脚本也拿得到。
+原语清单见 [脚本接口](SCRIPT_API.md)。进程内的测试用例直接驱动脚本驱动层，而安装包级那几条
+证明 `scripts` 目录和工具目录打包之后仍然活着，脚本也拿得到。
 
 | 行为 | 测试用例 |
 | --- | --- |
@@ -187,25 +187,25 @@
 
 ## 目前仍没有被自动化用例覆盖的部分
 
-- **Windows 7 SP1。** 兼容性声明要一台干净机器，跑最低支持的版本（Windows 7 SP1 x64）。本项目没有这个环境。见
+- **Windows 7 SP1。** 兼容性声明要一台干净机器，跑最低支持的版本（Windows 7 SP1 x64），而本项目没有这个环境。见
   [当前生产状态](PRODUCTION_STATUS.md)。
-- **字形读不读得通。** 渲染检查能说明文字按布局要的颜色和位置画了出来。它说明不了这句话好不好认。
+- **字形读不读得通。** 渲染检查能说明文字按布局要的颜色和位置画了出来，但说明不了这句话好不好认，
   这个判断交给截图的模型复核脚本，或者交给人。
 - **输入法自己画的那两个窗口，还有系统选目录对话框里的选择动作。** 测试用例能证明运行时交给输入法的
-  组字点和候选点就落在插入符上，证明不了输入法是否照着它画出来。测试用例能证明 `pick_directory` 的
-  按钮开出了外壳的选目录对话框，证明不了在里面选定目录之后会写进页面上的哪个输入框。
-- **要管理员权限才做得到的那一半。** 装服务、改服务、停服务、删服务都要管理员权限。没有权限的运行里，
-  测试用例守住的是「Windows 拒绝，机器上也没留下任何服务」。整套装上再删掉的往返只能在管理员权限环境里跑。
+  组字点和候选点就落在插入符上，但证明不了输入法是否照着它画出来；`pick_directory` 的
+  按钮开出外壳的选目录对话框也是同理，证明不了在里面选定目录之后会写进页面上的哪个输入框。
+- **要管理员权限才做得到的那一半。** 装服务、改服务、停服务、删服务都要管理员权限，所以在没有权限的运行里，
+  测试用例守住的是「Windows 拒绝，机器上也没留下任何服务」，而整套装上再删掉的往返只能在管理员权限环境下跑。
   两份报告（`run_tests.ps1` 和 `run_e2e_setup.ps1`）都会写明这次是不是管理员权限运行，这种结果不会被
   当成人人都跑过的结果。服务装上以后能不能正常运行，这条路谁也走不到：服务程序是产品自己的。
-- **示例工程的脚本没有被真的跑过。** 它们只被解析（`the_example_projects_scripts_parse`）。
-  所以一个名字写错的原语、一个读了页面上不存在控件的 id 照样能过。这两种写法在运行时都只是
-  安静地返回一个值，真装一次这个示例才会暴露。
+- **示例工程的脚本没有被真的跑过。** 它们只被解析（`the_example_projects_scripts_parse`），
+  所以一个名字写错的原语、一个读了页面上不存在控件的 id 照样能过，因为这两种写法在运行时都只是
+  安静地返回一个值，只有真装一次这个示例才会暴露。
 - **从 NSIS 搬过来的建议是不是真的成立。** `scripts/check_nsi_migration.ps1` 在 CI 上读两份指南的
-  命令表，要求迁移示例用到的每条构造都有一行，点名它会变成什么，两份语言逐条一致。构建器那一侧
-  另有一条测试用例，要求示例配置过一遍配置审计。这些只证明每条构造都被分过类，证明不了分类对不对：
+  命令表，要求迁移示例用到的每条构造都有一行，点名它会变成什么，两份语言逐条一致；构建器那一侧
+  另有一条测试用例，要求示例配置过一遍配置审计。这些只证明每条构造都被分过类，但证明不了分类对不对：
   某个命令判成原样对应，其实得写成脚本，只有照着成品搬一遍的人才会发现。
-- **装给整台机器的 MSI。** 测试用例装的是单个用户那条路，不需要管理员权限。同一个包管理员权限后装给整机会怎样、
+- **装给整台机器的 MSI。** 测试用例装的是单个用户那条路，不需要管理员权限，而同一个包管理员权限后装给整机会怎样、
   企业的分发工具能不能把它卸掉，靠的是同一批动作在服务上下文里跑。签名也是同一类空白：
   构建器自己不签名。
 - **测试无法收场的脚本原语：** `run_detached` 有意活得比这次运行长；`kill_process` 会结束一个

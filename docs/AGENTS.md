@@ -1,15 +1,17 @@
 # Documentation map for agents
 
-This page tells you which document answers which question. A reader -- a person or an agent -- goes
-straight to one file. The whole site need not be walked.
+This page tells you which document answers which question, so a reader -- a person or an agent -- can
+go straight to the file that answers it. The whole site does not have to be walked.
 
 **Every page has a twin.** The pages here come in pairs: `docs/en/X.md` and `docs/zh-CN/X.md` are the
-same document. A reader crosses between them with the switch in the site's top bar. This map sits at
-the top of `docs/` rather than inside a tree. It is one of only two files there. The other is the
-site's landing page, a chooser rather than a document. Its Chinese side is
-[`zh-CN/AGENTS.md`](zh-CN/AGENTS.md). No page here is written in one language only.
-`scripts/audit_docs_languages.ps1` holds that. It fails when a page in one tree has no page in the
-other. It also fails when the switch's own list of pages has drifted from the files beside it.
+same document, and the switch in the site's top bar is how a reader crosses between the two. No page
+here is written in one language only. `scripts/audit_docs_languages.ps1` is what holds that: it fails
+when a page in one tree has no page in the other, or when the switch's own list of pages has drifted
+from the files beside it.
+
+This map sits at the top of `docs/` rather than inside a tree, which makes it one of only two files
+there; the other is the site's landing page, a chooser rather than a document. Its Chinese side is
+[`zh-CN/AGENTS.md`](zh-CN/AGENTS.md).
 
 ## Take these first
 
@@ -19,9 +21,9 @@ other. It also fails when the switch's own list of pages has drifted from the fi
 | [`/llms-full.txt`](llms-full.txt) | The English pages in one document, for a reader that would rather fetch once. The test coverage table is left out: it is a table to look things up in, not to read. `llms.txt` links it |
 | [`/sitemap.xml`](sitemap.xml), [`/robots.txt`](robots.txt) | The same page list for crawlers |
 
-Every page here is a Markdown file, published beside the HTML viewer as `text/markdown`. The HTML is
-one viewer over all of them. So fetch the file itself. The Markdown is the source: no page is
-generated for the reader.
+Every page here is a Markdown file, published beside the HTML viewer as `text/markdown`; that HTML is
+one viewer over all of them and nothing more. So fetch the file itself, because the Markdown is the
+source and no page is generated for the reader.
 
 ## Which file answers which question
 
@@ -42,7 +44,7 @@ generated for the reader.
 
 ## In the repository
 
-These files sit outside the published site. A link leaves the site:
+These files sit outside the published site, so a link to any of them leaves the site:
 
 - [README](https://github.com/nick2781/nano-installer/blob/main/README.md) — what the product is,
   what it does today, and what blocks a release.
@@ -61,11 +63,13 @@ These files sit outside the published site. A link leaves the site:
 
 ## Where the index comes from
 
-`scripts/build_docs_index.ps1` writes `llms.txt`, `llms-full.txt`, `robots.txt` and `sitemap.xml`
-from `scripts/docs_index.json`. `-Verify` runs the same code, so the writer and the check cannot
-disagree. A new page needs a line in that data file. The title has to match the page's own
-`# heading` exactly. Without one the check fails, instead of letting the page vanish from the index.
-Whether a page is in `llms-full.txt` is the group's answer. A single page can override it. The
-site's landing page, `README.md`, is a chooser between the two languages, not a page to read. That
-is what keeps it out. The case tables stay out for the reason the coverage table does: they are
-tables to look things up in, not to read.
+`scripts/build_docs_index.ps1` writes `llms.txt`, `llms-full.txt`, `robots.txt` and `sitemap.xml` from
+`scripts/docs_index.json`, and `-Verify` runs the same code, so the writer and the check cannot
+disagree. A new page therefore needs a line in that data file, with a title that matches the page's own
+`# heading` exactly; without that line the check fails, rather than letting the page vanish from the
+index.
+
+Whether a page is in `llms-full.txt` is the group's answer, but a single page can override it: the
+site's landing page, `README.md`, is a chooser between the two languages rather than a page to read,
+and that override is what keeps it out. The case tables stay out for the same reason the coverage table
+does -- they are tables to look things up in, not to read.

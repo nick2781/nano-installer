@@ -1,9 +1,7 @@
 # Examples
 
-Three folders. Each proves something different.
-
-Only the first looks like a product you would ship. The other two exist so a document or an ABI has
-something real behind it.
+Three folders, each proving something different. Only the first looks like a product you would ship,
+while the other two exist so a document or an ABI has something real behind it.
 
 | Folder | What it is | What it proves |
 | --- | --- | --- |
@@ -20,10 +18,10 @@ Build one from the repository root:
 Two things to know before you copy anything:
 
 - **The artwork is not yours to reuse.** The TapTap name, trademarks, images and copy belong to their
-  rights holders. They sit outside this project's licence. Copy the configuration's shape, then
+  rights holders and sit outside this project's licence, so copy the configuration's shape and then
   replace the artwork. `TapTap/README.md` says the same thing at more length.
-- **The TapTap payload is not tracked.** `resources.payload_file` names `payload/app.7z`. Neither that
-  archive nor the application files behind it are in the repository. A fresh clone has nothing to
-  install until you put one there. `TapTap/README.md` says where. When
+- **The TapTap payload is not tracked.** `resources.payload_file` names `payload/app.7z`, and neither
+  that archive nor the application files behind it are in the repository, so a fresh clone has nothing
+  to install until you put one there; `TapTap/README.md` says where. When
   `scripts/capture_setup_snapshots.ps1` needs a build for the README screenshots, it writes a
   throwaway placeholder and deletes it again. The other two examples need no payload at all.

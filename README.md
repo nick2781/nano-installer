@@ -5,22 +5,22 @@
 <p align="center"><a href="https://github.com/nick2781/nano-installer/actions/workflows/ci.yml"><img src="https://github.com/nick2781/nano-installer/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status"></a></p>
 
 One folder in, one setup `.exe` out. Put your configuration, artwork and application files in a
-project folder. Nano Installer builds them into one Windows installer. The logo, the pages and the
-wording are yours. Nothing to host, and nothing your users install first.
+project folder, and Nano Installer builds them into one Windows installer; the logo, the pages and the
+wording are yours, and there is nothing to host or for your users to install first.
 
-> **Early implementation, not ready for production distribution.** Test in a disposable VM: an
-> install writes files and registry entries. Setups are unsigned, so Windows warns about an unknown
+> **Early implementation, not ready for production distribution.** Test in a disposable VM, because an
+> install writes files and registry entries; setups are unsigned, so Windows warns about an unknown
 > publisher. **Requires Windows 7 SP1 x64 or later.** See
 > [production status](docs/en/PRODUCTION_STATUS.md).
 
 <img src="assets/setup-welcome-en-US.png" alt="First page of a setup built from the TapTap example: the product logo, a tagline, the installation options, and an Install Now button" width="720">
 
-The first page of `examples/TapTap`, built and photographed by `scripts/capture_setup_snapshots.ps1`.
-The runtime drew this, and it is not a mock-up.
+The first page of `examples/TapTap`, built and photographed by `scripts/capture_setup_snapshots.ps1`;
+the runtime drew this, and it is not a mock-up.
 
 ## Build your first setup
 
-Nothing to install, nothing to compile. Every
+Nothing to install and nothing to compile: every
 [release](https://github.com/nick2781/nano-installer/releases/latest) publishes the builder, the
 runtimes it needs and a digest for each file.
 
@@ -30,8 +30,8 @@ runtimes it needs and a digest for each file.
 .\nano-installer-native-x64.exe build --project C:\path\to\my-project
 ```
 
-The setup lands in `dist/<installer_name>`. Prefer clicking? `nano-installer-gui-x64.exe` from the
-same release runs the same engine. Full walkthrough:
+The setup lands in `dist/<installer_name>`. Prefer clicking? Then `nano-installer-gui-x64.exe` from the
+same release runs the same engine, and the full walkthrough is in
 [quick start](docs/en/QUICK_START.md).
 
 ## What you get
@@ -39,15 +39,15 @@ same release runs the same engine. Full walkthrough:
 | | |
 | --- | --- |
 | One file to ship | One setup `.exe`, with your icon, version info and branding inside |
-| A clean machine | No runtime to install, and no framework. The setup carries what it needs |
+| A clean machine | No runtime to install and no framework: the setup carries what it needs |
 | Your pages | XML layouts, with your own backgrounds and buttons |
-| Eleven UI languages | Eleven built in. One JSON file adds another |
-| Progress and finish pages | The progress page names the current step. The finish page can start what it installed |
-| Upgrade, rollback, update packages | Re-run to upgrade in place. A failed step rolls back. `--delta-from` ships only what changed |
-| Uninstall | Takes back what it wrote. Keeps user data by default |
+| Eleven UI languages | Eleven built in, and one JSON file adds another |
+| Progress and finish pages | The progress page names the current step, and the finish page can start what it installed |
+| Upgrade, rollback, update packages | Re-run to upgrade in place, and a failed step rolls back; `--delta-from` ships only what changed |
+| Uninstall | Takes back what it wrote, and keeps user data by default |
 | Administrator rights | Asked of Windows only when the project says so |
-| Scripts and plugins | Install and uninstall steps in Rhai, plus DLLs built against [`include/nano_plugin.h`](docs/en/PLUGIN_API.md) |
-| Screen readers | The page, the focus, typed text and live progress are announced, over MSAA and `IDispatch` |
+| Scripts and plugins | Install and uninstall steps in Rhai, and DLLs built against [`include/nano_plugin.h`](docs/en/PLUGIN_API.md) |
+| Screen readers | The page, the focus, typed text and live progress are announced, over MSAA as well as `IDispatch` |
 | GUI or command line | The Windows 10+ visual builder, or the same engine driven from CI |
 | Also a package | `--msi` wraps the setup for an estate that deploys through Windows Installer |
 
@@ -64,7 +64,7 @@ MyApp/
 ```
 
 Paths are relative to the folder, so a project moves anywhere. The quickest start is to copy
-[`examples/TapTap`](examples/README.md) and replace what is inside. Copy the shape of the
+[`examples/TapTap`](examples/README.md) and replace what is inside: copy the shape of the
 configuration, not the artwork, which belongs to its rights holders.
 
 ## Documentation
@@ -75,16 +75,16 @@ configuration, not the artwork, which belongs to its rights holders.
 [Visual builder](docs/en/GUI.md) &middot; [Migrating from NSIS](docs/en/MIGRATION_FROM_NSIS.md)
 
 Site: **https://nick2781.github.io/nano-installer/**, and Chinese pages live in
-[`docs/zh-CN`](docs/zh-CN/). Every page is also a Markdown file:
-[`docs/llms.txt`](docs/llms.txt) indexes them for an agent, and
+[`docs/zh-CN`](docs/zh-CN/); every page is also a Markdown file, where
+[`docs/llms.txt`](docs/llms.txt) indexes them for an agent and
 [`docs/llms-full.txt`](docs/llms-full.txt) is the English documentation in one file. Maintainer
 pages are in [`docs/en`](docs/en/): architecture, build and release, Windows compatibility, the test
 plan, the production status.
 
 ## Contributing, security, licence
 
-[CONTRIBUTING.md](CONTRIBUTING.md) has the working tree and the checks a change passes. It also has
-the rules this repository keeps, including that work reaches `main` through a pull request.
+[CONTRIBUTING.md](CONTRIBUTING.md) has the working tree, the checks a change passes and the rules this
+repository keeps, including that work reaches `main` through a pull request.
 [Issue forms](.github/ISSUE_TEMPLATE) ask for the version and the run log, because a report without
 them costs a round trip. Send security problems through
 [private vulnerability reporting](SECURITY.md), not an issue; that page also lists what is knowingly

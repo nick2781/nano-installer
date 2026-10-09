@@ -2,13 +2,13 @@
 
 A project that ships `scripts/install.rhai` runs the install steps from that script. `scripts/uninstall.rhai` does the same for uninstall. With neither file the built-in flow runs. The two scripts share one set of primitives and differ only in their entry point. A project may also ship `scripts/pages.rhai`: it runs no step, it only answers which page comes next when the user turns one, see [page hooks](#page-hooks).
 
-The scripts are project data, not a plugin system. Primitives are fixed, and the engine enforces an operation ceiling, so a runaway loop cannot hang an installation.
+The scripts are project data, not a plugin system: primitives are fixed, and the engine enforces an operation ceiling, so a runaway loop cannot hang an installation.
 
 ## Contract
 
 - The install script must deploy the executable named by `install.exe_name`, otherwise `finish_install` fails and the installation rolls back.
-- The uninstall script should call `run_tracked_uninstall(start, end)`, which removes the shortcuts, registry values, and installed files recorded in the manifest file. If your script skips it, the driver runs the library fallback after the script ends, so the product is still cleaned up. Calling it lets the script choose the timing and the progress range.
-- A failing script rolls back. Failing means a `throw`, or a primitive that returns failure and a script that returns on it. What rolls back is the files, shortcuts, and registry values this installation wrote, and an install directory created from scratch is removed.
+- The uninstall script should call `run_tracked_uninstall(start, end)`, which removes the shortcuts, registry values, and installed files recorded in the manifest file; if your script skips it, the driver runs the library fallback after the script ends, so the product is still cleaned up. Calling it lets the script choose the timing and the progress range.
+- A failing script rolls back: failing means a `throw`, or a primitive that returns failure and a script that returns on it. What rolls back is the files, shortcuts, and registry values this installation wrote, and an install directory created from scratch is removed.
 
 ## Encoding
 
@@ -37,7 +37,7 @@ A `cancel` button, or the close question answered with Yes, asks the running tas
 
 The component selection comes from the same rule: beside the base application files, which of the components the project cut out with `components.items` this run installs. `is_component_selected(id)` answers for one by name, and `selected_components()` gives them in the order the project declares them, as the [configuration reference](CONFIG_REFERENCE.md#components) describes. An uninstall has no page and no component selection, so both primitives answer `false` and an empty array. The checkbox itself is readable as a control through `get_checkbox_value(<component id>)`, which is what the page holds; ask these two whether the run installs it.
 
-Scripts have no console. Every run writes a log to disk. Every line `log_info`, `log_warn` and `log_error` writes goes into it, together with every step the run itself takes. It lands in the `nano-installer` directory of the temporary directory, or in the file a silent run names with `--log`, as the [configuration reference](CONFIG_REFERENCE.md#unattended-runs) describes. On failure the last 32 lines are still appended to the error the wizard shows, and the message names the file the whole run is in.
+Scripts have no console, and every run writes a log to disk: every line `log_info`, `log_warn` and `log_error` writes goes into it, together with every step the run itself takes. It lands in the `nano-installer` directory of the temporary directory, or in the file a silent run names with `--log`, as the [configuration reference](CONFIG_REFERENCE.md#unattended-runs) describes. On failure the last 32 lines are still appended to the error the wizard shows, and the message names the file the whole run is in.
 
 ## Files and application files
 
@@ -68,7 +68,7 @@ Every file a script writes inside the installation directory is named in the man
 
 ## Registry
 
-Keys use the `HKCU\...` or `HKLM\...` form. The manifest file records the values and keys your script writes, and uninstall removes them.
+Keys use the `HKCU\...` or `HKLM\...` form, and the manifest file records the values and keys your script writes, so uninstall removes them.
 
 | Primitive | Description |
 | --- | --- |
@@ -124,7 +124,7 @@ An association is written under `HKCU\Software\Classes`: the extension names the
 | `run_command(command, args)` | Waits for exit, returns the exit code or `-1` |
 | `run_command_output(command, args)` | Waits for exit, returns `#{code, stdout, stderr}` |
 
-Every command runs without a console window of its own, and `args` is an array of strings. `run_command` and `run_command_output` wait for the program. When the user stops the task, they end it with what it has written so far, and hand `-1` back to the script. `is_cancelled()` is what tells that apart from a program that could not be started at all. What `run_command_output` collects is decoded as UTF-8 where those bytes are valid, and in the machine's own code page otherwise. `ipconfig` on a Chinese Windows therefore reads as Chinese, not as replacement characters on both streams.
+Every command runs without a console window of its own, and `args` is an array of strings, while `run_command` and `run_command_output` wait for the program. When the user stops the task, they end it with what it has written so far, and hand `-1` back to the script. `is_cancelled()` is what tells that apart from a program that could not be started at all. What `run_command_output` collects is decoded as UTF-8 where those bytes are valid, and in the machine's own code page otherwise. `ipconfig` on a Chinese Windows therefore reads as Chinese, not as replacement characters on both streams.
 
 ## Dependencies and downloads
 
@@ -136,7 +136,7 @@ Every command runs without a console window of its own, and `args` is an array o
 | `download_file_with_hash(url, path, sha256)` | The same, keeping the file only when its digest matches |
 | `sha256_of_file(path)` | The file's SHA-256 in lower-case hexadecimal, empty when it cannot be read |
 
-Both dependency primitives read the project's `dependencies.items`, described in the [configuration reference](CONFIG_REFERENCE.md#dependencies). The script decides when to check and whether to install; the project says what the dependency is and how it is recognized. `install_dependency` always answers `false` in an uninstall script. Removing a product does not remove a dependency, and does not install anything for another one.
+Both dependency primitives read the project's `dependencies.items`, described in the [configuration reference](CONFIG_REFERENCE.md#dependencies). The script decides when to check and whether to install; the project says what the dependency is and how it is recognized. `install_dependency` always answers `false` in an uninstall script, because removing a product does not remove a dependency and does not install anything for another one.
 
 A download goes through the machine's own HTTP stack, so its proxy, certificate store and TLS settings are the ones a browser on that machine uses. `https` is offered TLS 1.2. What arrives is compared with `sha256` before anything else happens: a file that does not match is deleted and the call answers `false`, so no half of it is left for the next step. Neither download reports progress. A script that wants the progress bar to say something calls `set_progress()` around it.
 
@@ -172,7 +172,7 @@ A service is not a file of the installation but a record the machine keeps, poin
 | `ask_yes_no(title, message)` | Question dialog, returns a bool |
 | `run_tracked_uninstall(start, end)` | Removes the product from the manifest file; uninstall only |
 
-`set_env` writes `HKCU\Environment`, which is where Windows reads a new process's variables from. A variable the setup exports into its own environment would die with the setup. One written here is still there for the program it installs. The key belongs to Windows and to every other product on the machine, so the manifest file records the value and the uninstall takes that value back rather than the key, exactly as it does for `...\CurrentVersion\Run`.
+`set_env` writes `HKCU\Environment`, which is where Windows reads a new process's variables from. A variable the setup exports into its own environment would die with the setup, while one written here is still there for the program it installs. The key belongs to Windows and to every other product on the machine, so the manifest file records the value and the uninstall takes that value back rather than the key, exactly as it does for `...\CurrentVersion\Run`.
 
 `show_message`, `show_error` and `ask_yes_no` draw the product's own card inside the installer window rather than opening a system message box, from the layout `ui.dialog_layout` names. The card shows the title the script wrote above its message. A question carries two answers, whose labels come from the `yes` and `no` keys of the locale file; `ask_yes_no` returns the one that was clicked. The script waits for that click on the worker thread, so the window keeps painting and keeps taking clicks while the card is up.
 
@@ -180,7 +180,7 @@ A run with nothing to draw in keeps the system box it used before: a silent inst
 
 ## Page hooks
 
-`scripts/pages.rhai` answers one question: which page this turn goes to. The runtime hands it the `id` of the page the user is on every time `next` is clicked. `back` never asks, it walks the way the user came. Without the file, the declared order stands.
+`scripts/pages.rhai` answers one question: which page this turn goes to. The runtime hands it the `id` of the page the user is on every time `next` is clicked. `back` never asks, it walks the way the user came; without the file, the declared order stands.
 
 ```rhai
 fn next_page(from) {
@@ -200,7 +200,7 @@ fn next_page(from) {
 
 A hook can look and not touch: only the read-only primitives are registered for it -- the queries of `system`, `ui`, `registry` and `file`, plus `get_mode()` and `log_*`. Writing a file, a registry value, a card or a stopped task are none of them available, so a hook cannot change the machine or hang the window. It runs under an operation ceiling of its own, a million operations against an install script's hundred million, because this click is handled on the thread that draws the window.
 
-A hook that goes wrong does not trap the user. Naming a page the project never declared, naming the page the wizard is already on, or failing outright all put the reason on the product's own card, and let the declared order walk on. The end of that order is still the end, hook or no hook.
+A hook that goes wrong does not trap the user: naming a page the project never declared, naming the page the wizard is already on, or failing outright all put the reason on the product's own card, and let the declared order walk on. The end of that order is still the end, hook or no hook.
 
 `back` walks the way the user came. After a hook has sent the wizard past a page, Back returns to the page the user was really on before, not to the one that was skipped; starting, returning from or ending a task clears that trail.
 
