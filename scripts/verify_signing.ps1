@@ -76,6 +76,11 @@ function Get-EmbeddedUninstaller {
     $footerAt = $text.LastIndexOf("NATVEND1", [StringComparison]::Ordinal)
     if ($footerAt -lt 8) { throw "the setup has no bundle footer, so its uninstaller cannot be read" }
     $size = [System.BitConverter]::ToUInt64($bytes, $footerAt - 8)
+    # The magic can also sit inside a program's own code, so a footer whose size
+    # does not fit the file is not a footer, and saying so beats a cast error.
+    if ($size -lt 14 -or $size -gt [uint64]($footerAt - 8)) {
+        throw "this file is not a setup: its footer does not describe a bundle"
+    }
     $start = [int]($footerAt - 8 - [long]$size)
     if ($start -lt 0) { throw "the setup's bundle size is invalid" }
     $count = [System.BitConverter]::ToUInt32($bytes, $start + 10)
