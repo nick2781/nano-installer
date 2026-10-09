@@ -1409,7 +1409,7 @@ dependencies = [
 
 [[package]]
 name = "nano-installer-core"
-version = "2026.10.8"
+version = "2026.10.9"
 dependencies = [
  "anyhow",
  "rhai",
@@ -1423,7 +1423,7 @@ dependencies = [
 
 [[package]]
 name = "nano-installer-gui"
-version = "2026.10.8"
+version = "2026.10.9"
 dependencies = [
  "eframe",
  "image",
@@ -1435,7 +1435,7 @@ dependencies = [
 
 [[package]]
 name = "nano-installer-native-cli"
-version = "2026.10.8"
+version = "2026.10.9"
 dependencies = [
  "anyhow",
  "image",
@@ -1445,11 +1445,11 @@ dependencies = [
 
 [[package]]
 name = "nano-installer-plugin-sample"
-version = "2026.10.8"
+version = "2026.10.9"
 
 [[package]]
 name = "nano-installer-stub-lzma"
-version = "2026.10.8"
+version = "2026.10.9"
 dependencies = [
  "anyhow",
  "nano-installer-core",
@@ -1458,7 +1458,7 @@ dependencies = [
 
 [[package]]
 name = "nano-installer-stub-zlib"
-version = "2026.10.8"
+version = "2026.10.9"
 dependencies = [
  "anyhow",
  "nano-installer-core",
@@ -1468,7 +1468,7 @@ dependencies = [
 
 [[package]]
 name = "nano-installer-uninstaller"
-version = "2026.10.8"
+version = "2026.10.9"
 dependencies = [
  "nano-installer-core",
 ]
