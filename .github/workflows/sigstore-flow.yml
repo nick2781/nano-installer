@@ -64,7 +64,7 @@ jobs:
       # rather have cosign write them itself can pin `v2.6.5`, the last v2
       # release, where both flags sit beside `--bundle`.
       - name: Install cosign
-        uses: sigstore/cosign-installer@v4
+        uses: sigstore/cosign-installer@v4.1.2
         with:
           cosign-release: "v3.1.3"
 
