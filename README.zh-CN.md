@@ -84,3 +84,7 @@ Markdown 文件，其中 [`docs/llms.txt`](docs/llms.txt) 是给 agent 的索引
 这里对每个人的要求写在[行为准则](CODE_OF_CONDUCT.md)。Rust 源码是 [MIT 许可](LICENSE)；`examples/TapTap`
 里的商标、图片和文案归易玩（上海）网络科技有限公司所有，不是 MIT 许可，`assets/` 下的截图就来自那个
 示例。
+
+## 代码签名政策
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org)。本项目自己的工具在发布时会通过这项服务签名。签哪些文件、维护者是谁、软件与网络的关系，都写在 [CODE_SIGNING.md](CODE_SIGNING.md) 里。

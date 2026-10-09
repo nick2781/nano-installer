@@ -94,3 +94,7 @@ not a vulnerability here. Everyone here is held to [CODE_OF_CONDUCT.md](CODE_OF_
 source is [MIT licensed](LICENSE). The trademarks, images and copy of `examples/TapTap` belong to
 易玩（上海）网络科技有限公司 and are not MIT-licensed; the screenshots in `assets/` are captures of
 that example.
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org). Releases of this project's own tools are signed through that service. What is signed, who the maintainers are, and what the software does with the network are written out in [CODE_SIGNING.md](CODE_SIGNING.md).
