@@ -1,26 +1,26 @@
 # Documentation map for agents
 
-This page says which document answers which question, so a reader -- a person or an agent -- can go
-straight to one file instead of walking the site.
+This page tells you which document answers which question. A reader -- a person or an agent -- goes
+straight to one file. The whole site need not be walked.
 
-**Every page has a twin.** The pages it maps are paired: `docs/en/X.md` and `docs/zh-CN/X.md` are
-the same document, and the switch in the site's top bar is how a reader crosses between them. This
-map is one of the two files that sit at the top of `docs/` rather than inside a tree -- its Chinese
-side is [`zh-CN/AGENTS.md`](zh-CN/AGENTS.md), and the other is the site's landing page, which is a
-chooser rather than a document. No page here is written in one language only, and
-`scripts/audit_docs_languages.ps1` is what holds that: it fails when a page in one tree has no page
-in the other, and when the switch's own list of pages has drifted from the files beside it.
+**Every page has a twin.** The pages here come in pairs: `docs/en/X.md` and `docs/zh-CN/X.md` are the
+same document. A reader crosses between them with the switch in the site's top bar. This map sits at
+the top of `docs/` rather than inside a tree. It is one of only two files there. The other is the
+site's landing page, a chooser rather than a document. Its Chinese side is
+[`zh-CN/AGENTS.md`](zh-CN/AGENTS.md). No page here is written in one language only.
+`scripts/audit_docs_languages.ps1` holds that. It fails when a page in one tree has no page in the
+other. It also fails when the switch's own list of pages has drifted from the files beside it.
 
 ## Take these first
 
 | File | What it holds |
 | --- | --- |
-| [`/llms.txt`](llms.txt) | Every page, one line each, linked to the page's own Markdown file. Fetch this first |
-| [`/llms-full.txt`](llms-full.txt) | The English pages in one document, for a reader that would rather fetch once. The test coverage table is left out, because it is a table to look things up in rather than reading, and `llms.txt` links it |
+| [`/llms.txt`](llms.txt) | Every page, one line each, linked to the page's own Markdown file. Fetch this one first |
+| [`/llms-full.txt`](llms-full.txt) | The English pages in one document, for a reader that would rather fetch once. The test coverage table is left out: it is a table to look things up in, not to read. `llms.txt` links it |
 | [`/sitemap.xml`](sitemap.xml), [`/robots.txt`](robots.txt) | The same page list for crawlers |
 
-Every page of this site is a Markdown file served beside the HTML viewer, as `text/markdown`. The HTML
-is one viewer over all of them, so fetch the file itself. The Markdown is the source: nothing is
+Every page here is a Markdown file, published beside the HTML viewer as `text/markdown`. The HTML is
+one viewer over all of them. So fetch the file itself. The Markdown is the source: no page is
 generated for the reader.
 
 ## Which file answers which question
@@ -42,16 +42,16 @@ generated for the reader.
 
 ## In the repository
 
-These sit outside the published site, so the links leave it:
+These files sit outside the published site. A link leaves the site:
 
 - [README](https://github.com/nick2781/nano-installer/blob/main/README.md) — what the product is,
   what it does today, and what blocks a release.
 - [Plugin ABI header](https://github.com/nick2781/nano-installer/blob/main/include/nano_plugin.h) —
-  the three rules and the host table a third-party DLL is built against.
+  the three rules a plugin has to keep, and the host table a third-party DLL is built against.
 - [Examples](https://github.com/nick2781/nano-installer/blob/main/examples/README.md) — the three
   example projects and what each one proves. `examples/plugin-c/sample.c` is the ABI in C.
-- [Contributing](https://github.com/nick2781/nano-installer/blob/main/CONTRIBUTING.md) — the working
-  tree, the checks a change has to pass, and the rules this repository keeps.
+- [Contributing](https://github.com/nick2781/nano-installer/blob/main/CONTRIBUTING.md) — how to set
+  up a working tree, the checks a change has to pass, and the rules this repository keeps.
 - [Repository conventions](https://github.com/nick2781/nano-installer/blob/main/AGENTS.md) — the
   layout, the build and test commands, and the change boundaries a coding agent has to respect.
 - [Security policy](https://github.com/nick2781/nano-installer/blob/main/SECURITY.md) — private
@@ -62,10 +62,10 @@ These sit outside the published site, so the links leave it:
 ## Where the index comes from
 
 `scripts/build_docs_index.ps1` writes `llms.txt`, `llms-full.txt`, `robots.txt` and `sitemap.xml`
-from `scripts/docs_index.json`, and `-Verify` is the same code, so the writer and the check cannot
-disagree. A new page therefore needs a line in that data file, titled exactly like the page's own
-`# heading`; without one the check fails rather than letting the page vanish from the index. Whether
-a page is in `llms-full.txt` is the group's answer, and a single page can override it: the site's
-landing page, `README.md`, is a chooser between the two languages rather than a page to read. The
-case tables are left out for the reason the coverage table is: they are tables to look things up in
-rather than reading.
+from `scripts/docs_index.json`. `-Verify` runs the same code, so the writer and the check cannot
+disagree. A new page needs a line in that data file. The title has to match the page's own
+`# heading` exactly. Without one the check fails, instead of letting the page vanish from the index.
+Whether a page is in `llms-full.txt` is the group's answer. A single page can override it. The
+site's landing page, `README.md`, is a chooser between the two languages, not a page to read. That
+is what keeps it out. The case tables stay out for the reason the coverage table does: they are
+tables to look things up in, not to read.
