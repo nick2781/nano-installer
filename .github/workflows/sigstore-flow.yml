@@ -1,0 +1,188 @@
+name: Sigstore flow
+
+# The signature a release ships is an Authenticode one from SignPath Foundation,
+# and a certificate there goes to a project that is already known: a project
+# that has been refused one cannot rehearse that pipeline either, because it has
+# no certificate to put in NANO_INSTALLER_CERT_THUMBPRINT. Sigstore needs no
+# such grant. cosign asks Fulcio for a certificate that is bound to this
+# workflow's own OIDC identity rather than to a key anyone keeps, and that
+# certificate is good for ten minutes.
+#
+# Three consequences are what this file is for. Nothing here signs an
+# executable: cosign writes a signature beside the file it was given, so not one
+# byte of a shipped artifact changes. Nothing here lasts: the certificate is
+# worthless within the hour, and what keeps the run meaningful afterwards is the
+# Rekor entry and the timestamp the bundle carries. And nothing here can start
+# on its own, which is why the only trigger below is workflow_dispatch -- no
+# push, no tag and no schedule can reach this file, so it can never become part
+# of a release.
+on:
+  workflow_dispatch:
+
+# Keyless signing is an OIDC token in place of a key: the job asks GitHub for
+# one and presents it to Fulcio, which is what `id-token: write` grants. The
+# token buys a certificate and nothing else here, and the job reads the
+# repository rather than writing it.
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  sign-and-verify-blob:
+    name: Sign and verify a blob keyless
+    # Named rather than `-latest`, the way the release job and the suite name
+    # theirs: scripts/audit_workflow_images.ps1 fails both a job that goes back
+    # to a moving label and a Windows image that differs from the one
+    # release.yml builds on. This job proves a flow rather than producing the
+    # bits, but the audit has no way to know that.
+    runs-on: windows-2025-vs2026
+    # A keyless run is a handful of network round trips, so the bound is here to
+    # end the job during an outage at Fulcio or Rekor rather than hold a runner.
+    timeout-minutes: 15
+
+    env:
+      # The file this run signs. The flow does not depend on which one it is:
+      # cosign hashes what it is given and signs the digest, so a header from
+      # this repository is as good an input as a built executable, and it is the
+      # cheaper choice -- building nano-installer-native-x64.exe here would add
+      # minutes to a workflow whose subject is the pipeline. This file is not
+      # LFS-tracked either, so a plain checkout holds its bytes rather than a
+      # pointer to them.
+      NANO_BLOB: include/nano_plugin.h
+      NANO_SIGSTORE_DIR: target/sigstore-flow
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # Named rather than left to the action's default, because the flags below
+      # are the ones `cosign sign-blob --help` prints for this version. cosign
+      # v2 wrote the detached pair with `--output-signature` and
+      # `--output-certificate`; v3's sign-blob has neither, and carries the
+      # signature and the certificate inside the `--bundle` file instead, which
+      # is why the two are read back out of it in a step below. A run that would
+      # rather have cosign write them itself can pin `v2.6.5`, the last v2
+      # release, where both flags sit beside `--bundle`.
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v4
+        with:
+          cosign-release: "v3.1.3"
+
+      - name: Show the cosign that will be used
+        shell: powershell
+        run: cosign version
+
+      # --yes is the confirmation sign-blob asks for before it signs. The OIDC
+      # token is found by itself, in the variables the runner sets for a job
+      # that holds `id-token: write`; no key is passed here, because a key is
+      # the thing this flow does without.
+      - name: Sign the blob keyless
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path $env:NANO_SIGSTORE_DIR | Out-Null
+          $bundle = Join-Path $env:NANO_SIGSTORE_DIR "nano_plugin.h.sigstore.json"
+          cosign sign-blob --yes --bundle $bundle $env:NANO_BLOB
+
+      # A bundle is one file holding what v2 kept in three. The detached pair is
+      # written back out because that is what a reader expects to find beside a
+      # signature, and because the certificate is what the assertion below
+      # reads: v3 changed where sign-blob puts those two, not what they are.
+      - name: Write the detached signature and certificate
+        shell: powershell
+        run: |
+          $dir = $env:NANO_SIGSTORE_DIR
+          $bundle = Get-Content -Raw -LiteralPath (Join-Path $dir "nano_plugin.h.sigstore.json") |
+            ConvertFrom-Json
+          # Both are base64 in the bundle: the signature as it was produced, and
+          # the certificate as DER, which is the form cosign reads back.
+          Set-Content -LiteralPath (Join-Path $dir "nano_plugin.h.sig") -Encoding ascii `
+            -Value $bundle.messageSignature.signature -NoNewline
+          $der = [Convert]::FromBase64String($bundle.verificationMaterial.certificate.rawBytes)
+          $body = [Convert]::ToBase64String($der) -split "(.{64})" | Where-Object { $_ }
+          Set-Content -LiteralPath (Join-Path $dir "nano_plugin.h.pem") -Encoding ascii `
+            -Value (@("-----BEGIN CERTIFICATE-----") + $body + @("-----END CERTIFICATE-----"))
+
+      # The certificate is why this flow needs no secret, and its ten minutes
+      # are what make the run a rehearsal rather than a signature. What is left
+      # afterwards is a record of when the signature was made, not a live chain
+      # to check later, which is the same reason scripts/sign.ps1 refuses to
+      # sign without a timestamp. The window is asserted rather than merely
+      # printed, because a certificate that outlives the workflow is the one
+      # thing this job is not allowed to produce.
+      - name: Check the certificate's validity window
+        shell: powershell
+        run: |
+          $dir = $env:NANO_SIGSTORE_DIR
+          $pem = Get-Content -Raw -LiteralPath (Join-Path $dir "nano_plugin.h.pem")
+          $der = [Convert]::FromBase64String(($pem -replace "-----[^-]+-----" -replace "\s", ""))
+          $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($der)
+          $window = $cert.NotAfter - $cert.NotBefore
+          # Printed first, because a verification step that fails below is
+          # answered by the identity Fulcio actually issued.
+          $san = @($cert.Extensions | Where-Object { $_.Oid.Value -eq "2.5.29.17" })
+          if ($san.Count -ge 1) {
+            Write-Output "certificate identity: $($san[0].Format($false))"
+          }
+          Write-Output "certificate notBefore: $($cert.NotBefore.ToUniversalTime().ToString('o'))"
+          Write-Output "certificate notAfter:  $($cert.NotAfter.ToUniversalTime().ToString('o'))"
+          Write-Output "certificate window:    $($window.TotalMinutes) minute(s)"
+          $minutes = $window.TotalMinutes
+          if ($minutes -ne 10) {
+            throw "the certificate is valid for $minutes minute(s); Fulcio issues ten"
+          }
+
+      # The transparency log is what a verifier can still reach after the ten
+      # minutes are gone, and the timestamp is the other half of that record.
+      # cosign checks the entry's inclusion proof during verification below
+      # (`--insecure-ignore-tlog` is what turns that off, and it is deliberately
+      # absent), so this step asserts what the bundle must hold for that check
+      # to have something to verify, and prints the log index a reader looks the
+      # entry up by.
+      - name: Check the transparency log entry and its timestamp
+        shell: powershell
+        run: |
+          $dir = $env:NANO_SIGSTORE_DIR
+          $bundle = Get-Content -Raw -LiteralPath (Join-Path $dir "nano_plugin.h.sigstore.json") |
+            ConvertFrom-Json
+          $entries = @($bundle.verificationMaterial.tlogEntries)
+          if ($entries.Count -lt 1) {
+            throw "the bundle holds no Rekor entry, so nothing records when this signature was made"
+          }
+          foreach ($entry in $entries) {
+            $kind = "$($entry.kindVersion.kind)@$($entry.kindVersion.version)"
+            $log = $entry.logId.keyId
+            Write-Output "rekor entry: index $($entry.logIndex), kind $kind, log $log"
+          }
+          $stamps = @($bundle.verificationMaterial.timestampVerificationData.rfc3161Timestamps)
+          if ($stamps.Count -lt 1) {
+            throw "the bundle holds no RFC 3161 timestamp, so the certificate " +
+              "has no recorded time of use"
+          }
+          Write-Output "rfc3161 timestamps: $($stamps.Count)"
+
+      # The check that matters is not "a signature exists" but "this workflow
+      # made it". Fulcio writes the identity it was handed into the certificate,
+      # so these two flags are the whole policy: the identity is
+      # `https://github.com/` followed by this workflow file at the ref the run
+      # was dispatched on, read from the event so that the check stays exact on
+      # a branch as well as on main, and the issuer is the only authority a run
+      # of this job can have.
+      - name: Verify the signature against its identity and issuer
+        shell: powershell
+        run: |
+          $bundle = Join-Path $env:NANO_SIGSTORE_DIR "nano_plugin.h.sigstore.json"
+          cosign verify-blob --bundle $bundle `
+            --certificate-identity "https://github.com/${{ github.workflow_ref }}" `
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com `
+            $env:NANO_BLOB
+
+      # The three files are this run's record, and the run is where they stay:
+      # nothing is attached to a release, and a signature of this kind is not one
+      # Windows would use in any case. `if: always()` because a run that failed
+      # is the one whose files are worth keeping.
+      - name: Upload the signature, the certificate and the bundle
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sigstore-flow
+          path: ${{ env.NANO_SIGSTORE_DIR }}

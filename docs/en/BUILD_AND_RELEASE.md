@@ -492,3 +492,35 @@ build.
 A signed setup is still a setup. Authenticode appends its certificate table behind everything the
 build wrote, and the runtime looks for its bundle footer in the last megabyte of the file rather
 than at its very end. So the setup installs and uninstalls as it always did.
+
+## Rehearsing the signing flow
+
+A release is signed with a certificate from a commercial authority, and one is not always available:
+a free code-signing programme can decide that a project is not yet known well enough to be given
+one, and a project without a certificate has nothing to put in `NANO_INSTALLER_CERT_THUMBPRINT`.
+The flow can still be walked through end to end, because [Sigstore](https://www.sigstore.dev) issues
+the certificate to the workflow itself rather than to anyone who holds a key.
+`.github/workflows/sigstore-flow.yml` signs a file with cosign, which asks Fulcio for that
+certificate and proves the request with the run's own OIDC token — which is why the job holds
+`id-token: write`, and why no private key appears anywhere in it.
+
+That certificate is good for ten minutes, so the workflow asserts the window instead of trusting it:
+the job reads `notBefore` and `notAfter` out of the issued certificate and fails unless they differ
+by exactly ten minutes, and it fails when the bundle holds no Rekor entry either. The two belong
+together. Windows validates a chain as it stood when the file was signed, so a signature whose
+certificate has expired is checked against a timestamp rather than against the current time, and a
+short-lived certificate without one says nothing at all the next morning. Sigstore keeps that
+record in a different place: the transparency log entry, and an RFC 3161 timestamp in the bundle.
+
+None of this signs an executable, and none of it replaces the Authenticode signature. Sigstore's
+output is a separate file — a bundle, with the detached signature and certificate beside it — so a
+setup or a builder keeps exactly the bytes the build produced, with no certificate table appended to
+them and nothing new for Windows to trust. The "unknown publisher" a user sees beside a download
+does not change because of this workflow, and its three files are uploaded as that run's artifacts
+and attached to no release.
+
+The workflow is dispatched by hand and by nothing else, for the same reason: it has no `push`, `tag`
+or `schedule` trigger, so a release can neither start it nor wait on it. The file it signs is
+`include/nano_plugin.h`, a source file that every checkout holds, because what is tried here is the
+pipeline rather than the artifact; a project's own setup is the file to sign once a certificate
+exists, and `scripts/verify_signing.ps1` is what reads a real signature back.
