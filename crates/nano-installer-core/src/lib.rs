@@ -611,11 +611,16 @@ struct HoverRegion {
     bottom: i32,
 }
 
-/// A control the keyboard can land on, in the order the page lays it out.
+/// A control the page draws, in the order the page lays it out.
 ///
 /// The order is the page's own: the regions are recorded while the layout walks
-/// the tree, so Tab follows what the reader sees on a page of any shape, and a
-/// control the page hid is not in the list at all.
+/// the tree, so Tab follows what the reader sees on a page of any shape. What
+/// the page did not draw is not here at all -- a control behind a closed panel
+/// is not on the page, so there is nothing to read out and nowhere to land. What
+/// the page draws while it cannot be used is here and says so with `enabled`:
+/// the button is on the page for a user to see, waiting for a condition, so a
+/// user who cannot see it has to be able to hear that it is there and why it
+/// answers nothing.
 struct FocusRegion {
     id: String,
     /// What the control is, so the accessibility bridge can tell a screen
@@ -628,6 +633,16 @@ struct FocusRegion {
     /// What activating this control does. A text field has none: a keystroke
     /// there is typing, which the caret already covers.
     action: Option<WindowAction>,
+    /// Whether the page is offering the control now. A button's condition is
+    /// what says so; everything else that reaches this list is on offer.
+    ///
+    /// A control the page draws while it cannot be used keeps its place here so
+    /// that a screen reader can describe it as unavailable, and that is all this
+    /// bit carries: Tab steps over such a control, a press or a hover on it is
+    /// not recorded at all, and nothing can put the keyboard on it. It is the
+    /// opposite of a control the page keeps out of reach by not drawing it,
+    /// which is not in this list in the first place.
+    enabled: bool,
     left: i32,
     top: i32,
     right: i32,
@@ -4214,9 +4229,15 @@ fn push_action(
     context: &LayoutContext<'_>,
 ) {
     let interaction = context.interaction;
-    if node.has_tag_name("Button") && !button_enabled(node, interaction, &context.fields) {
-        return;
-    }
+    // A button the page is holding back is still drawn on the page, so it is
+    // recorded with the controls around it and marked as one that cannot be used
+    // yet: a user who cannot see the page has to be able to hear that the button
+    // is there and that it is waiting for something. What it would do is not
+    // recorded, because a page that takes a click the button will not answer is
+    // a page that lies about itself, and the keyboard has no business landing on
+    // it either.
+    let enabled =
+        !node.has_tag_name("Button") || button_enabled(node, interaction, &context.fields);
     let action = if node.has_tag_name("Checkbox") {
         node.attribute("id").map(|id| WindowAction::ToggleCheckbox {
             id: id.to_string(),
@@ -4289,19 +4310,24 @@ fn push_action(
                 kind: control_kind(node, &action),
                 name: control_name(node, context),
                 action: Some(action.clone()),
+                enabled,
                 left,
                 top,
                 right,
                 bottom,
             });
         }
-        actions.push(ActionRegion {
-            action,
-            left,
-            top,
-            right,
-            bottom,
-        });
+        // Only a control the page is offering takes a click or a hover: one it
+        // is holding back is on the page to be described, not to be used.
+        if enabled {
+            actions.push(ActionRegion {
+                action,
+                left,
+                top,
+                right,
+                bottom,
+            });
+        }
     }
 }
 
@@ -4951,6 +4977,9 @@ fn push_text_input(
             // not its name, and a screen reader has to hear the two apart.
             name: String::new(),
             action: None,
+            // A field the page draws is a field the user can type into, which is
+            // what `push_text_input` is called for at all.
+            enabled: true,
             left: rect.left,
             top: rect.top,
             right: rect.left + rect.width,
@@ -7084,12 +7113,14 @@ fn push_focus_ring(
     };
     // The page is laid out again whenever the ring moves, so the regions on
     // screen are the ones this render just recorded: a control the new page does
-    // not have leaves nothing to draw, which is what makes Tab a no-op there.
+    // not have leaves nothing to draw, which is what makes Tab a no-op there. A
+    // control the page has switched off since the ring landed on it draws no ring
+    // either, because the keyboard is not on a button that answers nothing.
     let rect = {
         let Some(region) = output
             .focus_regions
             .iter()
-            .find(|region| region.id == focused)
+            .find(|region| region.enabled && region.id == focused)
         else {
             return Ok(());
         };
@@ -9101,6 +9132,10 @@ unsafe fn set_focused_control(window: HWND, id: Option<String>) -> Result<()> {
 /// takes the caret while the ring is on it, which is what lets a user reach a
 /// field and type without a mouse, and gives the caret back when the ring
 /// leaves.
+///
+/// Only the controls the page is offering are walked: one it draws while it
+/// cannot be used is described to a screen reader but is not somewhere the
+/// keyboard can land, so the walk steps over it.
 unsafe fn move_page_focus(window: HWND, backward: bool) -> Result<()> {
     let runtime = UI.get().context("native UI state is missing")?;
     let (id, editable, caret_index) = {
@@ -9108,17 +9143,14 @@ unsafe fn move_page_focus(window: HWND, backward: bool) -> Result<()> {
             .lock()
             .map_err(|_| anyhow::anyhow!("native UI state lock was poisoned"))?;
         let regions = &state.ui.focus_regions;
-        if regions.is_empty() {
-            return Ok(());
-        }
-        let current = state
-            .interaction
-            .focused_control
-            .as_deref()
-            .and_then(|focused| regions.iter().position(|region| region.id == focused));
+        let focused = state.interaction.focused_control.as_deref();
         // A page whose focus went away -- it was walked to another page, or the
-        // control it was on is hidden now -- starts the walk over.
-        let index = next_focus_index(regions.len(), current, backward);
+        // control it was on is hidden now -- starts the walk over, and so does a
+        // page that offers the keyboard nothing at all: a control that is
+        // waiting answers no key, which is what a page with nothing on it does.
+        let Some(index) = next_reachable_focus_index(regions, focused, backward) else {
+            return Ok(());
+        };
         let region = &regions[index];
         // A region with no action is a text field: what a key does there is type.
         let editable = region.action.is_none();
@@ -9155,7 +9187,10 @@ unsafe fn activate_focused_control(window: HWND) -> Result<()> {
             .ui
             .focus_regions
             .iter()
-            .find(|region| Some(region.id.as_str()) == focused)
+            // A control the page is holding back answers no key, even when the
+            // focus was left on it: a condition that switched the page over while
+            // the ring was there must not leave a button behind that installs.
+            .find(|region| region.enabled && Some(region.id.as_str()) == focused)
             .and_then(|region| region.action.clone())
     };
     if let Some(action) = action {
@@ -9178,6 +9213,44 @@ fn next_focus_index(len: usize, current: Option<usize>, backward: bool) -> usize
         (None, true) => len - 1,
         (None, false) => 0,
     }
+}
+
+/// The place the keyboard moves to among the controls the page is offering.
+///
+/// What the page records is every control it draws, including the ones it is
+/// holding back, because a screen reader has to be able to describe those too.
+/// The keyboard is not offered them, so the walk drops them before counting: it
+/// steps from one enabled region to the next, and a control that was reachable
+/// when the ring landed on it and is not any more leaves the walk with nothing
+/// to count from, which reads the same as focus that went away for any other
+/// reason -- the walk starts over at the end it is walking from.
+///
+/// `None` says the page offers the keyboard nothing at all, which is a walk of
+/// its own rather than the empty ring `next_focus_index` cannot answer: a page
+/// whose only button is waiting has nowhere to land, exactly as a page with no
+/// control on it has.
+fn next_reachable_focus_index(
+    regions: &[FocusRegion],
+    current: Option<&str>,
+    backward: bool,
+) -> Option<usize> {
+    let reachable: Vec<usize> = regions
+        .iter()
+        .enumerate()
+        .filter(|(_, region)| region.enabled)
+        .map(|(index, _)| index)
+        .collect();
+    if reachable.is_empty() {
+        return None;
+    }
+    let current = current.and_then(|focused| {
+        reachable
+            .iter()
+            .position(|index| regions[*index].id == focused)
+    });
+    reachable
+        .get(next_focus_index(reachable.len(), current, backward))
+        .copied()
 }
 
 /// Whether any select has its menu open.
@@ -10208,20 +10281,20 @@ mod tests {
         control_name, cross_alignment, cross_alignment_for_item, disk_free_bytes, disk_root,
         field_state, flow_axis, flow_item_for_node, flow_widths, format_size_bytes, forward_page,
         initial_interaction, insets_for_node, inspect_project, installer_version_info, load_layout,
-        main_alignment, mask_matches, measure_layout_text_width, next_focus_index, pack_project,
-        pack_project_with_progress, page_id, page_index_of_id, parse_bundle, parse_color,
-        parse_image_style, parse_text_runs, pick_directory_target, push_action, push_border_layer,
-        push_hover_region, push_node_border, push_node_text, query_disk_free_bytes, render_flow,
-        render_flow_item, render_progress_bar, resolve_asset_path, resolve_link_target,
-        resolve_value_source, resolved_text_for_node, restore_snapshot, runtime_layout_path_at,
-        runtime_page_count, runtime_page_index_for_role, scale_value, selection_layers,
-        size_attribute, uninstaller_bundle_contents, uninstaller_version_info,
-        validate_output_filename, word_end_after, word_range, word_start_before, wrap_lines, wraps,
-        BundleContents, BundleIndex, DialogKind, DialogState, DpiContext, DpiSettings, FieldState,
-        FlowAxis, FlowItem, ImageLayer, Insets, InteractionState, LayerRect, LayoutContext,
-        LayoutOutput, LiveRegionKind, MoveTrouble, PayloadFormat, RuntimeMode, RuntimeUi,
-        TextAlignment, TextHit, TextInputRegion, TextSnapshot, WindowAction, BUNDLE_MAGIC,
-        BUNDLE_VERSION, COLORREF, FOOTER_MAGIC, POINT,
+        main_alignment, mask_matches, measure_layout_text_width, next_focus_index,
+        next_reachable_focus_index, pack_project, pack_project_with_progress, page_id,
+        page_index_of_id, parse_bundle, parse_color, parse_image_style, parse_text_runs,
+        pick_directory_target, push_action, push_border_layer, push_hover_region, push_node_border,
+        push_node_text, query_disk_free_bytes, render_flow, render_flow_item, render_progress_bar,
+        resolve_asset_path, resolve_link_target, resolve_value_source, resolved_text_for_node,
+        restore_snapshot, runtime_layout_path_at, runtime_page_count, runtime_page_index_for_role,
+        scale_value, selection_layers, size_attribute, uninstaller_bundle_contents,
+        uninstaller_version_info, validate_output_filename, word_end_after, word_range,
+        word_start_before, wrap_lines, wraps, BundleContents, BundleIndex, DialogKind, DialogState,
+        DpiContext, DpiSettings, FieldState, FlowAxis, FlowItem, FocusRegion, ImageLayer, Insets,
+        InteractionState, LayerRect, LayoutContext, LayoutOutput, LiveRegionKind, MoveTrouble,
+        PayloadFormat, RuntimeMode, RuntimeUi, TextAlignment, TextHit, TextInputRegion,
+        TextSnapshot, WindowAction, BUNDLE_MAGIC, BUNDLE_VERSION, COLORREF, FOOTER_MAGIC, POINT,
     };
     use anyhow::Context;
     use std::collections::HashMap;
@@ -16412,6 +16485,30 @@ mod tests {
         interaction
     }
 
+    /// The controls the keyboard walks, in the order it walks them, taken the
+    /// way the runtime takes them: the regions the page recorded, with the ones
+    /// it is holding back stepped over rather than dropped from the page. It is
+    /// one lap of the ring, so the control the walk starts at is not counted
+    /// twice.
+    ///
+    /// A control that is waiting is still described to a screen reader, so a
+    /// case that asks what Tab reaches has to walk the same way the runtime
+    /// does; reading the recorded list straight off would count the controls the
+    /// keyboard goes past.
+    fn keyboard_order(regions: &[FocusRegion]) -> Vec<&str> {
+        let reachable = regions.iter().filter(|region| region.enabled).count();
+        let mut order = Vec::new();
+        let mut current: Option<String> = None;
+        for _ in 0..reachable {
+            let Some(index) = next_reachable_focus_index(regions, current.as_deref(), false) else {
+                break;
+            };
+            current = Some(regions[index].id.clone());
+            order.push(regions[index].id.as_str());
+        }
+        order
+    }
+
     /// The corner of a control, at an even coordinate, where a dotted ring draws
     /// its first pixel.
     ///
@@ -16515,12 +16612,21 @@ mod tests {
         // have to keep in step by hand.
         let files = focus_order_project();
         let ui = drawn_at_96(&files, &focus_order_interaction())?;
-        let reached: Vec<&str> = ui
+        // What the page records holds every control it draws, which now includes
+        // the button it is holding back, in the place the page puts it.
+        let recorded: Vec<&str> = ui
             .focus_regions
             .iter()
             .map(|region| region.id.as_str())
             .collect();
-        assert_eq!(reached, ["first", "field", "terms"]);
+        assert_eq!(recorded, ["first", "field", "terms", "locked"]);
+        // What the keyboard reaches is the controls the page is offering, in
+        // that same order: the waiting button keeps its place in the description
+        // and is not a place Tab stops.
+        assert_eq!(
+            keyboard_order(&ui.focus_regions),
+            ["first", "field", "terms"]
+        );
 
         // Each region is the rectangle the control was placed at, which is what
         // the ring is drawn over and what a case can find the control by.
@@ -16543,6 +16649,10 @@ mod tests {
     ///
     /// A field the layout gives no id is left out too, because there would be
     /// nowhere to say which control the ring is on.
+    ///
+    /// A button the page draws while it holds it back is the one that is recorded
+    /// all the same: what the keyboard steps over is not the same as what the
+    /// page never drew.
     #[test]
     fn a_control_the_page_keeps_out_of_reach_is_not_in_the_tab_order() {
         // A disabled button answers nothing, a readonly field takes no typing,
@@ -16551,11 +16661,7 @@ mod tests {
         // does not answer.
         let files = focus_order_project();
         let ui = drawn_at_96(&files, &focus_order_interaction()).expect("the page draws");
-        let reached: Vec<&str> = ui
-            .focus_regions
-            .iter()
-            .map(|region| region.id.as_str())
-            .collect();
+        let reached = keyboard_order(&ui.focus_regions);
         for absent in ["sealed", "locked", "gone", "note"] {
             assert!(
                 !reached.contains(&absent),
@@ -16565,6 +16671,88 @@ mod tests {
         // A field the layout gives no id cannot be named, so it is not reachable
         // either: the wizard would have nowhere to say where the keyboard is.
         assert_eq!(reached.len(), 3, "an unnamed field joined the order");
+        // The disabled button is on the page, so it is recorded where it sits
+        // with the mark that says the page is not offering it: a screen reader
+        // describes it there, and the walk above steps over it.
+        let recorded: Vec<(&str, bool)> = ui
+            .focus_regions
+            .iter()
+            .map(|region| (region.id.as_str(), region.enabled))
+            .collect();
+        assert_eq!(
+            recorded,
+            [
+                ("first", true),
+                ("field", true),
+                ("terms", true),
+                ("locked", false)
+            ]
+        );
+    }
+
+    /// A disabled control is part of the page a screen reader describes, and it
+    /// says so in its state: a user who cannot see the button has to hear that it
+    /// is there, what it is called and that it is not available yet.
+    ///
+    /// The keyboard is the one thing that still goes past it: it is not a place
+    /// Tab can land, and a client asking to press it is refused, because the page
+    /// draws the button to be seen rather than to be used.
+    #[test]
+    fn a_disabled_control_is_described_as_unavailable_even_though_the_keyboard_skips_it() {
+        let files = focus_order_project();
+        let interaction = focus_order_interaction();
+        let ui = drawn_at_96(&files, &interaction).expect("the page draws");
+        let described = crate::accessibility::page_controls(&ui, &interaction);
+        // The waiting button keeps its own place among the controls around it,
+        // rather than being left out or pushed to the end of the list.
+        let ids: Vec<&str> = described
+            .iter()
+            .filter_map(|control| control.layout_id.as_deref())
+            .collect();
+        assert_eq!(ids, ["first", "field", "terms", "locked"]);
+        let locked = described
+            .iter()
+            .find(|control| control.layout_id.as_deref() == Some("locked"))
+            .expect("the waiting button is described");
+        // Its name and its role are what they would be if the page were offering
+        // it: what changed is only that it cannot be used.
+        assert_eq!(locked.name, "Locked");
+        assert_eq!(
+            locked.role,
+            windows::Win32::UI::Accessibility::ROLE_SYSTEM_PUSHBUTTON
+        );
+        assert!(locked.unavailable);
+        assert!(!locked.focusable);
+        // Nothing answers a press, so a client is offered no action to take.
+        assert!(locked.action.is_none());
+        // The keyboard walks the page as if the button were not there, which is
+        // what makes the description the only place it can be heard.
+        assert_eq!(
+            keyboard_order(&ui.focus_regions),
+            ["first", "field", "terms"]
+        );
+
+        // A page that switches the button off while the ring was already on it
+        // leaves the keyboard nowhere: the button is not the one a client is told
+        // the user is on, and no ring is drawn around it, because a ring says the
+        // keyboard is somewhere and it is not.
+        let mut switched_off = focus_order_interaction();
+        switched_off.focused_control = Some("locked".to_string());
+        let waiting = drawn_at_96(&files, &switched_off).expect("the page draws");
+        assert_eq!(
+            waiting.layers.len(),
+            ui.layers.len(),
+            "a ring was drawn on a button that answers nothing"
+        );
+        let described = crate::accessibility::page_controls(&waiting, &switched_off);
+        let locked = described
+            .iter()
+            .find(|control| control.layout_id.as_deref() == Some("locked"))
+            .expect("the waiting button is still described");
+        assert!(
+            !locked.focused,
+            "the waiting button was reported as holding the keyboard"
+        );
     }
 
     /// Tab walks one way and Shift+Tab the other, and either end wraps, so a page

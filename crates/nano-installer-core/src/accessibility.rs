@@ -49,16 +49,20 @@ use windows::Win32::UI::WindowsAndMessaging::{
 const BY_REFERENCE_LONG: u16 = 0x4000 | 3;
 
 use crate::{
-    AnnouncedLive, ControlKind, LayerRect, LiveRegionKind, RuntimeState, WindowAction, UI,
+    AnnouncedLive, ControlKind, InteractionState, LayerRect, LiveRegionKind, RuntimeState,
+    RuntimeUi, WindowAction, UI,
 };
 
 /// Accessibility states, spelled here so the module imports what it actually
 /// uses. The values are the ones `oleacc.h` declares, and a state is a bit
-/// field: a client tests one bit at a time.
+/// field: a client tests one bit at a time. The bindings hand over only a couple
+/// of them, so a state this module reads is written down beside the ones it
+/// keeps with it rather than imported by name.
 const STATE_SYSTEM_CHECKED: u32 = 0x0000_0010;
 const STATE_SYSTEM_FOCUSED: u32 = 0x0000_0004;
 const STATE_SYSTEM_FOCUSABLE: u32 = 0x0010_0000;
 const STATE_SYSTEM_HASPOPUP: u32 = 0x4000_0000;
+const STATE_SYSTEM_UNAVAILABLE: u32 = 0x0000_0001;
 
 /// What a control shows, in the terms a screen reader speaks.
 ///
@@ -89,7 +93,7 @@ fn live_role(kind: LiveRegionKind) -> u32 {
 }
 
 /// One control the wizard is showing, described the way a client asks for it.
-struct Control {
+pub(crate) struct Control {
     /// The number a client names this control by in an `IAccessible` call.
     ///
     /// Windows numbers a simple child from one, so the number is the control's
@@ -99,24 +103,38 @@ struct Control {
     /// The id the layout declares. The runtime reads it back to move the
     /// keyboard or run what the control does, so a client's request lands on
     /// the same control the user sees.
-    layout_id: Option<String>,
+    pub(crate) layout_id: Option<String>,
     /// The field this element explains, for a hint: a client is told about the
     /// rule a value breaks as that field's own description.
     describes: Option<String>,
-    role: u32,
-    name: String,
+    pub(crate) role: u32,
+    pub(crate) name: String,
     value: String,
     /// Whether the keyboard can land on it. The words and the bar a running task
     /// publishes are described but never focused, so a client is not told they
-    /// can be reached.
-    focusable: bool,
-    focused: bool,
+    /// can be reached; a control the page draws while it is holding it back is
+    /// not somewhere the keyboard goes either.
+    pub(crate) focusable: bool,
+    /// Whether the control is on the page but cannot be used now.
+    ///
+    /// `focusable` alone cannot say why a control is out of reach, and the two
+    /// reasons are not the same thing to a user. What a running task publishes is
+    /// *meant* to be out of reach -- nobody types into a progress bar -- so it is
+    /// described as plain text and nothing is said about reaching it. A button
+    /// waiting for a condition is something a user is meant to press, only not
+    /// yet, so a client has to hear that it is there and that it is unavailable
+    /// rather than not hear it at all. Both are `focusable: false`; this is the
+    /// bit that separates them.
+    pub(crate) unavailable: bool,
+    /// Whether the control is the one the keyboard is on, which is what a client
+    /// reads out as the user's own place on the page.
+    pub(crate) focused: bool,
     /// Whether a box or a row is filled in. `None` for everything that is not
     /// a choice: a button is never checked either way.
     checked: Option<bool>,
     /// Where the control is, in client coordinates.
     rect: LayerRect,
-    action: Option<WindowAction>,
+    pub(crate) action: Option<WindowAction>,
 }
 
 /// Every control the wizard is showing, in the order a client walks them.
@@ -127,7 +145,7 @@ fn controls(state: &RuntimeState) -> Vec<Control> {
     if state.interaction.dialog.is_some() {
         dialog_controls(state)
     } else {
-        page_controls(state)
+        page_controls(&state.ui, &state.interaction)
     }
 }
 
@@ -158,6 +176,9 @@ fn dialog_controls(state: &RuntimeState) -> Vec<Control> {
             name,
             value: String::new(),
             focusable: true,
+            // A dialog's own answers are both enabled: the runtime draws the
+            // pair it is asking with, and neither is waiting for anything.
+            unavailable: false,
             focused: false,
             checked: None,
             rect: LayerRect {
@@ -175,14 +196,19 @@ fn dialog_controls(state: &RuntimeState) -> Vec<Control> {
 /// The controls of the page, in the order the layout recorded them, and then
 /// what the page says about a task that is running.
 ///
-/// That order is the page's own: it is the order Tab walks, so a client that
-/// walks the same list hears the controls in the order the user reaches them.
-/// The words and the bar a task publishes come after them, because they are what
-/// a user listens to while there is nothing left to reach: a progress page is
-/// usually one bar and one line with no control on it at all.
-fn page_controls(state: &RuntimeState) -> Vec<Control> {
+/// That order is the page's own: the list is the one Tab walks, apart from the
+/// controls the page draws while it is holding them back, which are described
+/// where they sit rather than left out -- a client has to hear that the button
+/// it cannot press is on the page. The words and the bar a task publishes come
+/// after them, because they are what a user listens to while there is nothing
+/// left to reach: a progress page is usually one bar and one line with no
+/// control on it at all.
+///
+/// What is read here is the page as it was drawn and what the user has done to
+/// it, rather than the whole runtime: those two are all a description needs.
+pub(crate) fn page_controls(ui: &RuntimeUi, interaction: &InteractionState) -> Vec<Control> {
     let mut controls = Vec::new();
-    for region in &state.ui.focus_regions {
+    for region in &ui.focus_regions {
         let rect = LayerRect {
             left: region.left,
             top: region.top,
@@ -196,16 +222,30 @@ fn page_controls(state: &RuntimeState) -> Vec<Control> {
             role: role_of(region.kind),
             name: region.name.clone(),
             value: String::new(),
-            focusable: true,
-            focused: state.interaction.focused_control.as_deref() == Some(region.id.as_str()),
+            // A control the page draws while it is holding it back is on the
+            // page and in this list, but it is not somewhere the keyboard goes;
+            // the state below is what tells a client it is unavailable, rather
+            // than that a user is not meant to reach it.
+            focusable: region.enabled,
+            unavailable: !region.enabled,
+            // A control the page is holding back cannot hold the keyboard, so it
+            // is never the one a client is told the user is on, even when the
+            // condition switched the page over while the ring was on it.
+            focused: region.enabled
+                && interaction.focused_control.as_deref() == Some(region.id.as_str()),
             checked: None,
             rect,
-            action: region.action.clone(),
+            // A control the page cannot offer answers no default action: a client
+            // asking to press it must not be able to run what a user cannot.
+            action: if region.enabled {
+                region.action.clone()
+            } else {
+                None
+            },
         };
         match region.kind {
             ControlKind::TextInput => {
-                control.value = state
-                    .interaction
+                control.value = interaction
                     .text_input_values
                     .get(&region.id)
                     .cloned()
@@ -214,30 +254,25 @@ fn page_controls(state: &RuntimeState) -> Vec<Control> {
                     // A field is named by the words beside it, which is where a
                     // layout writes them: what it holds is its value, and a
                     // client has to hear the two apart.
-                    control.name = words_beside(state, rect).unwrap_or_else(|| region.id.clone());
+                    control.name = words_beside(ui, rect).unwrap_or_else(|| region.id.clone());
                 }
             }
             ControlKind::Checkbox => {
-                control.checked = state.interaction.checkbox_states.get(&region.id).copied();
+                control.checked = interaction.checkbox_states.get(&region.id).copied();
             }
             ControlKind::Radio => {
                 // A radio answers for its group, and which row of the group is
                 // filled in is the choice kept under the group's id.
                 if let Some(WindowAction::ChooseOption { id, value }) = region.action.as_ref() {
-                    control.checked = Some(state.interaction.choices.get(id) == Some(value));
+                    control.checked = Some(interaction.choices.get(id) == Some(value));
                 }
             }
             ControlKind::Select => {
                 // A select shows one of its options, and that option is what a
                 // client reads as the control's value.
                 if let Some(WindowAction::ToggleSelectMenu { id }) = region.action.as_ref() {
-                    control.value = words_inside(state, rect).unwrap_or_else(|| {
-                        state
-                            .interaction
-                            .choices
-                            .get(id)
-                            .cloned()
-                            .unwrap_or_default()
+                    control.value = words_inside(ui, rect).unwrap_or_else(|| {
+                        interaction.choices.get(id).cloned().unwrap_or_default()
                     });
                 }
             }
@@ -245,7 +280,7 @@ fn page_controls(state: &RuntimeState) -> Vec<Control> {
         }
         controls.push(control);
     }
-    for region in &state.ui.live_regions {
+    for region in &ui.live_regions {
         controls.push(Control {
             id: controls.len() as i32 + 1,
             layout_id: None,
@@ -263,6 +298,9 @@ fn page_controls(state: &RuntimeState) -> Vec<Control> {
                 LiveRegionKind::Status | LiveRegionKind::Hint => String::new(),
             },
             focusable: false,
+            // Out of reach on purpose rather than unavailable: a progress bar is
+            // read out, and saying it were broken would be wrong.
+            unavailable: false,
             focused: false,
             checked: None,
             rect: LayerRect {
@@ -302,9 +340,9 @@ fn layer_rect(layer: &crate::TextLayer) -> LayerRect {
 ///
 /// The nearest such line wins, and a line further above than a few times the
 /// field's own height belongs to something else -- the page's title, say.
-fn words_beside(state: &RuntimeState, field: LayerRect) -> Option<String> {
+fn words_beside(ui: &RuntimeUi, field: LayerRect) -> Option<String> {
     let mut best: Option<(i32, String)> = None;
-    for layer in &state.ui.texts {
+    for layer in &ui.texts {
         let words = layer_words(layer);
         if words.is_empty() {
             continue;
@@ -329,10 +367,8 @@ fn words_beside(state: &RuntimeState, field: LayerRect) -> Option<String> {
 }
 
 /// The words drawn inside a rectangle, which is what a select shows there.
-fn words_inside(state: &RuntimeState, area: LayerRect) -> Option<String> {
-    state
-        .ui
-        .texts
+fn words_inside(ui: &RuntimeUi, area: LayerRect) -> Option<String> {
+    ui.texts
         .iter()
         .find(|layer| area.intersect(layer_rect(layer)).is_some())
         .map(layer_words)
@@ -691,6 +727,15 @@ impl IAccessible_Impl for WizardAccessible_Impl {
                 } else {
                     0
                 };
+                if control.unavailable {
+                    // A control the page draws while it is holding it back is on
+                    // the page, so a user who cannot see it has to hear that it
+                    // is there and that it is unavailable. This is the state that
+                    // says so, and it is not what a task publishes: a progress
+                    // bar is out of reach because nobody was meant to press it,
+                    // not because the page is waiting for something.
+                    state |= STATE_SYSTEM_UNAVAILABLE;
+                }
                 if control.focused {
                     state |= STATE_SYSTEM_FOCUSED;
                 }
@@ -750,6 +795,11 @@ impl IAccessible_Impl for WizardAccessible_Impl {
         let Some(control) = self.child(varchild)? else {
             return Ok(BSTR::new());
         };
+        // A control the page is holding back has no default action to name: a
+        // client told to press it would be told to do what nothing answers.
+        if control.unavailable {
+            return Ok(BSTR::new());
+        }
         // What a press does, in the words a client reads out. These are the
         // strings MSAA names for the actions themselves, so a reader translates
         // them into the language it speaks rather than the one the page is in.
@@ -778,6 +828,13 @@ impl IAccessible_Impl for WizardAccessible_Impl {
         let Some(control) = self.child(varchild)? else {
             return Err(Error::from(E_INVALIDARG));
         };
+        // The keyboard steps over a control the page is holding back, so a client
+        // asking to put the focus on one is asking for something the page does
+        // not offer, and the ring would follow it onto a button that cannot be
+        // pressed.
+        if control.unavailable {
+            return Err(Error::from(E_INVALIDARG));
+        }
         if flagsselect & SELFLAG_TAKEFOCUS as i32 == 0 {
             // Taking the focus is the one request the wizard can answer: there
             // is nothing to select besides the control the keyboard is on.

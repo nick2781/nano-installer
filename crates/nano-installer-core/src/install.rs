@@ -998,7 +998,10 @@ fn extract_archive(setup: &Path, archive: &Path, target: &Path, task: &Cancellat
 /// Returns `Ok(None)` when the destination is free. A directory that exists
 /// without a manifest, or whose manifest belongs to another project, is
 /// reported as an error so that unrelated user data is never overwritten.
-fn previous_install(destination: &Path, config: &Value) -> Result<Option<PreviousInstall>> {
+pub(super) fn previous_install(
+    destination: &Path,
+    config: &Value,
+) -> Result<Option<PreviousInstall>> {
     if !destination.exists() {
         return Ok(None);
     }
@@ -1065,6 +1068,44 @@ pub(super) fn manifest_file_paths(manifest: &Value) -> Result<Vec<PathBuf>> {
         paths.push(path.to_path_buf());
     }
     Ok(paths)
+}
+
+/// Validates the manifest directory list and returns the stored relative paths.
+///
+/// A manifest written before this field existed carries none, and that is not a
+/// failure: such an installation uninstalls the way it used to, which is what
+/// its own version promised when it was installed.
+pub(super) fn manifest_directory_paths(manifest: &Value) -> Result<Vec<PathBuf>> {
+    let Some(directories) = manifest["directories"].as_array() else {
+        return Ok(Vec::new());
+    };
+    let mut paths = Vec::with_capacity(directories.len());
+    for item in directories {
+        let relative = item
+            .as_str()
+            .context("manifest directory path is not a string")?;
+        if !is_managed_directory_path(relative) {
+            // Quoted, so an entry that is empty rather than merely wrong still
+            // shows up in the failure an author reads.
+            bail!("unsafe manifest directory path: {relative:?}")
+        }
+        paths.push(PathBuf::from(relative));
+    }
+    Ok(paths)
+}
+
+/// Whether a manifest directory entry names a path below the installation.
+///
+/// The manifest is read back from a directory a user can write to, so an entry
+/// is only followed while it is a plain relative path. An absolute path, a `..`
+/// step, and an empty name all reach somewhere else, the empty one by meaning
+/// the installation directory itself.
+fn is_managed_directory_path(relative: &str) -> bool {
+    !relative.is_empty()
+        && !Path::new(relative).is_absolute()
+        && Path::new(relative)
+            .components()
+            .all(|component| matches!(component, Component::Normal(_)))
 }
 
 /// One deployment of an installed file set, replayed from `extracted` into
@@ -1136,6 +1177,11 @@ impl Deployment<'_> {
             self.registry_path,
             &files,
             &ManifestArtifacts {
+                // The built-in flow has no primitive that creates a directory
+                // for its own sake: every directory below the destination is
+                // made to hold a file this list already names, so the file list
+                // describes all of them.
+                directories: Vec::new(),
                 shortcuts: self.artifacts.shortcut_paths(),
                 shortcut_dirs: self.artifacts.shortcut_dir_paths(),
                 autostart: self.artifacts.autostart_json(),
@@ -1154,6 +1200,13 @@ impl Deployment<'_> {
 
 /// The entries beside the deployed files that an uninstall has to replay.
 pub(super) struct ManifestArtifacts {
+    /// Directories a project script created inside the installation directory,
+    /// relative to it.
+    ///
+    /// Only a directory the file list cannot describe has to be named here: a
+    /// directory that holds a deployed file comes and goes with that file, and
+    /// one a script left empty would otherwise outlive the installation.
+    pub(super) directories: Vec<String>,
     pub(super) shortcuts: Vec<String>,
     pub(super) shortcut_dirs: Vec<String>,
     pub(super) autostart: Value,
@@ -1183,6 +1236,7 @@ pub(super) fn write_manifest(
         "registry_root": registry_root,
         "registry_path": registry_path,
         "files": files.iter().map(|path| path.to_string_lossy().to_string()).collect::<Vec<_>>(),
+        "directories": artifacts.directories,
         "shortcuts": artifacts.shortcuts,
         "shortcut_dirs": artifacts.shortcut_dirs,
         "autostart": artifacts.autostart,
@@ -1553,6 +1607,32 @@ pub(super) fn recorded_shortcuts(manifest: &Value) -> Vec<PathBuf> {
             shortcuts
                 .iter()
                 .filter_map(Value::as_str)
+                .map(PathBuf::from)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The directories an earlier install recorded in its manifest.
+///
+/// An upgrade writes its own manifest over the one it replaces, so a directory
+/// the earlier version created is named by nobody afterwards: the run did not
+/// add it, and the difference against the snapshot taken before it ran does not
+/// hold it. The installation still owns it, so the entry is carried over, and
+/// the uninstall that follows the upgrade removes that directory like one the
+/// upgrade created itself.
+///
+/// A manifest written before this field existed reports none, which is what an
+/// installation of that version expects. An entry this version cannot follow is
+/// dropped here rather than carried into a manifest written by us.
+pub(super) fn recorded_directories(manifest: &Value) -> Vec<PathBuf> {
+    manifest["directories"]
+        .as_array()
+        .map(|directories| {
+            directories
+                .iter()
+                .filter_map(Value::as_str)
+                .filter(|relative| is_managed_directory_path(relative))
                 .map(PathBuf::from)
                 .collect()
         })
@@ -2456,9 +2536,18 @@ pub(super) fn remove_user_data(config: &Value) -> Result<()> {
     Ok(())
 }
 
-/// Deletes the deployed files the manifest lists, then the directories that
-/// held only them. Directories that still hold anything are left in place.
+/// Deletes the deployed files the manifest lists, the directories that held
+/// only them, and the directories a project script created.
+///
+/// Every directory goes only while it is empty. One that still holds anything
+/// stays, and what is in it is never removed with it: a script may have created
+/// a directory for the product's own files, but a user is free to put something
+/// else in it, and reaching inside would delete a file this installation never
+/// wrote.
 pub(super) fn remove_installed_files(destination: &Path, manifest: &Value) -> Result<()> {
+    // Read before anything is deleted: a manifest this version cannot trust has
+    // to fail the uninstall while the installation is still whole.
+    let mut directories = manifest_directory_paths(manifest)?;
     for relative in manifest_file_paths(manifest)? {
         let path = destination.join(relative);
         if path.is_file() {
@@ -2471,6 +2560,12 @@ pub(super) fn remove_installed_files(destination: &Path, manifest: &Value) -> Re
         {
             let _ = fs::remove_dir(parent);
         }
+    }
+    // Deepest first, so a directory a script created is reached before the
+    // directory holding it, which is only empty once its child is gone.
+    directories.sort_by_key(|directory| std::cmp::Reverse(directory.components().count()));
+    for relative in directories {
+        let _ = fs::remove_dir(destination.join(relative));
     }
     Ok(())
 }
@@ -2582,10 +2677,11 @@ mod tests {
     use super::{
         begin_deployment, check_cancelled, deploy_files, installed_size_kib, parse_registry_key,
         parse_silent_arguments, preserved_data_paths, previous_install, register_uninstaller,
-        registry_path, require_free_space, require_silent_support, resolve_install_destination,
-        result_notice, same_contents, selected_components, validate_destination, wide,
-        Cancellation, Cancelled, Deployment, InstallArtifacts, PayloadFiles, PreviousInstall,
-        RegistryKey, RegistryView, SilentOptions, MANIFEST_NAME,
+        registry_path, remove_installed_files, require_free_space, require_silent_support,
+        resolve_install_destination, result_notice, same_contents, selected_components,
+        validate_destination, wide, write_manifest, Cancellation, Cancelled, Deployment,
+        InstallArtifacts, ManifestArtifacts, PayloadFiles, PreviousInstall, RegistryKey,
+        RegistryView, RollbackJournal, SilentOptions, MANIFEST_NAME,
     };
     use anyhow::Result;
     use std::path::{Path, PathBuf};
@@ -2752,6 +2848,46 @@ mod tests {
                     .to_string()
             })
             .collect())
+    }
+
+    /// A destination holding what `files` describes, with the manifest an
+    /// install writes for it: the files it deployed, plus the directories a
+    /// script created beside them.
+    ///
+    /// The manifest is read back from disk rather than kept in memory, so a
+    /// case replays exactly what the uninstaller would read.
+    fn deployed_directory(
+        root: &Path,
+        files: &[&str],
+        directories: &[&str],
+    ) -> Result<(PathBuf, serde_json::Value)> {
+        let destination = root.join("installed");
+        std::fs::create_dir_all(&destination)?;
+        for relative in files {
+            std::fs::write(destination.join(relative), b"deployed")?;
+        }
+        for relative in directories {
+            std::fs::create_dir_all(destination.join(relative))?;
+        }
+        let mut journal = RollbackJournal::new(root.join("rollback"), None);
+        write_manifest(
+            &destination,
+            &mut journal,
+            "HKCU",
+            "Software\\nano-installer-test",
+            &files.iter().map(PathBuf::from).collect::<Vec<_>>(),
+            &ManifestArtifacts {
+                directories: directories.iter().map(|path| path.to_string()).collect(),
+                shortcuts: Vec::new(),
+                shortcut_dirs: Vec::new(),
+                autostart: serde_json::Value::Null,
+                registry_values: Vec::new(),
+                registry_keys: Vec::new(),
+                services: Vec::new(),
+            },
+        )?;
+        let manifest = serde_json::from_slice(&std::fs::read(destination.join(MANIFEST_NAME))?)?;
+        Ok((destination, manifest))
     }
 
     #[test]
@@ -3138,6 +3274,47 @@ mod tests {
         assert!(!product.exists());
         // The shared Start Menu root is never removed.
         assert!(start_menu.is_dir());
+        Ok(())
+    }
+
+    /// A script creates a directory with `create_dir`, and nothing the manifest
+    /// names is inside it. The uninstaller replays the manifest and nothing
+    /// else, so a directory the manifest does not record is one an otherwise
+    /// empty installation leaves behind forever.
+    #[test]
+    fn a_directory_a_script_created_is_removed_with_the_installation() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let (destination, manifest) =
+            deployed_directory(temp.path(), &["App.exe"], &["plugins", "plugins/nested"])?;
+
+        remove_installed_files(&destination, &manifest)?;
+
+        assert!(!destination.join("plugins").exists());
+        assert!(!destination.join("App.exe").exists());
+        // The directory the uninstaller runs from belongs to the uninstaller
+        // itself, so it is no manifest entry and nothing here removes it.
+        assert!(destination.is_dir());
+        Ok(())
+    }
+
+    /// What the manifest does not name is the user's, and a directory holding it
+    /// stays: the uninstall removes directories, never what is inside them,
+    /// because a script's directory is also a place a user can put something.
+    #[test]
+    fn a_directory_a_script_created_is_kept_while_it_holds_a_user_file() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let (destination, manifest) =
+            deployed_directory(temp.path(), &["App.exe"], &["plugins", "plugins/nested"])?;
+        let nested = destination.join("plugins").join("nested");
+        std::fs::write(nested.join("user.dat"), b"mine")?;
+
+        remove_installed_files(&destination, &manifest)?;
+
+        // The directory the script created holds a file the manifest does not
+        // name, so it stays, and what is inside it is left alone.
+        assert!(destination.join("plugins").is_dir());
+        assert!(nested.is_dir());
+        assert_eq!(std::fs::read(nested.join("user.dat"))?, b"mine");
         Ok(())
     }
 

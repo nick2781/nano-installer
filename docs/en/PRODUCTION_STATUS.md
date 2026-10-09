@@ -212,20 +212,20 @@ The gaps this run left, written down rather than left looking tested:
   supported version and Windows 11 read the accessibility tree byte for byte identically. What it
   read: the window is named after the product, the language combobox carries "简体中文" as both its
   name and its value, the agreement checkbox carries its sentence, and image buttons report the name
-  `accessible-name` gives them. That reading closed two gaps and left one open:
+  `accessible-name` gives them. That reading closed two gaps, and a third was closed later:
 
   - A button whose label is artwork has no words to read, so a screen reader user hears only "button";
     a layout now names such a control with `accessible-name`, and the example's minimize, close and
     custom-options buttons already use it.
   - The checkbox's name carried its inline link markup, `[《服务协议》](agreement)`, and it now reads as
     the sentence without the markup.
-  - **A disabled control is not in the accessibility tree at all.** The install button is unavailable
-    until the agreement is ticked, so it does not even appear as an element, and a screen reader user
-    cannot hear that the page has one, still less what it is waiting for. It appears with its name only
-    once the box is ticked. The tree is built from the Tab order, and an unavailable control is not in
-    the Tab order. This one was left as it is, because it is not a platform matter and Windows 11
-    behaves the same, while changing it means deciding where an unavailable control sits in the tree
-    and in what order.
+  - **A disabled control is in the tree now.** The install button is unusable until the agreement is
+    ticked: it used to not appear as an element at all, so a screen reader user could not hear that the
+    page has one, still less what it is waiting for. It now reports its name and role with the
+    unavailable state, in the place the layout puts it, and becomes usable once the box is ticked. The
+    Tab ring still skips it, and a click or a hover still does not land on it. The tree is built from
+    the Tab order, so this change is what separates "the page took it away" from "the page draws it and
+    it cannot be used yet".
 
   Narrator itself was never heard, so this counts as "the accessibility tree was read on the minimum
   supported version", not as "a screen reader was run against it".

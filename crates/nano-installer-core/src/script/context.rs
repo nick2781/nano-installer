@@ -37,7 +37,12 @@ impl Snapshot {
     }
 
     /// Directories that did not exist when `earlier` was taken.
-    fn directories_added_since(&self, earlier: &Self) -> Vec<PathBuf> {
+    ///
+    /// Two callers need this answer, and they need it for the same reason: the
+    /// paths are relative to the root, so a rollback can put the destination
+    /// back and a manifest can name a directory the installation owns without
+    /// either of them escaping the destination.
+    pub(super) fn directories_added_since(&self, earlier: &Self) -> Vec<PathBuf> {
         self.directories
             .difference(&earlier.directories)
             .cloned()
