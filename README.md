@@ -97,4 +97,4 @@ that example.
 
 ## Code signing policy
 
-Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org). Releases of this project's own tools are signed through that service. What is signed, who the maintainers are, and what the software does with the network are written out in [CODE_SIGNING.md](CODE_SIGNING.md).
+Releases of this project are not signed: the free certificate program for open source projects declined the application, because it signs only projects that already carry a verifiable reputation. What would be signed, who the maintainers are, and what the software does with the network are written out in [CODE_SIGNING.md](CODE_SIGNING.md).

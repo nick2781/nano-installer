@@ -87,4 +87,4 @@ Markdown 文件，其中 [`docs/llms.txt`](docs/llms.txt) 是给 agent 的索引
 
 ## 代码签名政策
 
-Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org)。本项目自己的工具在发布时会通过这项服务签名。签哪些文件、维护者是谁、软件与网络的关系，都写在 [CODE_SIGNING.md](CODE_SIGNING.md) 里。
+本项目的发布目前没有签名：面向开源项目的免费证书计划拒绝了这个申请，因为它只给已经有可验证公信力的项目签名。会签哪些文件、维护者是谁、软件与网络的关系，都写在 [CODE_SIGNING.md](CODE_SIGNING.md) 里。

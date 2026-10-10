@@ -66,8 +66,8 @@ These files sit outside the published site, so a link to any of them leaves the 
   layout, the build and test commands, and the change boundaries a coding agent has to respect.
 - [Security policy](https://github.com/nick2781/nano-installer/blob/main/SECURITY.md) — private
   reporting, and what is knowingly not a vulnerability.
-- [Code signing policy](https://github.com/nick2781/nano-installer/blob/main/CODE_SIGNING.md) — who provides the
-  signature, which files are signed, and who maintains the project.
+- [Code signing policy](https://github.com/nick2781/nano-installer/blob/main/CODE_SIGNING.md) — why nothing is signed
+  yet, what would be, and who maintains the project.
 - [Changelog](https://github.com/nick2781/nano-installer/blob/main/CHANGELOG.md) — what changed in
   each release. Written in Chinese.
 
