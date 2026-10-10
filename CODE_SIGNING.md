@@ -1,14 +1,17 @@
 # Code signing policy
 
-Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by
-[SignPath Foundation](https://signpath.org).
+Nothing this project publishes is signed today. [SignPath Foundation](https://signpath.org),
+which signs open source projects for free, declined this project's application: it signs only
+projects that already carry a verifiable reputation, and this one does not have one yet. No
+certificate has been bought either, so what a user sees when a setup asks for administrator
+rights is still an unknown publisher.
 
-That certificate is issued to SignPath Foundation rather than to this repository, so SignPath
-Foundation is the publisher of the signed binaries. For every release, SignPath.io verifies
-that the file it signs was produced by this repository's own automated build from the tagged
-commit.
-
-## What is signed
+What exists instead is a rehearsal of the flow. `.github/workflows/sigstore-flow.yml` is
+manual-only and signs one file per run with a ten-minute certificate that Sigstore's Fulcio
+issues to the workflow's own identity, then verifies it; the signature is a separate file, so no
+executable is modified and nothing is attached to a release. [Build and
+release](docs/en/BUILD_AND_RELEASE.md) describes what that does and does not prove.
+## What would be signed
 
 The executables on the [releases page](https://github.com/nick2781/nano-installer/releases),
 built by `.github/workflows/release.yml` from the tagged commit:

@@ -56,8 +56,8 @@
   还有写代码的 agent 要守住的改动边界。
 - [安全策略](https://github.com/nick2781/nano-installer/blob/main/SECURITY.md)：怎么私下上报，哪些
   已知问题不算漏洞。
-- [代码签名政策](https://github.com/nick2781/nano-installer/blob/main/CODE_SIGNING.md)：签名由谁提供、签哪些文件、
-  维护者是谁。
+- [代码签名政策](https://github.com/nick2781/nano-installer/blob/main/CODE_SIGNING.md)：为什么现在没有签名、
+  会签哪些文件、维护者是谁。
 - [变更日志](https://github.com/nick2781/nano-installer/blob/main/CHANGELOG.md)：每个版本改了什么。
 
 ## 这份索引是怎么来的
