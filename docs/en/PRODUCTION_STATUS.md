@@ -250,7 +250,10 @@ The gaps this run left, written down rather than left looking tested:
   and called `GetCursorInfo` at every point: at 1920x1080 six points reported the hand cursor, in two runs
   of three neighbouring points, which is where the two buttons are, and every other point was the arrow. No
   third cursor shape appeared.
-- Services (item 9): the example project installs none, so there was nothing to observe.
+- Services (item 9): this real-machine run was not elevated and the example project installs none, so
+  there was nothing to observe. The automated suite already installs a real service and deletes it
+  where it has the rights, and covers the round trip through the manifest file; another real-machine
+  look is not planned, because most setups involve no service.
 - Dependency downloads: the virtual machine had no KB3140245, so the TLS 1.2 path was not reached.
   KB3033929 was not installed either.
 - 32-bit versions and ARM64 are outside what is supported, and a machine without SP1 is outside what is

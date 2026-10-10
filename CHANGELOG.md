@@ -34,12 +34,16 @@
 
 - 状态页记下了光标形状的实测结果：不再依赖截屏，而是问机器当前设的是哪个光标——整屏网格采样得到 6 个
   手型光标点（两簇，各三个相邻点，正是两个按钮的位置），其余都是箭头。
+
+- 卸载结束时卸载程序被删掉、安装目录空了才跟着删，这两件事现在有用例守着：目录里还留着用户自己放进去的文件
+  时，卸载程序先走，目录留在原处。
 <!-- release-notes:end -->
 
-#- 新增 `scripts/cursor_probe.ps1`：在来宾机里按网格采样 `GetCursorInfo`，把页面声明的 `cursor="hand"`
+### 技术细节
+
+- 新增 `scripts/cursor_probe.ps1`：在来宾机里按网格采样 `GetCursorInfo`，把页面声明的 `cursor="hand"`
   从「截不到」变成可观察的事实。要用 `powershell -ep bypass -f` 启动——来宾机上的 PowerShell 默认执行
   策略是 Restricted，直接运行会被拒绝。
-## 技术细节
 
 - 新增 `scripts/verify_signing.ps1`：读安装包与它内嵌的那份卸载程序，报出各自的签名者和是否带时间戳，
   链不受信或缺少时间戳就失败，`-RequireSignature` 可要求必须有签名，`-ExpectPublisher` 可核对发布者；
@@ -49,6 +53,12 @@
 - `scripts/verify_signing.ps1` 靠从文件尾部回扫 `NATVEND1` 找 bundle 页脚，而这个魔数也会落在程序自己的
   代码段里：拿一份不是安装包的文件（比如裸 stub）喂它，代码字节会被当成 bundle 长度，报出一个看不懂的
   转换错误。现在长度必须落在文件范围内，落不进去就直接说明「这不是安装包」。
+
+- 核心库为 `cleanup_after_uninstall` 加了一条用例
+  `the_uninstaller_is_deleted_and_the_empty_directory_follows_it`：临时目录里造出安装目录、`uninst.exe`
+  和一个应用文件，断言卸载程序被删掉、目录因非空而留在原处，删掉最后那个文件之后再清一次，目录也随之消失。
+  删当前进程映像的 `self_delete_current_image` 没有用例，它在测试里会删掉测试宿主自己的 exe。两份用例表各加
+  一行，核心库计数改为 282，套件总数改为 396。
 
 ## [2026.10.9-r2]
 

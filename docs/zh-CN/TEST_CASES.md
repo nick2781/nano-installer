@@ -383,6 +383,7 @@ Rust doc comment，再退回用例名。
 | `the_setup_the_package_carries_is_the_image_the_build_finished` | 包把安装包本体作为 `Binary` 表里的一个流带着；装产品的自定义动作指向这个流，并带着静默参数；卸产品的动作是「按属性指路跑 exe」的那一类；另一个立即动作先把卸载程序的位置准备好。 |
 | `the_summary_reports_what_the_project_declares` | 窗口显示的摘要是工程声明的内容，包括工程可以省略的那些默认值。 |
 | `the_uninstall_entry_reports_the_size_the_quiet_uninstall_and_no_repair` | 卸载条目的字段就是 Windows 展示给你的全部：静默卸载命令指向部署出来的卸载程序，并带上静默参数；容量以 `REG_DWORD` 存下去，数值等于磁盘上这次安装占用的千字节（连卸载程序本身一起算）；`NoModify` 与 `NoRepair` 都是 `REG_DWORD` 1，Windows 因此不会摆出这个安装器根本没有的「修改」「修复」入口。 |
+| `the_uninstaller_is_deleted_and_the_empty_directory_follows_it` | 卸载结束之后卸载程序先被删掉，安装目录要空了才跟着走：目录里留着用户自己放进去的文件，目录就留在原处；删掉那个文件再清理一次，目录也随之消失。 |
 | `the_values_the_page_holds_reach_the_script` | 你在页面上留下的取值真的走进了脚本：用例往安装包窗口的输入框里敲进一个编号，点中单选组里布局没默认选中的那一行，再按下安装键，脚本把读到的值写进安装目录，几个值逐一对得上；其中两个问的是页面上没有的 id，读成空串。安装装得完说明不了什么，脚本用常量也装得完。 |
 | `the_walk_wraps_at_both_ends_of_the_control_order` | 键盘走的两头与两个方向：Tab 往后、Shift+Tab 往前，最后一个再往后绕回第一个、第一个再往前绕到最后一个；键盘还没落在任何控件上时，从它正在走的那一头开始；页面上只有一个控件时两个方向都停在它身上。 |
 | `two_payloads_that_carry_one_file_are_refused` | 两个归档带同一个相对路径时安装失败，而不是按声明顺序互相覆盖：报错点出是哪个组件、哪个文件。你装到的东西，不该取决于工程把组件排在第几个。 |
