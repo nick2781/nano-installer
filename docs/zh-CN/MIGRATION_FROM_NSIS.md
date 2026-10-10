@@ -21,7 +21,7 @@
 | `MUI_LANGUAGE` | 同上 |
 | `Uninstall` 段里一条条删掉安装时写的东西 | 机器上的 manifest，安装写下的每个文件、每个快捷方式、每个注册表值都在里面，卸载按记录收回 |
 | `!finalize` 与 `!uninstfinalize` | `finalize.installer` 与 `finalize.uninstaller`，还是这两个钩子、同一件事 |
-| 让插件去做 NSIS 做不到的事 | 脚本里的原语、声明出来的依赖、`run_command`，或者自己按[插件 ABI](PLUGIN_API.md)写一个插件、由脚本调用 |
+| 让插件去做 NSIS 做不到的事 | 脚本里的原语、声明出来的依赖、`run_command`，或者自己按[插件 ABI](PLUGIN_API.md) 写一个插件、由脚本调用 |
 
 有两件事过不来，早点决定为好。一是 `Uninstall` 段不用再手写，因为清单文件知道你装了什么；靠人维护
 一张删除清单，产品早晚会在用户机器上留下垃圾。二是 `SetShellVarContext all` 没有对应物，快捷方式

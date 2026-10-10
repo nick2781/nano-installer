@@ -69,7 +69,7 @@ What you can check today:
 - The window has no system title bar, but you can drag it from an empty area, and minimize and close
   both work.
 - The install button extracts the payload, writes files and shortcuts, and leaves an uninstall entry
-  in Windows' Programs and Features, with progress shown while it runs; the finish page can launch the
+  in Windows' Programs and Features, with progress shown while it runs. The finish page can launch the
   installed program.
 - Install a second time to walk the upgrade path, then use the uninstall entry to check removal and
   the keep-data option.
@@ -80,8 +80,8 @@ What you can check today:
 - Click the close button: the confirmation appears inside the window, with the same skin as the
   installer, and it closes only after you confirm.
 - Drag or double-click inside the path field to select text; copy, paste, and undo with Ctrl+C,
-  Ctrl+V, and Ctrl+Z. The folder icon next to it picks a directory and writes it back into the field,
-  and an IME composes Chinese in the field and shows its candidate window.
+  Ctrl+V, and Ctrl+Z. The folder icon next to it picks a directory and writes it back into the field.
+  An IME composes Chinese in the field and shows its candidate window.
 - Point the path field at a folder under `Program Files` and the install can write there, because you
   approved the elevation at launch.
 - The installation directory is gone as soon as the uninstall finishes, but a directory you put your

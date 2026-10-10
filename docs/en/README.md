@@ -46,8 +46,9 @@ project folder:
 ```
 
 Then read the [quick start](QUICK_START.md), make your first setup, and try it in a VM; or drive the
-same engine from the [visual builder](GUI.md). Building the tools from source is for contributors; see
-[build and release](BUILD_AND_RELEASE.md).
+same engine from the [visual builder](GUI.md).
+
+Building the tools from source is for contributors; see [build and release](BUILD_AND_RELEASE.md).
 
 ## Guides
 
