@@ -32,9 +32,14 @@
 - 新增 `CODE_SIGNING.md`：SignPath Foundation 要求的签名政策，写明签名由谁提供、签哪些文件、维护者各是
   什么角色，以及软件与网络的关系；两个 README 都加了 **Code signing policy** 小节指向它。
 
+- 状态页记下了光标形状的实测结果：不再依赖截屏，而是问机器当前设的是哪个光标——整屏网格采样得到 6 个
+  手型光标点（两簇，各三个相邻点，正是两个按钮的位置），其余都是箭头。
 <!-- release-notes:end -->
 
-### 技术细节
+#- 新增 `scripts/cursor_probe.ps1`：在来宾机里按网格采样 `GetCursorInfo`，把页面声明的 `cursor="hand"`
+  从「截不到」变成可观察的事实。要用 `powershell -ep bypass -f` 启动——来宾机上的 PowerShell 默认执行
+  策略是 Restricted，直接运行会被拒绝。
+## 技术细节
 
 - 新增 `scripts/verify_signing.ps1`：读安装包与它内嵌的那份卸载程序，报出各自的签名者和是否带时间戳，
   链不受信或缺少时间戳就失败，`-RequireSignature` 可要求必须有签名，`-ExpectPublisher` 可核对发布者；
