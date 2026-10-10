@@ -3566,8 +3566,11 @@ The gaps this run left, written down rather than left looking tested:
   supported version", not as "a screen reader was run against it".
 - Dragging, minimising and restoring the window (item 2), and dragging it to a display with a different
   scaling: the virtual machine did neither.
-- Cursor shapes: `screendump` does not capture the hardware cursor, so the hand cursor a page declares
-  was not observed in this run.
+- Cursor shapes: `screendump` does not capture the hardware cursor, so the machine itself was asked
+  instead. With the wizard in front, `scripts/cursor_probe.ps1` walked the screen on a grid of 60 pixels
+  and called `GetCursorInfo` at every point: at 1920x1080 six points reported the hand cursor, in two runs
+  of three neighbouring points, which is where the two buttons are, and every other point was the arrow. No
+  third cursor shape appeared.
 - Services (item 9): the example project installs none, so there was nothing to observe.
 - Dependency downloads: the virtual machine had no KB3140245, so the TLS 1.2 path was not reached.
   KB3033929 was not installed either.
