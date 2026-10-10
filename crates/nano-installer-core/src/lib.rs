@@ -10277,15 +10277,16 @@ unsafe fn draw_layer(destination: HDC, layer: &ImageLayer) {
 mod tests {
     use super::{
         anchored_left, anchored_top, button_enabled, button_image, byte_index, caret_layer,
-        centered_bounds, clamped_bounds, composition_points, container_intrinsic_size, contrast,
-        control_name, cross_alignment, cross_alignment_for_item, disk_free_bytes, disk_root,
-        field_state, flow_axis, flow_item_for_node, flow_widths, format_size_bytes, forward_page,
-        initial_interaction, insets_for_node, inspect_project, installer_version_info, load_layout,
-        main_alignment, mask_matches, measure_layout_text_width, next_focus_index,
-        next_reachable_focus_index, pack_project, pack_project_with_progress, page_id,
-        page_index_of_id, parse_bundle, parse_color, parse_image_style, parse_text_runs,
-        pick_directory_target, push_action, push_border_layer, push_hover_region, push_node_border,
-        push_node_text, query_disk_free_bytes, render_flow, render_flow_item, render_progress_bar,
+        centered_bounds, clamped_bounds, cleanup_after_uninstall, composition_points,
+        container_intrinsic_size, contrast, control_name, cross_alignment,
+        cross_alignment_for_item, disk_free_bytes, disk_root, field_state, flow_axis,
+        flow_item_for_node, flow_widths, format_size_bytes, forward_page, initial_interaction,
+        insets_for_node, inspect_project, installer_version_info, load_layout, main_alignment,
+        mask_matches, measure_layout_text_width, next_focus_index, next_reachable_focus_index,
+        pack_project, pack_project_with_progress, page_id, page_index_of_id, parse_bundle,
+        parse_color, parse_image_style, parse_text_runs, pick_directory_target, push_action,
+        push_border_layer, push_hover_region, push_node_border, push_node_text,
+        query_disk_free_bytes, render_flow, render_flow_item, render_progress_bar,
         resolve_asset_path, resolve_link_target, resolve_value_source, resolved_text_for_node,
         restore_snapshot, runtime_layout_path_at, runtime_page_count, runtime_page_index_for_role,
         scale_value, selection_layers, size_attribute, uninstaller_bundle_contents,
@@ -12364,6 +12365,39 @@ mod tests {
         assert!(validate_output_filename("uninst.exe", "test").is_ok());
         assert!(validate_output_filename("runtime/uninst.exe", "test").is_err());
         assert!(validate_output_filename("..\\uninst.exe", "test").is_err());
+    }
+
+    /// The uninstaller goes first, and the installation directory follows it out
+    /// only when the uninstall left nothing else behind.
+    #[test]
+    fn the_uninstaller_is_deleted_and_the_empty_directory_follows_it() -> anyhow::Result<()> {
+        let temp = tempfile::tempdir()?;
+        let directory = temp.path().join("installed");
+        std::fs::create_dir(&directory)?;
+        let uninstaller = directory.join("uninst.exe");
+        std::fs::write(&uninstaller, b"uninstaller")?;
+        // A file the user put in the installation directory, which is the one
+        // thing that keeps the directory itself alive: the same promise the
+        // manifest cleanup makes.
+        let kept = directory.join("notes.txt");
+        std::fs::write(&kept, b"kept")?;
+
+        cleanup_after_uninstall(&directory, &uninstaller);
+
+        assert!(!uninstaller.exists(), "the uninstaller is gone");
+        assert!(
+            directory.exists(),
+            "a directory still holding a user file stays where it is"
+        );
+
+        // Nothing is left to keep it, so the same call takes the directory too.
+        std::fs::remove_file(&kept)?;
+        cleanup_after_uninstall(&directory, &uninstaller);
+        assert!(
+            !directory.exists(),
+            "an empty directory goes with the uninstaller"
+        );
+        Ok(())
     }
 
     #[test]
