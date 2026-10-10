@@ -177,6 +177,8 @@ and putting a root into the trusted root store **takes a human confirmation**, s
 that happens once. For a real certificate, SignPath Foundation signs open-source projects for free,
 without personal identity validation and with the private key held in their HSM.
 
+The outcome of the application belongs here too. SignPath Foundation declined it on the grounds that the project carries no verifiable reputation, so no real certificate is being bought and the publisher a user sees is still "unknown". The signing flow itself did not stop there: the rehearsal in [Build and release](BUILD_AND_RELEASE.md) walks the whole path through a manually triggered workflow -- Fulcio issues a ten-minute certificate to the workflow's own identity, the signature is a separate file that changes no executable, and verification against the certificate identity and issuer passes with a transparency log entry and an RFC 3161 timestamp in place. Because the certificate lives ten minutes, that timestamp is what makes the step worth anything at all.
+
 ## Publishing
 
 A release is built and published from a tag, and the tag is pushed by hand. Two things the pipeline
