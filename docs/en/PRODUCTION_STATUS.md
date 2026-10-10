@@ -90,7 +90,7 @@ virtual machine you throw away afterwards, and that goes for any installer.
 - A container that declares `flex-wrap` moves onto the next line when a row is full, and by default a row still compresses its shrinkable items first.
 - A flow container that declares `scrollable="true"` and gives an `id` keeps the size it was given, lays its children out at the sizes they declare, and cuts off whatever does not fit as a whole; a row the list has scrolled past is neither drawn nor registered for clicks, so a button below the list answers the click it would otherwise have taken.
   The wheel moves it 48 pixels a notch, the scrollbar along the trailing edge shows which part of the list is in view, and a click on either side of the thumb pages by one screen.
-- A setup writes an application manifest file: with `install.require_admin` on, Windows raises the administrator prompt (UAC) before the process starts, while `ui.dpi_aware` tells the system whether the window scales itself, and a project that sets neither runs like an ordinary program.
+- A setup carries an application manifest file: with `install.require_admin` on, Windows raises the administrator prompt (UAC) before the process starts, while `ui.dpi_aware` tells the system whether the window scales itself. A project that sets neither runs like an ordinary program.
 - The builder compares every locale file against the default locale and the keys the pages actually ask for, reporting a locale that is missing text and one `supported_locales` lists without a file.
 - Once an uninstall is done, the cleaner copy in the temporary directory immediately deletes the uninstaller and the emptied installation directory, but a directory that still holds files of yours is kept. The cleaner also exits and removes itself when it is done.
 - A project that declares `advanced.silent_mode_support` installs with `--silent`, and one that declares `advanced.uninstall_mode_support` uninstalls the same way. A silent run opens no interface at all, takes only `--dir` and `--log`, refuses any other argument, and reports through the exit code and standard error; a project that did not declare it is refused outright, rather than installed or removed quietly.
@@ -212,8 +212,7 @@ it, and the two hooks described under [Signing](#signing) are where that pipelin
 
 1. Neither the setup nor the uninstaller has a code signature, so Windows warns about an unknown
    publisher. The builder does not sign, and should not. The pipeline that publishes them signs,
-   through the `finalize.installer` and `finalize.uninstaller` hooks, see [Signing](#signing). Once
-   that is in place, a product can plug in the way `examples/TapTap` does.
+   through the `finalize.installer` and `finalize.uninstaller` hooks, see [Signing](#signing).
 
 The minimum supported version has been through a real run (see [Verified](#verified)). What that run
 did not cover is in the next section.

@@ -42,6 +42,24 @@
       right: 24px;
       z-index: 20;
     }
+    /* The way back to the top. docsify's auto2top moves a reader who changes page, not
+       one who has scrolled down a long one, so the button appears once there is
+       something to scroll back from. */
+    .nano-back-to-top {
+      display: none;
+      position: fixed;
+      right: 24px;
+      bottom: 24px;
+      z-index: 20;
+      padding: .4em .7em;
+      font: inherit;
+      font-size: .85em;
+      color: #42b983;
+      background-color: #fff;
+      border: 1px solid #42b983;
+      border-radius: 4px;
+      cursor: pointer;
+    }
   </style>
   <!-- This shell holds no prose: every page is a Markdown file published beside
        it, and those files are what a reader of the site and an agent both take.
@@ -110,8 +128,8 @@
       ];
 
       var LANGUAGES = [
-        { id: 'zh-CN', label: '中文', searching: '搜索', nothing: '没有结果' },
-        { id: 'en', label: 'English', searching: 'Search', nothing: 'Nothing found' }
+        { id: 'zh-CN', label: '中文', searching: '搜索', nothing: '没有结果', top: '回到顶部' },
+        { id: 'en', label: 'English', searching: 'Search', nothing: 'Nothing found', top: 'Back to top' }
       ];
       var STORAGE_KEY = 'nano-docs-language';
 
@@ -291,6 +309,33 @@
                 window.setTimeout(placeLanguage, 300);
               } catch (error) { /* a switch may not cost the page */ }
             });
+          },
+
+          // The button goes onto the body rather than into the page, because docsify
+          // replaces the page's own markup on every route, and its wording follows the
+          // tree the reader is in, the way the switch's does.
+          function (hook) {
+            var button = window.document.createElement('button');
+            button.type = 'button';
+            button.className = 'nano-back-to-top';
+            button.addEventListener('click', function () {
+              window.scrollTo(0, 0);
+            });
+
+            function sync() {
+              var id = languageOf(routePath()) || preferred();
+              var label = entry(id).top;
+              if (button.textContent !== label) {
+                button.textContent = label;
+                button.setAttribute('aria-label', label);
+              }
+              button.style.display = (window.pageYOffset > 400) ? 'block' : 'none';
+            }
+
+            window.document.body.appendChild(button);
+            hook.doneEach(sync);
+            window.addEventListener('scroll', sync);
+            sync();
           }
         ]
       };

@@ -98,6 +98,9 @@ page and for an edit to an old one.
   link targets: a rewrite changes wording only. Check with `scripts/audit_docs_languages.ps1` and
   `scripts/build_docs_index.ps1 -Verify` -- the index title has to match the page's own `# heading`
 exactly.
+- **The Chinese pages consult [Tech-Doc-Style-Chinese](https://github.com/fenng/Tech-Doc-Style-Chinese)
+  as an external reference, not as a second standard.** Where the two disagree, this section wins:
+  pronouns (it, this, these) and the hard-wrapped source lines are the two places it does.
 
 The English and Chinese files are one document: same paragraphs, same order, same claim in each.
 

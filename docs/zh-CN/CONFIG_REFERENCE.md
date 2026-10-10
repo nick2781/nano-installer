@@ -96,7 +96,7 @@
 | `resources.locales_dir` | string | 语言 JSON 目录，默认 `locales` |
 | `resources.payload_file` | string | 必需；ZIP 或 7z 应用文件的路径 |
 | `resources.tools_dir` | string | 可选；要打包的辅助程序目录，脚本用 `get_tools_dir()` 取回 |
-| `resources.plugins_dir` | string | 可选；要打包的插件目录，脚本用 `plugin_call("dll::function", …)` 调用，见 [插件 ABI](PLUGIN_API.md)；里面每个 DLL 都在构建时检查形状 |
+| `resources.plugins_dir` | string | 可选；要打包的插件目录，脚本用 `plugin_call("dll::function", …)` 调用，见[插件 ABI](PLUGIN_API.md)；里面每个 DLL 都在构建时检查形状 |
 | `localization.default_locale` | string | 启动时用的语言，默认 `zh-CN` |
 | `localization.supported_locales` | array | 打算提供的语言列表；没有对应 JSON 文件的条目，构建时会告警 |
 | `wizard.pages[].layout` | string | 安装页列表；用 `action="next"` 和 `action="back"` 逐页走，也可以让 `scripts/pages.rhai` 决定下一页 |
@@ -155,7 +155,7 @@
 }
 ```
 
-## 应用文件 格式
+## 应用文件格式
 
 应用文件就是产品自己的文件，事先压成 ZIP 或 7z。格式按文件头认，不看扩展名：`PK` 选 ZIP 运行时，
 `37 7A BC AF 27 1C` 选 7z 运行时，其他格式会让构建失败。

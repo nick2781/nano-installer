@@ -87,5 +87,9 @@
 - **事实、数字、命令、路径、字段名不许动**：标题、锚点、链接目标也要原样，改写只动措辞。改完用
   `scripts/audit_docs_languages.ps1` 与 `scripts/build_docs_index.ps1 -Verify` 核对——索引里的标题必须和
   页面自己的 `# 标题` 一字不差。
-- 中英两份是同一篇文档：段落顺序、每段讲的事必须对应。
+- **中文页参考 [Tech-Doc-Style-Chinese](https://github.com/fenng/Tech-Doc-Style-Chinese) 这份外部规范，
+  但它只是参考，不是第二套标准**：两者冲突时以本节为准，用指代（它、这、这些）承接、源文件保持硬
+  换行，这两处就是例子。
+
+中英两份是同一篇文档：段落顺序、每段讲的事必须对应。
 
