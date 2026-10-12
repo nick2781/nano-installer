@@ -1,13 +1,13 @@
 ---
 title: 多语言
-description: 每种语言就是 `locales` 目录下的一个 UTF-8 JSON 文件，文件名就是语言代码：`en-US.json`、`ja.json`、`zh-CN.json` 等。
+description: 给安装包加一种语言，就是在 `locales` 目录下放一个 UTF-8 JSON 文件，并让页面引用的键与默认语言保持一致。
 slug: LOCALIZATION
 sidebar:
   order: 600
 ---
 
-每种语言就是 `locales` 目录下的一个 UTF-8 JSON 文件，文件名就是语言代码：`en-US.json`、`ja.json`、
-`zh-CN.json` 等。
+一种语言对应 `locales` 目录下的一个 UTF-8 JSON 文件。文件名就是它的语言代码：`en-US.json`、
+`ja.json`、`zh-CN.json` 等。
 
 ```json
 {
@@ -23,8 +23,8 @@ XML 布局里用 `@` 引用键：
 <Label text="@version_info" ... />
 ```
 
-启动时，运行时读 `<locales_dir>/<default_locale>.json`，其中 `default_locale` 来自配置，默认是
-`zh-CN`。文字用 Unicode API 画出来，所以没有 ANSI 代码路径，运行时本身也没有 ANSI 版本。
+启动时运行时读 `<locales_dir>/<default_locale>.json`。`default_locale` 来自配置，默认是 `zh-CN`。
+文字用 Unicode API 画出来，所以没有 ANSI 代码路径，运行时本身也没有 ANSI 版本。
 
 ## 提供多种语言
 
@@ -37,8 +37,8 @@ XML 布局里用 `@` 引用键：
 </Select>
 ```
 
-选中一项后，运行时立刻重新加载对应的语言文件，并把页面文字重画一遍。`Option` 的 `value`
-必须和 `locales` 目录里的 JSON 文件名一致。
+选中一项，运行时立刻重新加载对应的语言文件，并照着它把页面文字重画一遍。每个 `Option` 的 `value`
+都必须对应 `locales` 目录里一个 JSON 文件的文件名。
 
 ## 不点击也能验证某种语言
 
@@ -51,12 +51,12 @@ $env:NANO_INSTALLER_TEST_LOCALE = "en-US"
 
 ## 构建会替你检查什么
 
-每次构建都会比一遍语言文件，一边是默认语言，一边是页面实际引用的键；缺口会写进构建器的告警列表：
+每次构建都会拿语言文件去比默认语言，也去比页面实际引用的键；缺口会写进构建器的告警列表：
 
 - 某个语言缺少默认语言里已有的文案，告警会列出具体的键名。
 - `localization.supported_locales` 里写了某种语言，却没有对应的 JSON 文件。
 
-构建只报告默认语言里有的键，所以页面可以故意引用某个语言没翻的键；运行时遇到缺失的键，仍然回退到
+构建只报告默认语言里有的键，所以页面可以故意引用某个语言没翻的键。运行时遇到缺失的键，仍然回退到
 默认语言，只翻了一半的安装包也能正常跑完。
 
 ## 尚未实现

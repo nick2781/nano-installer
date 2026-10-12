@@ -9,7 +9,7 @@ import { tableScroll } from "@cloudflare/nimbus-docs/markdown";
 // (`docs`) entry ids; the Chinese groups point at the same pages through the
 // `zh-CN` collection's mount path. Both lists follow the same seven sections in
 // the same order, and each page's `sidebar.order` matches its twin's, so the two
-// rails read in the same sequence. `src/lib/sidebar-language.ts` and the two
+// rails read in the same sequence. `src/lib/languages.ts` and the two
 // catch-all routes keep a page from showing the other language's groups.
 const sidebarItems = [
   // ---- English (docs) ----

@@ -1,14 +1,14 @@
 # TapTap sample project
 
-This is the repository's end-to-end sample: a complete installer project used to validate XML
-pages, translations, image assets, payload packaging, and the Windows 7 SP1 runtime.
+This is the repository's end-to-end sample: a complete installer project used to validate XML pages,
+translations, image assets, payload packaging, and the Windows 7 SP1 runtime.
 
 ## Asset ownership
 
 The TapTap name, trademarks, images, and copy under `examples/TapTap` belong to
 易玩（上海）网络科技有限公司 and their respective rights holders. They are used only to develop,
-test, and validate `nano-installer`, are outside this project's open-source license, and are not
-product assets you may reuse.
+test, and validate `nano-installer`, and they sit outside this project's open-source license. They are
+not product assets you may reuse.
 
 ## Contents
 
@@ -22,7 +22,7 @@ TapTap/
 └── payload/app.7z              not stored in the repository
 ```
 
-The payload is excluded by `.gitignore` (`*.7z`). Put a 7z archive at
+`.gitignore` excludes the payload through `*.7z`, so put a 7z archive at
 `examples/TapTap/payload/app.7z` before building.
 
 ## Build it
@@ -33,8 +33,9 @@ From the repository root:
 .\scripts\build.ps1 -Project examples\TapTap
 ```
 
-The toolbar tools land in `target/release/`; the sample setup lands in
-`examples/TapTap/dist/TapTap_Setup.exe` and is for local validation only, never a release artifact.
+The toolbar tools land in `target/release/`. The sample setup lands in
+`examples/TapTap/dist/TapTap_Setup.exe`, and it is for local validation only, never a release
+artifact.
 
 ## Use it as a starting point
 
@@ -50,5 +51,5 @@ Copy the directory and replace at least:
 
 The runtime already unpacks the payload, runs install and uninstall tasks with progress pages, and
 executes `scripts/install.rhai` and `scripts/uninstall.rhai`; see the
-[script API](../../site/src/content/docs/SCRIPT_API.md). There is no code signing yet, so it cannot be used for a
-production release.
+[script API](../../site/src/content/docs/SCRIPT_API.md). There is no code signing yet, so this sample
+cannot be used as a production release.

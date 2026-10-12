@@ -27,6 +27,13 @@
 - 文档把「读屏未覆盖」的原因写准了：那台虚拟机上跑不了读屏，NVDA 在 Windows 7 上每次真正启动都会让它
   终止，而它本来就没有音频设备，所以这一项要放到有声卡的机器上做，或者由人坐在旁边听。
 
+- 文档站的顶栏多了语言切换：任何一页都能直接跳到另一种语言的同一页，不再需要先回首页再找一遍。站内
+  搜索、面包屑、每页的 Markdown 版本也随这次改版一并可用，地址与过去一一对应，旧链接照旧能打开。
+
+- 文档的行文重写了一遍，十八对页面中英两侧都改。改的是写法：结论先行，句子写完整，一段讲一个意思，
+  中文按中文技术文档的习惯落笔，不再出现「已经……过一遍」「另外还有」这类口水。事实、数字、命令、
+  路径、限制与链接一条未动，中英仍是同一篇文档。
+
 <!-- release-notes:end -->
 
 ### 技术细节
@@ -43,6 +50,30 @@
   QMP 连接被拒即为证据，唯一活下来的一次是提权运行的，而它不肯以管理员身份运行，打印用法说明后退出，
   等于根本没跑；加上这台虚拟机没有音频设备（`setSynth failed for espeak`），所以第 8 项仍然未覆盖，只是
   原因写准了：它要在有声卡的机器上做，或者由人坐在旁边听。
+
+- 文档站换引擎：从 docsify 外壳改成 `site/` 下的 Astro + Cloudflare Nimbus 静态构建，页面在
+  `site/src/content/docs/` 与 `site/src/content/zh-CN/`，两棵树是两个 collection，`site/dist/` 由
+  GitHub Pages 发布在 `/nano-installer/` 下，地址与过去一一对应。`scripts/build_docs_index.ps1` 与
+  `scripts/docs_index.json` 删除，索引改由构建从页面写出（`llms.txt`、`llms-full.txt`、`robots.txt`、
+  `sitemap-index.xml` 与每页的 Markdown 版本），生成器与数据文件不可能再和页面脱节。
+
+- 新增两条文档审计：`scripts/audit_docs_sidebar.ps1` 把侧栏与两棵内容树互相校验（PR 阶段跑，不需要
+  构建），`scripts/audit_docs_links.ps1` 读构建产物查站内链接与锚点（在构建之后跑，因为锚点要渲染完
+  才存在）。语言审计改为比对两棵内容树，`docs.yml` 改为在 `site/` 构建并发布产物，`ci.yml` 增加侧栏
+  审计这一步。
+
+- 顶栏语言切换在 `site/src/components/LanguageSwitch.astro`：用页面自己的 `entryId` 拼出另一种语言的
+  同一页；首页与 404 页没有所属语言树，因此不渲染它。
+
+- 行文重写覆盖 18 对页面：行内代码、数字、命令、链接目标、锚点、转义竖线这些事实令牌逐项比对未变动，
+  中英段落数保持对应。可量的例子：英文 `QUICK_START` 平均句长 22.6 → 18.7 词、最长句 54 → 37，中文
+  `PRODUCTION_STATUS` 的口水词 10 → 5。写作标准同步改写进 `docs/AGENTS.md` 与
+  `docs/zh-CN/AGENTS.md`，含「啰嗦 / 电报体 / 目标」三版本对照——上一版标准只强调别啰嗦，有人据此把
+  文档改成了电报体，这次把「句子要完整」写成了第一条。
+
+- 已知未修：`scripts/report_data.ps1` 用 `$line.Split("|")` 读用例表，不认 `\|` 转义，所以
+  `a_name_too_long_for_a_short_name_carries_one_the_file_system_can_keep` 那一格的说明在报告里会被
+  竖线截断；用例说明审计只看单元格非空，因此不会报，留待单独一轮修。
 
 ## [2026.10.10]
 

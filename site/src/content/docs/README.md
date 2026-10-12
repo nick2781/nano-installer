@@ -1,6 +1,6 @@
 ---
 title: English documentation
-description: You ship one `.exe`, and a double-click installs your product.
+description: One folder of configuration, artwork and application files becomes one Windows setup `.exe` that installs your product on a double-click.
 slug: README
 sidebar:
   order: 100
@@ -11,20 +11,22 @@ sidebar:
 <p align="center"><a href="https://github.com/nick2781/nano-installer/actions/workflows/ci.yml"><img src="https://github.com/nick2781/nano-installer/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status"></a></p>
 
 You ship one `.exe`, and a double-click installs your product. Keep the configuration, the artwork and
-your application files in one folder, and Nano Installer turns it into one Windows setup; the icon,
-the pages and the wording are yours, and the user's machine needs nothing installed first.
+your application files in one folder, and Nano Installer builds that folder into a single Windows setup:
+the icon, the pages and the wording are yours, and the machine you install on needs nothing else
+installed first.
 
-> **Status:** ready to build and ship with. Setups and MSI packages are unsigned, so Windows warns about
-> an unknown publisher; sign them in your own pipeline before distributing publicly. **Requires Windows 7
-> SP1 x64 or later.** What a setup calls is in [Windows compatibility](/WINDOWS_COMPATIBILITY/);
-> item-by-item status is in [production status](/PRODUCTION_STATUS/).
+> **Status:** Ready to build and ship with. Setups and MSI packages carry no signature, so Windows warns
+> about an unknown publisher; sign them in your own pipeline before you distribute publicly. **Requires
+> Windows 7 SP1 x64 or later.** What a setup calls is in
+> [Windows compatibility](/WINDOWS_COMPATIBILITY/), and item-by-item status is in
+> [production status](/PRODUCTION_STATUS/).
 
 <p align="center">
 <img src="https://github.com/nick2781/nano-installer/raw/main/assets/setup-welcome-en-US.png" alt="The first page of a setup built from the TapTap example" width="640">
 </p>
 
-That is the first page of `examples/TapTap`, built and photographed by
-`scripts/capture_setup_snapshots.ps1`; this is how the runtime drew it, not a mock-up.
+This is the first page of `examples/TapTap`, built and photographed by
+`scripts/capture_setup_snapshots.ps1`. The runtime drew it, so it is not a mock-up.
 
 ## What you get
 
@@ -45,15 +47,15 @@ That is the first page of `examples/TapTap`, built and photographed by
 
 ## Start
 
-Take the builder from the [latest release](https://github.com/nick2781/nano-installer/releases/latest),
-and the three runtimes as well, because the builder looks for them beside itself. Then point it at a
-project folder:
+Take the builder and the three runtimes from the
+[latest release](https://github.com/nick2781/nano-installer/releases/latest); the builder looks for the
+runtimes beside itself. Then point it at a project folder:
 
 ```powershell
 .\nano-installer-native-x64.exe build --project C:\path\to\my-project
 ```
 
-Then read the [quick start](/QUICK_START/), make your first setup, and try it in a VM; or drive the
+Then follow the [quick start](/QUICK_START/) to make your first setup and try it in a VM, or drive the
 same engine from the [visual builder](/GUI/).
 
 Building the tools from source is for contributors; see [build and release](/BUILD_AND_RELEASE/).

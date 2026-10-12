@@ -1,13 +1,13 @@
 ---
 title: Languages
-description: 'One language is one UTF-8 JSON file in the `locales` directory, named after its language code: `en-US.json`, `ja.json`, `zh-CN.json`, and so on.'
+description: Add a language to your setup with one UTF-8 JSON file per language in `locales`, keeping its keys in step with the default locale.
 slug: LOCALIZATION
 sidebar:
   order: 600
 ---
 
-One language is one UTF-8 JSON file in the `locales` directory, named after its language code:
-`en-US.json`, `ja.json`, `zh-CN.json`, and so on.
+Put one UTF-8 JSON file per language in the `locales` directory, and name it after its language
+code: `en-US.json`, `ja.json`, `zh-CN.json`, and so on.
 
 ```json
 {
@@ -23,9 +23,9 @@ Your XML layouts reference keys with `@`:
 <Label text="@version_info" ... />
 ```
 
-At startup the runtime loads `<locales_dir>/<default_locale>.json`, where `default_locale` comes from
-your configuration and defaults to `zh-CN`. Text is drawn with Unicode APIs, so there is no ANSI code
-path, and the runtime has no ANSI variant either.
+At startup the runtime loads `<locales_dir>/<default_locale>.json`; `default_locale` comes from your
+configuration, and it defaults to `zh-CN`. Text is drawn with Unicode APIs, so there is no ANSI code
+path, and no ANSI variant of the runtime either.
 
 ## Shipping more than one language
 
@@ -38,8 +38,8 @@ Add a language selector to a page, and give each entry the matching locale code:
 </Select>
 ```
 
-Pick an entry and the runtime reloads that locale file right away, redrawing the page text too. Each
-option value must match a JSON file name in the locales directory.
+Pick an entry, and the runtime reloads that locale file right away and redraws the page text with it.
+Each `Option` value must match the name of a JSON file in the `locales` directory.
 
 ## Testing a language without clicking
 
@@ -52,8 +52,8 @@ $env:NANO_INSTALLER_TEST_LOCALE = "en-US"
 
 ## What the build checks for you
 
-Every build compares your locale files against the default locale, and against the keys your pages
-actually ask for; gaps go into the builder's warning list:
+Every build puts your locale files next to the default locale, and next to the keys your pages actually
+ask for; gaps go into the builder's warning list:
 
 - A locale that is missing text the default locale defines, with the key names listed.
 - A language named in `localization.supported_locales` with no matching JSON file.

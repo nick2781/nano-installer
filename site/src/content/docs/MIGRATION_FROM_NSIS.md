@@ -1,25 +1,26 @@
 ---
 title: Migrating from NSIS
-description: An NSIS installer is one script that is also the program.
+description: Map each NSIS instruction, macro and plugin to the Nano Installer setting, page or script primitive that replaces it, and which ones have no equivalent.
 slug: MIGRATION_FROM_NSIS
 sidebar:
   order: 900
 ---
 
-An NSIS installer is one script that is also the program. `Section` blocks run,
-`File` copies, `WriteRegStr` writes, and every screen the user sees is a macro the
-NSIS runtime draws for you — all of that mixed together in one place. A Nano
-Installer project splits the mix into three parts: what the product is and where it
-goes, what the pages look like, and what a run does. The last part gets a small
-script of your own, in Rhai, so most of a migration is not a rewrite at all: it is
-moving each line to the place that now owns it, and the tables below say where each
-line goes.
+Migration is mostly moving each line to the place that now owns it, not a rewrite, and
+the tables below say where each line goes. A few lines have no counterpart here — an
+existing NSIS plugin, `SetShellVarContext all`, a named installation type, a script that
+drives a control directly — and the section that collects them says what to do instead.
+The move works that way because an NSIS installer is one script that is also the
+program: `Section` blocks run, `File` copies, `WriteRegStr` writes, and every screen
+the user sees is a macro the NSIS runtime draws for you. A Nano Installer project
+splits that mix into three parts: what the product is and where it goes, what the pages
+look like, and what a run does. The last part gets a small script of your own, in Rhai.
 
-This page is the reference for that move, and its tables are more than a
-description of [`scripts/check_nsi_migration.ps1`](https://github.com/nick2781/nano-installer/blob/main/scripts/check_nsi_migration.ps1):
-they are the table that script reads. A construct this page has no row for is
-reported as `unknown`, never guessed at, and the two language versions must agree
-line for line or the check fails.
+The tables on this page are what
+[`scripts/check_nsi_migration.ps1`](https://github.com/nick2781/nano-installer/blob/main/scripts/check_nsi_migration.ps1)
+reads, so they are a reference rather than a description. A construct this page has no
+row for is reported as `unknown`, never guessed at, and the two language versions must
+agree line for line or the check fails.
 
 ## The shape of a project
 
@@ -31,16 +32,16 @@ line for line or the check fails.
 | `MUI_PAGE_*` macros | Pages of your own, listed in `wizard.pages` and `wizard.uninstall_pages` |
 | `LangString` and `LoadLanguageFile` | `locales/<locale>.json` and `localization.supported_locales` |
 | `MUI_LANGUAGE` | the same |
-| `Uninstall` section deleting what the installer wrote | The machine's manifest, which records every file, shortcut and registry value the install wrote; the uninstaller removes what it records |
+| `Uninstall` section deleting what the installer wrote | The machine's manifest records every file, shortcut and registry value the install wrote, and the uninstaller removes what it records |
 | `!finalize` and `!uninstfinalize` | `finalize.installer` and `finalize.uninstaller` — the same two hooks, with the same job |
 | A plugin that does something NSIS cannot | A primitive in the script, a declared dependency, `run_command` — or a plugin of your own, written against the [plugin ABI](/PLUGIN_API/) and called from the script |
 
-Two things do not survive the move, and both are worth deciding early. You no
-longer need an `Uninstall` section that deletes by hand, because the manifest knows
-what the install wrote; an uninstaller that works from a hand-written list is how
-products come to leave files behind. And NSIS's `SetShellVarContext all` has no
-counterpart, so shortcuts are created for the account that runs the setup, as the
-table below says.
+Two things do not survive the move, and both are worth deciding early. The first is the
+`Uninstall` section that deletes by hand: you no longer need it, because the manifest
+knows what the install wrote, while an uninstaller that works from a hand-written list
+is how products come to leave files behind. The second is NSIS's
+`SetShellVarContext all`, which has no counterpart here, so shortcuts are created for
+the account that runs the setup, as the table below says.
 
 ## Run the checker over the script
 
@@ -48,7 +49,7 @@ table below says.
 .\scripts\check_nsi_migration.ps1 -Script .\legacy.nsi
 ```
 
-It reads the script line by line, and the files `!include`d beside it. Then it
+It reads the script line by line, along with the files `!include`d beside it, then
 prints what each statement becomes:
 
 ```
@@ -80,31 +81,31 @@ NSIS migration report for D:\src\legacy.nsi
   ...
 ```
 
-The exit code is 0 whenever a report was produced, whatever it says — the check
-is a reading aid, not a gate. Add `-FailOnUnknown` to make it a gate, which is
-how this repository's own CI runs it over two fixtures. Of those two, `legacy.nsi`
-is one product's installer, while `instructions.nsi` carries one line for every
-instruction, attribute and header macro NSIS documents. The first holds the table
-to a real script, the second holds it to the language — a construct NSIS has and
-the table does not fails the check instead of printing `unknown` at somebody who
-then has to guess.
+The report is a reading aid, not a gate, so the exit code is 0 whenever a report was
+produced, whatever it says. Add `-FailOnUnknown` to make it a gate, which is how this
+repository's own CI runs it over two fixtures. One of those is `legacy.nsi`, a real
+product's installer; the other is `instructions.nsi`, which carries one line for every
+instruction, attribute and header macro NSIS documents. The first holds the table to a
+real script, and the second holds it to the language: a construct NSIS has and the
+table does not fails the check, rather than printing `unknown` at somebody who then
+has to guess.
 
-The five verdicts the table below uses are the five printed above: `direct` is what a
-configuration setting or a page element does on its own, and `script` is a primitive in
-`scripts/install.rhai` or `scripts/uninstall.rhai`. `manual` is no equivalent, so this page
-says what to do instead; `none` is build-time or cosmetic, with nothing to migrate; and
-`unknown` is what this page carries no row for yet.
+The table below uses the five verdicts printed above. `direct` means a configuration
+setting or a page element does the job on its own, and `script` means a primitive in
+`scripts/install.rhai` or `scripts/uninstall.rhai` does it. `manual` means there is no
+equivalent, so this page says what to do instead. `none` means the line is build-time
+or cosmetic, with nothing to migrate, and `unknown` means this page carries no row for
+it yet.
 
 ## The table
 
 Each row says what a command becomes, and several spellings of one command share a
-row. A `*` at the end of a name matches anything after it, so `MUI_PAGE_*`
-catches the MUI pages that have no row of their own. A macro from one of NSIS's
-own header libraries is listed under the name a script calls it by, so
-`${GetSize}` and `${StrStr}` are the `GetSize` and `StrStr` rows — the `${...}`
-is not part of the name. A label (`done:`) is a place, not a statement, and Rhai's
-own control flow replaces the jumps that reach it, so the checker reports one as
-`none`.
+row. A `*` at the end of a name matches anything after it, which is how `MUI_PAGE_*`
+catches the MUI pages that have no row of their own. A macro from one of NSIS's own
+header libraries is listed under the name a script calls it by, so `${GetSize}` and
+`${StrStr}` are the `GetSize` and `StrStr` rows: the `${...}` is not part of the name.
+A label (`done:`) marks a place rather than a statement, and Rhai's own control flow
+replaces the jumps that reach it, so the checker reports one as `none`.
 
 ### The product and the file it builds
 
@@ -301,58 +302,55 @@ own control flow replaces the jumps that reach it, so the checker reports one as
 
 ## What has no counterpart, and what to do instead
 
-These are the rows that cost real time. Read them before the rest of the
-table.
+These are the rows that cost real time, so read them before the rest of the table.
 
-- **Plugins.** There is a plugin ABI now, and it is not NSIS's: a plugin is a
-  64-bit DLL built against [`include/nano_plugin.h`](https://github.com/nick2781/nano-installer/blob/main/include/nano_plugin.h),
+- **Plugins.** An NSIS plugin cannot be loaded here, because it is a 32-bit image that
+  calls back into the NSIS runtime through `extra_parameters`. There is a plugin ABI,
+  and it is not NSIS's: a plugin is a 64-bit DLL built against
+  [`include/nano_plugin.h`](https://github.com/nick2781/nano-installer/blob/main/include/nano_plugin.h),
   embedded in the setup like a project resource, and called from a script as
-  `plugin_call("dll::function", [...])`. An existing NSIS plugin cannot be loaded,
-  because it is a 32-bit image that calls back into the NSIS runtime through
-  `extra_parameters`, so `nsDialogs`, `nsisXML`, `InetLoad`, `nsis7z` and the
-  rest have to be rewritten or replaced. Most of what they did has a counterpart
-  already: a page built with `nsDialogs` becomes a page in `layouts/`, plus a
-  `next_page(from)` hook in `scripts/pages.rhai` when its behaviour depends on
-  what the user did. A download becomes a `dependencies.items` entry with a
-  `sha256`, or `download_file_with_hash` from the script, and an archive becomes
-  the payload or a component. What is left over is what a plugin of your own is
-  for.
-- **`SetShellVarContext all`.** Shortcuts are created for the account running
-  the setup, so an installer that wrote an all-users shortcut has to place it
-  another way: a per-machine install started with `require_admin` still writes the
-  shortcut of the account that ran it.
-- **Installation types.** `InstType`, `SectionInstType`, `SectionSetFlags` and
-  the rest of that family have no counterpart, and the checkboxes on the page
-  decide what gets installed: a script can ask (`is_component_selected`,
-  `selected_components`), but it cannot tick one. If a type used to set the
-  sections, move that decision onto the page and let the user make it — a
-  `RadioButton` group can gate a `Button` with `enabled-when="mode:full"`, but
-  nothing changes a checkbox the user is looking at, script or page.
-- **Control handles.** `GetDlgItem`, `SendMessage`, `ShowWindow` and
-  `EnableWindow` reach into the window and drive a control directly, and there
-  are no handles here: the page declares its controls, and the layout says what
-  they look like and when they may be used.
-- **Accepting the licence.** `LicenseForceSelection` is a page element, not a
-  setting: a `Checkbox` on the licence page, and `enabled-when` on the button
-  that goes on, is the same gate the MUI licence page enforced.
-- **Restarting the machine.** Nothing here restarts a machine: a dependency
-  that answers 3010 or 1641 is reported as installed and the run continues, while
-  a product that cannot work before a restart has to say so on its finish page.
-- **The NSIS stack.** `Push`, `Pop` and `Exch` exist because NSIS has one stack
-  and no variables scoped to a function; Rhai has neither problem.
-- **`MessageBox` outside the window.** Here a prompt is a card inside the
-  wizard, drawn from `ui.dialog_layout`, and a script waits for the click on a
-  worker thread; a project that ships no such layout falls back to the system
-  dialog, and one that runs windowless never prompts at all.
+  `plugin_call("dll::function", [...])`. So `nsDialogs`, `nsisXML`, `InetLoad`,
+  `nsis7z` and the rest have to be rewritten or replaced, though most of what they
+  did has a counterpart already: a page built with `nsDialogs` becomes a page in
+  `layouts/`, plus a `next_page(from)` hook in `scripts/pages.rhai` when its behaviour
+  depends on what the user did. A download becomes a `dependencies.items` entry with a
+  `sha256`, or `download_file_with_hash` from the script, and an archive becomes the
+  payload or a component. What is left over is what a plugin of your own is for.
+- **`SetShellVarContext all`.** Shortcuts are created for the account running the
+  setup, so an installer that wrote an all-users shortcut has to place it another
+  way. A per-machine install started with `require_admin` still writes the shortcut
+  of the account that ran it.
+- **Installation types.** `InstType`, `SectionInstType`, `SectionSetFlags` and the
+  rest of that family have no counterpart, and the checkboxes on the page decide what
+  gets installed: a script can ask (`is_component_selected`, `selected_components`),
+  but it cannot tick one. If a type used to set the sections, move that decision onto
+  the page and let the user make it — a `RadioButton` group can gate a `Button` with
+  `enabled-when="mode:full"`, but nothing changes a checkbox the user is looking at,
+  script or page.
+- **Control handles.** `GetDlgItem`, `SendMessage`, `ShowWindow` and `EnableWindow`
+  reach into the window and drive a control directly, and there are no handles here:
+  the page declares its controls, while the layout says what they look like and when
+  they may be used.
+- **Accepting the licence.** `LicenseForceSelection` is a page element, not a setting:
+  a `Checkbox` on the licence page, and `enabled-when` on the button that goes on, is
+  the same gate the MUI licence page enforced.
+- **Restarting the machine.** Nothing here restarts a machine: a dependency that
+  answers 3010 or 1641 is reported as installed and the run continues, while a product
+  that cannot work before a restart has to say so on its finish page.
+- **The NSIS stack.** `Push`, `Pop` and `Exch` exist because NSIS has one stack and no
+  variables scoped to a function; Rhai has neither problem.
+- **`MessageBox` outside the window.** Here a prompt is a card inside the wizard,
+  drawn from `ui.dialog_layout`, and a script waits for the click on a worker thread;
+  a project that ships no such layout falls back to the system dialog, and one that
+  runs windowless never prompts at all.
 - **`WriteINIStr`, registry enumeration, file times, DLL registration.** Small,
   specific gaps, and each row above names the primitive or command that stands in.
 
 ## A worked example
 
 `examples/nsis-migration/` holds a representative NSIS script and the project it
-becomes, and `instructions.nsi` sits beside them: it is the same table held to the
-language, one line for every instruction, attribute and header macro NSIS
-documents.
+becomes. Beside them sits `instructions.nsi`, which is the same table held to the
+language: one line for every instruction, attribute and header macro NSIS documents.
 
 ```powershell
 .\scripts\check_nsi_migration.ps1 -Script .\examples\nsis-migration\legacy.nsi -FailOnUnknown
@@ -379,16 +377,15 @@ lines, and 5 the table answers with "there is no equivalent". The migration is i
 - `scripts/uninstall.rhai` — `run_tracked_uninstall` for everything the manifest
   records, then the two paths the product itself writes into.
 
-The uninstall section shrank the most: eight `Delete`, `RMDir` and
-`DeleteRegKey` statements became one call, because the install recorded what it
-wrote, so it is the part worth doing first — a hand-written uninstall list is what
-leaves files behind when a future version installs one more file than the list
-knows about.
+The uninstall section shrank the most, because the install recorded what it wrote:
+eight `Delete`, `RMDir` and `DeleteRegKey` statements became one call. So it is the
+part worth doing first — a hand-written uninstall list is what leaves files behind
+when a future version installs one more file than the list knows about.
 
 ## What the migrated project does without being asked
 
 The installer this repository builds already does what an NSIS script usually
-hand-writes. So these lines need no migration at all:
+hand-writes, so these lines need no migration at all:
 
 - The uninstall entry — display name, version, publisher, icon, the quiet
   uninstall command, the installed size, `NoModify`, `NoRepair` — is written from

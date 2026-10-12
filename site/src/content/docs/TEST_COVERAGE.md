@@ -1,37 +1,46 @@
 ---
 title: Test coverage
-description: Every behaviour the documentation promises has an automated test case behind it, so breaking that behaviour fails the test cases named in its row; and a behaviour with no row is one nobody is checking.
+description: Every behaviour nano-installer documents is held by an automated case; this page names the case for each one, layer by layer, and the gaps none of them reach.
 slug: TEST_COVERAGE
 sidebar:
   order: 1500
 ---
 
-Every behaviour the documentation promises has an automated test case behind it, so breaking that behaviour
-fails the test cases named in its row; and a behaviour with no row is one nobody is checking.
+A behaviour with a row in one of the tables below is one an automated case holds: break it, and the
+cases named in that row fail. A behaviour with no row is one nobody is checking.
 
-`\scripts\run_tests.ps1` runs 396 test cases, one command per target: 282 in the core library, 75 that
-build a real setup and run it, 5 that read a project the way the builder does, 32 in the visual
-builder, and 2 in the extraction runtimes. Every target has a deadline of its own, so one that stops
-answering is named by the command that never ended and the suite never stops silently. The setup-level
-cases need real runtime executables, which `.\scripts\run_e2e_setup.ps1` builds before it runs them and
-writes `target/e2e-report.txt`; the plugin cases need the sample plugin as well, and it builds that too.
+What you cannot trust yet is in one place. [What is still not covered by an automated
+case](#what-is-still-not-covered-by-an-automated-case) lists every gap, and says why each one is still
+open.
+
+`.\scripts\run_tests.ps1` runs 396 test cases, one command per target: 282 in the core library, 75 that
+build a real setup and run it, 5 that read a project the way the builder does, 32 in the visual builder,
+and 2 in the extraction runtimes. Every target has a deadline of its own, so one that stops answering is
+named by the command that never ended, and the suite never stops silently.
+
+The setup-level cases need real runtime executables, which `.\scripts\run_e2e_setup.ps1` builds before it
+runs them and writes `target/e2e-report.txt`. The plugin cases need the sample plugin as well, and it
+builds that too.
 
 ## What each layer can prove
 
+Not every layer reaches every claim. This table says what each one proves, and where it stops.
+
 | Layer | Test cases | Proves | Cannot prove |
 | --- | --- | --- | --- |
-| Core library | 282 | what a page becomes: layers, coordinates, hit regions, text, and which system colour each of those takes while high contrast is on. What the bundle carries, and what an install writes to disk and to the registry. What each script primitive does, how a service is installed and deleted, and what a script reads back off the page along with which components the run installs. How the dependencies a project declares are found, fetched, checked and installed, and which plugin a project may ship: the plugin host structure field by field against the header the ABI is written in, how a call spells `dll::function`, and the DLLs that are refused where they are built (a 32-bit image, an executable, a file that is not an image at all) | that a packaged setup reaches any of it; that an installed service then runs, since the program a service runs is the product's own and no test case can ship one |
-| Setup end to end | 75 | a built setup installed on the machine, its own window driven: application file bytes (a setup whose bytes changed refuses the install before it creates anything), the manifest file, the uninstall entry's own fields, shortcuts, autostart, project scripts, the helpers a script runs, the wizard window. A page hook sends it past a page, and Back returns the way the user came. The clicks its own pages wait for, and a wheel over a list. The card a script's messages and questions are answered on. The page's values reaching the script, and which components a page and a project put in. Every registry type a script names, and the copy of a key
-  a view name selects, along with what a command a script ran wrote. The command a project runs on its finished setup and its
-   uninstaller must succeed, or the file it refused is not left behind. The plugins a project ships and the script calls it makes: the values they hand back, the file and registry value they write through the host (the uninstall takes both back), a write outside the installation refused, a plugin that fails or refuses the host's ABI reported to the script by name, and one of them written in C rather than in Rust. What only a moving pointer and a real
-  keyboard can bring about: the bitmaps hover and press swap in, and the three standard cursor shapes. Tab walks the page's controls in the order the page declares them, with Enter or Space acting on the one under the ring and either end wrapping round. What a screen reader in another process is told about the page and about the focus moving: a client asking the window for its controls with their roles, names, values, states and places; a control worked through its default action. Another takes the keyboard when asked, and the focus events the window announces as Tab walks on; the words and the bar a running task publishes, read off the page and announced as they change; the rule a field's value breaks, read as the field's own description and announced when it appears; the value of a field read again as it is typed, once per keystroke and not at all when a key only moves the caret inside the text; the same page reached by a client that asks for its members by name instead of calling the interface, with a name MSAA does not have refused. The card a question is drawn on replaces the page with its two answers, and the wizard is painted with the machine's high-contrast scheme rather than the colours its pages declare. The language menu's arrow keys with Enter and Escape, and the folder picker. The dependencies a project declares: one the machine is missing installed, one it already has left alone, one that cannot be installed stopping the run, and a download checked against the digest the project recorded. The service a script installed is really on the machine, and gone again with the uninstall. The installer package a build wraps the setup in: `msiexec` installing the product from it, taking it away again, replacing an older release, replacing the release it re-releases when the same day is released again, and a project that cannot run windowlessly being refused a package. And the log a silent run writes: to the file it was told to,
-  naming itself to its caller when the run fails | the two windows an input method draws itself; which field a directory chosen in the shell's folder dialog is written to; the cursor shape on a session that is showing no pointer, where that test case prints its own skip; and Shift+Tab with a held Shift, which a posted key message cannot carry -- that direction is held by the core library's walk test case instead |
+| Core library | 282 | The layer's cases cover what a page becomes: its layers, coordinates, hit regions and text, and which system colour each of those takes while high contrast is on. They also cover what the bundle carries, and what an install writes to disk and to the registry. Each script primitive is driven, a service is installed and deleted, and a script reads values back off the page along with which components the run installs. The dependencies a project declares are found, fetched, checked and installed, and which plugin a project may ship is checked as well: the plugin host structure field by field against the header the ABI is written in, how a call spells `dll::function`, and the DLLs that are refused where they are built (a 32-bit image, an executable, a file that is not an image at all) | that a packaged setup reaches any of it; that an installed service then runs, since the program a service runs is the product's own and no test case can ship one |
+| Setup end to end | 75 | A built setup is installed on the machine, and its own window is driven. That covers application file bytes -- a setup whose bytes changed refuses the install before it creates anything -- the manifest file, the uninstall entry's own fields, shortcuts, autostart, project scripts, the helpers a script runs, and the wizard window. A page hook sends the wizard past a page, and Back returns the way the user came. The clicks its own pages wait for are delivered, and so is a wheel over a list. The card a script's messages and questions are answered on is worked through, the page's values reach the script, and the components a page and a project put in are the ones that install. Every registry type a script names is written, along with the copy of a key a view name selects and what a command a script ran wrote. The command a project runs on its finished setup and its uninstaller must succeed, or the file it refused is not left behind.
+  The plugins a project ships are called from the script: the values they hand back, the file and registry value they write through the host (the uninstall takes both back), a write outside the installation refused, a plugin that fails or refuses the host's ABI reported to the script by name, and one of them written in C rather than in Rust. The layer also reaches what only a moving pointer and a real keyboard can bring about: the bitmaps hover and press swap in, and the three standard cursor shapes. Tab walks the page's controls in the order the page declares them, with Enter or Space acting on the one under the ring and either end wrapping round.
+  A screen reader in another process is told what the page is and where the focus moves: a client asks the window for its controls with their roles, names, values, states and places, and works a control through its default action; another takes the keyboard when asked, and the window announces the focus events as Tab walks on. The words and the bar a running task publishes are read off the page and announced as they change. The rule a field's value breaks is read as the field's own description and announced when it appears, and the value of a field is read again as it is typed, once per keystroke and not at all when a key only moves the caret inside the text. The same page is reached by a client that asks for its members by name instead of calling the interface, with a name MSAA does not have refused.
+  The card a question is drawn on replaces the page with its two answers, and the wizard is painted with the machine's high-contrast scheme rather than the colours its pages declare. The language menu's arrow keys work with Enter and Escape, and so does the folder picker. The dependencies a project declares are exercised: one the machine is missing is installed, one it already has is left alone, one that cannot be installed stops the run, and a download is checked against the digest the project recorded. The service a script installed is really on the machine, and gone again with the uninstall. The installer package a build wraps the setup in is installed and removed with `msiexec`, replaces an older release, replaces the release it re-releases when the same day is released again, and refuses a project that cannot run windowlessly. And the log a silent run writes goes to the file it was told to, and names itself to its caller when the run fails | the two windows an input method draws itself; which field a directory chosen in the shell's folder dialog is written to; the cursor shape on a session that is showing no pointer, where that test case prints its own skip; and Shift+Tab with a held Shift, which a posted key message cannot carry -- that direction is held by the core library's walk test case instead |
 | Project inspection | 5 | the summary and the warning list the builder shows before a build | |
 | Visual builder | 32 | the window's own state, parameters -- including the package it asks the build for -- log and warnings | clicking the real controls |
 | Extraction runtimes | 2 | a broken archive is refused, and so is an unsafe path inside one | extracting an archive that is sound: the setup-level cases run a real runtime over real application files |
 | Snapshots | 6 pages | what every page of the example actually looks like, measured rather than judged | whether a glyph reads correctly, and what happens once the flow reaches a page |
 
 ## Configuration
+
+Each row names a setting or an area of behaviour, together with the cases that hold it.
 
 | Setting | Cases |
 | --- | --- |
@@ -116,8 +125,8 @@ writes `target/e2e-report.txt`; the plugin cases need the sample plugin as well,
 
 ## Project scripts
 
-[Script API](/SCRIPT_API/) lists the primitives. The in-process test cases drive the driver directly, while the
-setup-level cases prove the `scripts` directory and the tools directory survive packaging.
+[Script API](/SCRIPT_API/) lists the primitives. The in-process test cases drive the driver directly;
+the setup-level cases prove that the `scripts` directory and the tools directory survive packaging.
 
 | Behaviour | Cases |
 | --- | --- |
@@ -197,36 +206,38 @@ setup-level cases prove the `scripts` directory and the tools directory survive 
 
 ## What is still not covered by an automated case
 
-- **Windows 7 SP1.** The compatibility claims need a clean machine on the minimum supported version (Windows 7 SP1 x64),
-  and this project has no environment for one. See [production status](/PRODUCTION_STATUS/).
-- **Whether a glyph reads correctly.** A rendering check can tell that text was drawn in the colour
-  and position the layout asked for, but not that the sentence is legible, so the snapshot
-  review script hands that question to a local vision model, or to a person.
-- **The two windows an input method draws itself, and choosing inside the shell's folder dialog.** A
-  test case proves that the composition point and the candidate point the runtime hands the input
-  method sit on the caret, but not that the input method drew them there; it proves that a
-  `pick_directory` button opened the shell's folder dialog, but not which field a directory
-  chosen there is written to.
+No automated case reaches the following, and each entry says why.
+
+- **Windows 7 SP1.** The compatibility claims need a clean machine on the minimum supported version,
+  Windows 7 SP1 x64. This project has no environment for one. See [production status](/PRODUCTION_STATUS/).
+- **Whether a glyph reads correctly.** A rendering check can tell that text was drawn in the colour and
+  position the layout asked for. It cannot tell whether the sentence is legible. The snapshot review
+  script hands that question to a local vision model, or to a person.
+- **The two windows an input method draws itself, and choosing inside the shell's folder dialog.** A test
+  case proves that the composition point and the candidate point the runtime hands the input method sit
+  on the caret. It does not prove that the input method drew them there. It proves that a
+  `pick_directory` button opened the shell's folder dialog, but not which field a directory chosen there
+  is written to.
 - **The half that needs an elevated process.** Installing, changing, stopping and deleting a service all
-  need administrator rights, so without them a test case holds the refusal: Windows says no, and no service is left on
-  the machine, while the round trip of installing and deleting one only runs elevated. Both
-  reports (`run_tests.ps1` and `run_e2e_setup.ps1`) name whether the run was elevated, so such a run is never
-  read as one everybody has made. Whether an installed service then runs is out of reach either way: the
-  program a service runs is the product's own.
-- **The example projects' scripts are never run.** They are parsed
-  (`the_example_projects_scripts_parse`), so a mistyped primitive, or a read of a control the page does
-  not declare, passes just the same, because both are a value handed back quietly at run time. Only
-  installing the example would show either one up.
+  need administrator rights. Without them, a test case holds only the refusal: Windows says no, and no
+  service is left on the machine. The round trip of installing and deleting a service runs elevated only.
+  Both reports (`run_tests.ps1` and `run_e2e_setup.ps1`) name whether the run was elevated, so such a run
+  is never read as one everybody has made. Whether an installed service then runs is out of reach either
+  way, because the program a service runs is the product's own.
+- **The example projects' scripts are never run.** They are parsed (`the_example_projects_scripts_parse`),
+  and nothing more. A mistyped primitive, or a read of a control the page does not declare, passes just
+  the same, because both are a value handed back quietly at run time. Only installing the example would
+  show either one up.
 - **Whether the migration advice holds at all.** `scripts/check_nsi_migration.ps1` reads the command
-  tables of both guides on CI. Every construct the migrated example uses has to have a row that says
-  what it becomes, with the two languages agreeing line for line, and a test case audits the example
-  configuration the way the build would. That proves every construct was classified, but not that
-  a classification is right: a command filed as a direct setting that really needs a script is a
+  tables of both guides on CI. Every construct the migrated example uses has to have a row that says what
+  it becomes, with the two languages agreeing line for line, and a test case audits the example
+  configuration the way the build would. That proves every construct was classified; it does not prove
+  that a classification is right. A command filed as a direct setting that really needs a script is a
   guide that misleads, and only someone migrating a real installer would find that out.
-- **A package installed for the whole machine.** The cases install for one user, which needs no
-  elevation, so what an elevated per-machine install does with the same package, and whether an
-  estate's own tooling can remove it, rests on the same actions running in the service context.
-  A signed package is the same kind of gap: the builder signs nothing.
-- **Script primitives that cannot be undone by a test:** `run_detached` deliberately outlives the
-  run; `kill_process` ends a process the test did not start; `sleep_ms` has only elapsed time to
-  assert on; `is_elevated` would only mirror the implementation.
+- **A package installed for the whole machine.** The cases install for one user, which needs no elevation.
+  What an elevated per-machine install does with the same package, and whether an estate's own tooling can
+  remove it, rests on the same actions running in the service context. A signed package is the same kind
+  of gap: the builder signs nothing.
+- **Script primitives that a test cannot undo.** `run_detached` deliberately outlives the run.
+  `kill_process` ends a process the test did not start. `sleep_ms` has only elapsed time to assert on.
+  `is_elevated` would only mirror the implementation.

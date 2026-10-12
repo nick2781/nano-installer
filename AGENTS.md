@@ -9,9 +9,9 @@
 - `crates/nano-installer-stub-zlib`: ZIP/Deflate installer runtime only.
 - `crates/nano-installer-uninstaller`: uninstaller runtime without archive backends.
 - `examples/TapTap`: validation project; its branded resources belong to 易玩（上海）网络科技有限公司 and are not MIT-licensed.
-- `docs`: the map of the documentation for agents, one file per language (`AGENTS.md` and `zh-CN/AGENTS.md`).
-- `scripts`: release build and PE compatibility checks.
-- `site`: the published documentation site: its content, its configuration and its build.
+- `docs`: the documentation map, one file per language (`AGENTS.md`, `zh-CN/AGENTS.md`).
+- `scripts`: the release build, the audits a change passes, and the PE compatibility checks.
+- `site`: the published documentation site.
 
 ## Build And Test
 
@@ -32,30 +32,34 @@ All published executables target `x86_64-win7-windows-msvc`. Do not introduce a 
 
 - Changes under `crates/**` or `scripts/build.ps1` require rebuilding the builder and all three stubs before rebuilding a setup.
 - Changes limited to `examples/**` require only an example setup rebuild.
-- Keep LZMA dependencies out of the ZIP and uninstaller crates, ZIP dependencies out of the LZMA and uninstaller crates, and archive dependencies out of the uninstaller.
-- Keep eframe, egui, winit, and graphics backends confined to `nano-installer-gui`; they must not enter core, CLI, or stubs.
-- Keep raw stubs free of icons and product resources. The builder injects project resources into generated executables.
+- Keep LZMA out of the ZIP and uninstaller crates, ZIP out of the LZMA and uninstaller crates, and archive dependencies out of the uninstaller.
+- Keep eframe, egui, winit and the graphics backends in `nano-installer-gui`; they must not enter core, CLI, or stubs.
+- Keep raw stubs free of icons and product resources; the builder injects them into generated executables only.
 - Do not edit or commit generated files under `target/` or example `dist/` directories.
 
 ## Branches
 
-`main` is the release line and is closed to direct pushes: a change reaches it through a pull
-request, whose head has to pass the two suite jobs, and the branch's history can be neither
-force-pushed nor deleted. None of that is bypassable, so a commit made on `main` and pushed will be
-refused -- branch first, always. The rules and how each one binds are in
-[`CONTRIBUTING.md`](CONTRIBUTING.md).
+`main` is the release line, and it takes no direct push.
+
+- Branch first: a commit pushed straight to `main` is refused.
+- Reach it through a pull request whose head passes both suite jobs, `Native Win7+ Build` and `Setup End to End`.
+- `main` can be neither force-pushed nor deleted.
+
+None of this is bypassable; the rules are in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Documentation
 
-- `docs/AGENTS.md` is the map: which page answers which question, how the two languages relate, and where the machine-readable entry points are. Read it before searching the docs.
-- The published site is the Astro project under `site/`, built with Cloudflare Nimbus. Pages are `site/src/content/docs/X.md`, served at `/X/`, and `site/src/content/zh-CN/X.md`, served at `/zh-CN/X/`; `site/dist/` is what GitHub Pages publishes under `/nano-installer/`. The build writes `llms.txt`, `llms-full.txt`, `robots.txt`, `sitemap-index.xml` and a Markdown version of every page from the content tree, so there is no index data file to keep in step -- the generator and its data file went with the docsify site.
-- Pages come in pairs, and nothing is written in one language only. The site root is the chooser between the two trees, and each tree is one Nimbus collection. The documentation map is published as a page as well, and the repository keeps it at the top of `docs/` -- `docs/AGENTS.md` paired with `docs/zh-CN/AGENTS.md` -- because the repository's conventions ask for it there. `scripts/audit_docs_languages.ps1` fails when a page in one content tree has no page in the other, or when one side of the map is missing.
-- A new page is its file under `site/src/content/`, its twin in the other tree, and a line in the sidebar list in `site/astro.config.ts`. `title` in the frontmatter is what the sidebar and the index call it, so the page's own heading is not written a second time anywhere.
+- Read `docs/AGENTS.md` first: it maps each question to the page that answers it and names the machine-readable entry points.
+- The site is the Astro project under `site/`, built with Cloudflare Nimbus, and `site/dist/` is what GitHub Pages publishes under `/nano-installer/`. English pages are `site/src/content/docs/X.md` at `/X/`, Chinese pages are `site/src/content/zh-CN/X.md` at `/zh-CN/X/`.
+- Keep no index data by hand: the build writes `llms.txt`, `llms-full.txt`, `robots.txt`, `sitemap-index.xml` and a Markdown copy of every page from the content tree. The generator and its data file went with the docsify site.
+- Write every page in both languages, and keep the map at the top of `docs/` (`docs/AGENTS.md`, `docs/zh-CN/AGENTS.md`). `scripts/audit_docs_languages.ps1` fails on a page whose twin is missing, or on a missing side of the map.
+- A new page is its file under `site/src/content/`, its twin in the other tree, and a line in the sidebar list in `site/astro.config.ts`; the frontmatter `title` is what the sidebar and the index call it, so do not write the page's own heading again.
+- `scripts/audit_docs_sidebar.ps1` holds the sidebar and the two content trees to each other. `scripts/audit_docs_links.ps1` reads the built site for a dead link or anchor, so it runs after the build.
 
 ## Verification
 
 - Run the Win7 PE import audit for the builder, every stub, and each generated setup.
 - Test archive extraction with real ZIP and 7z files after changing a backend.
 - Treat generated setup size and per-stub size as release metrics; update documentation when they materially change.
-- Capture the example setup's first page with `.\scripts\capture_setup_snapshots.ps1`, which checks it against the project's own layout; it needs a desktop session, and reading the PNGs with a model needs one running locally.
+- Capture the example setup's first page with `.\scripts\capture_setup_snapshots.ps1`, which checks it against the project's own layout. It needs a desktop session, and reading the PNGs with a model needs one running locally.
 - Preserve unrelated worktree changes in the working tree.

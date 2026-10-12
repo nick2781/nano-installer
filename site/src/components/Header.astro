@@ -5,6 +5,7 @@ import { Button } from "./ui/button";
 import { LinkButton } from "./ui/link-button";
 import { ThemeToggle } from "./ui/theme-toggle";
 import SearchTrigger from "./ui/search/SearchTrigger.astro";
+import LanguageSwitch from "./LanguageSwitch.astro";
 import { config } from "virtual:nimbus/config";
 import { getSidebarSections, stripBase, withBase } from "@cloudflare/nimbus-docs/runtime";
 
@@ -22,10 +23,11 @@ interface Props {
   sections?: SidebarSection[];
 }
 
-// `entryId` is part of Props as a forward-compat hook (the version-switcher
-// recipe reads it) but the base Header doesn't use it — leave it off the
-// destructure to avoid an unused-var warning.
-const { collection, showSidebar = true, sections: sectionsProp } = Astro.props;
+// `collection` is the tree the page is in and `entryId` is the page's name in
+// it; LanguageSwitch uses the pair to reach the same page in the other
+// language. Both arrive from the route through DocsLayout, and both are
+// optional because the site root and the 404 page render this header bare.
+const { collection, entryId, showSidebar = true, sections: sectionsProp } = Astro.props;
 
 // Normalize trailing slash so isActive matches sidebar hrefs.
 const currentSlug = stripBase(Astro.url.pathname, import.meta.env.BASE_URL).replace(/\/$/, "") || "/";
@@ -70,6 +72,7 @@ const resolveSectionHref = (href: string): string =>
 
     <div class="flex items-center gap-2 shrink-0">
       <slot name="actions" />
+      <LanguageSwitch collection={collection} entryId={entryId} />
       {config.search !== false && <SearchTrigger />}
       {config.github && (
         <LinkButton

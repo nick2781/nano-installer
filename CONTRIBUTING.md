@@ -1,8 +1,8 @@
 # Contributing
 
-Thanks for looking. This is a Windows installer framework: one project folder in, one self-contained
-`.exe` out, and bugs, plugins and documentation fixes are all welcome. Issues may be written in
-English or Chinese.
+This is a Windows installer framework: one project folder in, one self-contained `.exe` out, and
+bugs, plugin problems and documentation fixes are all welcome. Issues may be written in English or
+Chinese.
 
 Read two documents before a change: [`site/src/content/docs/BUILD_AND_RELEASE.md`](site/src/content/docs/BUILD_AND_RELEASE.md)
 says what the builds are, and [`site/src/content/docs/TEST_PLAN.md`](site/src/content/docs/TEST_PLAN.md) says how a change is
@@ -10,10 +10,10 @@ verified. Everything below is the short version.
 
 ## Getting set up
 
-You need Windows x64 with the MSVC build tools, and the Rust toolchain is pinned in
-`rust-toolchain.toml`, so `rustup` picks it up on its own. Clone with `git clone`, then run
-`git lfs install` once. The icons, the example's images and the archiver under `tools/` are Git LFS
-objects, which is why a source ZIP download arrives without them.
+You need Windows x64 with the MSVC build tools. The Rust toolchain is pinned in `rust-toolchain.toml`,
+so `rustup` picks it up on its own. Clone with `git clone`, then run `git lfs install` once: the
+icons, the example's images and the archiver under `tools/` are Git LFS objects, which is why a source
+ZIP download arrives without them.
 
 ```powershell
 .\scripts\build.ps1                     # builder, GUI and the three runtime stubs
@@ -21,12 +21,15 @@ objects, which is why a source ZIP download arrives without them.
 ```
 
 The setup-level cases install throwaway products on the machine running them, and take those products
-away again as they end — unless the run is killed before it gets there, which the suite's watchdog can
-do, and so can Ctrl-C. What such a run leaves behind is a product in Programs and Features, whose
-uninstaller lived in a temporary directory that is gone.
-`.\scripts\clean_probe_installs.ps1 -DryRun` lists what is left, and
-`.\scripts\clean_probe_installs.ps1` removes it. Entries a probe installed with administrator rights
-are machine-wide, so they need an elevated prompt; the script says when it needs one.
+away again as they end. A run that is killed before it gets there — by the suite's watchdog, or by
+Ctrl-C — leaves one behind: a product in Programs and Features whose uninstaller lived in a temporary
+directory that is gone.
+
+- `.\scripts\clean_probe_installs.ps1 -DryRun` lists what is left.
+- `.\scripts\clean_probe_installs.ps1` removes it.
+
+Entries a probe installed with administrator rights are machine-wide, so removing them needs an
+elevated prompt. The script says when it needs one.
 
 ## What a change has to pass
 
@@ -40,18 +43,23 @@ cargo clippy --locked --workspace --all-targets -- -D warnings
 .\scripts\audit_script_encoding.ps1     # scripts must be pure ASCII or carry a BOM
 .\scripts\audit_case_descriptions.ps1   # every case has a row in the case table of each language
 .\scripts\audit_docs_languages.ps1      # both documentation trees hold the same pages
+.\scripts\audit_docs_sidebar.ps1        # every page is listed once in its own language, and every row names a page
 .\scripts\verify_reports.ps1            # a run's report survives a run that did nothing
 .\scripts\audit_workflow_images.ps1     # every job names the image it runs on, and a release is audited on the image it is built on
 ```
 
-The site has checks of its own, in the docs workflow that publishes it: `pnpm build` in `site/` fails on
-a page whose frontmatter does not validate and on an internal link that goes nowhere, and it is the same
-run that writes the index files from the content tree.
+The docs workflow runs the same two documentation audits before its build, so a bad page fails there
+too. `pnpm build` in `site/` is a check of its own: it fails on a page whose frontmatter does not
+validate, and it is the same run that writes `llms.txt`, `llms-full.txt`, `robots.txt`, the sitemap
+and a Markdown version of every page from the content tree. Links are not the build's business:
+`astro build` evaluates no authoring rule, so `.\scripts\audit_docs_links.ps1` reads the built site
+instead, and the workflow runs it after the build, because an anchor exists only once its heading has
+been rendered.
 
 A change to what a setup *does* also updates the documents that promise it: `CHANGELOG.md`,
 `site/src/content/{docs,zh-CN}/TEST_COVERAGE.md` and `site/src/content/{docs,zh-CN}/TEST_CASES.md`. In
-`TEST_COVERAGE.md`, update the counts and the row for the behaviour, and in `TEST_CASES.md` update one
-row per case -- the audit refuses a case without one, in either language.
+`TEST_COVERAGE.md`, update the counts and the row for the behaviour. In `TEST_CASES.md`, update one row
+per case; the audit refuses a case without one, in either language.
 
 Every page exists in both languages, so a change to one side is a change to both: the site serves the
 English tree at `/` and the Chinese one at `/zh-CN`, and a page keeps its name in both. The map of the
@@ -74,8 +82,8 @@ repository's administrator included:
   has to be up to date with `main` before the pull request can merge. A branch is deleted once it has
   merged, so the branch list stays a list of work in flight.
 
-So the shape of a change is: branch, pull request, two green jobs, merge. That is the whole of it, and
-there is no short path for a small fix, which is what makes the two jobs mean something.
+So the shape of a change is: branch, pull request, two green jobs, merge. There is no short path for a
+small fix.
 
 ## What a change has to respect
 
@@ -101,11 +109,11 @@ there is no short path for a small fix, which is what makes the two jobs mean so
 - **The documentation site.** The pages are the Markdown files under `site/src/content/`, the site is
   built with Cloudflare Nimbus, and `site/dist/` is what GitHub Pages publishes. Nothing about the
   index is maintained by hand: the build writes `llms.txt`, `llms-full.txt`, `robots.txt`, the sitemap
-  and a Markdown version of every page from the content tree. So a new page is its file under
+  and a Markdown version of every page from the content tree. A new page is its file under
   `site/src/content/`, its twin in the other tree, and a line in the sidebar list in
   `site/astro.config.ts`; the `title` in its frontmatter is what the sidebar and the index both call
-  it. `pnpm build` in `site/` is the check, and it fails on a page that does not validate or a link
-  that goes nowhere.
+  it. `pnpm build` in `site/` fails on a page that does not validate, and
+  `scripts/audit_docs_links.ps1` fails on a link that goes nowhere.
 
 ## Reporting
 
@@ -117,10 +125,10 @@ there is no short path for a small fix, which is what makes the two jobs mean so
   which is the Contributor Covenant 2.1 text as written; this project adds two things on top of it.
   English and Chinese are both welcome, and nobody is asked to write in a language they are guessing
   at. The argument stays about the code rather than the person, so "This reads the registry without
-  checking the view" is a review, while "you clearly do not know Win32" is not. A direct message or
-  an issue reaches the maintainer, and anything that has to stay out of public view can go to
-  GitHub's [report abuse](https://github.com/contact/report-abuse) form instead — that includes a
-  report about the maintainer, since there is nobody else here to read it.
+  checking the view" is a review, while "you clearly do not know Win32" is not. A direct message or an
+  issue reaches the maintainer, and anything that has to stay out of public view can go to GitHub's
+  [report abuse](https://github.com/contact/report-abuse) form instead — that includes a report about
+  the maintainer, since there is nobody else here to read it.
 
 ## Licence
 

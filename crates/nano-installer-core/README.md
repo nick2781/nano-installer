@@ -21,7 +21,7 @@ crates/
 └── nano-installer-uninstaller/# uninst-stub-native.exe
 ```
 
-The builder detects ZIP versus 7z from the payload signature and copies the corresponding sibling
+The builder detects ZIP versus 7z from the payload signature, then copies the corresponding sibling
 stub before appending project data. It injects the configured setup resources and Windows version
 properties before the bundle, and never copies the builder into the generated setup. Raw stubs carry
 no product resources; the builder injects them into generated executables only.
@@ -36,26 +36,25 @@ no product resources; the builder injects them into generated executables only.
 The builder collects `installer_config.json`, configured layouts/assets/locales, `scripts/`, and
 the configured payload. The generated executable reads its appended bundle, walks the configured
 page list, parses each XML page, and draws the visible background, `Image`, `Icon`, `Button`, and
-`ProgressBar` layers. Text plus the nested VBox/HBox/Content/Checkbox layout are resolved from the
-configured JSON locale and rendered through Unicode `DrawTextW`. The setup resource icon is also
+`ProgressBar` layers. It resolves text and the nested VBox/HBox/Content/Checkbox layout from the
+configured JSON locale, and renders them through Unicode `DrawTextW`. The setup resource icon is also
 assigned to the Win32 window class for the taskbar and Alt+Tab.
 
 Install and uninstall run on a worker thread that publishes progress and page changes, so the
-progress pages advance their bar and status text while the task runs. The finish page can launch
-the deployed application. Press Escape or close the native window to exit.
+progress pages advance their bar and status text while the task runs. The finish page can launch the
+deployed application. Press Escape or close the native window to exit.
 
 ## Verification
 
 The minimum OS target is Windows 7 SP1+ x64 for the builder, the LZMA and zlib stubs, and the
-uninstaller; all four pass the PE import audit. The separate Windows 10+ GUI is not linked into any
-of these artifacts. Per-binary sizes are measured from `target/release/` after each build and are
+uninstaller, and all four pass the PE import audit. The separate Windows 10+ GUI is not linked into
+any of these artifacts. Per-binary sizes are measured from `target/release/` after each build and are
 tracked as release metrics rather than documented here.
 
 ## Next slice
 
-The backend executables securely extract real 7z and ZIP archives for the install action. Core
-records deployed files, shortcuts, and autostart entries in a manifest, backs up replaced files for
-rollback, and writes an uninstall registry key; the uninstaller removes only tracked files. A
-project that ships `scripts/install.rhai` or `scripts/uninstall.rhai` runs those scripts through
-fixed primitives instead of the built-in steps. Cancellation, automatic UAC, and code signing
-remain open.
+The backend executables extract real 7z and ZIP archives for the install action. Core records
+deployed files, shortcuts, and autostart entries in a manifest, backs up replaced files for rollback,
+and writes an uninstall registry key; the uninstaller removes only tracked files. A project that
+ships `scripts/install.rhai` or `scripts/uninstall.rhai` runs those scripts through fixed primitives
+instead of the built-in steps. Cancellation, automatic UAC, and code signing remain open.

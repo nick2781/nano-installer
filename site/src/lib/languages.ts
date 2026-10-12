@@ -20,8 +20,13 @@ import type { SidebarItem } from "@cloudflare/nimbus-docs/types";
  *     readers and hyphenation all follow that attribute.
  */
 
-/** Where each page collection is mounted, mirroring `collectionMountPrefix()`. */
-const MOUNT_PREFIX: Record<string, string> = {
+/**
+ * Where each page collection is mounted, mirroring `collectionMountPrefix()`.
+ *
+ * Exported because `LanguageSwitch` rebuilds a page's route in the other tree
+ * from this same table: where a tree lives is one fact, not two.
+ */
+export const MOUNT_PREFIX: Record<string, string> = {
   docs: "",
   "zh-CN": "/zh-CN",
 };

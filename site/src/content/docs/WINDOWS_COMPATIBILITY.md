@@ -1,23 +1,23 @@
 ---
 title: Windows compatibility
-description: Everything you ship targets `x86_64-win7-windows-msvc`, and the minimum supported system is Windows 7 SP1 x64.
+description: The APIs the runtime relies on for Windows 7 SP1 x64 and later, and how to repeat the acceptance run on a real machine.
 slug: WINDOWS_COMPATIBILITY
 sidebar:
   order: 1300
 ---
 
-Everything you ship targets `x86_64-win7-windows-msvc`, and the minimum supported system is Windows 7 SP1
-x64. That means no 32-bit build, and no ANSI build to keep in step.
+Everything you ship targets `x86_64-win7-windows-msvc`, and the minimum supported system is Windows 7
+SP1 x64. That means there is no 32-bit build, and no ANSI build to keep in step.
 
-The visual builder, `nano-installer-gui-x64.exe`, runs on Windows 10 x64 and later because it uses
+The visual builder, `nano-installer-gui-x64.exe`, runs on Windows 10 x64 and later, because it uses
 eframe/egui. It only creates installers, though, and the setup it produces is still built for that
 minimum version.
 
-That minimum version has been through a real run: a build 7601 virtual machine, with a setup the
-current builder produced. Every build also checks the PE imports, which proves that nothing a setup
-calls was added after Windows 7, while the run on the machine proves those calls work. What it reached
-and what it did not is in [Production status](/PRODUCTION_STATUS/); to walk the same ground yourself,
-see [Running the acceptance](#running-the-acceptance).
+That minimum version has been verified on a real machine. The run used a build 7601 virtual machine and
+a setup the current builder produced. Every build also checks the PE imports, which proves that nothing
+a setup calls was added after Windows 7, while the run on the machine proves those calls work. What the
+run reached, and what it missed, is in [Production status](/PRODUCTION_STATUS/); to walk the same ground
+yourself, see [Running the acceptance](#running-the-acceptance).
 
 ## What the runtime relies on
 
@@ -33,7 +33,7 @@ see [Running the acceptance](#running-the-acceptance).
 - IMM32, for the IME composition and candidate windows of a text field. Windows 7 ships it.
 - WinHTTP, to download a dependency a project asks for. Over https it turns on TLS 1.1/1.2, but on
   Windows 7 SP1 that also needs the system's own schannel to support TLS 1.2, which means update
-  KB3140245 or later. Without it the download fails instead of falling back to plain text.
+  KB3140245 or later. Without that update the download fails rather than falling back to plain text.
 
 Release builds use the pinned `nightly-2025-11-08` toolchain, `rust-src`,
 `-Z build-std=std,panic_abort`, a statically linked CRT, and `panic=abort`.
@@ -44,25 +44,25 @@ Every build checks the PE imports of the builder, the three runtimes, and each s
 an API that only Windows 8 or Windows 10 has appears, the build fails, which proves these files do not
 statically depend on a newer system.
 
-A static check cannot prove an installer works, so there is also a run on a real machine, and it has
-happened. On build 7601, PNG decoding, text rendering, mouse input, window behaviour, extraction,
-installation and uninstallation were all reached, window dragging and an uninstall that clears the whole
-installation directory among them, and the item-by-item results are in
-[Production status](/PRODUCTION_STATUS/). What that run did not reach is the window's minimising and
-restoring, multi-monitor scaling, cursor shapes, and installing or removing a service. The screen reader
-item got as far as the accessibility information, which read the same as Windows 11; NVDA 2023.3 does
-install on this Windows 7 SP1 machine, but every real start of it terminates that virtual machine, which
-has no audio device, so item 8 needs a machine with a sound card or a person listening beside it.
-Target machines should have update KB3033929 (SHA-2 code signing support) installed, and one whose
-project downloads a dependency also needs KB3140245 or later.
+A static check cannot prove an installer works, so the project also ran one on a real machine. On build
+7601 that run reached PNG decoding, text rendering, mouse input, window behaviour, extraction,
+installation and uninstallation, including window dragging and an uninstall that clears the whole
+installation directory; the item-by-item results are in [Production status](/PRODUCTION_STATUS/). What
+it did not reach is the window's minimising and restoring, multi-monitor scaling, cursor shapes, and
+installing or removing a service. The screen reader item got as far as the accessibility information,
+which read the same as on Windows 11. NVDA 2023.3 does install on this Windows 7 SP1 machine, but every
+real start of it terminates that virtual machine, which has no audio device, so item 8 needs a machine
+with a sound card or a person listening beside it. Target machines should have update KB3033929 (SHA-2
+code signing support) installed, and a machine whose project downloads a dependency also needs
+KB3140245 or later.
 
 ## Running the acceptance
 
 The paragraphs above state the requirement; this is how to meet it. The point is to leave evidence
 somebody can check, not a memory.
 
-**Prepare.** A clean Windows 7 SP1 x64 machine or virtual machine, build 7601, with update KB3033929
-installed. The run installs software, so take a checkpoint first. If the project downloads a
+**Prepare.** Find a clean Windows 7 SP1 x64 machine or virtual machine, build 7601, with update
+KB3033929 installed. The run installs software, so take a checkpoint first. If the project downloads a
 dependency, the machine also needs KB3140245 or later, or that step is recorded as not reached.
 Building the setup needs no toolchain: take the builder and the three runtimes from a release, as the
 [quick start](/QUICK_START/) describes, put them in one folder, and point the builder at the project.

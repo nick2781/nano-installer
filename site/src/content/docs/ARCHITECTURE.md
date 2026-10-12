@@ -1,6 +1,6 @@
 ---
 title: Architecture
-description: 'The builder and the runtime are separate programs: the runtime is the one that does the work inside a setup.'
+description: A nano-installer setup holds a runtime and your project data, never the builder; that runtime installs, updates, uninstalls, and writes the run log.
 slug: ARCHITECTURE
 sidebar:
   order: 1100
@@ -25,147 +25,151 @@ MyApp/
                              MyApp_Setup.exe
 ```
 
-The builder and the runtime are separate programs: the runtime is the one that does the work inside a
-setup. A setup you generate therefore holds a runtime and your project data, and never the builder.
+The builder and the runtime are separate programs, and the runtime is the one that does the work
+inside a setup. So a setup you generate holds a runtime and your project data, and never the
+builder.
 
-You point the builder at a payload and it reads the first bytes to pick a runtime: a `7z` signature
-selects the LZMA runtime, a `PK` signature selects the ZIP runtime, and it copies that stub and writes
-your icon, version, and application manifest resources into it. Then it appends a bundle holding your
-layouts, assets, locales, scripts, and payload, and last comes a self-contained uninstaller. The
-payload keeps whatever compression you gave it, because the bundler adds no second compression layer.
+You point the builder at a payload, and it reads the first bytes to pick a runtime: a `7z` signature
+selects the LZMA runtime, and a `PK` signature selects the ZIP one. It copies that stub and writes
+your icon, version, and application manifest resources into it. Then it appends a bundle holding
+your layouts, assets, locales, scripts, and payload, and finishes with a self-contained uninstaller.
+The payload keeps whatever compression you gave it, because the bundler adds no second compression
+layer.
 
-When the setup is written, the builder hands both finished files to a command of the project's own:
-the uninstaller runs while it is still a file of its own, before it is embedded, and the setup runs
-once it is complete and closed. Every line the command prints goes into the build log, and a non-zero
-exit code stops the build without leaving the setup it refused on disk. Signing is what those two
-hooks are usually for, NSIS's `!finalize` and `!uninstfinalize`, though the builder signs nothing
-itself; the [configuration reference](/CONFIG_REFERENCE/#commands-that-run-on-the-finished-build)
-says how to name them.
+Once both files are written, the builder hands them to a command of the project's own. The
+uninstaller runs while it is still a file of its own, before it is embedded; the setup runs once it
+is complete and closed. Every line the command prints goes into the build log, and a non-zero exit
+code stops the build without leaving the setup it refused on disk. Signing is what those two hooks
+are usually for, and they are the counterparts of NSIS's `!finalize` and `!uninstfinalize`; the
+builder signs nothing itself. The
+[configuration reference](/CONFIG_REFERENCE/#commands-that-run-on-the-finished-build) says how to
+name them.
 
 ## Inside the generated setup
 
-**Startup.** The runtime reads the bundle footer to index the bundle, so it knows where every entry
-lives without loading the payload into memory, and each entry carries the SHA-256 the build recorded
-for it. Every read is checked against that digest and a streamed payload is hashed as it goes past, so
+**Startup.** The runtime indexes the bundle from its footer, so it knows where every entry lives
+without loading the payload into memory, and each entry carries the SHA-256 the build recorded for
+it. Every read is checked against that digest, and a streamed payload is hashed as it goes past, so
 a setup damaged after the build is refused by entry name rather than unpacking bytes nobody vouched
-for. It reads payload bytes by offset only when extraction starts.
+for. The runtime reads payload bytes by offset only when extraction starts.
 
 **Interface.** Your pages come from `wizard.pages` (install) and `wizard.uninstall_pages`
-(uninstall), and the runtime draws each page with Win32, WIC for PNG decoding, and GDI alpha blending.
-Supported today: absolute bitmap and text layers; nested `VBox`/`HBox`/`Content` flow layout, with
-padding, margins, percentage sizing and `flex-wrap`; progress bars; checkbox and expandable-panel
-interaction; clickable links; in-place text editing with selection, clipboard, and an undo stack; the
-folder chooser; runtime locale switching; a borderless rounded window; a taskbar icon; double-buffered
-painting; dragging, minimize, and close. Pages move with `action="next"` and `action="back"`: with a
-`scripts/pages.rhai` in the project, every Next asks its `next_page(from)` where to go and a hook is
-given read-only primitives only, while Back retraces the pages the user really visited.
+(uninstall), and the runtime draws each page with Win32, WIC for PNG decoding, and GDI alpha
+blending. Today it supports absolute bitmap and text layers; nested `VBox`/`HBox`/`Content` flow
+layout, with padding, margins, percentage sizing and `flex-wrap`; progress bars; checkbox and
+expandable-panel interaction; clickable links; in-place text editing with selection, clipboard, and
+an undo stack; the folder chooser; runtime locale switching; a borderless rounded window; a taskbar
+icon; double-buffered painting; dragging, minimize, and close. Pages move with `action="next"` and
+`action="back"`. When the project ships a `scripts/pages.rhai`, every Next asks its
+`next_page(from)` where to go, and the hook is given read-only primitives only; Back retraces the
+pages the user really visited.
 
 **Screen readers.** The runtime paints every control itself, so the window owns no child window a
-client could walk. The window answers the one question Windows asks about it: a `WM_GETOBJECT` for
-the client area is answered with an `IAccessible` handed out through `LresultFromObject`, which COM
-marshals into the client's own process. What a reader gets back is the page as it is now, in the
-order the layout recorded the controls: role, name, value, state, and screen coordinates, where the
-name is the words the layout wrote, a text field is named by the label above it and a select by the
-option it shows. Asking for a control's default action runs the same action a press runs, and the
-window announces focus moves, state and value changes, and page changes on its own. While a dialog is
-up, the tree becomes the card's two answers and the window is named by the question.
+client could walk. It answers the one question Windows asks about it: a `WM_GETOBJECT` for the
+client area gets back an `IAccessible`, handed out through `LresultFromObject`, which COM marshals
+into the client's own process. What a reader receives is the page as it is now, in the order the
+layout recorded the controls: role, name, value, state, and screen coordinates. The name is the
+words the layout wrote, a text field is named by the label above it, and a select by the option it
+shows. Asking for a control's default action runs the same action a press runs, and the window
+announces focus moves, state and value changes, and page changes on its own. While a dialog is up,
+the tree becomes the card's two answers, and the window is named by the question.
 **While a task runs** there is no control left to reach, so what the task publishes and the bar
-beside it are described with the rest, the bar's value being the percentage it draws. Each change of
-either is announced as it happens: the status words as a live region, the bar as a value change. The
-hint a page shows when a field's value breaks a rule is part of the same description: it is the
+beside it are described with the rest, and the bar's value is the percentage it draws. Each change
+of either is announced as it happens: the status words as a live region, the bar as a value change.
+The hint a page shows when a field's value breaks a rule belongs to the same description: it is the
 field's own description, and it is announced when it appears or changes to another rule. The frame
-the wizard opens on is recorded rather than announced, because it is what a reader finds when it asks
-and a user can type before that frame has been drawn, so the baseline is taken when the window is
-built. The bridge lives in `crates/nano-installer-core/src/accessibility.rs` and builds its
-description from the runtime's shared state on every call, so there is no second table to keep in step
-with the page.
+the wizard opens on is recorded rather than announced, because it is what a reader finds when it
+asks and a user can type before that frame has been drawn, so the baseline is taken when the window
+is built. The bridge lives in `crates/nano-installer-core/src/accessibility.rs` and builds its
+description from the runtime's shared state on every call, so there is no second table to keep in
+step with the page.
 
-**Questions and notices.** The setup never hands a question or a notice to a system message box:
-anything the user has to answer, such as the close confirmation, and anything they have to
-acknowledge, is drawn inside the window from the layout named by `ui.dialog_layout`. A dialog is an
-ordinary layout whose `value-source="dialog:*"` reads the question and button labels of the moment,
-and only its own controls respond while it is open, with `Enter`/`Escape` confirming and dismissing
-it. The card takes a project script's `show_message`, `show_error` and `ask_yes_no` too, and the
-button it answers with is what the script carries on from. The runtime centres the window on the work
-area of the monitor it is on, and clamps it into that work area when a layout is larger than the
-desktop.
+**Questions and notices.** A question or a notice never goes to a system message box. Anything the
+user has to answer, such as the close confirmation, and anything they have to acknowledge, is drawn
+inside the window, from the layout named by `ui.dialog_layout`. A dialog is an ordinary layout, and
+its `value-source="dialog:*"` reads the question and button labels of the moment; only its own
+controls respond while it is open, with `Enter`/`Escape` confirming and dismissing it. The card
+takes a project script's `show_message`, `show_error` and `ask_yes_no` too, and the button it
+answers with is what the script carries on from. The runtime centres the window on the work area of
+the monitor it is on, and clamps it into that work area when a layout is larger than the desktop.
 
-**Tasks.** Install and uninstall run on a worker thread that publishes progress and page changes
-through shared state, so the UI thread repaints when it receives a refresh message. Painting never
+**Tasks.** Install and uninstall run on a worker thread, which publishes progress and page changes
+through shared state; the UI thread repaints when it receives a refresh message. Painting never
 leaves the thread that owns the window, so your window stays responsive while it extracts.
 
-**Install.** The runtime stages files, then writes the manifest and the uninstall registry entry, and
-creates the shortcuts and autostart value you configured. That entry is the one Windows' Programs and
-Features shows, and it holds the set a Windows installation list reads: the name, version, publisher,
-install location, uninstall command and icon, the quiet uninstall command, the size in kilobytes
-counted from the bytes on disk, and two flags saying there is no separate modify or repair step. It
-treats a destination that already holds this project as an upgrade, backs replaced files up in a
-rollback journal, and removes files the new payload no longer ships; if something fails it restores
-the previous version.
+**Install.** The runtime stages files, then writes the manifest and the uninstall registry entry,
+and creates the shortcuts and autostart value you configured. That entry is the one Windows'
+Programs and Features shows, and it holds the set a Windows installation list reads: the name,
+version, publisher, install location, uninstall command and icon, the quiet uninstall command, the
+size in kilobytes counted from the bytes on disk, and two flags saying there is no separate modify
+or repair step. A destination that already holds this project is treated as an upgrade: replaced
+files go into a rollback journal, files the new payload no longer ships are removed, and a failure
+restores the previous version.
 
-**Updates.** A release can be built as an update package instead of a full setup: `--delta-from`
+**Updates.** You can build a release as an update package instead of a full setup. `--delta-from`
 names the payload archive of the release it replaces, and the builder expands both archives with the
-runtime stubs and compares them by size and SHA-256, so it carries only the files whose bytes
-changed. What it leaves behind goes into an `update/plan.json` entry of the bundle, naming each
-expected file with its byte count and digest, and the runtime reads that entry first. An update
-package proceeds only where the manifest of that release is present and every expected file still
-matches; it refuses before writing anything when one does not. The files it keeps stay part of the
-installation, because the manifest names them, so an uninstall takes them back. A file the update
-does carry is not copied over a target that already holds exactly those bytes. The framework ships no
-updater of its own, the way NSIS does not: it offers the primitives that build an update package and
-run a new setup, while asking for a new version and installing it is left to the product, so there is
-no "check for updates" switch here.
+runtime stubs and compares them by size and SHA-256, so the package carries only the files whose
+bytes changed. What the update leaves behind goes into an `update/plan.json` entry of the bundle,
+naming each expected file with its byte count and digest, and the runtime reads that entry first. An
+update package proceeds only where the manifest of that release is present and every expected file
+still matches; when one does not, it refuses before writing anything. The files it keeps stay part
+of the installation, because the manifest names them, so an uninstall takes them back. A file the
+update does carry is not copied over a target that already holds exactly those bytes. The framework
+ships no updater of its own, the way NSIS does not: it offers the primitives that build an update
+package and run a new setup, while asking for a new version and installing it is left to the
+product, so there is no "check for updates" switch here.
 
 **Uninstall.** The runtime ends the product process, deletes the recorded shortcuts and files, and
-removes the declared user data only when the user clears the keep-data option. Windows refuses to let
+removes the declared user data only when the user clears the keep-data option. Windows does not let
 a process delete the image it is running from, so the uninstall finishes by copying itself into a
-cleaner in the temporary directory: the cleaner waits for the uninstaller to exit and deletes it, then
-removes the emptied installation directory and hands its own removal to a short-lived `cmd` script.
-It keeps a directory that still holds files the user added.
+cleaner in the temporary directory: the cleaner waits for the uninstaller to exit and deletes it,
+then removes the emptied installation directory and hands its own removal to a short-lived `cmd`
+script. A directory that still holds files the user added is kept.
 
-**The run log.** Every install and uninstall leaves a log on disk: by default it sits in the
+**The run log.** Every install and uninstall leaves a log on disk. By default it sits in the
 `nano-installer` directory of the temporary directory, named after the setup image, the moment and
-which task this is, and a silent run names the file with `--log`. It holds the machine, the product
-and the directory, every step the run took and every line a project script wrote. It never sits
-inside the installation, because a failed fresh install removes the directory it was writing into,
-which is exactly when the log is wanted. The wizard puts the path under the error it reports, and a
+which task this is; a silent run names the file with `--log`. It holds the machine, the product and
+the directory, every step the run took, and every line a project script wrote. It never sits inside
+the installation, because a failed fresh install removes the directory the log was writing into, and
+that is exactly when you want it. The wizard puts the path under the error it reports, and a
 windowless run writes it to standard error.
 
 **Custom steps.** If your project ships `scripts/install.rhai` or `scripts/uninstall.rhai`, those
-scripts run instead of the built-in steps, and the engine is embedded in `nano-installer-core`, so
-every stub carries it. Primitives reuse the same deployment, rollback, and manifest code as the
-built-in flow, and an operation ceiling keeps a runaway script from hanging an installation. A
-project that ships `scripts/pages.rhai` hands the page order to its `next_page(from)`, see the
+scripts run instead of the built-in steps. The engine is embedded in `nano-installer-core`, so every
+stub carries it. Primitives reuse the same deployment, rollback, and manifest code as the built-in
+flow, and an operation ceiling keeps a runaway script from hanging an installation. A project that
+ships `scripts/pages.rhai` hands the page order to its `next_page(from)`; see the
 [script API](/SCRIPT_API/).
 
 ## The installer package
 
 A build can also wrap the finished setup in the package an estate deploys: `--msi <file>` writes a
-`.msi` around the setup this build wrote, after the project's own command has had that setup, so the
-image inside the package is the one a machine will install. The package carries the setup as a stream
-of its own and runs that stream from an install action queued into the installation script, with
-`--silent --dir "<location>"`, while the removal action runs the uninstaller the setup deployed. What
-else the package holds is the bookkeeping Windows Installer needs to treat the product as installed.
+`.msi` around the setup this build wrote, and it does that after the project's own command has had
+that setup, so the image inside the package is the one a machine will install. The package carries
+the setup as a stream of its own and runs that stream from an install action queued into the
+installation script, with `--silent --dir "<location>"`; the removal action runs the uninstaller the
+setup deployed. What else the package holds is the bookkeeping Windows Installer needs to treat the
+product as installed.
 
-The package decides where the product goes, because it also has to know where to remove it from:
+The package decides where the product goes, because it has to know where to remove it from as well:
 `INSTALLDIR` is `%ProgramFiles%\<name>` for a setup that asks for administrator rights and
 `%LOCALAPPDATA%\Programs\<name>` otherwise, and an administrator can name another directory on the
 `msiexec` command line. The package writes the directory it really used into a registry value of its
-own, and searches for that value when the product is removed, so a package installed into a directory
-of the caller's choosing is still removed correctly. The product's own registration is the entry
-Windows shows, while the package keeps its own out of that list. A newer package carries the same
-upgrade code as the older release and takes the older product away before it installs the new one,
-which is what makes it an upgrade rather than a second product beside the first. A release cut again
-on the same day keeps those three fields, and Windows Installer does not allow a package with a
-product code and a version it already has to be installed again. That release is a product code of its
-own, and its upgrade search counts the version it names among those to take away, so it removes the
-release before it and installs itself rather than sitting beside it.
+own, and searches for that value when the product is removed, so a package installed into a
+directory of the caller's choosing is still removed correctly. The product's own registration is the
+entry Windows shows, while the package keeps its own out of that list. A newer package carries the
+same upgrade code as the older release and takes the older product away before it installs the new
+one, which is what makes it an upgrade rather than a second product beside the first. A release cut
+again on the same day keeps those three fields, and Windows Installer does not allow a package with
+a product code and a version it already has to be installed again. That release is a product code of
+its own, and its upgrade search counts the version it names among those to take away, so it removes
+the release before it and installs itself rather than sitting beside it.
 
-Two conditions come with that: the wrapped setup has to accept a silent run
-(`advanced.silent_mode_support` and `advanced.uninstall_mode_support`), because the package drives it
-with no window at all, and a project that never declared one is refused a package rather than given
-one that cannot install. And an administrative install (`msiexec /a`) lays the package out without
-running those actions, so it distributes nothing by itself.
+That brings two conditions with it. The wrapped setup has to accept a silent run
+(`advanced.silent_mode_support` and `advanced.uninstall_mode_support`), because the package drives
+it with no window at all, and a project that never declared one is refused a package rather than
+given one that cannot install. And an administrative install (`msiexec /a`) lays the package out
+without running those actions, so it distributes nothing by itself.
 
 ## Tooling
 
@@ -178,11 +182,12 @@ asks Windows for the rights it needs and tells the shell it scales its own pixel
 manifest before the process starts, which is why those settings are resources rather than runtime
 options.
 
-Scaling is declared in two elements: `dpiAware` for the minimum supported version, Windows 8 and 8.1,
-and `dpiAwareness` for Windows 10 1607 and later, set to `PerMonitorV2, PerMonitor`, so that each
-supported release gets the sharpest behaviour it offers. On `WM_DPICHANGED` the runtime lays the page
-out again for the new display rather than letting the shell stretch a bitmap.
+Scaling is declared in two elements: `dpiAware` for the minimum supported version, Windows 8 and
+8.1, and `dpiAwareness` for Windows 10 1607 and later, set to `PerMonitorV2, PerMonitor`, so that
+each supported release gets the sharpest behaviour it offers. On `WM_DPICHANGED` the runtime lays
+the page out again for the new display rather than letting the shell stretch a bitmap.
 
 ## Next stages
 
-Production validation on a real machine running the minimum supported version, plus code signing.
+What remains is production validation on a real machine running the minimum supported version, and
+code signing.

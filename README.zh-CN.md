@@ -4,23 +4,23 @@
 
 <p align="center"><a href="https://github.com/nick2781/nano-installer/actions/workflows/ci.yml"><img src="https://github.com/nick2781/nano-installer/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI 状态"></a></p>
 
-一个项目目录进去，一个安装包 exe 出来。配置、素材、应用文件都放进去，Nano Installer 就把它们打成一个
-Windows 安装包，图标、页面、文案都由你定；不用自己搭服务，用户的机器上也不用先装东西。
+一个项目目录进去，一个安装包 exe 出来。配置、素材和应用文件都放进一个项目目录，Nano Installer
+就把它们打成一个 Windows 安装包。图标、页面、文案都由你定；不用自己搭服务，用户的机器上也不用先装什么。
 
-> **状态：** 可以拿来构建和发布产品。安装包和 MSI 包都没有代码签名，所以 Windows 会提示「未知发布者」；
-> 公开分发前，请在流水线里用 `finalize.installer` 和 `finalize.uninstaller` 自己签。**需要 Windows 7 SP1
-> x64 及以上。** 实机验证过什么、还没覆盖什么，见[当前生产状态](site/src/content/zh-CN/PRODUCTION_STATUS.md)。
+> **状态：** 可以拿来构建和发布产品。**需要 Windows 7 SP1 x64 及以上。** 安装包和 MSI 包都没有
+> 代码签名，所以 Windows 会提示「未知发布者」；公开分发前，请在流水线里用 `finalize.installer` 和
+> `finalize.uninstaller` 自己签。实机验证过什么、还没覆盖什么，见[当前生产状态](site/src/content/zh-CN/PRODUCTION_STATUS.md)。
 
 <p align="center">
 <img src="assets/setup-welcome-zh-CN.png" alt="用 TapTap 示例构建出来的安装包第一页：产品 logo、一句标语、安装选项，以及「立即安装」按钮" width="720">
 </p>
 
-这是 `examples/TapTap` 的第一页，由 `scripts/capture_setup_snapshots.ps1` 构建后拍下来，是运行时真画出来的
-样子，不是效果图。
+这是 `examples/TapTap` 的第一页，由 `scripts/capture_setup_snapshots.ps1` 构建后拍下来。页面是运行时
+真画出来的，不是效果图。
 
 ## 装出第一个安装包
 
-不用先装什么，也不用自己编译：每次[发布](https://github.com/nick2781/nano-installer/releases/latest)都会
+不用先装什么，也不用自己编译。每次[发布](https://github.com/nick2781/nano-installer/releases/latest)都会
 发出构建器、它要用的运行时，还有每个文件一行的摘要。
 
 ```powershell
@@ -29,8 +29,8 @@ Windows 安装包，图标、页面、文案都由你定；不用自己搭服务
 .\nano-installer-native-x64.exe build --project C:\path\to\my-project
 ```
 
-安装包落在项目的 `dist/<installer_name>` 里。想点界面的话，同一次发布里的
-`nano-installer-gui-x64.exe` 走同一套引擎；完整步骤见[快速开始](site/src/content/zh-CN/QUICK_START.md)。
+安装包落在 `dist/<installer_name>` 里。想点界面的话，同一次发布里的 `nano-installer-gui-x64.exe` 走
+同一套引擎；完整步骤见[快速开始](site/src/content/zh-CN/QUICK_START.md)。
 
 ## 它给你什么
 
@@ -61,8 +61,9 @@ MyApp/
   payload/app.7z            你的应用文件，zip 或 7z
 ```
 
-配置里的路径都相对这个目录，工程搬哪儿都能跑。想最快开始，就复制
-[`examples/TapTap`](examples/README.md) 再把里面的东西换掉；要换的是配置的写法，素材本身属于它的权利人。
+配置里的路径都相对这个目录，工程搬到哪儿都能跑。想最快开始，就复制
+[`examples/TapTap`](examples/README.md) 再把里面的东西换掉。要换的是配置的写法，素材本身属于它的
+权利人。
 
 ## 文档
 
@@ -72,20 +73,23 @@ MyApp/
 [可视化构建](site/src/content/zh-CN/GUI.md) &middot; [从 NSIS 迁移](site/src/content/zh-CN/MIGRATION_FROM_NSIS.md)
 
 站点是 **https://nick2781.github.io/nano-installer/**。页面就是 `site/src/content/` 下的 Markdown 文件，
-构建之后成为那个站点，中文页在 [`site/src/content/zh-CN`](site/src/content/zh-CN/) 里。每一页除 HTML 外
-还有一个 Markdown 版本，同一次构建还会写出 `/llms.txt`（给 agent 的索引）和 `/llms-full.txt`（想一次取
-完的读者用）。架构、构建与发布、Windows 兼容性、测试计划、生产状态这些维护者文档在
-[`site/src/content/docs`](site/src/content/docs/) 里。
+中文页在 [`site/src/content/zh-CN`](site/src/content/zh-CN/) 里。每一页除 HTML 外还有一个 Markdown 版本，
+同一次构建还会写出 `/llms.txt`（给 agent 的索引）和 `/llms-full.txt`（想一次取完的读者用）。维护者文档
+在 [`site/src/content/docs`](site/src/content/docs/) 里：架构、构建与发布、Windows 兼容性、测试计划、
+生产状态。
 
 ## 参与、安全、许可
 
-怎么准备一份工作副本、一个改动要过哪些检查，见[贡献指南](CONTRIBUTING.md)；这个仓库守的规矩也在那里，
-包括改动必须经 PR 进入 `main`。[issue 表单](.github/ISSUE_TEMPLATE)会要版本号和运行日志，缺了就得
-多一个来回。安全问题走[私下上报](SECURITY.md)，不要开 issue，那一页也列了哪些是已知的、不算漏洞。
-这里对每个人的要求写在[行为准则](CODE_OF_CONDUCT.md)。Rust 源码是 [MIT 许可](LICENSE)；`examples/TapTap`
-里的商标、图片和文案归易玩（上海）网络科技有限公司所有，不是 MIT 许可，`assets/` 下的截图就来自那个
-示例。
+改动经 PR 进入 `main`。怎么准备一份工作副本、一个改动要过哪些检查，以及这个仓库守的规矩，都写在
+[贡献指南](CONTRIBUTING.md)里。
+
+- [issue 表单](.github/ISSUE_TEMPLATE)会要版本号和运行日志，缺了就得来回一次。
+- 安全问题走[私下上报](SECURITY.md)，不要开 issue；那一页也列了哪些是已知的、不算漏洞。
+- 这里对每个人的要求写在[行为准则](CODE_OF_CONDUCT.md)。
+- Rust 源码是 [MIT 许可](LICENSE)；`examples/TapTap` 里的商标、图片和文案归
+  易玩（上海）网络科技有限公司所有，不是 MIT 许可，`assets/` 下的截图就来自那个示例。
 
 ## 代码签名政策
 
-本项目的发布目前没有签名：面向开源项目的免费证书计划拒绝了这个申请，因为它只给已经有可验证公信力的项目签名。会签哪些文件、维护者是谁、软件与网络的关系，都写在 [CODE_SIGNING.md](CODE_SIGNING.md) 里。
+本项目的发布目前没有签名。面向开源项目的免费证书计划拒绝了这个申请，因为它只给已经有可验证公信力的
+项目签名。会签哪些文件、维护者是谁、软件与网络的关系，都写在 [CODE_SIGNING.md](CODE_SIGNING.md) 里。

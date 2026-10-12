@@ -1,19 +1,21 @@
 ---
 title: 从 NSIS 迁移
-description: 一份 NSIS 脚本既是配置，也是程序。
+description: 把每条 NSIS 指令、宏和插件对应到顶替它的 Nano Installer 配置项、页面或脚本原语，并看清哪些没有对应物。
 slug: MIGRATION_FROM_NSIS
 sidebar:
   order: 900
 ---
 
-一份 NSIS 脚本既是配置，也是程序。`Section` 块按顺序跑，`File` 复制文件，`WriteRegStr` 写注册表，
-用户看到的每一屏也都由 NSIS 运行时按宏画出来。这些事在 NSIS 里混在一起，Nano Installer 就把它们分成
-三件：产品是什么、装到哪里；页面长什么样；这一次运行做什么。最后一件交给你写的一小段 Rhai，所以
-迁移大多不是重写，只是把每一行搬到今天管它的地方。
+迁移大多不是重写，只是把每一行搬到今天管它的地方，下面的表就说明每一行搬去哪儿。少数几行在这里没有
+对应物，比如现成的 NSIS 插件、`SetShellVarContext all`、具名的安装类型、脚本里直接操作控件的写法，它们
+都收在后面那一节，那一节会说清该换成什么做法。之所以能这样搬，是因为一份 NSIS 脚本既是配置，也是
+程序：`Section` 块按顺序跑，`File` 复制文件，`WriteRegStr` 写注册表，用户看到的每一屏也都由 NSIS
+运行时按宏画出来。这些事在 NSIS 里混在一起，Nano Installer 把它们分成三件：产品是什么、装到哪里；
+页面长什么样；这一次运行做什么。最后一件交给你写的一小段 Rhai。
 
-这一页就是那张对照表，而且它不只是给人看的说明：[`scripts/check_nsi_migration.ps1`](https://github.com/nick2781/nano-installer/blob/main/scripts/check_nsi_migration.ps1)
-读的就是这张表。遇到本页没有收录的写法，脚本照实报 `unknown`，不去猜；中英两份表还得逐行对得上，
-对不上检查直接失败。
+本页这几张表就是 [`scripts/check_nsi_migration.ps1`](https://github.com/nick2781/nano-installer/blob/main/scripts/check_nsi_migration.ps1)
+真正读的那一份，不是写给人看的说明。遇到本页没有收录的写法，脚本照实报 `unknown`，不去猜；中英两份
+表还得逐行对得上，对不上检查直接失败。
 
 ## 工程长什么样
 
@@ -25,13 +27,13 @@ sidebar:
 | `MUI_PAGE_*` 宏 | 自己写的页面，列在 `wizard.pages` 与 `wizard.uninstall_pages` 里 |
 | `LangString` 与 `LoadLanguageFile` | `locales/<locale>.json` 与 `localization.supported_locales` |
 | `MUI_LANGUAGE` | 同上 |
-| `Uninstall` 段里一条条删掉安装时写的东西 | 机器上的 manifest，安装写下的每个文件、每个快捷方式、每个注册表值都在里面，卸载按记录收回 |
+| `Uninstall` 段里一条条删掉安装时写的东西 | 机器上的 manifest 记着安装写下的每个文件、每个快捷方式和每个注册表值，卸载按这份记录收回 |
 | `!finalize` 与 `!uninstfinalize` | `finalize.installer` 与 `finalize.uninstaller`，还是这两个钩子、同一件事 |
 | 让插件去做 NSIS 做不到的事 | 脚本里的原语、声明出来的依赖、`run_command`，或者自己按[插件 ABI](/zh-CN/PLUGIN_API/) 写一个插件、由脚本调用 |
 
-有两件事过不来，早点决定为好。一是 `Uninstall` 段不用再手写，因为清单文件知道你装了什么；靠人维护
-一张删除清单，产品早晚会在用户机器上留下垃圾。二是 `SetShellVarContext all` 没有对应物，快捷方式
-建在运行安装包的那个账户下，见下面的表。
+有两件事过不来，早点决定为好。一是手写删除的 `Uninstall` 段：它不用再写了，因为清单文件知道你装了什么，
+而靠人维护一张删除清单，产品早晚会在用户机器上留下垃圾。二是 NSIS 的 `SetShellVarContext all`，它在这里
+没有对应物，所以快捷方式建在运行安装包的那个账户下，见下面的表。
 
 ## 先让检查器过一遍脚本
 
@@ -39,7 +41,7 @@ sidebar:
 .\scripts\check_nsi_migration.ps1 -Script .\legacy.nsi
 ```
 
-它逐行读脚本，也读旁边被 `!include` 进来的文件。每条语句变成什么，它都印出来：
+它逐行读脚本，连同旁边被 `!include` 进来的文件，然后把每条语句变成什么印出来：
 
 ```
 NSIS migration report for D:\src\legacy.nsi
@@ -70,21 +72,21 @@ NSIS migration report for D:\src\legacy.nsi
   ...
 ```
 
-只要报告出得来，退出码就是 0，不管它写了什么——这份报告是给你读的，不是一道闸。想让它当闸用，就加
+这份报告是给你读的，不是一道闸，所以只要报告出得来，退出码就是 0，不管它写了什么。想让它当闸用，就加
 `-FailOnUnknown`，本仓库的 CI 正是这么跑两份样例的。两份样例里，`legacy.nsi` 是一个产品的安装脚本，
 而 `instructions.nsi` 把 NSIS 文档里的每条指令、每个属性、每个自带头文件的宏各写一行。前者拿一份真实
-脚本较真这张表，后者拿语言本身较真——NSIS 有、表里没有的写法当场失败，不会再印一行 `unknown` 让你去猜。
+脚本较真这张表，后者拿语言本身较真：NSIS 有、表里没有的写法当场失败，不会再印一行 `unknown` 让你去猜。
 
-下面表里的判定词就是上面那五个：`direct` 是配置项或页面元素直接就能做，`script` 是
-`scripts/install.rhai` 或 `scripts/uninstall.rhai` 里的某个原语。`manual` 则是没有对应物、得按本页说的
+下面表里的判定词就是上面那五个。`direct` 是配置项或页面元素自己就能做，`script` 是
+`scripts/install.rhai` 或 `scripts/uninstall.rhai` 里的某个原语。`manual` 是没有对应物、得按本页说的
 另想办法，`none` 是构建期或纯外观、没有要迁移的东西，而 `unknown` 是这一页还没收录。
 
 ## 对照表
 
-一个命令有多种写法时，共用一行；名字末尾的 `*` 表示后面接什么都算，所以 `MUI_PAGE_*` 接住了那些没有
-单独一行的 MUI 页面。NSIS 自带头文件里的宏，按脚本调用它的那个名字收录，所以 `${GetSize}` 与 `${StrStr}`
-走的就是 `GetSize` 与 `StrStr` 那两行——`${...}` 不算名字的一部分。标号（`done:`）是一个位置，不是一条
-语句，而跳到它的那些跳转由 Rhai 自己的流程控制顶替，所以检查器报成 `none`。
+一个命令有多种写法时，共用一行；名字末尾的 `*` 表示后面接什么都算，`MUI_PAGE_*` 就是这样接住了那些
+没有单独一行的 MUI 页面。NSIS 自带头文件里的宏，按脚本调用它的那个名字收录，所以 `${GetSize}` 与
+`${StrStr}` 走的就是 `GetSize` 与 `StrStr` 那两行：`${...}` 不算名字的一部分。标号（`done:`）标的是一个
+位置，不是一条语句，而跳到它的那些跳转由 Rhai 自己的流程控制顶替，所以检查器报成 `none`。
 
 ### 产品与它构建出来的文件
 
@@ -281,24 +283,25 @@ NSIS migration report for D:\src\legacy.nsi
 
 ## 没有对应物的那些，以及怎么办
 
-费时间的正是这几条，值得先看。
+费时间的正是这几条，所以先看它们，再看后面的表。
 
-- **插件。** 现在有插件 ABI 了，但它不是 NSIS 那一套：插件是按
-  [`include/nano_plugin.h`](https://github.com/nick2781/nano-installer/blob/main/include/nano_plugin.h) 编出来的 64 位 DLL，像工程资源一样进安装包，
-  由脚本用 `plugin_call("dll::function", [...])` 调用。现成的 NSIS 插件加载不了，因为它们是 32 位映像，
-  还要通过 `extra_parameters` 回调 NSIS 自己的运行时，所以 `nsDialogs`、`nsisXML`、`InetLoad`、
-  `nsis7z` 这些要么重写，要么换掉。好在它们做过的事大多本来就有对应物：用 `nsDialogs` 搭出来的页面，
-  改写成 `layouts/` 里的一页，行为还要看用户怎么选时，再写一个 `scripts/pages.rhai` 的 `next_page(from)`。
-  下载改成 `dependencies.items` 里带 `sha256` 的一条，或者脚本里的 `download_file_with_hash`，而解压
-  归档则改成应用文件或某个组件。剩下那些没有对应物的，才是自己写插件的用处。
+- **插件。** 现成的 NSIS 插件在这里加载不了，因为它是 32 位映像，还要通过 `extra_parameters` 回调
+  NSIS 自己的运行时。这里有一套插件 ABI，但不是 NSIS 那一套：插件是按
+  [`include/nano_plugin.h`](https://github.com/nick2781/nano-installer/blob/main/include/nano_plugin.h)
+  编出来的 64 位 DLL，像工程资源一样进安装包，由脚本用 `plugin_call("dll::function", [...])` 调用。
+  所以 `nsDialogs`、`nsisXML`、`InetLoad`、`nsis7z` 这些要么重写，要么换掉；好在它们做过的事大多本来
+  就有对应物：用 `nsDialogs` 搭出来的页面，改写成 `layouts/` 里的一页，行为还要看用户怎么选时，再写一个
+  `scripts/pages.rhai` 的 `next_page(from)`。下载改成 `dependencies.items` 里带 `sha256` 的一条，或者
+  脚本里的 `download_file_with_hash`，而解压归档则改成应用文件或某个组件。剩下那些没有对应物的，才是
+  自己写插件的用处。
 - **`SetShellVarContext all`。** 快捷方式建在运行安装包的那个账户下，所以原本写全局快捷方式的安装包
-  得另找办法：就算 `require_admin` 装了全机器用的程序，快捷方式还是写在跑这个安装包的那个账户下。
+  得另找办法。就算用 `require_admin` 装了全机器用的程序，快捷方式还是写在跑这个安装包的那个账户下。
 - **安装类型。** `InstType`、`SectionInstType`、`SectionSetFlags` 这一族没有对应物，装什么由页面上的
   复选框当场决定：脚本能问（`is_component_selected`、`selected_components`），却勾不动。原来靠安装类型
   改组件勾选状态的安装包，得把这个决定搬到页面上，交给用户——一个 `RadioButton` 组可以用
   `enabled-when="mode:full"` 管住某个 `Button`，但用户眼前的复选框，脚本改不了、页面也不替它改。
 - **控件句柄。** `GetDlgItem`、`SendMessage`、`ShowWindow`、`EnableWindow` 是伸进窗口直接操作控件的，
-  而这里没有句柄可拿：控件由页面声明，长什么样、什么时候能用，由布局说了算。
+  而这里没有句柄可拿：控件由页面声明，长什么样、什么时候能用，则由布局说了算。
 - **接受许可协议。** `LicenseForceSelection` 是一个页面元素，不是一个设置：许可协议那一页放一个
   `Checkbox`，继续按钮上写 `enabled-when`，就是 MUI 许可协议页原来把住的那道门。
 - **重启机器。** 这里没有任何东西会重启机器：依赖答 3010 或 1641 就算装好了，继续往下走，而产品
@@ -312,8 +315,8 @@ NSIS migration report for D:\src\legacy.nsi
 
 ## 一个完整的例子
 
-`examples/nsis-migration/` 里放着一份有代表性的 NSIS 脚本，还有它迁移之后的工程；旁边那份
-`instructions.nsi` 则是同一张表对着语言本身的较真——NSIS 文档里的每条指令、每个属性、每个自带头文件的
+`examples/nsis-migration/` 里放着一份有代表性的 NSIS 脚本，还有它迁移之后的工程。旁边那份
+`instructions.nsi` 则是同一张表对着语言本身的较真：NSIS 文档里的每条指令、每个属性、每个自带头文件的
 宏都占一行。
 
 ```powershell
@@ -335,13 +338,13 @@ NSIS migration report for D:\src\legacy.nsi
 - `scripts/uninstall.rhai`：一次 `run_tracked_uninstall` 收走清单文件记下的一切，再清掉产品自己
   往自己目录里写的那两处。
 
-缩得最多的是卸载那段：八条 `Delete`、`RMDir`、`DeleteRegKey` 变成一次调用，因为安装时已经把写下的
-东西记下来了，所以这一步值得最先做——靠人维护删除清单的产品，等哪天新版本多装了一个文件，就会把它
+缩得最多的是卸载那段，因为安装时已经把写下的东西记下来了：八条 `Delete`、`RMDir`、`DeleteRegKey`
+变成一次调用。所以这一步值得最先做——靠人维护删除清单的产品，等哪天新版本多装了一个文件，就会把它
 留在用户机器上。
 
 ## 迁移完就自带的东西
 
-这套安装器本来就会做那些 NSIS 脚本通常手写的事。所以下面这些不必迁移：
+这套安装器本来就会做那些 NSIS 脚本通常手写的事，所以下面这些不必迁移：
 
 - 「程序和功能」里的卸载条目（显示名、版本、发布者、图标、静默卸载命令、占用大小、`NoModify`、`NoRepair`）按
   `registry.uninstall_key` 与工程自己的信息写全。

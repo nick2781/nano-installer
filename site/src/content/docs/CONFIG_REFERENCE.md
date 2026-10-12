@@ -1,14 +1,14 @@
 ---
 title: Configuration reference
-description: 'This page lists the settings that really change what your installer does: a key this build does not read fails the build, rather than being quietly ignored, because what you write is what your setup does.'
+description: '`installer_config.json` carries the settings that change what your installer does, and this reference gives the type, the default and the effect of each one.'
 slug: CONFIG_REFERENCE
 sidebar:
   order: 1000
 ---
 
-Every project has one `installer_config.json`. This page lists the settings that really change what
-your installer does: a key this build does not read fails the build, rather than being quietly
-ignored, because what you write is what your setup does. The keys it refuses are at the end.
+Every project has one `installer_config.json`. This page lists the settings that change what your
+installer does. A key the build does not read fails the build rather than being quietly ignored, so
+the setup does exactly what you write. The keys the build refuses are listed at the end.
 
 ## Product identity
 
@@ -23,7 +23,7 @@ ignored, because what you write is what your setup does. The keys it refuses are
 | `project.copyright` | string | Copyright text in file properties |
 
 If you leave `project.file_version` out, the Windows version resource uses `project.version`, and
-that value must then be plain numbers.
+that value has to be plain numbers then.
 
 ## Output files
 
@@ -39,16 +39,16 @@ You write these paths relative to the project folder.
 ## Commands that run on the finished build
 
 Once the setup and the embedded uninstaller are written, the builder can hand each file to a command
-of the project's own; when the build was asked for `--msi`, the installer package an estate deploys
-gets the same treatment. Signing is what this is usually for, and the first two settings are NSIS's
-`!finalize` and `!uninstfinalize`. The package needs signing too, because Group Policy and Intune
-deploy that file, and a machine checks its signature.
+your project provides. When you build with `--msi`, the installer package gets the same treatment.
+Signing is the usual reason to do this, and the first two settings are NSIS's `!finalize` and
+`!uninstfinalize`. The package needs signing too, because Group Policy and Intune deploy that file
+and the machine checks its signature.
 
 | Setting | Type | Effect |
 | --- | --- | --- |
-| `finalize.uninstaller` | string | Command to run on the uninstaller while it is still a file of its own, before the setup embeds it |
+| `finalize.uninstaller` | string | Command to run on the uninstaller while it is still a separate file, before the setup embeds it |
 | `finalize.installer` | string | Command to run on the setup once it is complete |
-| `finalize.package` | string | Command to run on the installer package once it is written; only a build asked for `--msi` writes one |
+| `finalize.package` | string | Command to run on the installer package once it is written; only a build that asked for `--msi` writes one |
 
 `%1` in the command stands for the full path of that file:
 
@@ -61,25 +61,27 @@ deploy that file, and a machine checks its signature.
 ```
 
 Each command runs on its own, and every line it prints goes into the build log; a non-zero exit code
-stops the build. A refused uninstaller never reaches the setup, a refused setup is removed from disk,
-and a refused package is removed too, so the next step of a pipeline does not pick it up. Signing
-rewrites the file, which is why the size the build reports is measured on disk after the command.
+stops the build. An uninstaller that fails never reaches the setup, a setup that fails is removed
+from disk, and a package that fails is removed as well, so the next step of a pipeline never picks
+it up. Signing rewrites the file, which is why the build measures the reported size on disk after
+the command finishes.
 
-The builder signs nothing itself and touches no certificate: the certificate, the timestamp service
-and the key ring belong to the pipeline. A setting holding nothing but whitespace is refused, or a
-project would believe its setup was signed.
+The builder signs nothing itself and never touches a certificate, because the certificate, the
+timestamp service and the key ring all belong to the pipeline. A setting whose value is empty or
+holds nothing but whitespace is refused, so a project cannot believe its setup was signed when it
+was not.
 
 ## Install behaviour
 
 | Setting | Type | Effect |
 | --- | --- | --- |
 | `install.default_path` | string | Initial install directory shown on the first page |
-| `install.required_space_mb` | integer | Space needed, in MiB: the install stops before writing anything when the destination drive has less free space, and an XML `value-source` can show the same number |
+| `install.required_space_mb` | integer | Space the install needs, in MiB. The install stops before writing anything when the destination drive has less free space, and an XML `value-source` can show the same number |
 | `install.exe_name` | string | The application EXE your application files must contain; if it is missing, the install stops and deploys nothing |
 | `install.require_admin` | bool | Ask Windows for administrator rights before the setup starts, defaults to `false` |
 | `install.kill_process_on_install` | bool | Close running copies of the product before installing; failure aborts the install |
 | `install.kill_process_on_uninstall` | bool | Close running copies of the product before uninstalling |
-| `install.detect_running_process` | bool | Combined with the two switches above: any of them closes the process |
+| `install.detect_running_process` | bool | Combined with the two switches above: any of the three set to `true` makes the installer close the process |
 | `registry.uninstall_key` | string | Where the uninstall entry in Programs and Features lives, `HKCU` or `HKLM` only; an existing key is never overwritten |
 | `links.*` | string | URLs a layout opens through `[label](key)` markup or `action="open_url:key"` |
 
@@ -96,9 +98,9 @@ project would believe its setup was signed.
 | `autostart.registry_key` | string | Autostart key, defaults to `HKCU\...\CurrentVersion\Run` |
 | `autostart.registry_value_name` | string | Autostart value name, defaults to `project.name` |
 
-Whether the checkboxes exist is up to your layout: with no `chkShotcut` or `chkAutoRun`, the installer
-uses the defaults above. It records both entries while installing, so an uninstall puts the machine
-back the way it was.
+Whether the checkboxes exist is up to your layout: with no `chkShotcut` or `chkAutoRun`, the
+installer uses the defaults above. It records both entries while installing, so an uninstall puts
+the machine back the way it was.
 
 ## Files, languages, and pages
 
@@ -117,10 +119,10 @@ back the way it was.
 | `wizard.uninstall_pages[].layout` | string | Uninstall pages, walked the same way |
 | `wizard.uninstall_pages[].role` | string | The same two roles for the uninstaller |
 
-Without a `role`, the second page reports and the last one finishes, which is what the three pages an
-ordinary project declares mean. A page may also carry `id` and `title`: a page hook addresses a page
-by its `id`, which has to be unique inside one list, and two pages answering to one id are refused at
-build time, while `title` is the heading a report shows it under.
+Without a `role`, the second page reports progress and the last one finishes. That is what the three
+pages an ordinary project declares come down to. A page can also carry `id` and `title`: a page hook
+addresses a page by its `id`, which has to be unique inside one list, and the build refuses two
+pages that answer to one id. `title` is the heading a report shows the page under.
 
 ## Interface
 
@@ -131,20 +133,20 @@ build time, while `title` is the heading a report shows it under.
 | `ui.dialog_layout` | string | Layout used for the confirmation dialog, defaults to `layouts/msgBox.xml` |
 
 The builder also writes `ui.dpi_aware` into the setup's application manifest file, so Windows knows
-the window scales itself, rather than rescaling a blurry bitmap of it. With it on, the manifest file
+the window scales itself instead of stretching a blurry bitmap of it. With it on, the manifest file
 asks for per-monitor awareness: move the window onto a display with a different scaling factor and
-the runtime lays it out again for that display, so text and artwork stay sharp. With it off the
+the runtime lays it out again for that display, so text and artwork stay sharp. With it off, the
 manifest file declares `unaware`, and the shell scales the window instead.
 
 `ui.dpi_threshold` decides when the runtime prefers `@2x` artwork. It looks only at the DPI in
 effect, not at the display, so moving the window to another display makes it decide again.
 
-`ui.dialog_layout` names the layout the runtime draws inside the window: questions such as "exit the
-installer?", notices the user has to acknowledge, and what a project script says through
-`show_message`, `show_error` and `ask_yes_no` are all drawn with it, so the dialog wears the product's
-own skin and cannot end up behind the installer. If your project ships no such layout, there is no
-question at all: the close button exits immediately, and a script's message falls back to a system
-message box. See [page layout](/XML_LAYOUT_GUIDE/#dialogs).
+`ui.dialog_layout` names the layout the runtime draws inside the window. Questions such as "exit the
+installer?", notices the user has to acknowledge, and anything a project script says through
+`show_message`, `show_error` and `ask_yes_no` all use it, so the dialog wears the product's own skin
+and cannot end up behind the installer. If your project ships no such layout, the close button exits
+without asking, and a script's message falls back to a system message box. See
+[page layout](/XML_LAYOUT_GUIDE/#dialogs).
 
 ## Administrator rights
 
@@ -160,14 +162,14 @@ message box. See [page layout](/XML_LAYOUT_GUIDE/#dialogs).
   choose it for a per-user install under `%LOCALAPPDATA%`.
 
 The builder generates the embedded uninstaller from the same configuration, so it asks for the same
-level, or the uninstall entry in Programs and Features could not undo an elevated install.
+level. Otherwise, the uninstall entry in Programs and Features could not undo an elevated install.
 
 ## User data on uninstall
 
-`uninstall.data_paths` lists the folders your product owns, and the uninstaller deletes them only when
-the user clears the keep-data checkbox. It ignores entries that do not expand to a location under
-`%APPDATA%` or `%LOCALAPPDATA%`, so unrelated files are never removed, and with no `chkReserveData` in
-your layout, user data is always kept.
+`uninstall.data_paths` lists the folders your product owns, and the uninstaller deletes them only
+when the user clears the keep-data checkbox. It ignores entries that do not expand to a location
+under `%APPDATA%` or `%LOCALAPPDATA%`, so unrelated files are never removed, and with no
+`chkReserveData` in your layout, user data is always kept.
 
 ```json
 "uninstall": {
@@ -183,8 +185,8 @@ detects the format from the file signature, not the extension: `PK` selects the 
 
 ## Components
 
-`resources.payload_file` is the base set of application files every run installs; to let the user pick
-part of the product as well, cut it into components with `components.items`:
+`resources.payload_file` is the base set of application files that every run installs. To let the
+user choose part of the product as well, cut it into components with `components.items`:
 
 ```json
 "components": {
@@ -201,28 +203,29 @@ part of the product as well, cut it into components with `components.items`:
 | `components.items[].id` | string | Component name; a checkbox of the same id on a page chooses it, and a script asks with `is_component_selected()` |
 | `components.items[].payload` | string | The component's own ZIP or 7z archive |
 | `components.items[].default` | bool | Whether it installs when the page has no such checkbox, a silent run included; defaults to `false` |
-| `components.items[].required` | bool | A required component cannot be cleared on the page and installs either way; defaults to `false` |
+| `components.items[].required` | bool | A required component cannot be unchecked on the page and installs either way; defaults to `false` |
 
-Whether a component installs is decided in this order: `required` installs it whatever else says; a
-checkbox of its id on the page answers for it, written as in the
-[page layout](/XML_LAYOUT_GUIDE/#scrolling-containers); and a page without that checkbox lets
-`default` answer, a silent run included. One setup can install different things in a window and under
+The installer decides whether a component installs in this order. `required` installs it whatever
+else says. A checkbox with its id on the page answers for it, written as in the
+[page layout](/XML_LAYOUT_GUIDE/#scrolling-containers). A page without that checkbox lets `default`
+answer, a silent run included. One setup can install different things in a window and under
 `--silent`, which is what `default` is for.
 
-Components are the parts beside the base application files, so every component's archive has to match
-the same format: one runtime unpacks the whole setup, and mixing ZIP with 7z fails the build. At install
-time the base set lands first and the components follow into the same directory, and two archives that
-carry one relative path fail there and then, rather than overwriting each other in the order the
-project declares them. The build also refuses a component without an `id` or a `payload`, one whose
-`id` or `payload` repeats another's, one whose `payload` is `resources.payload_file`, and one that
-writes `required: true` beside `default: false`, since a required component never reads the default.
+Components are the parts beside the base application files, so every component's archive has to
+match the same format: one runtime unpacks the whole setup, and mixing ZIP with 7z fails the build.
+At install time the base set lands first and the components follow into the same directory, and two
+archives that carry one relative path fail right away, rather than overwriting each other in the
+order the project declares them. The build also refuses a component without an `id` or a `payload`,
+one whose `id` or `payload` repeats another's, one whose `payload` is `resources.payload_file`, and
+one that writes `required: true` beside `default: false`, since a required component never reads the
+default.
 
 ## Dependencies
 
-The VC++ runtimes, the WebView2 runtime, a .NET Framework version: these are not part of the product,
-and they are installed once on the machine and shared by everything on it. `dependencies.items`
-declares them: how to tell whether the machine has one, and which program puts it there when it does
-not.
+The VC++ runtimes, the WebView2 runtime, a .NET Framework version: none of these are part of the
+product. They are installed once on the machine and shared by everything on it. `dependencies.items`
+declares them: how to tell whether the machine already has one, and which program installs it when
+it does not.
 
 ```json
 "dependencies": {
@@ -266,52 +269,53 @@ not.
 
 `detect` is written one of two ways, and one rule answers one question:
 
-- `{ "file": "%ProgramFiles(x86)%\\...\\msedgewebview2.exe" }`: the machine has it when this file
-  is there; environment variables in the path are expanded first.
-- `{ "registry": { ... } }`: read the registry, where `key` is the key to open, under `HKCU` or
-  `HKLM`. A key may also name a view: `HKLM32` is the copy of `HKLM` a 32-bit program sees, `HKLM64`
-  the copy a 64-bit program reads, which is how a rule asks after a runtime installed for the other
-  width. `name` is the value to read; without one, the rule only asks whether the key exists; with a
-  `name`, the value can also be compared: `equals` is an exact match, `at_least` compares the
-  dot-separated numbers. The value is read as text whether the machine stored text or a dword, so the
-  `1` the VC++ runtimes write, the version the WebView2 runtime writes and the number .NET Framework
-  records are all comparable. A missing part in `at_least` counts as zero, which makes `14.0.1` and
-  `14.0.1.0` the same version.
+- `{ "file": "%ProgramFiles(x86)%\\...\\msedgewebview2.exe" }`: the machine has the dependency when
+  this file exists. Environment variables in the path are expanded first.
+- `{ "registry": { ... } }`: the rule reads the registry, where `key` is the key to open under `HKCU`
+  or `HKLM`. A key can also name a view: `HKLM32` is the copy of `HKLM` that a 32-bit program sees,
+  while `HKLM64` is the copy a 64-bit program reads, which is how a rule asks after a runtime
+  installed for the other width. `name` is the value to read. Without one, the rule only asks whether
+  the key exists; with a `name`, it can also compare the value: `equals` matches the text exactly, and
+  `at_least` compares the dot-separated numbers. The value is read as text whether the machine stored
+  text or a DWORD, so the `1` the VC++ runtimes write, the version the WebView2 runtime writes and the
+  number .NET Framework records are all comparable. A missing part in `at_least` counts as zero, which
+  makes `14.0.1` and `14.0.1.0` the same version.
 
-`payload` and `download` are alternatives: a bundled installer is collected into the setup by the
+`payload` and `download` are alternatives. A bundled installer is collected into the setup by the
 build and unpacked to a temporary directory before it runs, while a download is fetched as the setup
 runs and checked against `sha256` before anything is executed. A file that does not match is deleted
-rather than run, which is why `sha256` is required; compute it with something like
+rather than run, so `sha256` is required. Compute it with something like
 `certutil -hashfile <file> SHA256`. A URL whose last segment is an executable keeps that name, and
-anything else is named after the dependency's id with an `.exe` suffix, because Windows only runs what
-it recognizes as a program.
+anything else is named after the dependency's id with an `.exe` suffix, because Windows only runs
+what it recognizes as a program.
 
-Dependencies are handled before the application files: the built-in flow checks each one, installs the
-ones that are missing, and unpacks only once they are all in place. A dependency that cannot be
-installed stops the install when the project marks it `required`, and says why; nothing of the product
-has been written at that point, while one that is not required is noted in the log and the run carries
-on. An installer that reports `1638`, meaning a newer version is already installed, or `3010`/`1641`,
-meaning it worked and Windows wants a restart, counts as success, and any other non-zero exit code is a
-failure. The status text the built-in flow publishes comes from the locale key
-`status.dependencies`.
+The built-in flow handles dependencies before the application files: it checks each one, installs
+the ones that are missing, and unpacks only once they are all in place. A dependency that cannot be
+installed stops the install when the project marks it `required`, and says why; nothing of the
+product has been written at that point. One that is not required is noted in the log, and the run
+carries on. An installer that reports `1638` counts as success, which means a newer version is
+already installed, and so do `3010` and `1641`, which mean it worked and Windows wants a restart.
+Any other non-zero exit code is a failure. The status text the built-in flow publishes comes from
+the locale key `status.dependencies`.
 
-A dependency is not uninstalled with the product, because it belongs to the machine, and other
+A dependency is not uninstalled with the product, because it belongs to the machine and other
 products use it too.
 
-A project that ships `scripts/install.rhai` keeps the built-in flow out of the way: the script decides
-when to check and whether to install, through `dependency_installed()` and `install_dependency()`,
-which read the same declaration. See the [script API](/SCRIPT_API/#dependencies-and-downloads).
+A project that ships `scripts/install.rhai` keeps the built-in flow out of the way: the script
+decides when to check and whether to install, through `dependency_installed()` and
+`install_dependency()`, which read the same declaration. See the
+[script API](/SCRIPT_API/#dependencies-and-downloads).
 
 ## Custom install and uninstall steps
 
-Add `scripts/install.rhai` or `scripts/uninstall.rhai` to replace the built-in steps, see the
-[script API](/SCRIPT_API/). A `scripts/pages.rhai` replaces no step: it decides which page follows
-each Next, see [page hooks](/SCRIPT_API/#page-hooks).
+Add `scripts/install.rhai` or `scripts/uninstall.rhai` to replace the built-in steps; see the
+[script API](/SCRIPT_API/). A `scripts/pages.rhai` replaces no step, because it decides which page
+follows each Next. See [page hooks](/SCRIPT_API/#page-hooks).
 
 ## Unattended runs
 
-You can run your install or uninstall with no window at all, which is what a software deployment tool
-needs, provided your project says so first:
+You can run your install or uninstall with no window at all, which is what a software deployment
+tool needs, provided your project says so first:
 
 ```json
 "advanced": {
@@ -333,12 +337,12 @@ uninst.exe --silent
   because a dialog would wait for a click that never comes.
 - `--dir` chooses the install directory for that run and wins over `install.default_path`. Both
   accept environment variables, expanded before use.
-- `--log <file>` chooses the file this run logs to. Without it the log lands in the `nano-installer`
-  directory of the temporary directory, named after the setup image, the moment, and which task this
-  is. It holds the machine, the product and the directory, every step the run took, and every line a
-  project script wrote. A run that fails writes the log's whole path to standard error, which is the
-  path an administrator collects the file from. Unattended deployments usually point it at a place
-  they gather logs from anyway.
+- `--log <file>` chooses the file this run logs to. Without it, the log lands in the `nano-installer`
+  directory under the temporary directory, named after the setup image, the moment, and which task
+  this is. It holds the machine, the product and the directory, every step the run took, and every
+  line a project script wrote. A run that fails writes the log's whole path to standard error, which
+  is the path an administrator collects the file from. Unattended deployments usually point it at a
+  place they gather logs from anyway.
 - The setup refuses any other option, so a mistyped flag stops the run instead of installing into the
   configured default.
 - `silent_mode_support` and `uninstall_mode_support` are separate, so a product can allow unattended
@@ -346,8 +350,8 @@ uninst.exe --silent
 - Because there are no checkboxes to read, the installer follows `shortcuts.desktop_default` and
   `autostart.default`, and user data is always kept on uninstall.
 
-A silent run reports progress to whoever started it: it writes to the console instead of painting
-a window, and a failure sets a non-zero exit code, with the reason on standard error.
+A silent run reports progress to whoever started it: it writes to the console instead of painting a
+window, and a failure sets a non-zero exit code, with the reason on standard error.
 
 ## Minimum configuration
 
@@ -383,9 +387,9 @@ a window, and a failure sets a non-zero exit code, with the reason on standard e
 
 ## Refused settings
 
-A setting that is accepted and then ignored is worse than one that is missing: the project reads as if
-it worked, but the setup ships without it. That is why the build refuses a configuration holding a key
-it does not read, and names the setting that does the job instead.
+A setting that is accepted and then ignored is worse than one that is missing, because the project
+reads as if it worked while the setup ships without it. That is why the build refuses a
+configuration holding a key it does not read, and names the setting that does the job instead.
 
 | Refused key | What to do instead |
 | --- | --- |
@@ -408,7 +412,7 @@ under [unattended runs](#unattended-runs).
 
 Any other key inside the sections above is refused as well, so a misspelled setting fails the build
 instead of doing nothing. Two things are outside that rule: `links` is a table your project names
-itself, while a section this build does not know at all is left alone, because a script reads it back
+itself, and a section this build does not know at all is left alone, because a script reads it back
 through `get_config_value`.
 
 See [production status](/PRODUCTION_STATUS/) for the full picture.
