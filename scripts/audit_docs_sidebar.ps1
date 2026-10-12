@@ -1,4 +1,4 @@
-﻿<#
+<#
     Holds the sidebar and the two content trees to each other.
 
     A page reaches a reader through the sidebar in site/astro.config.ts. The
@@ -9,26 +9,26 @@
     `zh-CN` href has one -- so that is how this audit tells the two groups apart.
 
     Nimbus registers two authoring rules for this -- `nimbus/sidebar-entry` and
-    `nimbus/orphan-page` -- and answers for neither here. Neither is in the
+    `nimbus/orphan-page` -- and answers for neither here: neither is in the
     CLI's implemented rule set at the version this site installs
     (@cloudflare/nimbus-docs 0.17.0: `nimbus-docs lint --rule nimbus/sidebar-entry`
-    refuses the code), and the walk every authoring rule is handed is `.mdx`-only
-    in any case: `findMdxFiles()` in dist/cli/index.js is
-    `walkFilesSync(dir, { extensions: [".mdx"] })`, and both `lint` and `check`
-    call it. This site's pages are `.md`, so no authoring rule opens one and the
-    sidebar is held to nothing upstream. This audit is that coverage for a
-    Markdown site. It reads site/astro.config.ts, the two content trees and
-    nothing else, so it needs no build and no toolchain, and it runs on the pull
-    request as well as on the push that publishes. Its other half,
-    scripts/audit_docs_links.ps1, answers the `nimbus/internal-link` rule -- which
-    is implemented, and equally blind to these pages -- over the build's output,
-    because an anchor can only be checked once the headings have been rendered.
+    refuses the code). The pages of this site are `.mdx`, which is what the walk
+    every authoring rule is handed reads: `findMdxFiles()` in dist/cli/index.js
+    is `walkFilesSync(dir, { extensions: [".mdx"] })`, and both `lint` and `check`
+    call it. So the rules open these pages now, and the sidebar is still held to
+    nothing upstream, because the two rules that would cover it are the two the
+    CLI does not implement. This audit is that coverage. It reads
+    site/astro.config.ts, the two content trees and nothing else, so it needs no
+    build and no toolchain, and it runs on the pull request as well as on the
+    push that publishes. Its other half, scripts/audit_docs_links.ps1, answers the
+    `nimbus/internal-link` rule over the build's output, because an anchor can
+    only be checked once the headings have been rendered.
 
     Both directions fail here:
 
-      - every site/src/content/docs/*.md and site/src/content/zh-CN/*.md has to
-        be listed in its own language's groups, or nothing in the sidebar leads
-        to it;
+      - every Markdown page anywhere under site/src/content/docs and
+        site/src/content/zh-CN has to be listed in its own language's groups, or
+        nothing in the sidebar leads to it;
       - every entry id and every `link` in the sidebar has to answer to a page
         that exists, or the row leads nowhere;
       - a page listed twice is refused, because two rows for one page is a
@@ -37,8 +37,9 @@
     Every sidebar entry is held to the site's own pages. A link that leaves the
     site fails here as well: the sidebar of a documentation site is its table of
     contents, and a destination nothing on this site serves cannot be checked.
-    The two roots the site itself serves -- `/` and the collection root
-    `/zh-CN` -- are accepted and belong to no tree, so they satisfy no page.
+    Two addresses answer for a page that is not named by its own path: a tree's
+    root (`/` and `/zh-CN`) is that tree's `index.mdx`, and a directory
+    (`/zh-CN/guides`) is the `index.mdx` inside it.
 
     The list is read out of the config rather than executed: `sidebar.items` is
     either an array literal or the name of a `const` the config assigns one to,
@@ -303,11 +304,14 @@ function Get-PageInventory([string]$Directory, [string]$RepositoryRelative) {
     # `README.md` and the build cannot resolve the entry either.
     $pages = New-Object 'System.Collections.Hashtable' ([System.StringComparer]::Ordinal)
     foreach ($file in (Get-ChildItem -LiteralPath $Directory -Recurse -File)) {
-        if ($file.Extension -ne ".md") { continue }
+        # A page is `.mdx` here and `.md` is accepted as well, so the inventory
+        # does not depend on which of the two a tree happens to use.
+        if ($file.Extension -notin @(".md", ".mdx")) { continue }
         $relative = $file.FullName.Substring($Directory.Length).TrimStart('\', '/') -replace '\\', '/'
         # The key is the page's name inside its tree, which is what an entry id
-        # and a `link` are written as once the mount prefix is off.
-        $key = $relative.Substring(0, $relative.Length - 3)
+        # and a `link` are written as once the mount prefix is off, and the
+        # extension comes off whole whichever of the two it is.
+        $key = $relative.Substring(0, $relative.Length - $file.Extension.Length)
         if ($pages.ContainsKey($key)) {
             throw "$RepositoryRelative holds two pages named $key"
         }
@@ -320,6 +324,19 @@ $english = Get-PageInventory $englishDirectory "site/src/content/docs"
 $chinese = Get-PageInventory $chineseDirectory "site/src/content/zh-CN"
 if ($english.Count -eq 0 -or $chinese.Count -eq 0) {
     throw "One of the two documentation trees holds no page"
+}
+
+function Resolve-PageKey([hashtable]$Pages, [string]$Key) {
+    # The key a row names is a page's path inside its tree. Two rows name a page
+    # without spelling its whole path out: a section's landing page is the
+    # `index.mdx` of its directory, and a tree's root is its own `index.mdx`
+    # (Nimbus serves `guides/index.mdx` at `/guides/` and `index.mdx` at `/`).
+    # Returns $null when neither the key nor its index page is a page of this
+    # tree.
+    if ($Key -eq '') { $Key = 'index' }
+    if ($Pages.ContainsKey($Key)) { return $Key }
+    if ($Pages.ContainsKey("$Key/index")) { return "$Key/index" }
+    return $null
 }
 
 # Read as UTF-8 rather than through the ANSI code page: the labels in this file
@@ -364,9 +381,11 @@ foreach ($leaf in $leaves) {
     $where = if ($leaf['Group']) { "the sidebar group '$($leaf['Group'])'" } else { "the sidebar" }
     if ($null -ne $leaf['Id']) {
         # A string row is an entry id of the primary `docs` collection, which is
-        # the tree served at the site root.
-        $key = $leaf['Id'].Trim().Trim('/')
-        if (-not $english.ContainsKey($key)) {
+        # the tree served at the site root. A section's landing page is the entry
+        # its directory is named after (`guides/index.mdx` is `guides`), so the id
+        # answers to the page the same way a directory link does.
+        $key = Resolve-PageKey $english $leaf['Id'].Trim().Trim('/')
+        if ($null -eq $key) {
             $failures.Add("$where lists the entry id '$($leaf['Id'])', which is not a page in site/src/content/docs")
             continue
         }
@@ -383,22 +402,27 @@ foreach ($leaf in $leaves) {
     }
     if (-not $target.StartsWith('/')) { $target = "/$target" }
     $path = $target.TrimEnd('/')
-    if ($path -eq '' -or $path -eq '/zh-CN') {
-        # The site root and the collection root are pages src/pages/ serves, not
-        # pages of a content tree, so they answer for no file here.
-        continue
-    }
     if ($path.StartsWith('/zh-CN/')) {
-        $key = $path.Substring('/zh-CN/'.Length)
-        if (-not $chinese.ContainsKey($key)) {
+        $key = Resolve-PageKey $chinese $path.Substring('/zh-CN/'.Length)
+        if ($null -eq $key) {
             $failures.Add("$where links to '$link', which is not a page in site/src/content/zh-CN")
             continue
         }
         Add-Listing $listed "zh-CN/$key"
         continue
     }
-    $key = $path.Trim('/')
-    if (-not $english.ContainsKey($key)) {
+    if ($path -eq '/zh-CN') {
+        # The Chinese collection's own root is the zh-CN tree's index.mdx, which
+        # is the landing page that tree is served at.
+        if (-not $chinese.ContainsKey('index')) {
+            $failures.Add("$where links to '$link', which is not a page in site/src/content/zh-CN")
+            continue
+        }
+        Add-Listing $listed "zh-CN/index"
+        continue
+    }
+    $key = Resolve-PageKey $english $path.Trim('/')
+    if ($null -eq $key) {
         $failures.Add("$where links to '$link', which is not a page in site/src/content/docs")
         continue
     }

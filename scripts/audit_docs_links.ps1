@@ -1,15 +1,15 @@
-﻿<#
+<#
     Holds every in-site link in the built site to what the site serves.
 
     Nimbus ships an authoring rule for this -- `nimbus/internal-link` is set to
-    `error` in site/astro.config.ts -- and it never sees a page here. Every
-    authoring rule is handed the list `findMdxFiles()` builds, which is
-    `walkFilesSync(dir, { extensions: [".mdx"] })` in dist/cli/index.js; `lint`
-    and `check` both call it, and nothing else runs them: the rules whose
-    `kind` is `build` are the only ones `astro build` evaluates, and
-    `nimbus/internal-link` is not one of them. So on a `.md` site the rule is
-    configured, implemented, and pointed at nothing.
-    scripts/audit_docs_sidebar.ps1 is the same gap's other half and needs no
+    `error` in site/astro.config.ts -- and this audit is the half of it that a
+    build can answer. Every authoring rule is handed the list `findMdxFiles()`
+    builds, which is `walkFilesSync(dir, { extensions: [".mdx"] })` in
+    dist/cli/index.js; `lint` and `check` both call it, and nothing else runs
+    them: the rules whose `kind` is `build` are the only ones `astro build`
+    evaluates, and `nimbus/internal-link` is not one of them. The pages of this
+    site are `.mdx`, so `nimbus-docs lint` does read them; a build still does not.
+    scripts/audit_docs_sidebar.ps1 is the same rule's other half and needs no
     build; this half does, because a heading anchor only exists once the heading
     has been rendered.
 

@@ -513,7 +513,7 @@ Write-Phase "case catalog read: $($catalog.Count) entries"
 # prove, so a target is not left as a binary path and a count. Which layers this
 # run has is known once its targets are read, so the table is built after them.
 $documentDirectory = Get-ReportDocDirectory -Language $Language
-$documentPath = "$documentDirectory/TEST_COVERAGE.md"
+$documentPath = "$documentDirectory/project/coverage.mdx"
 $layerDocument = Get-TestLayerCatalog -RepoRoot $repoRoot -Language $Language
 
 # One pass over the output builds both tables: a target's row comes from the

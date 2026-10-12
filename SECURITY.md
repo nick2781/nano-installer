@@ -44,7 +44,7 @@ document says so.
 These are known and written down, so you do not need to report them:
 
 - **No code signing.** Neither a setup nor the MSI package around it is signed, so SmartScreen warns
-  about an unknown publisher. See [`site/src/content/docs/PRODUCTION_STATUS.md`](site/src/content/docs/PRODUCTION_STATUS.md).
+  about an unknown publisher. See [`site/src/content/docs/project/status.mdx`](site/src/content/docs/project/status.mdx).
 - **Elevation is the project's choice.** `install.require_admin` asks Windows for administrator
   rights, and a setup built that way runs elevated by design.
 - **An installer writes what it was configured to write.** Files, registry values, shortcuts,

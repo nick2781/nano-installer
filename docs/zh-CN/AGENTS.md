@@ -1,15 +1,15 @@
-﻿# 给 agent 的文档地图
+# 给 agent 的文档地图
 
 这一页说明哪个问题该看哪份文档。人和 agent 都能直接打开那一份，不用走遍整个站点。
 
-**每一页都有对照的另一语言版本。** 发布的页面都成对：`site/src/content/docs/X.md` 与
-`site/src/content/zh-CN/X.md` 是同一份文档，分别发布在 `/X/` 和 `/zh-CN/X/`。这里没有哪一页只写
+**每一页都有对照的另一语言版本。** 发布的页面都成对：`site/src/content/docs/X.mdx` 与
+`site/src/content/zh-CN/X.mdx` 是同一份文档，分别发布在 `/X/` 和 `/zh-CN/X/`。这里没有哪一页只写
 一种语言，`scripts/audit_docs_languages.ps1` 守着这条规矩：一棵树里的页面在另一棵树里没有对应页，
 它就失败；它同样把本页与 `zh-CN/AGENTS.md` 配成一对。
 
 仓库约定要求这张地图放在 `docs/` 根目录下，而不是放进某棵内容树里，所以 `docs/` 下只有这一个英文
-文件。中文版是 [`zh-CN/AGENTS.md`](zh-CN/AGENTS.md)，同一张地图也作为页面发布，就是 `/AGENTS/` 与
-`/zh-CN/AGENTS/`。
+文件。中文版是 [`zh-CN/AGENTS.md`](zh-CN/AGENTS.md)，同一张地图也作为页面发布，就是 `/project/agents/` 与
+`/zh-CN/project/agents/`。
 
 ## 先拿这几份
 
@@ -27,19 +27,19 @@
 
 | 问题 | English | 中文 |
 | --- | --- | --- |
-| 这是什么，现在能不能拿来发布？ | [README](../../site/src/content/docs/README.md), [Production status](../../site/src/content/docs/PRODUCTION_STATUS.md) | [中文文档](../../site/src/content/zh-CN/README.md)、[当前生产状态](../../site/src/content/zh-CN/PRODUCTION_STATUS.md) |
-| 怎么装出第一个安装包？ | [Quick start](../../site/src/content/docs/QUICK_START.md) | [快速开始](../../site/src/content/zh-CN/QUICK_START.md) |
-| 有哪些设置，各自改什么？ | [Configuration reference](../../site/src/content/docs/CONFIG_REFERENCE.md) | [配置参考](../../site/src/content/zh-CN/CONFIG_REFERENCE.md) |
-| 页面和控件怎么写？ | [Page layout](../../site/src/content/docs/XML_LAYOUT_GUIDE.md) | [页面布局](../../site/src/content/zh-CN/XML_LAYOUT_GUIDE.md) |
-| 怎么增加或修改一种语言？ | [Languages](../../site/src/content/docs/LOCALIZATION.md) | [多语言](../../site/src/content/zh-CN/LOCALIZATION.md) |
-| 怎么运行自己的安装与卸载步骤？ | [Custom steps](../../site/src/content/docs/SCRIPT_API.md) | [自定义步骤](../../site/src/content/zh-CN/SCRIPT_API.md) |
-| 怎么带一个插件，它允许做什么？ | [Plugin ABI](../../site/src/content/docs/PLUGIN_API.md) | [插件 ABI](../../site/src/content/zh-CN/PLUGIN_API.md) |
-| 从 NSIS 过来，什么对应什么？ | [Migrating from NSIS](../../site/src/content/docs/MIGRATION_FROM_NSIS.md) | [从 NSIS 迁移](../../site/src/content/zh-CN/MIGRATION_FROM_NSIS.md) |
-| 安装器内部是怎么走的？ | [Architecture](../../site/src/content/docs/ARCHITECTURE.md) | [架构](../../site/src/content/zh-CN/ARCHITECTURE.md) |
-| 支持哪些 Windows 版本，用了哪些系统调用？ | [Windows compatibility](../../site/src/content/docs/WINDOWS_COMPATIBILITY.md) | [Windows 兼容性](../../site/src/content/zh-CN/WINDOWS_COMPATIBILITY.md) |
-| 不动命令行怎么构建？ | [Visual builder](../../site/src/content/docs/GUI.md) | [可视化构建](../../site/src/content/zh-CN/GUI.md) |
-| 怎么构建、怎么发布？ | [Build and release](../../site/src/content/docs/BUILD_AND_RELEASE.md), [Project layout](../../site/src/content/docs/PROJECT_STRUCTURE.md) | [构建与发布](../../site/src/content/zh-CN/BUILD_AND_RELEASE.md)、[项目结构](../../site/src/content/zh-CN/PROJECT_STRUCTURE.md) |
-| 测了什么，什么只是承诺？ | [Test plan](../../site/src/content/docs/TEST_PLAN.md), [Test coverage](../../site/src/content/docs/TEST_COVERAGE.md), [Test cases](../../site/src/content/docs/TEST_CASES.md) | [测试计划](../../site/src/content/zh-CN/TEST_PLAN.md)、[测试覆盖](../../site/src/content/zh-CN/TEST_COVERAGE.md)、[用例说明](../../site/src/content/zh-CN/TEST_CASES.md) |
+| 这是什么，现在能不能拿来发布？ | [README](../../site/src/content/docs/index.mdx), [Production status](../../site/src/content/docs/project/status.mdx) | [中文文档](../../site/src/content/zh-CN/index.mdx)、[当前生产状态](../../site/src/content/zh-CN/project/status.mdx) |
+| 怎么装出第一个安装包？ | [Quick start](../../site/src/content/docs/quick-start.mdx) | [快速开始](../../site/src/content/zh-CN/quick-start.mdx) |
+| 有哪些设置，各自改什么？ | [Configuration reference](../../site/src/content/docs/reference/configuration.mdx) | [配置参考](../../site/src/content/zh-CN/reference/configuration.mdx) |
+| 页面和控件怎么写？ | [Page layout](../../site/src/content/docs/guides/page-layout.mdx) | [页面布局](../../site/src/content/zh-CN/guides/page-layout.mdx) |
+| 怎么增加或修改一种语言？ | [Languages](../../site/src/content/docs/guides/languages.mdx) | [多语言](../../site/src/content/zh-CN/guides/languages.mdx) |
+| 怎么运行自己的安装与卸载步骤？ | [Custom steps](../../site/src/content/docs/guides/custom-steps.mdx) | [自定义步骤](../../site/src/content/zh-CN/guides/custom-steps.mdx) |
+| 怎么带一个插件，它允许做什么？ | [Plugin ABI](../../site/src/content/docs/guides/plugins.mdx) | [插件 ABI](../../site/src/content/zh-CN/guides/plugins.mdx) |
+| 从 NSIS 过来，什么对应什么？ | [Migrating from NSIS](../../site/src/content/docs/guides/migrating-from-nsis.mdx) | [从 NSIS 迁移](../../site/src/content/zh-CN/guides/migrating-from-nsis.mdx) |
+| 安装器内部是怎么走的？ | [Architecture](../../site/src/content/docs/project/architecture.mdx) | [架构](../../site/src/content/zh-CN/project/architecture.mdx) |
+| 支持哪些 Windows 版本，用了哪些系统调用？ | [Windows compatibility](../../site/src/content/docs/reference/windows-compatibility.mdx) | [Windows 兼容性](../../site/src/content/zh-CN/reference/windows-compatibility.mdx) |
+| 不动命令行怎么构建？ | [Visual builder](../../site/src/content/docs/guides/visual-builder.mdx) | [可视化构建](../../site/src/content/zh-CN/guides/visual-builder.mdx) |
+| 怎么构建、怎么发布？ | [Build and release](../../site/src/content/docs/reference/build-and-release.mdx), [Project layout](../../site/src/content/docs/reference/project-structure.mdx) | [构建与发布](../../site/src/content/zh-CN/reference/build-and-release.mdx)、[项目结构](../../site/src/content/zh-CN/reference/project-structure.mdx) |
+| 测了什么，什么只是承诺？ | [Test plan](../../site/src/content/docs/project/testing.mdx), [Test coverage](../../site/src/content/docs/project/coverage.mdx), [Test cases](../../site/src/content/docs/project/cases.mdx) | [测试计划](../../site/src/content/zh-CN/project/testing.mdx)、[测试覆盖](../../site/src/content/zh-CN/project/coverage.mdx)、[用例说明](../../site/src/content/zh-CN/project/cases.mdx) |
 
 ## 仓库里的文件
 
@@ -64,7 +64,7 @@
 ## 页面和索引是怎么来的
 
 对外发布的站点是 `site/` 下的一个 Astro 工程，用 Cloudflare Nimbus 构建。页面就是
-`site/src/content/docs/*.md` 与 `site/src/content/zh-CN/*.md`，站点设置和侧栏的两组语言条目都在
+`site/src/content/docs/**/*.mdx` 与 `site/src/content/zh-CN/**/*.mdx`，站点设置和侧栏的两组语言条目都在
 `site/astro.config.ts` 里。构建产物写在 `site/dist/`，GitHub Pages 发布的正是这个目录，挂在
 `/nano-installer/` 下；文档工作流按这些文件里写的版本装好工具链，在 `site/` 里构建，然后上传那个
 目录。
@@ -118,11 +118,12 @@
 如果他觉得哪句读着别扭，即使更短，也要改回去。
 
 - **事实、数字、命令、路径、字段名不许动。** 标题、锚点、链接目标也要原样，改写只动措辞。frontmatter
-  里只有 `description` 可以改，它就是搜索结果里显示的那句话；`title`、`slug`、`sidebar` 不动。改完用
+  里只有 `description` 可以改，它就是搜索结果里显示的那句话；`title` 与 `sidebar` 不动，页面路径由文件
+  所在的位置决定，frontmatter 里没有这个字段。改完用
   `scripts/audit_docs_languages.ps1` 核对两棵树是否成对，用站点自己的构建（在 `site/` 里跑
   `pnpm build`）核对 frontmatter——那份校验会拦下不合格的 frontmatter；站内链接交给
-  `scripts/audit_docs_links.ps1`，它读的是构建产物，因为集成自带的链接规则只读 `.mdx`，两个 `.md`
-  页面之间的死链并不会让构建失败。
+  `scripts/audit_docs_links.ps1`，它读的是构建产物，因为 `astro build` 不跑任何 authoring 规则，
+  链接指向的锚点只有标题渲染出来之后才存在。
 - **中文页参考 [Tech-Doc-Style-Chinese](https://github.com/fenng/Tech-Doc-Style-Chinese) 这份外部规范，
   但它只是参考，不是第二套标准**：两者冲突时以本节为准，用指代（它、这、这些）承接、源文件保持硬
   换行，这两处就是例子。

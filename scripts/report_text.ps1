@@ -97,7 +97,7 @@ function Get-ReportCounts {
 # named after the whole tag a page declares: the English pages are
 # site/src/content/docs, served at the site root, and the Chinese pages are
 # site/src/content/zh-CN, served under /zh-CN. A page keeps its name in both
-# trees, so TEST_COVERAGE.md and TEST_CASES.md sit in each of them.
+# trees, so project/coverage.mdx and project/cases.mdx sit in each of them.
 function Get-ReportDocDirectory {
     param([string]$Language)
 

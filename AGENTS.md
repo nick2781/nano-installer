@@ -50,7 +50,7 @@ None of this is bypassable; the rules are in [`CONTRIBUTING.md`](CONTRIBUTING.md
 ## Documentation
 
 - Read `docs/AGENTS.md` first: it maps each question to the page that answers it and names the machine-readable entry points.
-- The site is the Astro project under `site/`, built with Cloudflare Nimbus, and `site/dist/` is what GitHub Pages publishes under `/nano-installer/`. English pages are `site/src/content/docs/X.md` at `/X/`, Chinese pages are `site/src/content/zh-CN/X.md` at `/zh-CN/X/`.
+- The site is the Astro project under `site/`, built with Cloudflare Nimbus, and `site/dist/` is what GitHub Pages publishes under `/nano-installer/`. English pages are `site/src/content/docs/<section>/<page>.mdx` at `/<section>/<page>/`, Chinese pages are `site/src/content/zh-CN/<section>/<page>.mdx` at `/zh-CN/<section>/<page>/`, and every section has an `index.mdx` landing page. `site/astro.config.ts` redirects each page's old uppercase address to where it lives now.
 - Keep no index data by hand: the build writes `llms.txt`, `llms-full.txt`, `robots.txt`, `sitemap-index.xml` and a Markdown copy of every page from the content tree. The generator and its data file went with the docsify site.
 - Write every page in both languages, and keep the map at the top of `docs/` (`docs/AGENTS.md`, `docs/zh-CN/AGENTS.md`). `scripts/audit_docs_languages.ps1` fails on a page whose twin is missing, or on a missing side of the map.
 - A new page is its file under `site/src/content/`, its twin in the other tree, and a line in the sidebar list in `site/astro.config.ts`; the frontmatter `title` is what the sidebar and the index call it, so do not write the page's own heading again.

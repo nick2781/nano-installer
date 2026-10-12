@@ -5,8 +5,8 @@ body:
   - type: markdown
     attributes:
       value: |
-        The answer may already be written down: `site/src/content/docs/CONFIG_REFERENCE.md` lists every
-        configuration key, `site/src/content/docs/MIGRATION_FROM_NSIS.md` maps NSIS instructions onto this project,
+        The answer may already be written down: `site/src/content/docs/reference/configuration.mdx` lists every
+        configuration key, `site/src/content/docs/guides/migrating-from-nsis.mdx` maps NSIS instructions onto this project,
         and `examples/TapTap` is a complete working project to compare against.
   - type: textarea
     id: question

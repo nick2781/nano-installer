@@ -484,7 +484,7 @@ $catalog = Get-TestCatalog -RepoRoot $repoRoot -Language $Language
 # The one layer this suite has, and what the coverage document says its cases
 # are for, so the report says what these 18 cases prove and what they do not.
 $documentDirectory = Get-ReportDocDirectory -Language $Language
-$documentPath = "$documentDirectory/TEST_COVERAGE.md"
+$documentPath = "$documentDirectory/project/coverage.mdx"
 $layerDocument = Get-TestLayerCatalog -RepoRoot $repoRoot -Language $Language
 $layers = Get-ReportLayerTable -Text $text -Document $layerDocument -Keys @("e2e")
 $layerRows = New-Object System.Collections.Generic.List[object]

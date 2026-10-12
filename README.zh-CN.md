@@ -9,7 +9,7 @@
 
 > **状态：** 可以拿来构建和发布产品。**需要 Windows 7 SP1 x64 及以上。** 安装包和 MSI 包都没有
 > 代码签名，所以 Windows 会提示「未知发布者」；公开分发前，请在流水线里用 `finalize.installer` 和
-> `finalize.uninstaller` 自己签。实机验证过什么、还没覆盖什么，见[当前生产状态](site/src/content/zh-CN/PRODUCTION_STATUS.md)。
+> `finalize.uninstaller` 自己签。实机验证过什么、还没覆盖什么，见[当前生产状态](site/src/content/zh-CN/project/status.mdx)。
 
 <p align="center">
 <img src="assets/setup-welcome-zh-CN.png" alt="用 TapTap 示例构建出来的安装包第一页：产品 logo、一句标语、安装选项，以及「立即安装」按钮" width="720">
@@ -30,7 +30,7 @@
 ```
 
 安装包落在 `dist/<installer_name>` 里。想点界面的话，同一次发布里的 `nano-installer-gui-x64.exe` 走
-同一套引擎；完整步骤见[快速开始](site/src/content/zh-CN/QUICK_START.md)。
+同一套引擎；完整步骤见[快速开始](site/src/content/zh-CN/quick-start.mdx)。
 
 ## 它给你什么
 
@@ -44,7 +44,7 @@
 | 升级、回滚与更新包 | 重跑就是原地升级，某一步失败会回滚；`--delta-from` 只发字节变了的文件 |
 | 卸载 | 只收回自己写下的东西，用户数据默认保留 |
 | 管理员权限 | 只在工程要求时才向 Windows 申请 |
-| 脚本与插件 | 安装与卸载步骤用 Rhai 写，插件则是照 [`include/nano_plugin.h`](site/src/content/zh-CN/PLUGIN_API.md) 编的 DLL |
+| 脚本与插件 | 安装与卸载步骤用 Rhai 写，插件则是照 [`include/nano_plugin.h`](site/src/content/zh-CN/guides/plugins.mdx) 编的 DLL |
 | 读屏可用 | 页面、焦点、输入的文字和实时进度都会播报，既走 MSAA，也走 `IDispatch` |
 | 界面或命令行 | 要界面就用 Windows 10+ 的可视化构建器，要 CI 就用同一套引擎 |
 | 还能出 MSI | `--msi` 把安装包封成 MSI，给走 Windows Installer 分发的环境用 |
@@ -67,10 +67,10 @@ MyApp/
 
 ## 文档
 
-[快速开始](site/src/content/zh-CN/QUICK_START.md) &middot; [配置参考](site/src/content/zh-CN/CONFIG_REFERENCE.md) &middot;
-[页面布局](site/src/content/zh-CN/XML_LAYOUT_GUIDE.md) &middot; [多语言](site/src/content/zh-CN/LOCALIZATION.md) &middot;
-[自定义步骤](site/src/content/zh-CN/SCRIPT_API.md) &middot; [插件 ABI](site/src/content/zh-CN/PLUGIN_API.md) &middot;
-[可视化构建](site/src/content/zh-CN/GUI.md) &middot; [从 NSIS 迁移](site/src/content/zh-CN/MIGRATION_FROM_NSIS.md)
+[快速开始](site/src/content/zh-CN/quick-start.mdx) &middot; [配置参考](site/src/content/zh-CN/reference/configuration.mdx) &middot;
+[页面布局](site/src/content/zh-CN/guides/page-layout.mdx) &middot; [多语言](site/src/content/zh-CN/guides/languages.mdx) &middot;
+[自定义步骤](site/src/content/zh-CN/guides/custom-steps.mdx) &middot; [插件 ABI](site/src/content/zh-CN/guides/plugins.mdx) &middot;
+[可视化构建](site/src/content/zh-CN/guides/visual-builder.mdx) &middot; [从 NSIS 迁移](site/src/content/zh-CN/guides/migrating-from-nsis.mdx)
 
 站点是 **https://nick2781.github.io/nano-installer/**。页面就是 `site/src/content/` 下的 Markdown 文件，
 中文页在 [`site/src/content/zh-CN`](site/src/content/zh-CN/) 里。每一页除 HTML 外还有一个 Markdown 版本，

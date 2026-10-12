@@ -11,7 +11,7 @@ wording are yours, and there is nothing to host or for your users to install fir
 > **Status:** ready to build and ship with. **Requires Windows 7 SP1 x64 or later.** Setups and MSI
 > packages are unsigned, so Windows warns about an unknown publisher; sign them in your own pipeline
 > through `finalize.installer` and `finalize.uninstaller` before distributing publicly. What the
-> acceptance run covered, and what it did not, is in [production status](site/src/content/docs/PRODUCTION_STATUS.md).
+> acceptance run covered, and what it did not, is in [production status](site/src/content/docs/project/status.mdx).
 
 <p align="center">
 <img src="assets/setup-welcome-en-US.png" alt="First page of a setup built from the TapTap example: the product logo, a tagline, the installation options, and an Install Now button" width="720">
@@ -33,7 +33,7 @@ runtimes it needs and a digest for each file.
 ```
 
 The setup lands in `dist/<installer_name>`. Prefer a window? `nano-installer-gui-x64.exe` from the
-same release runs the same engine, and [quick start](site/src/content/docs/QUICK_START.md) has the
+same release runs the same engine, and [quick start](site/src/content/docs/quick-start.mdx) has the
 full walkthrough.
 
 ## What you get
@@ -48,7 +48,7 @@ full walkthrough.
 | Upgrade, rollback, update packages | Re-run to upgrade in place, and a failed step rolls back; `--delta-from` ships only what changed |
 | Uninstall | Takes back what it wrote, and keeps user data by default |
 | Administrator rights | Asked of Windows only when the project says so |
-| Scripts and plugins | Install and uninstall steps in Rhai, and DLLs built against [`include/nano_plugin.h`](site/src/content/docs/PLUGIN_API.md) |
+| Scripts and plugins | Install and uninstall steps in Rhai, and DLLs built against [`include/nano_plugin.h`](site/src/content/docs/guides/plugins.mdx) |
 | Screen readers | The page, the focus, typed text and live progress are announced, over MSAA as well as `IDispatch` |
 | GUI or command line | The Windows 10+ visual builder, or the same engine driven from CI |
 | Also a package | `--msi` wraps the setup for an estate that deploys through Windows Installer |
@@ -71,10 +71,10 @@ configuration rather than the artwork, which belongs to its rights holders.
 
 ## Documentation
 
-[Quick start](site/src/content/docs/QUICK_START.md) &middot; [Configuration](site/src/content/docs/CONFIG_REFERENCE.md) &middot;
-[Page layout](site/src/content/docs/XML_LAYOUT_GUIDE.md) &middot; [Languages](site/src/content/docs/LOCALIZATION.md) &middot;
-[Custom steps](site/src/content/docs/SCRIPT_API.md) &middot; [Plugins](site/src/content/docs/PLUGIN_API.md) &middot;
-[Visual builder](site/src/content/docs/GUI.md) &middot; [Migrating from NSIS](site/src/content/docs/MIGRATION_FROM_NSIS.md)
+[Quick start](site/src/content/docs/quick-start.mdx) &middot; [Configuration](site/src/content/docs/reference/configuration.mdx) &middot;
+[Page layout](site/src/content/docs/guides/page-layout.mdx) &middot; [Languages](site/src/content/docs/guides/languages.mdx) &middot;
+[Custom steps](site/src/content/docs/guides/custom-steps.mdx) &middot; [Plugins](site/src/content/docs/guides/plugins.mdx) &middot;
+[Visual builder](site/src/content/docs/guides/visual-builder.mdx) &middot; [Migrating from NSIS](site/src/content/docs/guides/migrating-from-nsis.mdx)
 
 The site is **https://nick2781.github.io/nano-installer/**. Its pages are the Markdown files under
 `site/src/content/`, and the Chinese ones are in [`site/src/content/zh-CN`](site/src/content/zh-CN/).
