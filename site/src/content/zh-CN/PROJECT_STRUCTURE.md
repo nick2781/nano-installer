@@ -78,7 +78,7 @@ target/release/
 
 这些文件没有一个是手工维护的。每一个都由构建从内容树写出来，所以页面不可能从索引里漏掉，也不存在第二份清单要跟着改。新增一页，就是 `site/src/content/` 下多一个文件，加上 `site/astro.config.ts` 侧栏清单里的一行。
 
-读者在站点根目录 `/` 切换语言。那里每种语言一张卡片，而侧栏只显示当前页面这一种语言的分组。有两项检查为这件事负责，文档工作流在发布前都会跑：一棵树里的页面在另一棵树里没有对应页，`scripts/audit_docs_languages.ps1` 就会失败；某一页的 frontmatter 校验不过，或者站内链接指向不存在的地方，构建本身就会失败。
+读者在站点根目录 `/` 切换语言。那里每种语言一张卡片，而侧栏只显示当前页面这一种语言的分组。有三项检查为这件事负责，文档工作流围着构建依次跑：一棵树里的页面在另一棵树里没有对应页，`scripts/audit_docs_languages.ps1` 就会失败；某一页没进侧栏、或者侧栏里的某一条指向不存在的页面，`scripts/audit_docs_sidebar.ps1` 就会失败；某一页的 frontmatter 校验不过，构建本身就会失败。站内链接排在最末，因为锚点要等标题渲染完才存在：`scripts/audit_docs_links.ps1` 读的是构建产物；集成自带的链接规则在这里做不了这件事，它只读 `.mdx`，而这些页面是 `.md`。
 
 `.well-known` 是这个站点唯一做不到位的地方。Nimbus 会写出给 agent 找路用的 `/.well-known/ai-catalog.json` 与 `/.well-known/ard.json`，并警告这两个文件应该放在源站根目录。GitHub Pages 项目站点挂在 `/nano-installer/` 下，源站根目录属于账号而不是这个项目。所以去 `https://nick2781.github.io/.well-known/` 找的客户端什么也找不到。要做得更好得有自定义域名，而本项目没有，因此这两个文件只发布在项目路径下，构建的警告就留在那里。
 
