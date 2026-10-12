@@ -2,12 +2,12 @@
 
 ## What this project is, and where the risk is
 
-Nano Installer builds and runs Windows installers: a setup it produces writes files and registry
-values and may install a service or a dependency, and for a project that ships plugins it loads a DLL
+Nano Installer builds and runs Windows installers. A setup it produces writes files and registry
+values, and it may install a service or a dependency; for a project that ships plugins, it loads a DLL
 into its own process. A setup built with `install.require_admin` runs elevated.
 
-Those steps should only happen when they are asked for, so if one of them happens anyway — or a setup
-can be talked into writing somewhere it was not asked to — that is a security report worth making.
+Those steps should only happen when they are asked for. So a report is worth making when one of them
+happens anyway, or when a setup can be talked into writing somewhere it was not asked to.
 
 The parts in scope:
 
@@ -18,12 +18,12 @@ The parts in scope:
 
 ## How to report
 
-Prefer GitHub's private reporting: on this repository, open **Security → Report a vulnerability**
+Prefer GitHub's private reporting. On this repository, open **Security → Report a vulnerability**
 (`https://github.com/nick2781/nano-installer/security/advisories/new`). Private vulnerability
 reporting is enabled, so your report reaches the maintainer without becoming public.
 
 If you cannot use that form, open a regular issue and say only that you have a security report and how
-to reach you — leave the details out, and a private channel can then be opened.
+to reach you. Leave the details out, and a private channel can then be opened.
 
 Please include:
 

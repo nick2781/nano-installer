@@ -1,0 +1,73 @@
+---
+/**
+ * LanguageSwitch — one link from the page being read to the same page in the
+ * site's other documentation language.
+ *
+ * The two languages are two Nimbus collections mounted at different prefixes:
+ * `docs` at the site root and `zh-CN` at `/zh-CN` (the table in
+ * `@/lib/languages`). A page has one name in both trees — the twin is a file of
+ * the same name in the other content tree, which
+ * `scripts/audit_docs_languages.ps1` refuses to let go missing — so the
+ * counterpart's route is this page's route under the other tree's prefix.
+ *
+ * `entryId` is that name. Nimbus routes on `entryRouteKey(entry.id)`
+ * (`_internal/astro-slug.ts`), so the id, not the served path, is the exact
+ * name to carry across; the served path is only the fallback for a caller that
+ * renders the header without one. `withBase()` is what adds `/nano-installer`.
+ *
+ * Renders nothing when there is no language to switch from — the site root and
+ * the 404 page render `Header` bare — or when the collection is not one of the
+ * two trees, so it can never emit a link to a page that isn't served.
+ */
+import { entryRouteKey, stripBase, withBase } from "@cloudflare/nimbus-docs/runtime";
+import { MOUNT_PREFIX, localeFor } from "@/lib/languages";
+
+interface Props {
+  /** Astro collection id of the page being read (`docs` or `zh-CN`). */
+  collection?: string;
+  /** Astro entry id of the page being read: its name in the other tree too. */
+  entryId?: string;
+}
+
+const { collection, entryId } = Astro.props;
+
+// Which tree this page is in, and which one its twin lives in. A collection in
+// neither tree (a versioned one, say) has no counterpart here: no switch.
+const current =
+  collection !== undefined && collection in MOUNT_PREFIX ? collection : undefined;
+const target = current === "zh-CN" ? "docs" : "zh-CN";
+
+// The page's route inside its own tree, without either mount prefix.
+const ownPrefix = current ? MOUNT_PREFIX[current] : "";
+const served = stripBase(Astro.url.pathname, import.meta.env.BASE_URL).replace(/\/+$/, "");
+const insideTree = entryId
+  ? entryRouteKey(entryId)
+  : ownPrefix && (served === ownPrefix || served.startsWith(`${ownPrefix}/`))
+    ? served.slice(ownPrefix.length).replace(/^\/+/, "")
+    : served.replace(/^\/+/, "");
+
+const targetPrefix = MOUNT_PREFIX[target] ?? `/${target}`;
+const route = insideTree === "" ? targetPrefix || "/" : `${targetPrefix}/${insideTree}`;
+// Pages are served as `<route>/` (`build.format: "directory"`); the site root
+// is `/` and already carries its slash.
+const href = withBase(route === "/" ? "/" : `${route}/`, import.meta.env.BASE_URL);
+// `localeFor` keeps the BCP-47 tags in one place: `en` for `docs`, `zh-CN` for
+// the Chinese tree.
+const hreflang = localeFor(target, "en");
+const label = target === "zh-CN" ? "中文" : "English";
+const ariaLabel = current === "zh-CN" ? "语言：English" : "Language: 中文";
+---
+
+{
+  current && (
+    <a
+      href={href}
+      hreflang={hreflang}
+      rel="alternate"
+      aria-label={ariaLabel}
+      class="shrink-0 whitespace-nowrap rounded-md px-2 py-1 text-[0.8125rem] font-medium text-muted-foreground no-underline transition-colors hover:bg-accent/60 hover:text-foreground"
+    >
+      {label}
+    </a>
+  )
+}

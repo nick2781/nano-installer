@@ -1,15 +1,15 @@
 ---
 title: 页面布局
-description: 安装页写进 `wizard.pages`，卸载页写进 `wizard.uninstall_pages`；任务跑起来时向导显示列表里的第二页，结束时切到最后一页，而列表里只有一页就停在这一页，改用消息框报告结果。
+description: 用 XML 写安装向导的页面：一页能放哪些控件、每个控件支持哪些属性，以及运行时排版、绘制和响应键盘的规则。
 slug: XML_LAYOUT_GUIDE
 sidebar:
   order: 400
 ---
 
-安装页写进 `wizard.pages`，卸载页写进 `wizard.uninstall_pages`；任务跑起来时向导显示列表里的
-第二页，结束时切到最后一页，而列表里只有一页就停在这一页，改用消息框报告结果。
+安装页写进 `wizard.pages`，卸载页写进 `wizard.uninstall_pages`。任务运行期间，向导在列表的
+第二页上汇报进度，任务结束时切到最后一页。列表里只有一页时就停在这一页，改用消息框报告结果。
 
-布局以绝对定位为主，需要时也可以用流式容器；下表里标着「已支持」的属性才真的生效。
+布局以绝对定位为主，需要时也可以用流式容器；只有下表里标着「已支持」的属性才生效。
 
 ## Page
 
@@ -36,14 +36,14 @@ sidebar:
        left="260" top="100" width="200" height="58" />
 ```
 
-`Image` 与 `Icon` 只有绝对定位、并写上 left/top/width/height 才会画出来：PNG 先由 WIC 解码成
-PBGRA，再用 GDI alpha blend 画上去。
+`Image` 和 `Icon` 必须绝对定位，并写全 left/top/width/height 才会绘制。运行时先用 WIC 把 PNG
+解码成 PBGRA，再用 GDI alpha blend 画上去。
 
 ## DPI 与图片密度
 
-布局里的坐标以 96 DPI 为基准，所以打开 `ui.dpi_aware` 后，运行时会读取当前显示器的 DPI，
-把窗口、坐标、字体、点击区域和圆角一起缩放。安装包申请的是逐显示器感知，也就是说窗口被
-拖到缩放比例不同的显示器上时，运行时按那块显示器重新排版，你不用为每种缩放各做一套布局。
+布局里的坐标以 96 DPI 为基准，打开 `ui.dpi_aware` 后，运行时会读取窗口所在显示器的 DPI，据此
+缩放窗口、坐标、字体、点击区域和圆角。安装包申请的是逐显示器感知，所以把窗口拖到缩放比例不同
+的显示器上时，运行时会按那块显示器重新排版，你不必为每种缩放各做一套布局。
 
 图片只写 1x 的基础名，密度让运行时自己挑：
 
@@ -52,8 +52,8 @@ assets/logo.png
 assets/logo@2x.png
 ```
 
-系统 DPI 达到 `ui.dpi_threshold`（默认 144）时优先用 `@2x`，否则用 1x，而首选文件不存在就
-自动回退到另一份。布局里直接写了 `@2x` 也会按当前 DPI 归一化，所以你不用维护两套布局。
+系统 DPI 达到 `ui.dpi_threshold`（默认 144）时优先用 `@2x`，否则用 1x；首选文件不存在就回退到
+另一份。布局里直接写了 `@2x` 也会按当前 DPI 归一化，所以你不用维护两套布局。
 
 ## Button
 
@@ -65,24 +65,24 @@ assets/logo@2x.png
         color="#FFFFFFFF" />
 ```
 
-支持的属性有 `normal-image` 和文字；`file='assets/x.png' dest='...' fade='...'` 这种写法把
-图片画进控件内的一块子矩形，透明度取 0-255。按钮按状态分别挑 `hover-image`、
-`pressed-image` 和 `disabled-image`，缺哪个就回退到 `normal-image`；状态变化先画到离屏位图，
-再一次性提交，所以鼠标悬停不会闪烁。
+支持的属性包括 `normal-image` 和文字；`file='assets/x.png' dest='...' fade='...'` 这种写法把
+图片画进控件内的一块子矩形，透明度取 0-255。按钮按状态分别挑 `hover-image`、`pressed-image`
+和 `disabled-image`，缺哪个就回退到 `normal-image`。状态变化先画到离屏位图，再一次性提交，所以
+鼠标悬停不会闪烁。
 
-按钮的名字就是它画出来的字，读屏读的也是这句；而文字画在图片里、或者画在页面别处的按钮
-没有字可给读屏，这时 `accessible-name` 就是给它起名的地方：
+按钮的名字就是它画出来的字，读屏读的也是这句。标签本身是图片、或者画在页面别处的按钮没有字可给
+读屏，这种情况就用 `accessible-name` 起名：
 
 ```xml
 <Button id="close" action="close_confirm" accessible-name="@close"
         normal-image="assets/btn_close.png" />
 ```
 
-写 `@key` 就按当前语言查表，写普通文本则原样使用；`text` 与 `accessible-name` 都声明时，
-读屏读到的是后者。画出来的字里带链接标记（`[《协议》](agreement)`）时，读屏念的是去掉
-标记的那句，示例工程的最小化、关闭和「自定义选项」三个按钮就是这么起名的。
+`@key` 按当前语言查表，其他内容原样使用。控件同时声明 `text` 和 `accessible-name` 时，读屏读
+到的是后者。画出来的字里带链接标记（`[《协议》](agreement)`）时，读屏念的是去掉标记的那句话。
+示例工程里的最小化、关闭和「自定义选项」三个按钮就是这样起名的。
 
-按钮可以依赖别的控件：
+按钮可以等待别的控件：
 
 ```xml
 <Checkbox id="terms" checked="false" ... />
@@ -90,22 +90,22 @@ assets/logo@2x.png
 ```
 
 支持的 state 有 `checked`、`unchecked`、`visible`、`hidden`，文本框另有 `valid` 和
-`invalid`；单选组和下拉框写的是当前持有的值，值本身就是 state（`enabled-when="mode:custom"`）。
-一条条件可以用逗号列出多个 `id:state`，全都成立按钮才可用；条件不满足时按钮用
-`disabled-image`，点击和悬停都不响应，满足后又恢复正常。没写 `enabled-when` 的按钮默认
-可用，因为运行时里并没有针对某个控件名的规则。
+`invalid`；单选组和下拉框用当前持有的值当 state，值本身写进条件（`enabled-when="mode:custom"`）。
+一条条件可以用逗号列出多个 `id:state`，全部成立按钮才可用。条件不满足时按钮改用
+`disabled-image`，点击和悬停都不响应；条件全部满足后又恢复正常。没写 `enabled-when` 的按钮默认
+可用，因为运行时里没有绑定具体控件名的规则。
 
 ## 流式容器
 
-绝对定位的 `HBox`、`VBox` 和 `Content` 会接管自己的子树：子元素不用再写坐标，容器沿主轴
-依次摆放它们。支持的属性有固定尺寸和按内容测量、`min-width`/`min-height`、`flex-grow`、
-`flex-shrink`、`item-spacing`/`gap`、`padding`、`margin`（含 `margin-top` 等单边写法）、
-`justify-content` 和 `align-items`。此外 `HBox` 也能用 `horizontal-align`/`vertical-align`
-对齐，`Content` 则用 `layout="vertical"` 声明纵向排列。
+绝对定位的 `HBox`、`VBox` 和 `Content` 会接管整棵子树：子元素不必再写坐标，容器沿主轴依次摆放
+它们。支持的属性有固定尺寸和按内容测量、`min-width`/`min-height`、`flex-grow`、`flex-shrink`、
+`item-spacing`/`gap`、`padding`、`margin`（含 `margin-top` 等单边写法）、`justify-content` 和
+`align-items`。`HBox` 另外支持 `horizontal-align`/`vertical-align`，`Content` 则用
+`layout="vertical"` 声明纵向排列。
 
-子元素超出主轴可用空间时，容器先压缩能收缩的项，而 `flex-shrink="0"` 的按钮保持设计宽度。
-`Spacer` 写上 `flex-grow="1"`（或固定 `height`）就能吃掉剩下的空间。按钮里的 Content 支持
-Label、Box 和 Image/Icon，用它们就能拼出文字加图标。
+子元素需要的主轴空间超过可用空间时，容器先压缩能收缩的项，而写了 `flex-shrink="0"` 的按钮保持
+设计宽度；剩下的空间由 `flex-grow="1"` 的 `Spacer`（或固定 `height` 的 `Spacer`）吸收。按钮里
+的 Content 支持 Label、Box 和 Image/Icon，文字加图标就是这么拼出来的。
 
 ### 尺寸与间距
 
@@ -121,37 +121,37 @@ Label、Box 和 Image/Icon，用它们就能拼出文字加图标。
 </VBox>
 ```
 
-`padding` 和 `margin` 收 1-4 个空格分隔的值，含义和 CSS 一样（上 右 下 左）。数值都以
-96 DPI 为基准，随系统 DPI 缩放；百分比按父容器对应的边长算。`align-items="center"` 在交叉轴上
-居中：`HBox` 里居中高度，`VBox` 里居中宽度；单个子元素可以用 `align-self="start"` 或 `"end"`
-覆盖容器设置。
+`padding` 和 `margin` 收 1-4 个空格分隔的值，含义与 CSS 相同（上 右 下 左）。数值都以 96 DPI
+为基准，随系统 DPI 缩放；百分比按父容器对应的边长计算。`align-items="center"` 在交叉轴上居中：
+`HBox` 里居中高度，`VBox` 里居中宽度；单个子元素可以用 `align-self="start"` 或 `"end"` 覆盖容器
+设置。
 
-一行放不下时，`flex-wrap="true"`（也接受 `wrap`）会把元素折到下一行，这样窗口变窄也不会压扁
-内容；多行时每行的高度取本行最高的元素，`justify-content` 和 `align-self` 照样生效。
-默认不折行，所以放不下时先压缩能收缩的项。
+一行放不下时，`flex-wrap="true"`（也接受 `wrap`）会把元素折到下一行，窗口变窄时内容随之重排，
+而不会被压扁。折成多行后，每行的高度取本行最高的元素，`justify-content` 和 `align-self` 照样
+生效。默认不折行。
 
-`flex-basis` 是元素分剩余空间之前的起始尺寸，所以 `flex-basis="0" flex-grow="1"` 就和别的
-弹性元素平分剩余空间。流式容器里嵌套的子容器按自己的内容参与外层测量，面板不用写死尺寸。
-除了 `left`/`top`，绝对定位元素还能用 `right`/`bottom` 从另一侧定位，或用 `inset` 简写
+`flex-basis` 是元素参与分配剩余空间之前的起始尺寸，所以 `flex-basis="0" flex-grow="1"` 会和
+其他弹性元素平分剩余空间。嵌套在外层容器里的子容器按自己的内容参与测量，面板不必写死尺寸。除了
+`left`/`top`，绝对定位元素还能用 `right`/`bottom` 从另一侧定位，或者用 `inset` 简写
 （`inset="8"`，也可写 `inset-top`/`inset-right`/`inset-bottom`/`inset-left`）。
 
-复选框按 `checked` 挑 `checked-image` 或 `unchecked-image`，画本地化文字，并把 Markdown
-链接标记显示成 `linkcolor` 颜色的文字。它没写固定宽度就按文字内容量宽度，`HBox`
-里剩下的空间交给 `Spacer` 吸收，到可用宽度上限才换行。复选框点一下就能切换，链接点一下
-就能打开，而 `linkcolor` 正是把文字变成链接的开关，详见[链接](#链接)。
+复选框按 `checked` 挑 `checked-image` 或 `unchecked-image`，文字按当前语言绘制，其中的 Markdown
+链接标记用 `linkcolor` 的颜色显示。没写固定宽度时，它按文字量出宽度，`HBox` 里剩下的空间由
+`Spacer` 吸收，宽度不够才换行。点一下切换勾选状态，点链接打开目标，所以 `linkcolor` 正是把标签
+变成链接的那个开关。见[链接](#链接)。
 
 ## 可滚动容器
 
-绝对定位的 `HBox`、`VBox` 或 `Content` 写上 `scrollable="true"` 和 `id` 之后，容器保住
-拿到的尺寸，子元素按各自声明的尺寸排开，不会被压进这块地方。放不下的部分沿容器边缘整块
-裁掉：滚过去的那一行既画不出来，也不再接受点击，所以列表下方的按钮就能接到本来被这一行
-吃掉的点击。折行优先于滚动，写了 `flex-wrap` 的容器还是普通的折行容器；只写 `scrollable`
-而没有 `id` 的容器也保持原样，因为没名字就没地方记住它的位置。
+绝对定位的 `HBox`、`VBox` 或 `Content` 只要写上 `scrollable="true"` 和 `id`，就会保住拿到的
+尺寸，让子元素按各自声明的尺寸排开，而不是被压进这块空间。放不下的部分沿容器边缘整块裁掉：滚过去
+的那一行既画不出来，也不再接受点击，于是列表下方的按钮能接到这行本会吃掉的点击。折行优先于滚动，
+所以写了 `flex-wrap` 的容器仍是普通的折行容器；只写 `scrollable` 而没写 `id` 的容器也保持原样，
+因为没有名字就无处记住它的位置。
 
-位置记在容器的 `id` 下，所以重绘和翻回这一页时它都还在原地。在容器上滚滚轮，每格走 48 像素
-（随显示缩放），而运行时画出的滚动条做的是同一件事：尾部一条 8 像素宽的轨道，滑块长度是
-列表露出来那部分占的比例，点轨道上滑块之外的两段就把视图挪一页。这两处颜色由
-`scrollbar-background` 和 `scrollbar-thumb-background` 决定，默认是半透明白。
+位置记在容器的 `id` 下，所以重绘和翻回这一页时它都还在原处。用滚轮在容器上滚动，每格移动 48 像素
+（随显示缩放），运行时画出的滚动条做的是同一件事：尾部一条 8 像素宽的轨道，滑块长度是列表露出
+部分所占的比例，点轨道上滑块之外的位置就把视图翻一页。轨道和滑块的颜色由 `scrollbar-background`
+和 `scrollbar-thumb-background` 决定，默认是半透明白。
 
 ```xml
 <VBox id="components" scrollable="true" position="absolute" left="32" top="96"
@@ -164,27 +164,27 @@ Label、Box 和 Image/Icon，用它们就能拼出文字加图标。
 </VBox>
 ```
 
-这些复选框不只是画出来的一排选项：工程可以用 `components.items` 把安装内容切成组件，
-复选框的 `id` 就是组件名，而用户勾着哪行就装哪个组件，规则见[配置参考](/zh-CN/CONFIG_REFERENCE/#组件)。
+这些复选框不只是画出来的一排选项：工程可以用 `components.items` 把安装内容切成组件，复选框的
+`id` 就是组件名，用户勾着哪几行就装哪几个组件。规则见
+[配置参考](/zh-CN/CONFIG_REFERENCE/#组件)。
 
 ## Label、Select 与 RadioButton
 
-- 绝对定位 Label：支持 `text`/`value`、font-size、font-weight、color 和 `textalign=center`。
+- 绝对定位的 Label 支持 `text`/`value`、font-size、font-weight、color 和 `textalign=center`。
 - Select 自己声明有哪些选项，在 `background` 填充和 `border-color` 描边之上画一支随 DPI 缩放的
-  箭头，并显示当前选项的文字。点击控件展开选项，点中某一行就记下那行的 `value` 并收起菜单，
-  而写了 `visible="false"` 的选项根本不会出现。`action="switch_language"` 的 Select 列的是工程
-  提供的语言，选中后重新加载对应语言文件，并重绘页面文字。
-- RadioButton 用 `group` 归组，用 `value` 代表组内的一个取值：`checked-image`/
-  `unchecked-image` 和文字的画法和复选框一样，`checked="true"` 标出这组起始选中的行。点击
-  任意一行就把整组记成那一行的值，所以一组任何时刻只有一个值；布局里一行都没标选中的组，
-  用户点击之前不持有任何值。
-- 点中记下的值就是页面其他部分读到的值：下拉框用自己的 `id` 当名字，单选按钮用所属 `group`
-  的名字，`enabled-when="<id>:<值>"` 等的就是其中一个。
-- 下拉框菜单展开后键盘接管：上下键移动高亮，走到头会绕回来，回车记下高亮那一行——它代表的
-  语言或取值；Esc 只关菜单，既不离开页面，也不记下任何值。打开菜单时高亮停在这个控件当前
-  的值上：语言控件是当前语言，工程自己的下拉框是用户点过的那个选项，还没点过就停在第一个
-  选项。高亮用 `popup-highlight-background`，缺省回退到 `popup-selected-background`，当前值
-  那一行用 `popup-selected-background`。
+  箭头，并显示当前选项的文字。点击控件展开选项列表，点中某一行就记下那行的 `value` 并收起菜单；
+  写了 `visible="false"` 的选项根本不会出现。`action="switch_language"` 的 Select 列出工程提供
+  的语言，选中后重新加载对应的语言文件，并重绘页面文字。
+- RadioButton 用 `group` 归组，用 `value` 代表组内的一个取值：`checked-image`/`unchecked-image`
+  和文字的画法与复选框相同，`checked="true"` 标出这组起始选中的行。点击任意一行，整组就记成这一行
+  的值，所以一组任何时刻只持有一个值；布局里一行都没标选中的组，在用户点击之前不持有任何值。
+- 点中记下的值，就是页面其他部分读到的值：下拉框用自己的 `id` 当名字，单选按钮用所属 `group` 当
+  名字，`enabled-when="<id>:<值>"` 等的就是其中一个。
+- 下拉框菜单展开后由键盘接管：上下键移动高亮，走到头会绕回来；回车记下高亮那一行代表的语言或
+  取值；Esc 只关菜单，既不离开页面，也不记下任何值。打开菜单时，高亮停在这个控件当前持有的值
+  上：语言控件停在当前语言，工程自己的下拉框停在用户点过的那个选项，还没点过就停在第一个选项。
+  高亮用 `popup-highlight-background`，缺省回退到 `popup-selected-background`；当前值那一行用
+  `popup-selected-background`。
 
 两个记值的控件，和一个要等它们的按钮：
 
@@ -207,8 +207,8 @@ Label、Box 和 Image/Icon，用它们就能拼出文字加图标。
              background="#FF4C5868" />
 ```
 
-`background` 画圆角轨道，`bar-image` 是整条渐变素材，按百分比从左往右裁剪后叠上去。
-`progress` 是你写在布局里的值，不过安装或卸载跑起来时会拿实时进度盖住它，结束后再恢复。
+`background` 画圆角轨道，`bar-image` 是整条渐变素材，运行时按百分比从左往右裁剪后叠上去。
+`progress` 是你在布局里写的值，不过安装或卸载运行时会用实时进度盖住它，结束之后再恢复。
 
 ## 动态值绑定
 
@@ -223,31 +223,31 @@ TextInput 和 Label 可以用 `value-source` 绑定运行时数据：
 <Label id="progress_pos" text="@installing_text" value-source="status" />
 ```
 
-`config:` 后面是点号分隔的 `installer_config.json` 路径；`disk-free:` 后面写 TextInput 的 id，
-运行时从路径里取出 Windows 卷根，再用 `GetDiskFreeSpaceExW` 查可用空间。`size-mb` 把配置里的
+`config:` 后面是点号分隔的 `installer_config.json` 路径，`disk-free:` 后面写 TextInput 的 id：
+运行时从该路径里取出 Windows 卷根，再用 `GetDiskFreeSpaceExW` 查可用空间。`size-mb` 把配置里的
 MiB 值转成好读的大小，而 `size` 按 1024 进位格式化成 B/KB/MB/GB/TB。
 
-没写 `readonly` 的 TextInput 可以直接编辑，操作和常见的 Windows 输入框一样：
+没写 `readonly` 的 TextInput 可以就地编辑，操作和常见的 Windows 输入框一样：
 
-- 点一下就落下闪烁的光标，打字即插入；`Backspace`、`Delete` 删除，左右键、`Home`、`End` 移动光标。
+- 点一下就落下闪烁的光标，输入即插入；`Backspace`、`Delete` 删除，左右键、`Home`、`End` 移动光标。
 - 按住鼠标左键拖动选中一段文字，选区是浅蓝高亮；双击选中光标下的一个词，`Ctrl+A` 全选。
-- `Ctrl+C`、`Ctrl+X`、`Ctrl+V` 复制、剪切和粘贴；`Ctrl+Z` 撤销、`Ctrl+Y` 重做，连着一串输入
+- `Ctrl+C`、`Ctrl+X`、`Ctrl+V` 复制、剪切和粘贴；`Ctrl+Z` 撤销、`Ctrl+Y` 重做，连续一串输入
   合成一步撤销。
 - `Ctrl+Backspace`、`Ctrl+Delete` 按词删除，`Ctrl+Left`、`Ctrl+Right` 按词移动光标。
-- 有选区时直接输入或粘贴，会替换掉选中内容。
 - 输入法组合窗停在光标处，候选框紧贴光标下方，中日韩文字直接在输入框里组合。
+- 有选区时直接输入或粘贴，会替换掉选中内容。
 
-选词规则和 Windows 一致：字母、数字、下划线组成一个词，连续空白算一段，路径分隔符等符号
-各自独立，所以双击 `C:\Program Files` 里的反斜杠只会选中那个反斜杠。
+选词规则和 Windows 一致：字母、数字和下划线组成一个词，连续的空白算一段，路径分隔符等符号各自
+独立，所以双击 `C:\Program Files` 里的反斜杠只会选中那个反斜杠。
 
-只想展示的字段写 `readonly="true"`，它不再响应点击和输入，`pick_directory` 也把它当展示
-字段。用户输入的值在本次运行里优先于 `value`/`value-source` 默认值，所以读同一个控件的
-`disk-free:` 绑定会立刻按新值重算。
+只想展示的字段写 `readonly="true"`：它不再响应点击和输入，`pick_directory` 也把它当展示字段。
+用户输入的值在本次运行里优先于 `value`/`value-source` 默认值，所以读同一个控件的 `disk-free:`
+绑定会立刻按新值重算。
 
-`status` 用运行时发布的 locale 键替换布局里的文字，进度页就靠它显示当前步骤；任务没跑时
-保留 `text` 里的占位文案。
+`status` 用运行时为当前步骤发布的 locale 键替换布局里的文字，进度页就靠它显示实时状态；没有任务
+运行时，运行时保留 `text` 里的占位文案。
 
-字段还能写明什么样的值才算数，页面上的其他控件照它行动：
+字段还能声明什么样的值才算合格，页面上的其他控件据此行动：
 
 ```xml
 <TextInput id="editDir" required="true" required-message="@dir_required"
@@ -263,25 +263,25 @@ MiB 值转成好读的大小，而 `size` 按 1024 进位格式化成 B/KB/MB/GB
 | `pattern` | 整个值要套的掩码：`*` 是任意一串字符（可以为空），`?` 是正好一个，别的字符就是它本身 |
 | `required-message`、`min-length-message`、`max-length-message`、`pattern-message` | 值违反这条规则时显示的 locale 键（`@键`） |
 
-值没违反自己声明的任何规则，字段就算有效，而可选字段留空、没写规则的字段同样有效。
-`enabled-when` 除了复选框和面板那四种状态，还能对字段 id 写 `valid` 和 `invalid`。带
-`value-source="field-error:<字段 id>"` 的标签显示的是这个字段最先违反的那条规则写下的文案，
-值合格就什么都不画；这些文案和别的 `@键` 一样来自 locale 文件，漏翻会在构建时报出来。
+字段没有违反自己声明的任何规则就算合格；可选字段留空合格，没写规则的字段同样合格。
+`enabled-when` 除了复选框和面板的那四种状态，还能对字段 id 写 `valid` 和 `invalid`。带
+`value-source="field-error:<字段 id>"` 的标签，显示这个字段最先违反的那条规则写下的文案，值合格
+就什么都不画。这些文案和别的 `@key` 一样来自 locale 文件，漏翻会在构建时报出来。
 
-空的输入框也是输入框：点进去就能落光标，不然页面要用户填的值根本没法填。
+空的输入框也是输入框：点进去就能落光标，页面要用户填的值正是靠它填进去的。
 
-颜色可以写 `#RRGGBB` 或 `#AARRGGBB`；现在画文字忽略 alpha，只用 RGB。
+颜色可以写 `#RRGGBB` 或 `#AARRGGBB`；绘制文字时忽略 alpha，只用 RGB。
 
 ## 可见性
 
-元素写了 `visible="false"`，或者它的某个祖先写了，就不画出来。
+元素写了 `visible="false"`，或者它的某个祖先写了，运行时就不画出来。
 
 ## 动作
 
 | action | 行为 |
 | --- | --- |
 | `minimize` | 最小化窗口 |
-| `close` | 直接关闭；任务运行期间忽略这次点击，窗口归任务所有 |
+| `close` | 直接关闭；任务运行期间忽略这次点击，因为窗口归任务所有 |
 | `close_confirm` | 先按 `ui.dialog_layout` 弹出皮肤确认框，确认后关闭；任务运行期间确认就停掉任务 |
 | `pick_directory` | 打开系统目录选择框，把结果写入 TextInput，详见[目录选择](#目录选择) |
 | `open_url:<键>` | 打开 `links` 表里这个键配置的网址 |
@@ -298,31 +298,31 @@ MiB 值转成好读的大小，而 `size` 按 1024 进位格式化成 B/KB/MB/GB
 | `dialog_ok` | 确认当前对话框：退出提问会停掉正在跑的任务或关闭安装程序，脚本的问题回答「是」，提示框只是收起 |
 | `dialog_cancel` | 收起当前对话框：脚本的问题回答「否」，下面的页面重新接受点击 |
 
-工程声明多于一个页面时，就用 `next` 和 `back` 走完：第一页后面没有东西，最后一页前面也没有，
-所以走到头就停下，不会绕回去。工程里放了 `scripts/pages.rhai` 并定义了 `next_page(from)` 时，
-每次点 `next` 都先问它去哪一页——它点名一页就照它走，声明页序里排在中间的那几页直接跳过，
-而它回空串就按声明的顺序走下一页。`back` 不问钩子，它按用户来时的路退回去，所以被跳过的
-页面不会因为按 Back 又冒出来，见[脚本接口](/zh-CN/SCRIPT_API/#页面钩子)。任务自己则在第二页汇报、
-在最后一页收尾，而页面也能用 `role` 声明职责：`progress` 标记任务汇报的那一页，`finish`
-标记收尾的那一页，许可协议页或选项页就是这样排到任务前面的。这两个职责见
+工程声明多个页面时，就用 `next` 和 `back` 在它们之间走动。第一页后面没有页面，最后一页前面也没
+有，所以走到头就停下，不会绕回去。工程里放了 `scripts/pages.rhai` 并定义了 `next_page(from)`
+时，每次点 `next` 都会先问它：它点名一页就照它走，声明页序里排在中间的那几页直接跳过；它回空串
+就按声明的顺序走下一页。`back` 不问钩子，而是按用户来时的路退回去，所以被钩子跳过的页面不会因为
+按 Back 又冒出来。见[脚本接口](/zh-CN/SCRIPT_API/#页面钩子)。
+
+页面能用 `role` 改写任务在哪一页运行：`progress` 标记任务汇报的那一页，`finish` 标记收尾的那一
+页。许可协议页或选项页就是这样排到任务前面的。这两个职责见
 [文件、语言与页面](/zh-CN/CONFIG_REFERENCE/#文件语言与页面)。
 
-任务跑起来之后也能停：`cancel` 按钮当场就停，退出提问回答「是」也一样。点击不能让机器上
-留下装了一半的产品，所以任务会在当前这一步走完的检查点放弃，撤回已经写下的内容，向导回到
-任务起始的那一页；脚本用 `is_cancelled()` 看到同一个请求，就能让自己的一步提前收尾，见
-[脚本接口](/zh-CN/SCRIPT_API/)。
+点击不能让机器上留下装了一半的产品，所以任务被停掉时——不管是按 `cancel`，还是退出提问回答
+「是」——都会在当前这一步走完的检查点放弃，撤回已经写下的内容，向导回到任务起始的那一页。脚本用
+`is_cancelled()` 看到同一个请求，就能让自己的一步提前收尾。见[脚本接口](/zh-CN/SCRIPT_API/)。
 
 ## 对话框
 
 确认框不是系统弹窗，而是一份普通布局：运行时把 `ui.dialog_layout` 指向的文件（默认
-`layouts/msgBox.xml`）画在窗口中央，并在它和页面之间压一层遮罩。提问期间只有对话框上的
-控件响应点击，页面按钮不会误触；`Enter` 等同于确认，`Escape` 等同于取消。
+`layouts/msgBox.xml`）画在窗口中央，并在它和页面之间压一层遮罩。提问期间只有对话框上的控件响应
+点击，页面按钮不会误触；`Enter` 等同于确认，`Escape` 等同于取消。
 
-同一张卡片也管脚本要问要说的：关闭确认、运行时自己弹的提示，还有脚本通过 `show_message`、
-`show_error`、`ask_yes_no` 说出去的提示和提问，都画在这份布局上。提问的两个按钮文案取自
-语言文件的 `yes` 和 `no`，提示只有一个收起它的按钮。
+同一张卡片也管脚本要问要说的内容：关闭确认、运行时自己弹的提示，还有脚本通过 `show_message`、
+`show_error`、`ask_yes_no` 说出去的提示和提问，都画在这份布局上。提问的两个按钮文案取自语言文件
+的 `yes` 和 `no` 键，提示框只有一个收起它的按钮。
 
-对话框的文字来自这次提问，不是布局里写死的文案，用 `value-source` 取值：
+对话框的文字来自本次提问，不是布局里写死的文案，用 `value-source` 取值：
 
 ```xml
 <Page width="400" height="180" background="#FF2A3844" border-radius="16">
@@ -340,24 +340,24 @@ MiB 值转成好读的大小，而 `size` 按 1024 进位格式化成 B/KB/MB/GB
 | `dialog:accept` | 确认按钮文案 |
 | `dialog:dismiss` | 取消按钮文案，提示框里为空 |
 
-`visible-with="dismiss"` 让控件只在有两个答案时出现，于是一份布局既能当退出提问、脚本的
-`ask_yes_no`，也能当只有「确定」的提示。
+`visible-with="dismiss"` 让控件只在对话框有两个答案时出现，于是一份布局既能当退出提问，也能当
+脚本的 `ask_yes_no`，还能当只有「确定」的提示。
 
-`Page` 的 `height` 是最小高度。对话框文案随语言变，同一句话在别的语言里可能多占一行，
-这时卡片会按内容自动变高并保持居中，不会把答案挤出下边缘。答案和卡片边缘之间留多少白，
-看布局自己的 `padding`，示例里底部留了 24 像素。
+`Page` 的 `height` 是最小高度。对话框文案随语言变，同一句话在别的语言里可能多占一行，这时卡片会
+按内容变高并保持居中，不会把答案挤出下边缘。答案和卡片边缘之间留多少空白，由布局自己的
+`padding` 决定，示例里底部留了 24 像素。
 
 ## 链接
 
-`text`、`value` 或语言文件里的 `[文字](目标)`，元素再写上 `linkcolor` 就变成可点击文字：
+`text`、`value` 或语言文件里的 `[文字](目标)`，只要元素写了 `linkcolor` 就变成可点击文字：
 
 ```xml
 <Label text="@agree_full" linkcolor="#00C4B2" />
 ```
 
-目标按这个顺序解析：绝对网址（`https://`、`http://`、`mailto:`）、`installer_config.json` 里的
-`links` 表、历史别名 `agreement` 和 `policy`（分别对应 `terms_of_service` 和 `privacy_policy`）。
-解析不到目标就保持普通文字，而不会报错。
+目标的解析顺序是：绝对网址（`https://`、`http://`、`mailto:`）、`installer_config.json` 里的
+`links` 表、历史别名 `agreement` 和 `policy`（分别对应 `terms_of_service` 和
+`privacy_policy`）。解析不到目标就保持普通文字，不会报错。
 
 ```json
 "links": {
@@ -372,8 +372,8 @@ MiB 值转成好读的大小，而 `size` 按 1024 进位格式化成 B/KB/MB/GB
 
 ## 键盘与焦点
 
-控件按布局里的声明顺序进 Tab 顺序：`Tab` 走到下一个，`Shift+Tab` 走回上一个，到头就绕回来。
-键盘落在哪个控件上，就在它的矩形上画一圈一像素的点状环，颜色依次取控件的 `focus-color`、
+控件按布局里的声明顺序进 Tab 顺序：`Tab` 走到下一个，`Shift+Tab` 走回上一个，走到头就绕回来。
+键盘落在哪个控件上，就在它的矩形上画一圈一像素的点状环，颜色依次取控件自己的 `focus-color`、
 页面的设置，都没写才用默认强调色 `#FF1F6FEB`：
 
 ```xml
@@ -382,19 +382,19 @@ MiB 值转成好读的大小，而 `size` 按 1024 进位格式化成 B/KB/MB/GB
 </Page>
 ```
 
-环只说明键盘在哪，不代表按下去了。`Enter` 和空格执行环底下的控件：按钮跑它声明的动作，
-复选框和单选按钮被切换；圈住输入框时把光标也交给它，直接打字就写得进去。用鼠标按下的控件
-同样拿到环，于是键盘就从刚点过的地方接着走。
+环只说明键盘在哪，不代表控件被按下。`Enter` 和空格执行环底下的控件：按钮跑它声明的动作，复选框和
+单选按钮被切换，输入框连光标一起拿到环，直接打字就写得进去。用鼠标按下的控件同样拿到环，于是键盘
+从刚点过的地方接着走。
 
 进不了 Tab 顺序的控件不会被圈到：被 `enabled="false"` 或 `enabled-when` 挡住的按钮、`readonly`
-的输入框、`visible="false"` 的元素、没写 `action` 的标签，还有没写 `id` 的输入框；键盘停在
-它们身上时没名字可记。菜单或对话框打开期间，`Tab` 不动页面上的环，这段时间键盘归它们。
+输入框、`visible="false"` 的元素、没写 `action` 的标签，以及没写 `id` 的输入框——最后一种是因为
+没有名字可供记住。菜单或对话框打开期间，`Tab` 不动页面上的环，这段时间键盘归它们。
 
 ## 高对比主题
 
-用户打开高对比时，布局里声明的颜色让位给系统配色里为「这个颜色画的是什么」留的那一个。
-运行时画出来的页面是一张图，Windows 不会往里面画自己的控件，所以没有哪个像素会自己跟着
-这个开关走；颜色只能按角色交给系统，也就是按它画的是什么：
+用户打开高对比后，布局里声明的颜色让位给系统配色为「这个颜色画的是什么」保留的那一个。运行时画出
+的页面是一张图，Windows 不会把自己的控件画进去，所以没有哪个像素会自己跟着这个开关走；颜色只能
+按它画的是什么，也就是按角色交给系统：
 
 | 布局里的颜色 | 系统配色 |
 | --- | --- |
@@ -407,23 +407,22 @@ MiB 值转成好读的大小，而 `size` 按 1024 进位格式化成 B/KB/MB/GB
 | `border-color` 描边 | `COLOR_WINDOWFRAME` |
 | 滚动条轨道 | `COLOR_SCROLLBAR` |
 
-八个角色分开是有意的。Windows 自带的高对比主题里，页面颜色和控件面色常常相同，按钮上的字
-和页面上的字通常不同，滚动条轨道也有自己的一色；要是全画成一个颜色，用户挑的配色就丢了
-一部分。
+八个角色分开是有意为之。Windows 自带的高对比主题里，页面颜色和控件面色常常相同，按钮上的字和
+页面上的字通常不同，滚动条轨道也有自己的一种颜色；如果全画成同一种颜色，用户挑的配色就丢掉一部分。
 
-图片保留它被画出来的颜色：`background-image`、`Image`，还有按钮悬停和按下时换上的那两张，
-都是工程自己的像素，系统配色里没有它们的名字。`linkcolor` 和文字里的链接按高亮色画。
+图片保留绘制时的颜色：`background-image`、`Image`，以及按钮悬停和按下时换上的那两张，都是工程
+自己的像素，系统配色里没有它们的名字。`linkcolor` 和文字里的链接按高亮色绘制。
 
-高对比下展开的菜单会多一条描边：菜单画在页面之上，而系统配色把页面和列表画成同一个颜色，
-没有这条线就看不出菜单从哪里开始。
+高对比下展开的菜单会多一条描边：菜单画在页面之上，而系统配色把页面和列表画成同一种颜色，没有这条
+线就看不出菜单从哪里开始。
 
-用户开关高对比或者换一套配色时（`WM_SETTINGCHANGE`、`WM_SYSCOLORCHANGE`、`WM_THEMECHANGED`），
-窗口重排一遍布局再重画。只要屏幕上已经是这套颜色，消息来了就什么都不排。
+用户开关高对比或者换一套配色时（`WM_SETTINGCHANGE`、`WM_SYSCOLORCHANGE`、
+`WM_THEMECHANGED`），窗口会重新排版并重绘整页；如果消息要求的正是屏幕上已有的颜色，就什么都不排。
 
 ## 点击目标与光标
 
-Button、Select、复选框和单选按钮，还有任何写了 `action` 的元素都响应点击，鼠标悬停变成手型。
-没写 `action` 的控件，即使压在可点击区域上也不响应，图标或文字就靠这一点变成链接。
+Button、Select、复选框和单选按钮，以及任何写了 `action` 的元素都响应点击，鼠标悬停时变成手型。
+没写 `action` 的控件，即使压在可点击区域上也不响应；图标或文字正是靠这一点变成链接的。
 
 ## 目录选择
 
@@ -434,17 +433,17 @@ Button、Select、复选框和单选按钮，还有任何写了 `action` 的元�
        position="absolute" left="436" top="12" width="16" height="16" />
 ```
 
-`action="pick_directory"` 打开系统目录选择框。选中的路径写进 `target` 指定的 TextInput；
-没写 `target` 就写进页面上第一个可编辑的 TextInput，`readonly` 字段是展示用的，只在没有
-别的候选时才用。写入的值当用户输入保存，所以之后一直优先，读同一个控件的 `disk-free:`
-绑定会立刻按新路径重算。
+`action="pick_directory"` 打开系统目录选择框。选中的路径写进 `target` 指定的 TextInput；没写
+`target` 时写进页面上第一个可编辑的 TextInput，`readonly` 字段是展示用的，只在没有别的候选时才
+用。选中的路径按用户输入保存，所以从这时起它优先于 `value`/`value-source` 默认值，读同一个控件
+的 `disk-free:` 绑定也会立刻按新路径重算。
 
 ## 尚未实现
 
-- `min-width`/`min-height` 之外的隐式最小尺寸，还有流式容器的 `min-height`。
-- 读屏：窗口通过 MSAA 说出这一页的控件（角色、名字、取值、状态和位置），焦点、取值、清单
-  或翻页变化时主动发通知；正在跑的任务报出的状态文字和进度条也说得出来，变化时播报。输入框
-  里敲进去的值每敲一个字符播报一次（只移动光标的按键不播报）。用 `IDispatch` 晚绑定来问的
-  客户程序也照样服务，它问到的成员和 `IAccessible` 上是同一套实现。
-- 元素交叉轴尺寸在没声明时仍是容器边长，没有更细的 `stretch`/`baseline` 区分。
-- 组合窗在焦点或光标移动时会重新定位，但组合过程中不跟着页面滚动。
+- `min-width`/`min-height` 之外的隐式最小尺寸，以及流式容器的 `min-height`。
+- 读屏：窗口通过 MSAA 描述这一页的控件（角色、名字、取值、状态和位置）。焦点、状态、取值和翻页
+  变化时它会主动播报，正在跑的任务发布的状态文字和进度条也说得出来，并在变化时播报。用户输入时，
+  输入框里的值每敲一个字符播报一次，只移动光标的按键不播报。用 `IDispatch` 晚绑定访问窗口的客户
+  程序，拿到的成员和 `IAccessible` 上是同一套。
+- 组合窗在焦点或光标移动时会重新定位，但在组合过程中不跟着页面滚动。
+- 元素的交叉轴尺寸在没有声明时仍是容器的边长，除此之外没有更细的 `stretch`/`baseline` 区分。

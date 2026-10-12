@@ -1,80 +1,93 @@
 ---
 title: Production status
-description: Windows 7 SP1 x64, the minimum these artifacts claim, has been through one real run
+description: What the one real run on the minimum supported system, Windows 7 SP1 x64, covered, what it did not reach, and what still blocks a release.
 slug: PRODUCTION_STATUS
 sidebar:
   order: 200
 ---
 
-**Windows 7 SP1 x64, the minimum these artifacts claim, has been through one real run**: build 7601,
-in a virtual machine thrown away afterwards, where a setup the current builder produced was installed,
-uninstalled, upgraded, and run twice without a window. What the run reached is in
-[Verified](#verified), and what it did not reach follows in a section of its own, rather than sitting
-there looking tested. The run also found and fixed three defects: a folder directly below a drive root
+**Windows 7 SP1 x64 is the minimum these artifacts claim, and it has been through one real run.** The
+run used a setup the current builder produced, on a build 7601 virtual machine that was thrown away
+afterwards: the setup installed, uninstalled and upgraded, and then ran twice without a window. What the
+run reached is in [Verified](#verified); what it did not reach has a section of its own, so no gap is
+left looking tested. The run also found and fixed three defects: a folder directly below a drive root
 was refused as an installation target (`--dir C:\MyApp` failed with "install path cannot be a drive
 root"), a silent install started from an administrator console failed on an invalid handle, and a
 project driving its own install from a script could not install over its own previous version.
 
-Installing writes files and registry entries, so a new project's setup is still worth trying in a
-virtual machine you throw away afterwards, and that goes for any installer.
+Installing writes files and registry entries, so a new project's setup is worth trying in a virtual
+machine you throw away afterwards. That goes for any installer.
 
 ## Verified
 
-- The minimum version has been through a real run: build 7601 Ultimate, in a virtual machine thrown
-  away afterwards, with a standard VGA adapter and a USB pointer; a setup the current builder produced
-  installs and uninstalls there. Of the nine items in
+- The minimum version has been through a real run. It was build 7601 Ultimate, in a virtual machine
+  thrown away afterwards, with a standard VGA adapter and a USB pointer, and a setup the current builder
+  produced installs and uninstalls there. Of the nine items in
   [Windows compatibility](/WINDOWS_COMPATIBILITY/#running-the-acceptance), all but the screen reader and
   the service were reached, and item 2 got only as far as the drag. The window has no title bar and
-  rounded corners, and it draws its background bitmap, its icons and Chinese text from the page layouts. With
-  `install.require_admin` on, Windows asks for administrator rights and shows "unknown" as the
-  publisher, because nothing is signed; until the agreement is ticked, the install button is drawn in
-  grey from `disabled-image`, and once it is ticked the button switches to its enabled state, changing
-  8,994 of the 9,600 pixels in the same 240 by 40 area. The application files land with their nested
-  directories, a desktop shortcut and a Start menu shortcut are created, one for the product and one
-  for the uninstall, and the uninstall entry carries every field Windows' installed-programs list wants.
+  rounded corners, and it draws its background bitmap, its icons and Chinese text from the page layouts.
+  With `install.require_admin` on, Windows asks for administrator rights and shows "unknown" as the
+  publisher, because nothing is signed. Until the agreement is ticked, the install button is drawn in
+  grey from `disabled-image`; once it is ticked, the button switches to its enabled state and 8,994 of
+  the 9,600 pixels in the same 240 by 40 area change. The application files land with their nested
+  directories, a desktop shortcut and a Start menu shortcut are created, one for the product and one for
+  the uninstall, and the uninstall entry carries every field Windows' installed-programs list wants.
   The project's own `install.rhai` created its `logs` directory, wrote its registry values, and closed
   the previous version that was still running; `launch_app` on the finish page started the program that
   had just been installed, and the program wrote `launched.txt` into its own directory. The uninstall
   closed the running product and removed the application files, both shortcuts and both registry keys.
   `--silent` installs and uninstalls both exited 0 and left a log where `--log` asked for it, naming the
   system version and bitness, the interface language, whether the run was as administrator, the product
-  and its path, and what each step did. An upgrade was walked on the same machine: a second version
-  installed straight over the first, files the new version no longer ships were removed, files only it
-  has landed, shared files were replaced, the version in the uninstall entry changed, and an uninstall
-  then took away everything the upgrade had put down. The run also found and fixed three defects (see
-  the [changelog](https://github.com/nick2781/nano-installer/blob/main/CHANGELOG.md)): a folder directly below a drive root being refused, a silent
-  install from an administrator console failing on an invalid handle, and a script-driven project being
-  unable to install over its own previous version. That last one came out of this upgrade walk, and the
-  walk was repeated here after the fix.
+  and its path, and what each step did.
+  An upgrade was walked on the same machine: a second version installed straight over the first, files
+  the new version no longer ships were removed, files only it has landed, shared files were replaced,
+  the version in the uninstall entry changed, and an uninstall then took away everything the upgrade had
+  put down. The run also found and fixed three defects (see the
+  [changelog](https://github.com/nick2781/nano-installer/blob/main/CHANGELOG.md)): a folder directly
+  below a drive root being refused, a silent install from an administrator console failing on an invalid
+  handle, and a script-driven project being unable to install over its own previous version. That last
+  one came out of this upgrade walk, and the walk was repeated here after the fix.
   Later, a setup built by the v2026.10.10 release's builder and its three runtimes was used for two more
   observations on this machine. Pressing on the window's own background and dragging moved the window
   rectangle from left 600 / top 295 to left 528 / top 343, exactly the displacement that was injected:
-  −72 across and +48 down. The window has no title bar, so the drag goes through `WM_NCLBUTTONDOWN`
-  with `HTCAPTION` on a custom area. Minimising and restoring were not verified this time. What an
-  uninstall leaves behind was looked at again as well: after a silent install (elevated) the directory
-  held `data`, `logs`, `nano-installer-manifest.json`, `TapTap.exe`, `uninst.exe` and `data\deep.txt`,
-  and a silent uninstall followed by thirty seconds left no installation directory at all, with the
-  uninstaller having deleted itself and the `logs` directory a project script created with `create_dir`
-  gone with it. That fix had only a unit case behind it, and this was the first time a real machine
-  showed it.
+  −72 across and +48 down. The window has no title bar, so the drag goes through `WM_NCLBUTTONDOWN` with
+  `HTCAPTION` on a custom area. Minimising and restoring were not verified this time. What an uninstall
+  leaves behind was looked at again as well: after a silent install (elevated) the directory held `data`,
+  `logs`, `nano-installer-manifest.json`, `TapTap.exe`, `uninst.exe` and `data\deep.txt`, and a silent
+  uninstall followed by thirty seconds left no installation directory at all, with the uninstaller
+  having deleted itself and the `logs` directory a project script created with `create_dir` gone with
+  it. That fix had only a unit case behind it, and this was the first time a real machine showed it.
 - The builder and the runtime are two separate programs, so a setup never contains the builder.
 - ZIP and 7z application files are recognised from the file signature, and then handed to the matching runtime.
 - Both runtimes unpack real archives, and the result matches the expected SHA-256.
 - The uninstaller has its own runtime and page list, and links no archive backend.
 - The CLI and the Windows 10+ GUI drive the same build API, while GUI dependencies stay out of the runtime.
 - A setup carries the application files, the project resources, and a self-contained uninstaller with its own icon and version information.
-- Installing unpacks the application files, puts the files and the uninstaller into a new directory, and writes the manifest file and the uninstall entry; uninstalling removes only what the manifest file records.
-- When the target directory already holds the same project, the install upgrades in place: files the new application files no longer carry are removed, and a failure in any step restores the version from before the upgrade.
-- A release can ship only the files whose bytes changed: at build time `--delta-from` names the application-file archive of the release it replaces, the builder expands both archives and compares them file by file, and what did not change is left as one statement in the setup.
-  An install checks those files on the machine first: are they there, their byte counts, their digests. A mismatch refuses the run and sends you for the full setup, while only a pass lets it write. Files it kept stay in the manifest file, and the uninstall takes them back.
+- Installing unpacks the application files, puts the files and the uninstaller into a new directory, and
+  writes the manifest file and the uninstall entry. Uninstalling removes only what the manifest file
+  records.
+- When the target directory already holds the same project, the install upgrades in place: files the new
+  application files no longer carry are removed, and a failure in any step restores the version from
+  before the upgrade.
+- A release can ship only the files whose bytes changed. At build time, `--delta-from` names the
+  application-file archive of the release it replaces, and the builder expands both archives and
+  compares them file by file; whatever did not change is left as one statement in the setup.
+  An install checks those files on the machine first: whether each one is there, its byte count, and its
+  digest. A mismatch refuses the run and sends you for the full setup, and only a pass lets it write.
+  Files it kept stay in the manifest file, and the uninstall takes them back.
 - The first page draws background bitmaps and Unicode text natively; the window has no border and rounded corners, you can drag it, minimize it and close it, and a hand cursor appears over anything clickable.
 - Every artifact has its PE imports checked for compatibility with the minimum supported version.
 - Progress pages report live status, and the finish page can start the program that was installed.
 - Shortcuts and autostart entries are created during install and restored on uninstall, and rollback does the same.
 - Uninstall ends a running product and removes shortcuts, but it deletes declared user data only when you clear the keep-data option.
-- The uninstall entry carries the fields a Windows installed-programs list wants: product name, version, publisher, install location, uninstall command and icon; the command a script or an administrator uses for a silent uninstall is the deployed uninstaller plus `--silent`.
-  The size is counted from the bytes on disk and stored as kilobytes in a `REG_DWORD`, with the uninstaller itself included, so a product under 1 KiB reports 1 rather than 0, which would read as an unknown size.
-  `NoModify` and `NoRepair` are both `REG_DWORD` 1; this installer has no separate modify or repair step, so those two marks keep Windows from putting up a button that leads nowhere, which is worse than no button.
+- The uninstall entry carries the fields a Windows installed-programs list wants: product name, version,
+  publisher, install location, uninstall command and icon. The command a script or an administrator uses
+  for a silent uninstall is the deployed uninstaller plus `--silent`.
+  The size is counted from the bytes on disk and stored as kilobytes in a `REG_DWORD`, with the
+  uninstaller itself included, so a product under 1 KiB reports 1 rather than 0, which Windows would read
+  as an unknown size.
+  `NoModify` and `NoRepair` are both `REG_DWORD` 1. This installer has no separate modify or repair step,
+  so those two marks keep Windows from putting up a button that leads nowhere.
 - An embedded Rhai engine runs `scripts/install.rhai` and `scripts/uninstall.rhai`, and the primitives a script uses reuse the built-in deployment, rollback and manifest file code. A script that fails rolls back, and when a script skips manifest file cleanup, the library does it.
 - Flow layout covers nested `VBox`, `HBox` and `Content` containers, with padding, margins, percentage sizing, `justify-content` and `align-items`.
 - A Markdown link in a label opens its configured URL when clicked, the confirmation `close_confirm` puts up carries the product's own skin, and the folder picker writes the chosen path back into the layout's TextInput.
@@ -109,14 +122,18 @@ virtual machine you throw away afterwards, and that goes for any installer.
   The wheel moves it 48 pixels a notch, the scrollbar along the trailing edge shows which part of the list is in view, and a click on either side of the thumb pages by one screen.
 - A setup carries an application manifest file: with `install.require_admin` on, Windows raises the administrator prompt (UAC) before the process starts, while `ui.dpi_aware` tells the system whether the window scales itself. A project that sets neither runs like an ordinary program.
 - The builder compares every locale file against the default locale and the keys the pages actually ask for, reporting a locale that is missing text and one `supported_locales` lists without a file.
-- Once an uninstall is done, the cleaner copy in the temporary directory immediately deletes the uninstaller and the emptied installation directory, but a directory that still holds files of yours is kept. The cleaner also exits and removes itself when it is done.
-- A project that declares `advanced.silent_mode_support` installs with `--silent`, and one that declares `advanced.uninstall_mode_support` uninstalls the same way. A silent run opens no interface at all, takes only `--dir` and `--log`, refuses any other argument, and reports through the exit code and standard error; a project that did not declare it is refused outright, rather than installed or removed quietly.
-- Every install and uninstall leaves a log of the run on disk, by default in the `nano-installer` directory of the temporary directory, and the file name carries the setup's name, the moment, and which of the two tasks this was; a silent run can name where with `--log`.
+- After an uninstall, the cleaner copy in the temporary directory immediately deletes the uninstaller and
+  the emptied installation directory, but it keeps a directory that still holds files of yours. The
+  cleaner then exits and removes itself.
+- A project that declares `advanced.silent_mode_support` installs with `--silent`, and one that declares `advanced.uninstall_mode_support` uninstalls the same way. A silent run opens no interface at all, takes only `--dir` and `--log`, refuses any other argument, and reports through the exit code and standard error. A project that did not declare it is refused outright, rather than installed or removed quietly.
+- Every install and uninstall leaves a log of the run on disk, by default in the `nano-installer`
+  directory of the temporary directory, and the file name carries the setup's name, the moment, and which
+  of the two tasks this was. A silent run can name where with `--log`.
   The log opens with the machine: whether it ran as administrator, the Windows version and build, the architecture, and the interface language; then the product name and version and the directory it went to; then every step the run took and every line a script wrote, up to 1 MiB, where it stops and says it was truncated.
-  A failed run leaves the file where it is: the wizard writes its full path under the error, and a silent run writes it to standard error, so you or your operations team can just hand it over. The file is not inside the installation directory, so it survives the directory a failed install takes back.
+  A failed run leaves the file where it is: the wizard writes its full path under the error, and a silent run writes it to standard error, so you or your operations team can hand it over. The file is not inside the installation directory, so it survives the directory a failed install takes back.
 - A project can cut what it installs into components: `resources.payload_file` is the base application files every run installs, and each entry of `components.items` carries a ZIP or 7z archive of its own.
   A `Checkbox` of the same name on a page decides whether this run installs it, and a script asks the same question with `is_component_selected` and `selected_components`.
-  A component marked `required` always installs, and when the page has no such checkbox, a silent run included, `default` decides. One runtime unpacks every archive, so a format that does not match is refused at build time; two archives carrying one relative path fail at install time, rather than overwriting each other in declaration order.
+  A component marked `required` always installs, and when the page has no such checkbox, a silent run included, `default` decides. One runtime unpacks every archive, so a format that does not match is refused at build time. Two archives carrying one relative path fail at install time, rather than overwriting each other in declaration order.
 - A project can declare what the machine has to have first: each entry of `dependencies.items` says how to recognise it, how to install it, and whether missing it is fatal.
   How to recognise it: a file, or a registry value that has to exist, equal some value, or be at least some version; how to install it: an `.exe` the setup carries, or one fetched from a URL.
   The install asks once before it unpacks the application files: what is there is left alone and what is missing is installed. A required one that cannot be installed stops the run and reports the dependency name and the installer's exit code, while an optional one leaves a warning. A downloaded program has to match the SHA-256 the project recorded before it may run, and when it does not, it is deleted there and then.
@@ -138,7 +155,7 @@ virtual machine you throw away afterwards, and that goes for any installer.
   Another lets `scripts/pages.rhai` send the wizard past the licence page in the middle, and Back brings you back to the welcome page you came from; one lets a hook fail once and watches the wizard write the reason on the product's own card and then walk on in the declared order.
   Eight more hand the page to a client in another process. The client asks for the list of controls with their roles, names, values, states and places. One case works a control through its default action, and another has the keyboard handed to a different control on request. As Tab walks on, the focus events the window announces are handed over too. The value being typed into a field is handed over as well, reported once per character and not for a key that only moves the caret. The words a task reports and the progress bar, the message a field that breaks a rule puts up, and the card a question is drawn on all go the same way. And the same page asked for by member name over `IDispatch` gives the same answers as the interface cases. One of them keeps reading the page to see whether the wizard falls over because someone is asking.
   Opening a window needs an interactive desktop session; on a machine with no desktop they skip, and `NANO_INSTALLER_E2E_REQUIRE_DESKTOP=1` turns the skip into a failure. The cursor case also asks that the session be showing a pointer; a hosted runner does not, and it prints its skip there too.
-  The other forty-nine open no window. Three of them read their answer back out of the machine rather than out of the primitive that wrote it: one checks every registry type a script named, and which copy of a key a view name selects; one checks the exit code and both output streams a command a script ran left behind; one checks that the service a script installed really is on the machine and is gone again with the uninstall. The rest pass on Windows 11 and in CI.
+  The other forty-nine open no window. Three of them read their answer back out of the machine rather than out of the primitive that wrote it. One checks every registry type a script named, and which copy of a key a view name selects. One checks the exit code and both output streams a command a script ran left behind. One checks that the service a script installed really is on the machine, and that the uninstall takes it away again. The rest pass on Windows 11 and in CI.
 - A signed setup is still a setup: the certificate table is appended after the bundle data, which is what Authenticode writes when a pipeline signs, and it no longer hides the footer the runtime reads its own resources from.
 - A project's own command can run on the finished files, which is NSIS's `!finalize` and `!uninstfinalize`. While the uninstaller is still a file of its own and not yet embedded in the setup, the builder calls `finalize.uninstaller`; once the setup is completely written and the file is closed, it calls `finalize.installer`. `%1` in the command becomes that file's path, every line it writes goes into the build log, and a non-zero return stops the build, so the refused setup does not stay on disk either. Signing is what it is usually for, and the builder signs nothing itself.
 - What the setup carries is checked entry by entry. Every entry in the bundle data carries the SHA-256 computed at build time, and a read is checked against it: a truncated download, a bad sector, or a hand that changed something stops the run before anything is unpacked, reports the recorded value and the actual digest by entry name, and sends you for a fresh setup rather than installing bytes that do not match. A payload streamed out of the setup is hashed as it is read. On an error part way through, or when the digest does not match, that copy is deleted, so the step that would have unpacked it has nothing to run against.
@@ -194,7 +211,14 @@ and putting a root into the trusted root store **takes a human confirmation**, s
 that happens once. For a real certificate, SignPath Foundation signs open-source projects for free,
 without personal identity validation and with the private key held in their HSM.
 
-The outcome of the application belongs here too. SignPath Foundation declined it on the grounds that the project carries no verifiable reputation, so no real certificate is being bought and the publisher a user sees is still "unknown". The signing flow itself did not stop there: the rehearsal in [Build and release](/BUILD_AND_RELEASE/) walks the whole path through a manually triggered workflow -- Fulcio issues a ten-minute certificate to the workflow's own identity, the signature is a separate file that changes no executable, and verification against the certificate identity and issuer passes with a transparency log entry and an RFC 3161 timestamp in place. Because the certificate lives ten minutes, that timestamp is what makes the step worth anything at all.
+The outcome of the application belongs here too. SignPath Foundation declined it on the grounds that the
+project carries no verifiable reputation, so no real certificate is being bought and the publisher a user
+sees is still "unknown". The signing flow itself did not stop there: the rehearsal in
+[Build and release](/BUILD_AND_RELEASE/) walks the whole path through a manually triggered workflow --
+Fulcio issues a ten-minute certificate to the workflow's own identity, the signature is a separate file
+that changes no executable, and verification against the certificate identity and issuer passes with a
+transparency log entry and an RFC 3161 timestamp in place. Because the certificate lives ten minutes,
+that timestamp is what makes the step worth anything at all.
 
 ## Publishing
 
@@ -318,5 +342,3 @@ The gaps this run left, written down rather than left looking tested:
 
 The real-machine run on the minimum supported version is done. Once signing is in place, a product can
 plug in the way `examples/TapTap` does.
-
-

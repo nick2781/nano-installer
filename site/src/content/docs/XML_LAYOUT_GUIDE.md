@@ -1,17 +1,18 @@
 ---
 title: Page layout
-description: You list install pages in `wizard.pages` and uninstall pages in `wizard.uninstall_pages`.
+description: "Write a wizard page in XML: the controls a page can hold, the attributes each one supports, and the layout and keyboard rules the runtime applies."
 slug: XML_LAYOUT_GUIDE
 sidebar:
   order: 400
 ---
 
 You list install pages in `wizard.pages` and uninstall pages in `wizard.uninstall_pages`. While a
-task runs, the wizard shows the second page in that list and switches to the last one when the task
-ends; a list that holds a single page stays there instead, reporting the outcome in a message box.
+task runs, the wizard reports on the second page of that list and switches to the last one when the
+task ends. A list that holds a single page stays there instead, reporting the outcome in a message
+box.
 
-Layouts are mostly absolute positions, with flow containers where you need them; only the
-attributes marked Supported below do anything.
+Layouts are mostly absolute positions, with flow containers where you need them. Only the attributes
+marked Supported below do anything.
 
 ## Page
 
@@ -38,16 +39,16 @@ attributes marked Supported below do anything.
        left="260" top="100" width="200" height="58" />
 ```
 
-`Image` and `Icon` draw only when you position them absolutely with left/top/width/height: the
-runtime first decodes the PNG to PBGRA with WIC, then draws it with GDI alpha blending.
+`Image` and `Icon` draw only when you position them absolutely with left/top/width/height. The
+runtime decodes the PNG to PBGRA with WIC, then draws it with GDI alpha blending.
 
 ## DPI and image density
 
 Coordinates in a layout assume 96 DPI, so with `ui.dpi_aware` on, the runtime reads the DPI of the
 display the window is on and scales the window, coordinates, fonts, hit areas, and corner radius
-with it. A setup asks for per-monitor awareness, which means that when you drag the window to a
-display with a different scaling factor, the runtime lays the page out again for that display, so
-you never keep a second layout per scaling level.
+with it. A setup asks for per-monitor awareness, so when you drag the window to a display with a
+different scaling factor, the runtime lays the page out again for that display. You never keep a
+second layout per scaling level.
 
 Give the 1x name and let the runtime pick the density:
 
@@ -56,9 +57,9 @@ assets/logo.png
 assets/logo@2x.png
 ```
 
-When the system DPI reaches `ui.dpi_threshold` (144 by default) the runtime prefers the `@2x`
-file, otherwise it uses the 1x file, and if the preferred one is missing it falls back to the
-other. A layout that already mentions `@2x` is normalized the same way, so you never keep two copies.
+When the system DPI reaches `ui.dpi_threshold` (144 by default) the runtime prefers the `@2x` file,
+otherwise it uses the 1x file; if the preferred one is missing, it falls back to the other. A layout
+that already mentions `@2x` is normalized the same way, so you never keep two copies of the layout.
 
 ## Button
 
@@ -73,11 +74,11 @@ other. A layout that already mentions `@2x` is normalized the same way, so you n
 Supported attributes include `normal-image` and text; the
 `file='assets/x.png' dest='...' fade='...'` form draws an image into a sub-rectangle of the control
 with 0-255 opacity. A button picks `hover-image`, `pressed-image`, and `disabled-image` for its
-states and falls back to `normal-image` when a state image is missing; a state change is painted
+states and falls back to `normal-image` when a state image is missing. A state change is painted
 into an offscreen bitmap and committed in one step, so hovering does not flicker.
 
-A button is named by the words it draws, and that is what a screen reader reads; a button whose
-label is artwork, or drawn elsewhere on the page, has no words to offer, and that is when
+A button is named by the words it draws, and that is what a screen reader reads. A button whose
+label is artwork, or is drawn elsewhere on the page, has no words to offer, and that is when
 `accessible-name` names it:
 
 ```xml
@@ -100,8 +101,8 @@ A button can wait for another control:
 Supported states are `checked`, `unchecked`, `visible`, and `hidden`, plus `valid` and `invalid`
 for a text field; a radio group or a select is named by the value it holds, written as that value
 itself (`enabled-when="mode:custom"`). One condition may list several `id:state` pairs separated by
-commas, and the button needs every one of them: while a condition is unmet the button uses
-`disabled-image` and takes no click or hover, and once the condition holds it returns to normal. A
+commas, and the button needs every one of them. While a condition is unmet, the button uses
+`disabled-image` and takes no click or hover; once every condition holds, it returns to normal. A
 button without `enabled-when` is enabled by default, because the runtime has no rules tied to
 specific control names.
 
@@ -138,10 +139,9 @@ left). Every value assumes 96 DPI and scales with the system DPI, while a percen
 against the parent's matching edge. `align-items="center"` centres on the cross axis: height inside
 an `HBox`, width inside a `VBox`; one item can override that with `align-self="start"` or `"end"`.
 
-`flex-wrap="true"` (or `wrap`) moves an item onto the next line when the current one is full, so
-a narrow window reflows instead of squashing its content. With several lines, each line is as
-tall as its tallest item, and `justify-content` and `align-self` still apply. Wrapping is off by
-default, so an overflowing row compresses its shrinkable items first.
+`flex-wrap="true"` (or `wrap`) moves an item onto the next line when the current one is full, so a
+narrow window reflows instead of squashing its content. With several lines, each line is as tall as
+its tallest item, and `justify-content` and `align-self` still apply. Wrapping is off by default.
 
 `flex-basis` is the size an item starts from before the container shares out free space, so
 `flex-basis="0" flex-grow="1"` takes an equal share next to other flexible items. A container
@@ -150,10 +150,10 @@ Besides `left`/`top`, you can pin an absolutely positioned element with `right`/
 the `inset` shorthand (`inset="8"`, or `inset-top`/`inset-right`/`inset-bottom`/`inset-left`),
 which measures from the opposite edge.
 
-A checkbox picks `checked-image` or `unchecked-image`, draws localized text, and shows Markdown
-link markup as text in the `linkcolor` colour. Without a fixed width it measures to its text, and
-a `Spacer` takes up the rest of an `HBox`; it wraps only at the available width. Clicking toggles
-the checkbox and clicking a link opens its target, so `linkcolor` is exactly what turns a label
+A checkbox picks `checked-image` or `unchecked-image` and draws localized text; Markdown link
+markup in that text is drawn in the `linkcolor` colour. Without a fixed width it measures to its
+text, and a `Spacer` takes up the rest of an `HBox`; it wraps only at the available width. A click
+toggles the checkbox, and a click on a link opens its target, so `linkcolor` is what turns a label
 into a link. See [Links](#links).
 
 ## Scrolling containers
@@ -170,8 +170,8 @@ The position is kept under the container's `id`, so a redraw and a return to the
 it where it was. A wheel over the container moves it 48 pixels a notch, scaled with the display,
 and the scrollbar the runtime draws for it does the same job: an 8 pixel strip along the trailing
 edge, with a thumb as long as the share of the list in view, and a click on the track outside the
-thumb pages the view by one of its own extents. `scrollbar-background` and
-`scrollbar-thumb-background` set the two colours, which default to a translucent white.
+thumb scrolls the view by one page. `scrollbar-background` and `scrollbar-thumb-background` set
+the two colours, which default to a translucent white.
 
 ```xml
 <VBox id="components" scrollable="true" position="absolute" left="32" top="96"
@@ -195,10 +195,10 @@ leaves ticked decides which components the run installs. See the
   `textalign=center`.
 - A Select states the options it offers, draws a DPI-aware arrow over its `background` fill and
   `border-color` outline, and shows the words of the option in use. Clicking the control opens its
-  rows, and clicking a row records that row's `value` and closes the menu, while an option the
-  layout marks `visible="false"` is never offered. A Select whose `action` is `switch_language`
-  lists the languages the project ships, and picking one reloads that language file and redraws the
-  page text.
+  rows; clicking a row records that row's `value` and closes the menu, while an option the layout
+  marks `visible="false"` is never offered. A Select whose `action` is `switch_language` lists the
+  languages the project ships, and picking one reloads that language file and redraws the page
+  text.
 - A RadioButton belongs to the group named by `group` and stands for the `value` it carries. It
   picks `checked-image`/`unchecked-image` and draws its text the way a checkbox does, and
   `checked="true"` marks the row its group starts on. A click records the clicked row for the
@@ -301,15 +301,15 @@ A field can also say what makes a value acceptable, and the rest of the page act
 | `pattern` | A mask the whole value has to fit: `*` for any run of characters including none, `?` for exactly one, and every other character for itself |
 | `required-message`, `min-length-message`, `max-length-message`, `pattern-message` | The locale key (`@key`) to show while that rule is the one the value breaks |
 
-A field is valid while it breaks none of the rules it declares, and so is an optional field left
-empty or a field that declares no rule at all. `enabled-when` takes `valid` and `invalid` for a
-field id beside the four states a checkbox or a panel answers. A label with
-`value-source="field-error:<field id>"` draws the words of the rule that field's value breaks
-first, and nothing at all while the value is one the project accepts; those words come from the
-locale file like any other `@key`, so a language that leaves the message out is reported by the build.
+A field is valid while it breaks none of the rules it declares. An optional field left empty is
+valid too, and so is a field that declares no rule at all. `enabled-when` takes `valid` and
+`invalid` for a field id, beside the four states a checkbox or a panel answers. A label with
+`value-source="field-error:<field id>"` draws the words of the first rule the field's value
+breaks, and draws nothing while the value is one the project accepts. Those words come from the
+locale file like any other `@key`, so the build reports a language that leaves the message out.
 
-A field with nothing in it is still a field: it takes the caret when you click it, which is how
-the value a page asks for gets typed in at all.
+A field with nothing in it is still a field: clicking it takes the caret, which is the only way
+the value the page asks for gets typed in.
 
 Colors accept `#RRGGBB` or `#AARRGGBB`; text drawing currently ignores alpha and uses RGB only.
 
@@ -339,23 +339,24 @@ The runtime draws no element that has `visible="false"`, or whose ancestor has i
 | `dialog_ok` | Confirms the open dialog: a close question stops the running task or exits the setup, a question a script asks answers yes, a notice just closes |
 | `dialog_cancel` | Dismisses the open dialog: a question a script asks answers no, and the page under it takes clicks again |
 
-A project that declares more than one page walks it with `next` and `back`: the first page has
+A project that declares more than one page walks it with `next` and `back`. The first page has
 nothing behind it and the last page nothing in front, so each stops there instead of wrapping
-around. With a `scripts/pages.rhai` that defines `next_page(from)`, every click on `next` asks it
+around. When a `scripts/pages.rhai` defines `next_page(from)`, every click on `next` asks it
 first: naming a page takes the wizard there and skips whatever the declared order has in between,
-and an empty answer walks to the declared next page. `back` never asks the hook; it retraces the
-pages the user really visited, so a page the hook skipped does not come back, see the
-[script API](/SCRIPT_API/#page-hooks). The task itself reports on the second page and ends on the
-last one, and a page can say otherwise with `role`: `progress` marks the page a task reports on and
-`finish` the page it ends on, which is how a licence page or an options page gets in front of the
+while an empty answer walks to the declared next page. `back` never asks the hook; it retraces the
+pages the user really visited, so a page the hook skipped does not come back. See the
+[script API](/SCRIPT_API/#page-hooks).
+
+A page overrides where the task runs with `role`: `progress` marks the page a task reports on, and
+`finish` the page it ends on. That is how a licence page or an options page gets in front of the
 task. The roles are described under
 [files, languages, and pages](/CONFIG_REFERENCE/#files-languages-and-pages).
 
-A task can also be stopped while it runs: `cancel` does it on the spot, and answering the
-`close_confirm` question with Yes does the same. A click may not leave a half-installed product
-behind, so the task gives up at the checkpoint after the step it is on, undoes what it has
-written, and the wizard returns to the page the task started from. A script sees the same request
-through `is_cancelled()` and can end a long step of its own, see the [script API](/SCRIPT_API/).
+No click may leave a half-installed product behind, so when a task is stopped -- by `cancel`, or
+by answering Yes to the `close_confirm` question -- it gives up at the checkpoint after the step
+it is on, undoes what it has written, and the wizard returns to the page the task started from. A
+script sees the same request through `is_cancelled()` and can end a long step of its own. See the
+[script API](/SCRIPT_API/).
 
 ## Dialogs
 
@@ -474,7 +475,8 @@ button swaps in on hover or press are the project's own pixels, and a scheme has
 `linkcolor`, and the links inside text, are drawn in the highlight colour.
 
 An open menu gains a line under high contrast. It is drawn over the page, and a scheme paints a
-page and a list in the same colour, so without that line there is nothing to say where the menu starts.
+page and a list in the same colour, so without that line there is nothing to say where the menu
+starts.
 
 When the user turns high contrast on or off, or picks another scheme (`WM_SETTINGCHANGE`,
 `WM_SYSCOLORCHANGE`, `WM_THEMECHANGED`), the window lays the page out again and repaints it. A
@@ -498,19 +500,19 @@ link.
 
 `action="pick_directory"` opens the shell folder chooser. The runtime writes the chosen path to
 the TextInput named by `target`, or, when `target` is absent, to the first writable TextInput on
-the page; a `readonly` field is a display field and is used only as a last resort. The runtime
-stores the value as user input, so it overrides the `value`/`value-source` default from then on,
-and `disk-free:` bindings that read the same control pick up the new path at once.
+the page; a `readonly` field is a display field and is used only as a last resort. The chosen path
+is stored as user input, so from then on it overrides the `value`/`value-source` default, and a
+`disk-free:` binding that reads the same control picks up the new path at once.
 
 ## Not implemented yet
 
 - Implicit minimum sizes beyond `min-width`/`min-height`, and `min-height` on a flow container.
 - Screen readers: the window describes the page's controls over MSAA (role, name, value, state and
-  place for each of them), announces focus, state, value and page changes on its own, describes
-  what a running task publishes -- the status line and the progress bar -- announcing both as they
-  change, announces the value of a field as it is typed (once per keystroke, and not when a key only
-  moves the caret inside the text), and serves a client that reaches it through `IDispatch` late
-  binding with the same members it answers `IAccessible` with.
+  place for each of them). It announces focus, state, value and page changes on its own, and
+  describes what a running task publishes -- the status line and the progress bar -- announcing
+  both as they change. It announces the value of a field as it is typed, once per keystroke, and
+  not when a key only moves the caret inside the text. A client that reaches the window through
+  `IDispatch` late binding gets the same members the window answers `IAccessible` with.
 - The composition window is repositioned when focus or the caret moves, but not while the user is
   scrolling the page under an active composition.
 - An item's cross-axis size is still the container's extent unless the item declares one; there is
