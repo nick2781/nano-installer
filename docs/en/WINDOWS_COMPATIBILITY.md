@@ -40,12 +40,14 @@ statically depend on a newer system.
 
 A static check cannot prove an installer works, so there is also a run on a real machine, and it has
 happened. On build 7601, PNG decoding, text rendering, mouse input, window behaviour, extraction,
-installation and uninstallation were all reached, and the item-by-item results are in
-[Production status](PRODUCTION_STATUS.md). What that run did not reach is window dragging,
-multi-monitor scaling, cursor shapes, and installing or removing a service. The screen reader item got
-as far as the accessibility information, which read the same as Windows 11, but Narrator or NVDA was
-never actually running and listening. Target machines should have update KB3033929 (SHA-2 code signing
-support) installed, and one whose project downloads a dependency also needs KB3140245 or later.
+installation and uninstallation were all reached, window dragging and an uninstall that clears the whole
+installation directory among them, and the item-by-item results are in
+[Production status](PRODUCTION_STATUS.md). What that run did not reach is the window's minimising and
+restoring, multi-monitor scaling, cursor shapes, and installing or removing a service. The screen reader
+item got as far as the accessibility information, which read the same as Windows 11; NVDA 2023.3 does
+install and start on this machine, but its speech was never captured, so nobody has actually listened
+yet. Target machines should have update KB3033929 (SHA-2 code signing support) installed, and one whose
+project downloads a dependency also needs KB3140245 or later.
 
 ## Running the acceptance
 
