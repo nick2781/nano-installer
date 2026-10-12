@@ -1,19 +1,22 @@
-name: Docs
+﻿name: Docs
 
 on:
   push:
     branches:
       - main
     paths:
-      - "docs/**"
-      - "assets/nano-technology.png"
-      # The index files under docs/ are generated from this data file, so a change
-      # to it alone changes what the site publishes.
-      - "scripts/docs_index.json"
-      # The two checks this workflow runs beside the index, so that a change to
-      # either of them alone is still a change to what the site is held to.
+      # The site is the Astro project under site/, so a page, the sidebar, a
+      # component, a style or the lockfile all change what is published.
+      - "site/**"
+      # The audits this workflow runs -- one before it publishes, one over the
+      # build it publishes -- so that a change to an audit alone is still a change
+      # to what the site is held to. There is no index data file in this list any
+      # more: the build writes llms.txt, llms-full.txt, robots.txt and the
+      # sitemap from the content tree, so there is no second list that could
+      # disagree with the pages.
       - "scripts/audit_docs_languages.ps1"
-      - "scripts/check_language_switch.js"
+      - "scripts/audit_docs_sidebar.ps1"
+      - "scripts/audit_docs_links.ps1"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 
@@ -41,47 +44,106 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          # docs/assets/nano-technology.png is Git LFS tracked; without this
-          # Pages would publish the 130-byte pointer file instead of the PNG.
+          # site/public/assets/nano-technology.png is Git LFS tracked, like every
+          # other image in this repository; without this, Pages would publish the
+          # 130-byte pointer file instead of the PNG the README pages show.
           lfs: true
 
       - name: Configure Pages
         uses: actions/configure-pages@v6
 
-      # The site is a viewer over the Markdown files beside it, and three of those
-      # files are what makes the pages findable to something that cannot run the
-      # viewer: llms.txt, robots.txt and sitemap.xml. They are generated from
-      # scripts/docs_index.json, so this fails rather than publishing a site whose
-      # index no longer lists the page someone just added. It runs on this runner
-      # (pwsh is installed on the Ubuntu images), so a Windows checkout and this
-      # one are held to the same files.
-      - name: Verify the documentation index
-        shell: pwsh
-        run: ./scripts/build_docs_index.ps1 -Verify
-
-      # The pages come in two languages, and the switch in the top bar is how a
-      # reader crosses between them. It can only pair what both trees hold, so
-      # this fails when a page is added to one tree alone, or when the switch's
-      # own list of pages drifts from the files beside it.
+      # The pages come in two languages: the site serves the English tree at the
+      # root and the Chinese one under /zh-CN, and each page has to have its twin.
+      # This is what the retired index check used to be about -- nothing is
+      # published whose counterpart is missing. It needs no toolchain, so it runs
+      # first and fails before the build costs anything.
       - name: Audit the language pairs
         shell: pwsh
         run: ./scripts/audit_docs_languages.ps1
 
-      # The switch is script in the viewer, and a runner has no browser, so
-      # its routing is checked against a stand-in for one: which language the
-      # site root opens in, where a switch moves to, and where a page with no
-      # twin sends a reader.
-      - name: Check the language switch
-        run: node scripts/check_language_switch.js
+      # The sidebar is the other half of the same question, and the one Nimbus
+      # cannot answer here. Its sidebar rules (`nimbus/sidebar-entry`,
+      # `nimbus/orphan-page`) are registered codes with no implementation at the
+      # version the site installs, and every authoring rule it does implement is
+      # handed `findMdxFiles()`, whose walk is `extensions: [".mdx"]` inside the
+      # packaged CLI -- while these pages are `.md`. So the sidebar is held to
+      # nothing upstream: neither direction, neither file. This audit is that
+      # rule -- every page listed once in its own language's groups, every row
+      # answering to a page, no page listed twice -- and it reads the config and
+      # the two content trees only, so it runs before the build costs anything.
+      - name: Audit the sidebar
+        shell: pwsh
+        run: ./scripts/audit_docs_sidebar.ps1
 
-      - name: Upload docs artifact
+      # The versions are named rather than floating, the same way the image above
+      # is. They come from the site as it is built here: site/pnpm-lock.yaml is
+      # lockfileVersion 9.0, site/pnpm-workspace.yaml carries pnpm 11's
+      # `allowBuilds` key, astro 7.3.1 asks for Node >= 22.12.0, and 11.7.0 with
+      # Node 24.21.0 is the pair this site is built and verified with. Nothing
+      # reads `packageManager` here, because site/package.json declares none.
+      #
+      # pnpm/action-setup v6 documents `pnpm/setup` as its successor for pnpm 11
+      # and newer; v6 still installs the requested version by self-updating its
+      # bootstrap pnpm, and 6.1.0 added pnpm 12 support, so the two well-known
+      # actions stay as they are.
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.7.0
+
+      - name: Install Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24.21.0
+          # Runs after the step above, because the cache asks pnpm for its store
+          # path; the lockfile is under site/, not at the repository root.
+          cache: pnpm
+          cache-dependency-path: site/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: site
+        run: pnpm install --frozen-lockfile
+
+      # The build is the check as well as the build. nimbus/frontmatter-shape is an
+      # error, so a page whose frontmatter does not validate fails here, on the
+      # commit that publishes. Links are not this step's business: that rule is an
+      # authoring rule, and the build evaluates none of them -- the audit below reads
+      # the built site for them. The same run writes what a reader without a browser
+      # uses --
+      # llms.txt, llms-full.txt, robots.txt, the sitemap, a Markdown version and
+      # an OG card for every page -- from the content tree, so none of it can
+      # drift from the pages beside it.
+      - name: Build the site
+        working-directory: site
+        run: pnpm build
+
+      # `nimbus/internal-link` is an error above, and it is implemented -- but it
+      # is handed `findMdxFiles()`, whose walk is `extensions: [".mdx"]`, so a
+      # link between two `.md` pages is not what fails the build: authoring rules
+      # are not run by `astro build` at all, and the CLI never opens one of these
+      # pages. This reads what the build wrote -- every `<a href>` on every page,
+      # the file it lands on and the id it points at, with both sides decoded so a
+      # Chinese anchor is compared as itself -- and it runs here because an anchor
+      # only exists once the heading has been rendered. It is the last gate before
+      # the site becomes the artifact below.
+      - name: Audit the links in the built site
+        shell: pwsh
+        run: ./scripts/audit_docs_links.ps1
+
+      - name: Upload the site artifact
         uses: actions/upload-pages-artifact@v5
         with:
-          path: docs
-          # docs/ ships a .nojekyll marker, and v4 began excluding dotfiles by
-          # default, so it would quietly stop being deployed. The marker is
-          # there because the site serves _sidebar.md and _navbar.md, the
-          # underscore-prefixed files Jekyll withholds.
+          # Astro writes the site into dist/ and does not nest it under the base,
+          # so this directory is already what Pages serves under /nano-installer/.
+          path: site/dist
+          # The build writes .well-known/ for agent discovery, and a dot-directory
+          # is left out without this. It cannot do the job it is named for here:
+          # Nimbus emits origin-root /.well-known paths, and a GitHub Pages project
+          # site is served under /nano-installer/, so the origin root belongs to
+          # the account rather than to this project and a client looking at
+          # https://nick2781.github.io/.well-known/ finds nothing. Moving it there
+          # needs a custom domain, which this project does not have, so the files
+          # ship under the project path and the build's warning about it stands.
           include-hidden-files: true
 
       - name: Deploy to GitHub Pages

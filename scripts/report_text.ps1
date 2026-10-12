@@ -93,16 +93,19 @@ function Get-ReportCounts {
     return ($parts -join $separator)
 }
 
-# The documents live under the name their own directory uses, which is not
-# always the whole tag a page declares: the English pages are in docs/en.
-function Get-ReportDocLanguage {
+# The documents live in the two content trees the site publishes, which are not
+# named after the whole tag a page declares: the English pages are
+# site/src/content/docs, served at the site root, and the Chinese pages are
+# site/src/content/zh-CN, served under /zh-CN. A page keeps its name in both
+# trees, so TEST_COVERAGE.md and TEST_CASES.md sit in each of them.
+function Get-ReportDocDirectory {
     param([string]$Language)
 
-    $directories = @{ "en-US" = "en"; "zh-CN" = "zh-CN" }
+    $directories = @{ "en-US" = "site/src/content/docs"; "zh-CN" = "site/src/content/zh-CN" }
     if ($directories.ContainsKey($Language)) {
         return $directories[$Language]
     }
-    return $Language
+    return "site/src/content/$Language"
 }
 
 # The few lines that say how to read the page: what a verdict means, what a

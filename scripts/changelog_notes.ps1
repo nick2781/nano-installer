@@ -64,7 +64,8 @@ if ([string]::IsNullOrWhiteSpace($body)) {
 $repo = $env:GITHUB_REPOSITORY
 
 # Release bodies are not rendered next to the checkout, so relative links such as
-# docs/PRODUCTION_STATUS.md must be promoted to absolute repository links.
+# site/src/content/docs/PRODUCTION_STATUS.md must be promoted to absolute
+# repository links.
 #
 # Text the changelog quotes as code is left exactly as written. A sentence that
 # describes `[words](target)` markup is not a link, and rewriting it publishes a

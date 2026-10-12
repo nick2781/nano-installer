@@ -1,46 +1,48 @@
-# Documentation map for agents
+﻿# Documentation map for agents
 
 This page tells you which document answers which question, so a reader -- a person or an agent -- can
 go straight to the file that answers it. The whole site does not have to be walked.
 
-**Every page has a twin.** The pages here come in pairs: `docs/en/X.md` and `docs/zh-CN/X.md` are the
-same document, and the switch in the site's top bar is how a reader crosses between the two. No page
-here is written in one language only. `scripts/audit_docs_languages.ps1` is what holds that: it fails
-when a page in one tree has no page in the other, or when the switch's own list of pages has drifted
-from the files beside it.
+**Every page has a twin.** The published pages come in pairs: `site/src/content/docs/X.md` and
+`site/src/content/zh-CN/X.md` are the same document, served at `/X/` and `/zh-CN/X/`. No page is written
+in one language only, and `scripts/audit_docs_languages.ps1` is what holds that: it fails when a page in
+one tree has no page in the other, and it pairs this map with `zh-CN/AGENTS.md` the same way.
 
-This map sits at the top of `docs/` rather than inside a tree, which makes it one of only two files
-there; the other is the site's landing page, a chooser rather than a document. Its Chinese side is
-[`zh-CN/AGENTS.md`](zh-CN/AGENTS.md).
+This map sits at the top of `docs/` rather than inside a content tree, because the repository's own
+conventions ask for it there, which makes it the only English file under `docs/`. Its Chinese side is
+[`zh-CN/AGENTS.md`](zh-CN/AGENTS.md). The same map is published as a page as well, at `/AGENTS/` and
+`/zh-CN/AGENTS/`.
 
 ## Take these first
 
 | File | What it holds |
 | --- | --- |
-| [`/llms.txt`](llms.txt) | Every page, one line each, linked to the page's own Markdown file. Fetch this one first |
-| [`/llms-full.txt`](llms-full.txt) | The English pages in one document, for a reader that would rather fetch once. The test coverage table is left out: it is a table to look things up in, not to read. `llms.txt` links it |
-| [`/sitemap.xml`](sitemap.xml), [`/robots.txt`](robots.txt) | The same page list for crawlers |
+| [`/llms.txt`](https://nick2781.github.io/nano-installer/llms.txt) | Every English page, one line each, linked to that page's own Markdown version. Fetch this one first |
+| [`/llms-full.txt`](https://nick2781.github.io/nano-installer/llms-full.txt) | The whole documentation in one document, both languages in it, the case and coverage tables included |
+| [`/zh-CN/llms.txt`](https://nick2781.github.io/nano-installer/zh-CN/llms.txt) | The Chinese pages, listed the same way |
+| [`/sitemap-index.xml`](https://nick2781.github.io/nano-installer/sitemap-index.xml), [`/robots.txt`](https://nick2781.github.io/nano-installer/robots.txt) | The same page list for crawlers |
 
-Every page here is a Markdown file, published beside the HTML viewer as `text/markdown`; that HTML is
-one viewer over all of them and nothing more. So fetch the file itself, because the Markdown is the
-source and no page is generated for the reader.
+Every page is served as Markdown beside its HTML, at `<page>/index.md`, and that file is what the page is
+rendered from. So fetch it when a model is the reader; a reader with the repository instead takes the
+page's own file under `site/src/content/`.
 
 ## Which file answers which question
 
 | Question | English | 中文 |
 | --- | --- | --- |
-| What is this, and can I ship with it yet? | [README](en/README.md), [Production status](en/PRODUCTION_STATUS.md) | [中文文档](zh-CN/README.md)、[当前生产状态](zh-CN/PRODUCTION_STATUS.md) |
-| How do I build my first setup? | [Quick start](en/QUICK_START.md) | [快速开始](zh-CN/QUICK_START.md) |
-| Which settings exist, and what do they change? | [Configuration reference](en/CONFIG_REFERENCE.md) | [配置参考](zh-CN/CONFIG_REFERENCE.md) |
-| How do I write pages and controls? | [Page layout](en/XML_LAYOUT_GUIDE.md) | [页面布局](zh-CN/XML_LAYOUT_GUIDE.md) |
-| How do I add or change a language? | [Languages](en/LOCALIZATION.md) | [多语言](zh-CN/LOCALIZATION.md) |
-| How do I run my own install and uninstall steps? | [Custom steps](en/SCRIPT_API.md) | [自定义步骤](zh-CN/SCRIPT_API.md) |
-| How do I ship a plugin, and what may it do? | [Plugin ABI](en/PLUGIN_API.md) | [插件 ABI](zh-CN/PLUGIN_API.md) |
-| I am coming from NSIS: what becomes what? | [Migrating from NSIS](en/MIGRATION_FROM_NSIS.md) | [从 NSIS 迁移](zh-CN/MIGRATION_FROM_NSIS.md) |
-| How does the installer work inside? | [Architecture](en/ARCHITECTURE.md) | [架构](zh-CN/ARCHITECTURE.md) |
-| Which Windows versions, and which system calls? | [Windows compatibility](en/WINDOWS_COMPATIBILITY.md) | [Windows 兼容性](zh-CN/WINDOWS_COMPATIBILITY.md) |
-| How is it built and released? | [Build and release](en/BUILD_AND_RELEASE.md), [Project layout](en/PROJECT_STRUCTURE.md) | [构建与发布](zh-CN/BUILD_AND_RELEASE.md)、[项目结构](zh-CN/PROJECT_STRUCTURE.md) |
-| What is tested, and what is only promised? | [Test plan](en/TEST_PLAN.md), [Test coverage](en/TEST_COVERAGE.md), [Test cases](en/TEST_CASES.md) | [测试计划](zh-CN/TEST_PLAN.md)、[测试覆盖](zh-CN/TEST_COVERAGE.md)、[用例说明](zh-CN/TEST_CASES.md) |
+| What is this, and can I ship with it yet? | [README](../site/src/content/docs/README.md), [Production status](../site/src/content/docs/PRODUCTION_STATUS.md) | [中文文档](../site/src/content/zh-CN/README.md)、[当前生产状态](../site/src/content/zh-CN/PRODUCTION_STATUS.md) |
+| How do I build my first setup? | [Quick start](../site/src/content/docs/QUICK_START.md) | [快速开始](../site/src/content/zh-CN/QUICK_START.md) |
+| Which settings exist, and what do they change? | [Configuration reference](../site/src/content/docs/CONFIG_REFERENCE.md) | [配置参考](../site/src/content/zh-CN/CONFIG_REFERENCE.md) |
+| How do I write pages and controls? | [Page layout](../site/src/content/docs/XML_LAYOUT_GUIDE.md) | [页面布局](../site/src/content/zh-CN/XML_LAYOUT_GUIDE.md) |
+| How do I add or change a language? | [Languages](../site/src/content/docs/LOCALIZATION.md) | [多语言](../site/src/content/zh-CN/LOCALIZATION.md) |
+| How do I run my own install and uninstall steps? | [Custom steps](../site/src/content/docs/SCRIPT_API.md) | [自定义步骤](../site/src/content/zh-CN/SCRIPT_API.md) |
+| How do I ship a plugin, and what may it do? | [Plugin ABI](../site/src/content/docs/PLUGIN_API.md) | [插件 ABI](../site/src/content/zh-CN/PLUGIN_API.md) |
+| I am coming from NSIS: what becomes what? | [Migrating from NSIS](../site/src/content/docs/MIGRATION_FROM_NSIS.md) | [从 NSIS 迁移](../site/src/content/zh-CN/MIGRATION_FROM_NSIS.md) |
+| How does the installer work inside? | [Architecture](../site/src/content/docs/ARCHITECTURE.md) | [架构](../site/src/content/zh-CN/ARCHITECTURE.md) |
+| Which Windows versions, and which system calls? | [Windows compatibility](../site/src/content/docs/WINDOWS_COMPATIBILITY.md) | [Windows 兼容性](../site/src/content/zh-CN/WINDOWS_COMPATIBILITY.md) |
+| How do I build a project without the command line? | [Visual builder](../site/src/content/docs/GUI.md) | [可视化构建](../site/src/content/zh-CN/GUI.md) |
+| How is it built and released? | [Build and release](../site/src/content/docs/BUILD_AND_RELEASE.md), [Project layout](../site/src/content/docs/PROJECT_STRUCTURE.md) | [构建与发布](../site/src/content/zh-CN/BUILD_AND_RELEASE.md)、[项目结构](../site/src/content/zh-CN/PROJECT_STRUCTURE.md) |
+| What is tested, and what is only promised? | [Test plan](../site/src/content/docs/TEST_PLAN.md), [Test coverage](../site/src/content/docs/TEST_COVERAGE.md), [Test cases](../site/src/content/docs/TEST_CASES.md) | [测试计划](../site/src/content/zh-CN/TEST_PLAN.md)、[测试覆盖](../site/src/content/zh-CN/TEST_COVERAGE.md)、[用例说明](../site/src/content/zh-CN/TEST_CASES.md) |
 
 ## In the repository
 
@@ -63,18 +65,26 @@ These files sit outside the published site, so a link to any of them leaves the 
 - [Changelog](https://github.com/nick2781/nano-installer/blob/main/CHANGELOG.md) — what changed in
   each release. Written in Chinese.
 
-## Where the index comes from
+## Where the pages and the index come from
 
-`scripts/build_docs_index.ps1` writes `llms.txt`, `llms-full.txt`, `robots.txt` and `sitemap.xml` from
-`scripts/docs_index.json`, and `-Verify` runs the same code, so the writer and the check cannot
-disagree. A new page therefore needs a line in that data file, with a title that matches the page's own
-`# heading` exactly; without that line the check fails, rather than letting the page vanish from the
-index.
+The published site is an Astro project built with Cloudflare Nimbus, and it lives under `site/`. The
+pages are `site/src/content/docs/*.md` and `site/src/content/zh-CN/*.md`; `site/astro.config.ts` holds
+the site's settings and the sidebar's two language groups; the build writes `site/dist/`, which is what
+GitHub Pages publishes under `/nano-installer/`. The docs workflow installs the toolchain those files
+name, builds in `site/`, and uploads that directory.
 
-Whether a page is in `llms-full.txt` is the group's answer, but a single page can override it: the
-site's landing page, `README.md`, is a chooser between the two languages rather than a page to read,
-and that override is what keeps it out. The case tables stay out for the same reason the coverage table
-does -- they are tables to look things up in, not to read.
+The discovery files come from the same build rather than from a data file someone maintains: `llms.txt`,
+`llms-full.txt`, `robots.txt`, a `sitemap-index.xml` sitemap, and a Markdown version and an OG card for
+every page. A new page therefore needs its file under `site/src/content/`, a twin in the other tree, and
+a line in the sidebar list; `title` in the frontmatter is what the sidebar and the index both call it, so
+the page's heading has to be maintained in one place only. The generator and the data file it read are
+gone with the docsify site, because the build cannot drift from the pages it writes those files from.
+
+`.well-known` is the one thing the site cannot do where a client expects it. Nimbus writes
+`/.well-known/ai-catalog.json` and `/.well-known/ard.json` and warns that they belong at the origin root,
+while a GitHub Pages project site is served under `/nano-installer/`, so the origin root belongs to the
+account rather than to this project. Putting them there needs a custom domain, which this project does
+not have; the files ship under the project path and the build's warning stands.
 
 ## How these pages are written
 
@@ -95,12 +105,13 @@ page and for an edit to an old one.
   before it. "The application files (your application files, a zip or 7z archive)" is one idea told
   twice.
 - **Facts, numbers, commands, paths and field names do not move.** Neither do headings, anchors or
-  link targets: a rewrite changes wording only. Check with `scripts/audit_docs_languages.ps1` and
-  `scripts/build_docs_index.ps1 -Verify` -- the index title has to match the page's own `# heading`
-exactly.
+  link targets: a rewrite changes wording only. Check with `scripts/audit_docs_languages.ps1` for the
+  pairs, with the site's own build (`pnpm build` in `site/`) for the frontmatter -- that build
+  does validate it -- and with `scripts/audit_docs_links.ps1` for the links, which reads the
+  built site, because the integration's own link rule reads only `.mdx` and a dead link between
+  two `.md` pages is not what fails the build.
 - **The Chinese pages consult [Tech-Doc-Style-Chinese](https://github.com/fenng/Tech-Doc-Style-Chinese)
   as an external reference, not as a second standard.** Where the two disagree, this section wins:
   pronouns (it, this, these) and the hard-wrapped source lines are the two places it does.
 
 The English and Chinese files are one document: same paragraphs, same order, same claim in each.
-

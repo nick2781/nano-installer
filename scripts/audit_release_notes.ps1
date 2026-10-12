@@ -47,7 +47,7 @@ $repositoryVocabulary = @(
     @{ Pattern = '\bcargo\s'; Reason = "a Cargo command" },
     @{ Pattern = 'clippy|rustfmt'; Reason = "a lint or format command" },
     @{ Pattern = 'CODE_OF_CONDUCT|CONTRIBUTING|AGENTS\.md'; Reason = "a repository policy file" },
-    @{ Pattern = 'llms|docs_index|sitemap|robots\.txt'; Reason = "a documentation-index artifact" },
+    @{ Pattern = 'llms|sitemap|robots\.txt'; Reason = "a documentation-discovery artifact" },
     @{ Pattern = '分支保护|ruleset|必需检查'; Reason = "a branch-protection rule" },
     @{ Pattern = 'Dependabot|secret scanning'; Reason = "a repository security setting" },
     @{ Pattern = '工作流|\bworkflows?\b|ci\.yml|release\.yml'; Reason = "the build pipeline" },

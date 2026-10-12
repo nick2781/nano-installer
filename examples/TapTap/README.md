@@ -50,5 +50,5 @@ Copy the directory and replace at least:
 
 The runtime already unpacks the payload, runs install and uninstall tasks with progress pages, and
 executes `scripts/install.rhai` and `scripts/uninstall.rhai`; see the
-[script API](../../docs/en/SCRIPT_API.md). There is no code signing yet, so it cannot be used for a
+[script API](../../site/src/content/docs/SCRIPT_API.md). There is no code signing yet, so it cannot be used for a
 production release.

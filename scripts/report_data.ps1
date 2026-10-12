@@ -6,11 +6,12 @@
 
     - Get-TestCatalog reads every case out of the Rust sources it can find under
       crates/: the doc comment above a #[test] says what the case checks, and
-      the covered behaviours come from docs/<language>/TEST_COVERAGE.md, so the
-      chips beside a case read in the report's language. What a case checks is
-      read from docs/<language>/TEST_CASES.md, the table of case descriptions
-      each language keeps; a case it does not name falls back to the doc comment
-      above it in the sources, or to its own name.
+      the covered behaviours come from TEST_COVERAGE.md in the site's own content
+      tree for the report's language (site/src/content/docs or
+      site/src/content/zh-CN), so the chips beside a case read in the report's
+      language. What a case checks is read from TEST_CASES.md beside it, the
+      table of case descriptions each language keeps; a case it does not name
+      falls back to the doc comment above it in the sources, or to its own name.
     - Get-TestCoverage reads that same document the other way round: every
       behaviour it promises with the cases it names for it, and the part of it
       that admits no case covers a thing. A report that lists a behaviour's
@@ -71,13 +72,13 @@ function Get-CaseModule {
 function Get-TestCatalog {
     param([string]$RepoRoot, [string]$Language = "en-US")
 
-    $documentLanguage = Get-ReportDocLanguage -Language $Language
+    $documentDirectory = Get-ReportDocDirectory -Language $Language
     $catalog = @{}
 
     # The language's own TEST_COVERAGE.md is a table of behaviour against the
     # cases that hold it, so each row is read backwards into "this case protects
     # that". Its heading row names no case, so it adds no chip.
-    $coveragePath = Join-Path $RepoRoot "docs/$documentLanguage/TEST_COVERAGE.md"
+    $coveragePath = Join-Path $RepoRoot "$documentDirectory/TEST_COVERAGE.md"
     if (Test-Path -LiteralPath $coveragePath -PathType Leaf) {
         foreach ($line in [System.IO.File]::ReadAllLines($coveragePath)) {
             if (-not $line.StartsWith("|")) {
@@ -169,7 +170,7 @@ function Get-TestCatalog {
     # comment above it, or its own name. The table is read last on purpose: when
     # it and the sources both have something to say, the table is what a reader
     # of that language is shown.
-    $casesPath = Join-Path $RepoRoot "docs/$documentLanguage/TEST_CASES.md"
+    $casesPath = Join-Path $RepoRoot "$documentDirectory/TEST_CASES.md"
     if (Test-Path -LiteralPath $casesPath -PathType Leaf) {
         foreach ($line in [System.IO.File]::ReadAllLines($casesPath)) {
             if (-not $line.StartsWith("|")) {
@@ -223,8 +224,8 @@ function Get-TestLayerCatalog {
     param([string]$RepoRoot, [string]$Language = "en-US")
 
     $layers = New-Object System.Collections.Generic.List[object]
-    $documentLanguage = Get-ReportDocLanguage -Language $Language
-    $coveragePath = Join-Path $RepoRoot "docs/$documentLanguage/TEST_COVERAGE.md"
+    $documentDirectory = Get-ReportDocDirectory -Language $Language
+    $coveragePath = Join-Path $RepoRoot "$documentDirectory/TEST_COVERAGE.md"
     if (-not (Test-Path -LiteralPath $coveragePath -PathType Leaf)) {
         return @()
     }
@@ -284,8 +285,8 @@ function Get-TestCoverage {
 
     $rows = New-Object System.Collections.Generic.List[object]
     $groups = New-Object System.Collections.Generic.List[object]
-    $documentLanguage = Get-ReportDocLanguage -Language $Language
-    $coveragePath = Join-Path $RepoRoot "docs/$documentLanguage/TEST_COVERAGE.md"
+    $documentDirectory = Get-ReportDocDirectory -Language $Language
+    $coveragePath = Join-Path $RepoRoot "$documentDirectory/TEST_COVERAGE.md"
     if (-not (Test-Path -LiteralPath $coveragePath -PathType Leaf)) {
         return @{ Rows = @(); Uncovered = @() }
     }
@@ -606,8 +607,8 @@ function Get-SnapshotGallery {
 function Get-UndescribedCaseNote {
     param([hashtable]$Text, [string]$RepoRoot, [string]$Language, [object[]]$Cases)
 
-    $documentLanguage = Get-ReportDocLanguage -Language $Language
-    $path = "docs/$documentLanguage/TEST_CASES.md"
+    $documentDirectory = Get-ReportDocDirectory -Language $Language
+    $path = "$documentDirectory/TEST_CASES.md"
     if (-not $Cases -or $Cases.Count -eq 0) {
         return ""
     }

@@ -6,15 +6,28 @@ import { getIndexedEntries, withBase } from "@cloudflare/nimbus-docs/runtime";
 
 // Link through each page's entry: its `url` follows the site's
 // `trailingSlash`, and a card whose page is gone drops out instead of 404ing.
+// This home page is the language chooser for the two documentation trees; the
+// blurbs are the repository index's own one-line descriptions of each.
 const cards = [
-  { id: "welcome", label: "Welcome", blurb: "Start here" },
-  { id: "getting-started", label: "Getting Started", blurb: "Install + configure" },
-  { id: "components", label: "Components", blurb: "See them in action" },
+  {
+    collection: "docs",
+    id: "README",
+    blurb: "What this is, what a setup does today, and where to go next.",
+  },
+  {
+    collection: "zh-CN",
+    id: "README",
+    blurb: "中文入口：这是什么、现在装出来是什么样、接下来看哪里。",
+  },
 ];
 const entries = await getIndexedEntries();
 const links = cards.flatMap((card) => {
-  const entry = entries.find((e) => e.collection === "docs" && e.entry.id === card.id);
-  return entry ? [{ ...card, href: withBase(entry.url, import.meta.env.BASE_URL) }] : [];
+  const entry = entries.find(
+    (e) => e.collection === card.collection && e.entry.id === card.id,
+  );
+  return entry
+    ? [{ label: entry.title, blurb: card.blurb, href: withBase(entry.url, import.meta.env.BASE_URL) }]
+    : [];
 });
 ---
 
@@ -33,7 +46,7 @@ const links = cards.flatMap((card) => {
       </p>
 
       {links.length > 0 && (
-        <div class="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div class="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
           {links.map((link) => (
             <a
               href={link.href}

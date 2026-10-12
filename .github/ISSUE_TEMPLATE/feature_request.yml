@@ -5,8 +5,8 @@ body:
   - type: markdown
     attributes:
       value: |
-        Before opening: `docs/en/PRODUCTION_STATUS.md` lists what is deliberately missing today, and
-        `docs/en/MIGRATION_FROM_NSIS.md` says which NSIS features are supported, which are mapped to
+        Before opening: `site/src/content/docs/PRODUCTION_STATUS.md` lists what is deliberately missing today, and
+        `site/src/content/docs/MIGRATION_FROM_NSIS.md` says which NSIS features are supported, which are mapped to
         something else, and which are refused on purpose. The refusing ones are the ones worth arguing
         about — say why the mapping is not enough.
   - type: textarea

@@ -4,8 +4,8 @@ Thanks for looking. This is a Windows installer framework: one project folder in
 `.exe` out, and bugs, plugins and documentation fixes are all welcome. Issues may be written in
 English or Chinese.
 
-Read two documents before a change: [`docs/en/BUILD_AND_RELEASE.md`](docs/en/BUILD_AND_RELEASE.md)
-says what the builds are, and [`docs/en/TEST_PLAN.md`](docs/en/TEST_PLAN.md) says how a change is
+Read two documents before a change: [`site/src/content/docs/BUILD_AND_RELEASE.md`](site/src/content/docs/BUILD_AND_RELEASE.md)
+says what the builds are, and [`site/src/content/docs/TEST_PLAN.md`](site/src/content/docs/TEST_PLAN.md) says how a change is
 verified. Everything below is the short version.
 
 ## Getting set up
@@ -39,21 +39,25 @@ cargo clippy --locked --workspace --all-targets -- -D warnings
 .\scripts\run_e2e_setup.ps1             # builds the stubs and the sample plugin, then the setup-level cases
 .\scripts\audit_script_encoding.ps1     # scripts must be pure ASCII or carry a BOM
 .\scripts\audit_case_descriptions.ps1   # every case has a row in the case table of each language
-.\scripts\build_docs_index.ps1 -Verify  # every documentation page has a line in scripts/docs_index.json
-.\scripts\audit_docs_languages.ps1     # both language trees hold the same pages, and the language switch knows them
-node scripts/check_language_switch.js   # the switch in the site's top bar moves a page to the same page in the other tree
+.\scripts\audit_docs_languages.ps1      # both documentation trees hold the same pages
 .\scripts\verify_reports.ps1            # a run's report survives a run that did nothing
 .\scripts\audit_workflow_images.ps1     # every job names the image it runs on, and a release is audited on the image it is built on
 ```
 
-A change to what a setup *does* also updates the documents that promise it: `CHANGELOG.md`,
-`docs/{en,zh-CN}/TEST_COVERAGE.md` and `docs/{en,zh-CN}/TEST_CASES.md`. In `TEST_COVERAGE.md`,
-update the counts and the row for the behaviour, and in `TEST_CASES.md` update one row per case —
-the audit refuses a case without one, in either language.
+The site has checks of its own, in the docs workflow that publishes it: `pnpm build` in `site/` fails on
+a page whose frontmatter does not validate and on an internal link that goes nowhere, and it is the same
+run that writes the index files from the content tree.
 
-Every page exists in both languages, so a change to one side is a change to both: the site switches a
-reader between `docs/en/X.md` and `docs/zh-CN/X.md`, and the documentation map is paired with
-`docs/zh-CN/AGENTS.md`. `scripts/audit_docs_languages.ps1` refuses a page that only one tree carries.
+A change to what a setup *does* also updates the documents that promise it: `CHANGELOG.md`,
+`site/src/content/{docs,zh-CN}/TEST_COVERAGE.md` and `site/src/content/{docs,zh-CN}/TEST_CASES.md`. In
+`TEST_COVERAGE.md`, update the counts and the row for the behaviour, and in `TEST_CASES.md` update one
+row per case -- the audit refuses a case without one, in either language.
+
+Every page exists in both languages, so a change to one side is a change to both: the site serves the
+English tree at `/` and the Chinese one at `/zh-CN`, and a page keeps its name in both. The map of the
+documentation is a pair as well, kept at the top of `docs/`: `docs/AGENTS.md` and
+`docs/zh-CN/AGENTS.md`. `scripts/audit_docs_languages.ps1` refuses a page that only one tree carries,
+and a side of the map that is missing.
 
 ## Branches, and what `main` protects
 
@@ -93,13 +97,15 @@ there is no short path for a small fix, which is what makes the two jobs mean so
   unrecognised file. The notes that used to sit at the end of that file live in this document.
 - **Configuration keys are validated.** The builder refuses a key it does not read, so adding one
   means adding it to `crates/nano-installer-core/src/config.rs` and to
-  `docs/{en,zh-CN}/CONFIG_REFERENCE.md` in the same change.
-- **The documentation index.** The published site is a viewer over Markdown files, and
-  `docs/llms.txt` is how something that cannot run the viewer finds them, so a new page under
-  `docs/` needs a line in `scripts/docs_index.json`, with a title and a one-line description. That
-  title has to read exactly like the page's own `# heading`, because the index is what a reader and
-  an agent quote back. `.\scripts\build_docs_index.ps1` writes the three index files, and `-Verify`
-  is the check.
+  `site/src/content/{docs,zh-CN}/CONFIG_REFERENCE.md` in the same change.
+- **The documentation site.** The pages are the Markdown files under `site/src/content/`, the site is
+  built with Cloudflare Nimbus, and `site/dist/` is what GitHub Pages publishes. Nothing about the
+  index is maintained by hand: the build writes `llms.txt`, `llms-full.txt`, `robots.txt`, the sitemap
+  and a Markdown version of every page from the content tree. So a new page is its file under
+  `site/src/content/`, its twin in the other tree, and a line in the sidebar list in
+  `site/astro.config.ts`; the `title` in its frontmatter is what the sidebar and the index both call
+  it. `pnpm build` in `site/` is the check, and it fails on a page that does not validate or a link
+  that goes nowhere.
 
 ## Reporting
 
