@@ -6,8 +6,8 @@ import type { SidebarItem } from "@cloudflare/nimbus-docs/types";
  * Nimbus mounts the primary `docs` collection at the site root with no prefix
  * and every other collection at `/<collection name>` (see the package's
  * `_internal/collection-mount.ts`), so the Chinese tree is one collection named
- * `zh-CN`, living in `src/content/zh-CN/` and served at `/zh-CN/...` — the same
- * pairing the old docsify site had under `#/zh-CN/...`.
+ * `zh-CN`, living in `src/content/zh-CN/` and served at `/zh-CN/...`, one page
+ * per name in the English tree.
  *
  * Two things Nimbus keeps site-wide need a per-collection answer here:
  *

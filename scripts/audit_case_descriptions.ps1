@@ -2,7 +2,9 @@
     Fails when a case has no description in the language a report is read in.
 
     A report says what each case checks in the language it is read in, and those
-    words come from docs/<language>/TEST_CASES.md: one row per case, kept in
+    words come from TEST_CASES.md in the site's own content tree for that
+    language -- site/src/content/docs/TEST_CASES.md for English and
+    site/src/content/zh-CN/TEST_CASES.md for Chinese: one row per case, kept in
     English and in Chinese. The doc comments above the cases are the sources' own
     English, and they are what a report falls back to for a case its table does
     not name. A case added to the sources without a row in every table would
@@ -35,8 +37,8 @@ $failures = New-Object System.Collections.Generic.List[string]
 $checked = New-Object System.Collections.Generic.List[string]
 
 foreach ($current in $languages) {
-    $documentLanguage = Get-ReportDocLanguage -Language $current
-    $documentPath = "docs/$documentLanguage/TEST_CASES.md"
+    $documentDirectory = Get-ReportDocDirectory -Language $current
+    $documentPath = "$documentDirectory/TEST_CASES.md"
     $document = Join-Path $RepositoryRoot $documentPath
     if (-not (Test-Path -LiteralPath $document -PathType Leaf)) {
         $failures.Add("$documentPath is missing, so a report in $current has no words of its own for its cases")

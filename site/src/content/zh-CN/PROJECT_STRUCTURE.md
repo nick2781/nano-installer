@@ -17,15 +17,13 @@ crates/
 ├── nano-installer-stub-zlib/   # ZIP 运行时，只链接 zip/deflate
 └── nano-installer-uninstaller/ # 卸载运行时，不链接解包后端
 docs/
-├── index.html                  # 站点由这个 docsify 外壳渲染
-├── llms.txt                    # 每一页的清单，写给 agent 读
-├── robots.txt, sitemap.xml     # 同一份页面清单，给爬虫看
-├── en/                         # 英文文档
-└── zh-CN/                      # 中文文档
+├── AGENTS.md                   # 这套文档的地图，给在仓库里读的人
+└── zh-CN/AGENTS.md             # 同一张地图的中文版
 examples/TapTap/                # 校验项目
 examples/nsis-migration/        # 从 NSIS 迁过来的示例与它的对照脚本
 examples/plugin-c/              # 插件 ABI 的 C 实现，只用 MSVC 就能编
-scripts/                        # 构建、冒烟测试、PE 审计、文档索引生成
+scripts/                        # 构建、冒烟测试、PE 审计、文档审计
+site/                           # 文档站：内容、配置与构建
 ```
 
 原始运行时里不带产品资源：图标、版本信息和品牌素材都来自你的项目配置，由构建器注入，所以一套运行时就能给任意产品生成安装包。
@@ -64,21 +62,24 @@ target/release/
 
 ## 文档站
 
-对外发布的站点是一个 [docsify](https://docsify.js.org/) 外壳，`docs/index.html` 在浏览器里渲染 Markdown，而 GitHub Pages 上只有这一个 HTML。每一页同时就是它自己的 Markdown 文件，所以不开浏览器也能读这个站点，agent 手里就是这些文件；站点渲染的就是源文件，没有另外生成什么给读者。
+对外发布的站点是 `site/` 下的一个 [Astro](https://astro.build/) 工程，用 [Cloudflare Nimbus](https://nimbus-docs.com/) 构建。一页就是一个 Markdown 文件：`site/src/content/docs/X.md` 发布在 `/X/`，它在 `site/src/content/zh-CN/X.md` 里的对照页发布在 `/zh-CN/X/`。站点设置和侧栏都在 `site/astro.config.ts` 里，侧栏按语言分成两组。
 
-有四个文件让不运行网页的东西也能找到这些页面。它们都由 `scripts/build_docs_index.ps1` 依据 `scripts/docs_index.json` 写出来：
+`site/dist/` 是构建写出的产物，也是 GitHub Pages 发布的东西，挂在 `/nano-installer/` 下——这是项目站点，不是账号站点，配置里的 `base` 就是 `/nano-installer`。Astro 的产物本身留在 `dist/` 里，不会再嵌一层 base，所以工作流直接把 `site/dist` 原样上传。
+
+每一页除了 HTML，还有一个 Markdown 版本，位置是 `<页面>/index.md`；构建同时写出不运行网页的读者要用的那几个文件：
 
 | 文件 | 里面是什么 |
 | --- | --- |
-| `docs/llms.txt` | 每一页一行，直接链接到那一页的 Markdown 文件，后面跟一句说明。站点之外的仓库文件另列一节 |
-| `docs/llms-full.txt` | 把声明要收进来的分组合成一份，也就是英文文档。每页前面写上它自己的地址。测试覆盖表没收进来，那是用来查的，不是用来通读的 |
-| `docs/robots.txt` | 全部公开。sitemap 在哪也写在这里 |
-| `docs/sitemap.xml` | 同一份清单的 XML 版。列的是 Markdown 文件，不是网页的 `#/` 地址。片段地址爬虫取不到 |
+| `/llms.txt` | 每一个英文页面一行，链接指向那一页自己的 Markdown 版本。`/zh-CN/llms.txt` 用同样的写法列中文页 |
+| `/llms-full.txt` | 整份文档合成一份，两种语言都在里面，用例表和覆盖表也收了进来 |
+| `/robots.txt` | 全部公开，sitemap 的地址也写在这里，就是 `/sitemap-index.xml` |
+| `/sitemap-index.xml` | 同一份页面清单的 XML 版，拆成若干编号的 sitemap |
+| `/og.png`、`/og/<页面>.png` | 站点和每一页各自的社交卡片 |
 
-`.\scripts\build_docs_index.ps1 -Verify` 就是检查，写和查用的是同一份代码，两者不可能对不上。下面这些都会让检查失败：某一页在 `scripts/docs_index.json` 里没有条目，条目指向不存在的文件，标题或说明是空的，标题和页面自己的 `# 标题` 对不上，仓库文件搬走了，某一页不属于任何分组，把不是页面的名字写进「不收进合成文件」的名单，或者没有任何页面会进那份文件。新增一页，就得在同一个改动里把它的那一行加进数据文件；收不收进 `llms-full.txt` 由它所在的分组决定，单页也能覆盖这个决定。站点首页只是两个入口，中文、英文各一个，不是用来读的页面，靠这一点把它挡在英文文档之外。
+这些文件没有一个是手工维护的：每一个都由构建从内容树写出来，所以页面不可能从索引里漏掉，也不存在第二份清单要跟着改。新增一页，就是 `site/src/content/` 下多一个文件，加上 `site/astro.config.ts` 侧栏清单里的一行。
 
-侧边栏那两个文件是导航，不是页面：`_sidebar.md`、`_navbar.md`；所有以下划线开头的文件都不进索引。
+读者在站点根目录 `/` 切换语言：那里每种语言一张卡片，而侧栏只显示当前页面这一种语言的分组。有两项检查为这件事负责，文档工作流在发布前都会跑：一棵树里的页面在另一棵树里没有对应页，`scripts/audit_docs_languages.ps1` 就会失败；某一页的 frontmatter 校验不过，或者站内链接指向不存在的地方，构建本身就会失败。
 
-读者靠站点顶栏的下拉菜单在两棵树之间切换，它是 `docs/index.html` 里的一段脚本，不是写在每一页里的链接；菜单显示当前页面用的是哪种语言，选另一种就落到**同一页**，而能配对的页名就写在这个文件里。有两个检查守着它和目录一致：`scripts/audit_docs_languages.ps1` 拿页名跟 `docs/en`、`docs/zh-CN` 里的文件逐个核对，`scripts/check_language_switch.js` 在没有浏览器的情况下把这段脚本跑一遍。两个检查都在文档工作流里，和索引检查并排。
+`.well-known` 是这个站点唯一做不到位的地方。Nimbus 会写出给 agent 找路用的 `/.well-known/ai-catalog.json` 与 `/.well-known/ard.json`，并警告这两个文件应该放在源站根目录。GitHub Pages 项目站点挂在 `/nano-installer/` 下，源站根目录属于账号而不是这个项目，所以去 `https://nick2781.github.io/.well-known/` 找的客户端什么也找不到。要做得更好得有自定义域名，而本项目没有，因此这两个文件只发布在项目路径下，构建的警告就留在那里。
 
-`docs/AGENTS.md` 是这套文档自己的地图，说清哪个问题看哪一页、两种语言怎么对应、机器可读的入口在哪；它在 `docs/` 根目录下，不在两棵树里，中文版是 `docs/zh-CN/AGENTS.md`。别的页面都在另一棵树里有对照的一份。
+`docs/AGENTS.md` 是这套文档自己的地图，说清哪个问题看哪一页、两种语言怎么对应、机器可读的入口在哪。仓库把它放在 `docs/` 根目录下而不是某棵树里，因为仓库约定要求它在那里，中文版是 `docs/zh-CN/AGENTS.md`。同一张地图也作为页面发布，就是 `/AGENTS/` 与 `/zh-CN/AGENTS/`；别的页面都在另一棵树里有对照的一份。

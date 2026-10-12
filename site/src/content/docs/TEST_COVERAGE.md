@@ -116,7 +116,7 @@ writes `target/e2e-report.txt`; the plugin cases need the sample plugin as well,
 
 ## Project scripts
 
-`docs/en/SCRIPT_API.md` lists the primitives. The in-process test cases drive the driver directly, while the
+[Script API](/SCRIPT_API/) lists the primitives. The in-process test cases drive the driver directly, while the
 setup-level cases prove the `scripts` directory and the tools directory survive packaging.
 
 | Behaviour | Cases |

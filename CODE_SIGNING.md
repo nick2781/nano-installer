@@ -10,7 +10,7 @@ What exists instead is a rehearsal of the flow. `.github/workflows/sigstore-flow
 manual-only and signs one file per run with a ten-minute certificate that Sigstore's Fulcio
 issues to the workflow's own identity, then verifies it; the signature is a separate file, so no
 executable is modified and nothing is attached to a release. [Build and
-release](docs/en/BUILD_AND_RELEASE.md) describes what that does and does not prove.
+release](site/src/content/docs/BUILD_AND_RELEASE.md) describes what that does and does not prove.
 ## What would be signed
 
 The executables on the [releases page](https://github.com/nick2781/nano-installer/releases),

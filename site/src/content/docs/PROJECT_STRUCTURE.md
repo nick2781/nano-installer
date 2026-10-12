@@ -17,15 +17,13 @@ crates/
 ├── nano-installer-stub-zlib/   # ZIP runtime, links only zip/deflate
 └── nano-installer-uninstaller/ # uninstaller runtime, no archive backend
 docs/
-├── index.html                  # the docsify shell the site is served from
-├── llms.txt                    # every page, listed for an agent to read
-├── robots.txt, sitemap.xml     # the same page list for crawlers
-├── en/                         # English documentation
-└── zh-CN/                      # Chinese documentation
+├── AGENTS.md                   # the map of the documentation, for a reader in the repository
+└── zh-CN/AGENTS.md             # the same map in Chinese
 examples/TapTap/                # validation project
 examples/nsis-migration/        # a project migrated off NSIS, with the script that checks it
 examples/plugin-c/              # the plugin ABI written in C and built with MSVC alone
-scripts/                        # build, smoke test, PE audit, docs index generator
+scripts/                        # build, smoke test, PE audit, documentation audits
+site/                           # the documentation site: its content, its config and its build
 ```
 
 The raw runtime stubs carry no product resources: icons, version info, and branding all come from your project configuration, injected by the builder, so one runtime can produce setups for any product.
@@ -64,21 +62,24 @@ A build asked for `--msi` writes one more package beside the setup it wrapped, f
 
 ## Documentation site
 
-The published site is a [docsify](https://docsify.js.org/) shell: `docs/index.html` renders Markdown in the browser, and it is the only HTML GitHub Pages serves. Every page is also a Markdown file published beside that shell, so the site reads without a browser too, while a coding agent has those files instead; the pages it renders are the sources, and nothing is generated for the reader.
+The published site is an [Astro](https://astro.build/) project built with [Cloudflare Nimbus](https://nimbus-docs.com/), and it lives under `site/`. A page is a Markdown file: `site/src/content/docs/X.md` is served at `/X/`, and its twin in `site/src/content/zh-CN/X.md` at `/zh-CN/X/`. `site/astro.config.ts` holds the site's settings and the sidebar, one group list per language.
 
-Four files make the pages findable to something that cannot run the viewer. `scripts/build_docs_index.ps1` writes them from `scripts/docs_index.json`:
+`site/dist/` is what the build writes and what GitHub Pages publishes, under `/nano-installer/`, because this is a project site rather than an account site: `base` in that config is `/nano-installer`. Astro keeps the output itself in `dist/` instead of nesting it under the base, so the workflow uploads `site/dist` as it is.
+
+Every page is served as Markdown beside its HTML, at `<page>/index.md`, and the build writes the files a reader without a browser uses:
 
 | File | What it holds |
 | --- | --- |
-| `docs/llms.txt` | Every page, one line each, linked to the page's own Markdown file, with a one-line description. Repository files outside the site get their own section |
-| `docs/llms-full.txt` | The pages of the groups that ask to be in it, which is the English documentation, in one document. Each is introduced by its own address. The coverage table is left out: it is a table to look things up in rather than reading |
-| `docs/robots.txt` | Everything public. The sitemap's address is written here too |
-| `docs/sitemap.xml` | The same list as XML. Its entries are the Markdown files, not the viewer's `#/` addresses. A crawler cannot fetch a fragment |
+| `/llms.txt` | Every English page, one line each, linked to that page's own Markdown version. `/zh-CN/llms.txt` lists the Chinese pages the same way |
+| `/llms-full.txt` | The whole documentation in one document, both languages in it, the case and coverage tables included |
+| `/robots.txt` | Everything public, and the sitemap's address, which is `/sitemap-index.xml` |
+| `/sitemap-index.xml` | The same page list as XML, split into numbered sitemaps |
+| `/og.png`, `/og/<page>.png` | A social card for the site and for every page |
 
-`.\scripts\build_docs_index.ps1 -Verify` is the check, and it is the same code that writes them, so the two cannot disagree. Any of these fails the check: a page has no entry in `scripts/docs_index.json`, an entry names a file that is not there, a title or description is empty, a title disagrees with the page's own `# heading`, a repository file has moved, a page belongs to no group, a non-page name is written into the one-document file's exclusion list, or no page would be in that file at all. Adding a page means adding its line to that data file, in the same change; the group a page is in decides whether it joins `llms-full.txt`, and one page may override that. The landing page is a chooser between the two languages, not a page to read, and that is how it stays out.
+None of them is maintained by hand: each is written from the content tree during the build, so a page cannot go missing from the index, and there is no second list to keep in step. A new page is its file under `site/src/content/` plus a line in the sidebar list in `site/astro.config.ts`.
 
-The sidebar files are navigation rather than pages: `_sidebar.md` and `_navbar.md`, and the index leaves out every file whose name begins with an underscore.
+A reader crosses between the two languages at the site root, `/`: it is a chooser with one card per tree, and the sidebar shows only the language of the page being read. Two checks answer for this, and the docs workflow runs both before it publishes: `scripts/audit_docs_languages.ps1` fails when a page in one tree has no page in the other, and the build itself fails when a page's frontmatter does not validate or an internal link goes nowhere.
 
-A reader crosses between the two trees with the switch in the site's top bar, which is script in `docs/index.html` rather than a link written into every page: it states the language of the page it is on, picking the other one lands you on the same page, and the names it can pair are listed in that file. Two checks hold the list to the trees: `scripts/audit_docs_languages.ps1` compares the pairs with the files in `docs/en` and `docs/zh-CN`, and `scripts/check_language_switch.js` runs the switch itself against a stand-in for a browser, because a runner has none. The docs workflow runs both, beside the index check.
+`.well-known` is the one thing this site cannot do where a client expects it. Nimbus writes the agent-discovery files, `/.well-known/ai-catalog.json` and `/.well-known/ard.json`, and warns that they belong at the origin root. A GitHub Pages project site is served under `/nano-installer/`, so the origin root belongs to the account rather than to this project, and a client that looks at `https://nick2781.github.io/.well-known/` finds nothing. Doing better needs a custom domain, which this project does not have, so the files ship under the project path and the build's warning stands.
 
-`docs/AGENTS.md` is the map of the documentation itself: it says which page answers which question, how the two languages relate, and where the machine-readable entry points are, and it sits at the top of `docs/` rather than inside a tree. Its Chinese side is `docs/zh-CN/AGENTS.md`, and every other page has its twin beside it in the other tree.
+`docs/AGENTS.md` is the map of the documentation itself: it says which page answers which question, how the two languages relate, and where the machine-readable entry points are. The repository keeps it at the top of `docs/` rather than inside a tree, because the repository's conventions ask for it there, and its Chinese side is `docs/zh-CN/AGENTS.md`. The same map is published as a page, at `/AGENTS/` and `/zh-CN/AGENTS/`, and every other page has its twin beside it in the other tree.

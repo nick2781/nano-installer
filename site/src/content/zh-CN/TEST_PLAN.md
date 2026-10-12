@@ -64,7 +64,7 @@ CI 作业把这两个文件都作为 `test-report` 产物留着，`run_e2e_setup
 自动化用例覆盖的部分也在里面。
 
 迁移指南自己也有一道自动检查：`scripts/check_nsi_migration.ps1` 读
-`docs/en/MIGRATION_FROM_NSIS.md` 与 `docs/zh-CN/MIGRATION_FROM_NSIS.md` 里那几张表，逐条核对
+`site/src/content/docs/MIGRATION_FROM_NSIS.md` 与 `site/src/content/zh-CN/MIGRATION_FROM_NSIS.md` 里那几张表，逐条核对
 `examples/nsis-migration/legacy.nsi` 用到的每个 NSIS 命令、指令与 `${...}` 变量。每一条都得在表里有一行，
 并点名它变成什么；两份语言的命令集与判定还要逐条一致，不一致就直接失败。加上 `-FailOnUnknown` 之后，表里
 没有收录的构造也算失败，CI 就是这么跑的，这样一来，一份用了新构造的示例不会悄悄溜过去。它检查的是「每条

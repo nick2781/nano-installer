@@ -3,42 +3,44 @@
 这一页告诉你哪个问题该看哪份文档，所以不管是人还是 agent，都能直接找到需要的那一份，不用把整个
 站点走一遍。
 
-**每一页都有对照的另一语言版本。** 这里的文档都成对：`docs/en/X.md` 与 `docs/zh-CN/X.md` 是
-同一份文档，而读者靠站点顶栏的那个开关在两棵树之间切换。这里没有哪一页只写一种语言。
-`scripts/audit_docs_languages.ps1` 守着这一点：一棵树里的页面在另一棵树里没有对应页，它失败；开关
-那份页名清单和旁边的文件对不上，它也会失败。
+**每一页都有对照的另一语言版本。** 发布的页面都成对：`site/src/content/docs/X.md` 与
+`site/src/content/zh-CN/X.md` 是同一份文档，分别发布在 `/X/` 和 `/zh-CN/X/`。这里没有哪一页只写
+一种语言，`scripts/audit_docs_languages.ps1` 守着这一点：一棵树里的页面在另一棵树里没有对应页，它
+就失败；它同样把本页与 `zh-CN/AGENTS.md` 配成一对。
 
-这张地图放在 `docs/` 根目录下而不是某棵树里，所以根目录只有两个文件，另一个是站点首页——那是选
-语言的入口页，不是文档。中文版就是本页，英文版是 [`../AGENTS.md`](../AGENTS.md)。
+这张地图放在 `docs/` 根目录下而不是某棵内容树里，因为仓库约定要求它在那里，所以 `docs/` 下只有
+这一个英文文件。中文版是 [`zh-CN/AGENTS.md`](zh-CN/AGENTS.md)。同一张地图也作为页面发布，就是
+`/AGENTS/` 与 `/zh-CN/AGENTS/`。
 
 ## 先拿这几份
 
 | 文件 | 里面是什么 |
 | --- | --- |
-| [`/llms.txt`](../llms.txt) | 每一页一行，链接指向那一页自己的 Markdown 文件。先取这一份 |
-| [`/llms-full.txt`](../llms-full.txt) | 英文页面合成一份，给只想取一次文件的读者。测试覆盖表没收进来：那是拿来查的表，不是拿来读的。链接在 `llms.txt` 里 |
-| [`/sitemap.xml`](../sitemap.xml)、[`/robots.txt`](../robots.txt) | 给爬虫的同一份页面清单 |
+| [`/llms.txt`](https://nick2781.github.io/nano-installer/llms.txt) | 每一个英文页面一行，链接指向那一页自己的 Markdown 版本。先取这一份 |
+| [`/llms-full.txt`](https://nick2781.github.io/nano-installer/llms-full.txt) | 整份文档合成一份，两种语言都在里面，用例表和覆盖表也收了进来 |
+| [`/zh-CN/llms.txt`](https://nick2781.github.io/nano-installer/zh-CN/llms.txt) | 中文页面，同样一行一页 |
+| [`/sitemap-index.xml`](https://nick2781.github.io/nano-installer/sitemap-index.xml)、[`/robots.txt`](https://nick2781.github.io/nano-installer/robots.txt) | 给爬虫的同一份页面清单 |
 
-本站每一页都是 Markdown 文件，和 HTML 查看器并排发布，以 `text/markdown` 提供；那份 HTML 只是
-覆盖全部页面的一个查看器。所以直接取文件本身就好，因为 Markdown 才是原始文档：没有哪一页是为读者
-另外生成的。
+每一页除了 HTML，还有一个 Markdown 版本，位置是 `<页面>/index.md`，页面就是照着它渲染出来的。
+所以读者是模型时直接取那份文件；手里是仓库的读者，取 `site/src/content/` 下那一页自己的文件。
 
 ## 哪个问题看哪个文件
 
 | 问题 | English | 中文 |
 | --- | --- | --- |
-| 这是什么，现在能不能拿来发布？ | [README](../en/README.md), [Production status](../en/PRODUCTION_STATUS.md) | [中文文档](README.md)、[当前生产状态](PRODUCTION_STATUS.md) |
-| 怎么装出第一个安装包？ | [Quick start](../en/QUICK_START.md) | [快速开始](QUICK_START.md) |
-| 有哪些设置，各自改什么？ | [Configuration reference](../en/CONFIG_REFERENCE.md) | [配置参考](CONFIG_REFERENCE.md) |
-| 页面和控件怎么写？ | [Page layout](../en/XML_LAYOUT_GUIDE.md) | [页面布局](XML_LAYOUT_GUIDE.md) |
-| 怎么增加或修改一种语言？ | [Languages](../en/LOCALIZATION.md) | [多语言](LOCALIZATION.md) |
-| 怎么运行自己的安装与卸载步骤？ | [Custom steps](../en/SCRIPT_API.md) | [自定义步骤](SCRIPT_API.md) |
-| 怎么带一个插件，它允许做什么？ | [Plugin ABI](../en/PLUGIN_API.md) | [插件 ABI](PLUGIN_API.md) |
-| 从 NSIS 过来，什么对应什么？ | [Migrating from NSIS](../en/MIGRATION_FROM_NSIS.md) | [从 NSIS 迁移](MIGRATION_FROM_NSIS.md) |
-| 安装器内部是怎么走的？ | [Architecture](../en/ARCHITECTURE.md) | [架构](ARCHITECTURE.md) |
-| 支持哪些 Windows 版本，用了哪些系统调用？ | [Windows compatibility](../en/WINDOWS_COMPATIBILITY.md) | [Windows 兼容性](WINDOWS_COMPATIBILITY.md) |
-| 怎么构建、怎么发布？ | [Build and release](../en/BUILD_AND_RELEASE.md), [Project layout](../en/PROJECT_STRUCTURE.md) | [构建与发布](BUILD_AND_RELEASE.md)、[项目结构](PROJECT_STRUCTURE.md) |
-| 测了什么，什么只是承诺？ | [Test plan](../en/TEST_PLAN.md), [Test coverage](../en/TEST_COVERAGE.md), [Test cases](../en/TEST_CASES.md) | [测试计划](TEST_PLAN.md)、[测试覆盖](TEST_COVERAGE.md)、[用例说明](TEST_CASES.md) |
+| 这是什么，现在能不能拿来发布？ | [README](../../site/src/content/docs/README.md), [Production status](../../site/src/content/docs/PRODUCTION_STATUS.md) | [中文文档](../../site/src/content/zh-CN/README.md)、[当前生产状态](../../site/src/content/zh-CN/PRODUCTION_STATUS.md) |
+| 怎么装出第一个安装包？ | [Quick start](../../site/src/content/docs/QUICK_START.md) | [快速开始](../../site/src/content/zh-CN/QUICK_START.md) |
+| 有哪些设置，各自改什么？ | [Configuration reference](../../site/src/content/docs/CONFIG_REFERENCE.md) | [配置参考](../../site/src/content/zh-CN/CONFIG_REFERENCE.md) |
+| 页面和控件怎么写？ | [Page layout](../../site/src/content/docs/XML_LAYOUT_GUIDE.md) | [页面布局](../../site/src/content/zh-CN/XML_LAYOUT_GUIDE.md) |
+| 怎么增加或修改一种语言？ | [Languages](../../site/src/content/docs/LOCALIZATION.md) | [多语言](../../site/src/content/zh-CN/LOCALIZATION.md) |
+| 怎么运行自己的安装与卸载步骤？ | [Custom steps](../../site/src/content/docs/SCRIPT_API.md) | [自定义步骤](../../site/src/content/zh-CN/SCRIPT_API.md) |
+| 怎么带一个插件，它允许做什么？ | [Plugin ABI](../../site/src/content/docs/PLUGIN_API.md) | [插件 ABI](../../site/src/content/zh-CN/PLUGIN_API.md) |
+| 从 NSIS 过来，什么对应什么？ | [Migrating from NSIS](../../site/src/content/docs/MIGRATION_FROM_NSIS.md) | [从 NSIS 迁移](../../site/src/content/zh-CN/MIGRATION_FROM_NSIS.md) |
+| 安装器内部是怎么走的？ | [Architecture](../../site/src/content/docs/ARCHITECTURE.md) | [架构](../../site/src/content/zh-CN/ARCHITECTURE.md) |
+| 支持哪些 Windows 版本，用了哪些系统调用？ | [Windows compatibility](../../site/src/content/docs/WINDOWS_COMPATIBILITY.md) | [Windows 兼容性](../../site/src/content/zh-CN/WINDOWS_COMPATIBILITY.md) |
+| 不动命令行怎么构建？ | [Visual builder](../../site/src/content/docs/GUI.md) | [可视化构建](../../site/src/content/zh-CN/GUI.md) |
+| 怎么构建、怎么发布？ | [Build and release](../../site/src/content/docs/BUILD_AND_RELEASE.md), [Project layout](../../site/src/content/docs/PROJECT_STRUCTURE.md) | [构建与发布](../../site/src/content/zh-CN/BUILD_AND_RELEASE.md)、[项目结构](../../site/src/content/zh-CN/PROJECT_STRUCTURE.md) |
+| 测了什么，什么只是承诺？ | [Test plan](../../site/src/content/docs/TEST_PLAN.md), [Test coverage](../../site/src/content/docs/TEST_COVERAGE.md), [Test cases](../../site/src/content/docs/TEST_CASES.md) | [测试计划](../../site/src/content/zh-CN/TEST_PLAN.md)、[测试覆盖](../../site/src/content/zh-CN/TEST_COVERAGE.md)、[用例说明](../../site/src/content/zh-CN/TEST_CASES.md) |
 
 ## 仓库里的文件
 
@@ -60,16 +62,24 @@
   会签哪些文件、维护者是谁。
 - [变更日志](https://github.com/nick2781/nano-installer/blob/main/CHANGELOG.md)：每个版本改了什么。
 
-## 这份索引是怎么来的
+## 页面和索引是怎么来的
 
-`scripts/build_docs_index.ps1` 从 `scripts/docs_index.json` 写出 `llms.txt`、`llms-full.txt`、
-`robots.txt` 和 `sitemap.xml`，而 `-Verify` 用的是同一份代码，所以写和查不会对不上。新增一页因此
-要在那份数据文件里加一行，标题还得和页面自己的 `# 标题` 一字不差；少了这一行，检查就会失败，不会
-让这一页悄悄从索引里消失。
+对外发布的站点是 `site/` 下的一个 Astro 工程，用 Cloudflare Nimbus 构建。页面就是
+`site/src/content/docs/*.md` 与 `site/src/content/zh-CN/*.md`；站点设置和侧栏的两组语言条目都在
+`site/astro.config.ts` 里；构建产物写在 `site/dist/`，GitHub Pages 发布的正是这个目录，挂在
+`/nano-installer/` 下。文档工作流按这些文件里写的版本装好工具链，在 `site/` 里构建，然后上传那个
+目录。
 
-某一页收不收进 `llms-full.txt`，由它所在的分组决定，但单页也能覆盖：站点首页是选语言的入口页，
-不是文档，它就是靠这一点排除在英文合成文件之外的。两张用例表也不收，理由和覆盖表一样：它们是
-拿来查的表，不是拿来通读的。
+给爬虫和 agent 用的文件由同一次构建产生，不靠谁维护的那份数据文件：`llms.txt`、`llms-full.txt`、
+`robots.txt`、`sitemap-index.xml` 站点地图，以及每一页的 Markdown 版本和 OG 卡片。所以新增一页只要
+在 `site/src/content/` 里放上文件、在另一棵树里放上对照页、再在侧栏清单里加一行；frontmatter 里的
+`title` 同时是侧栏和索引对它的称呼，页面标题只需要维护一处。生成器和它读的那份数据文件随 docsify
+站点一起退役了，因为构建是从页面写出这些文件的，两者不可能脱节。
+
+`.well-known` 是这个站点唯一做不到位的地方。Nimbus 会写出 `/.well-known/ai-catalog.json` 与
+`/.well-known/ard.json`，并警告这两个文件应该放在源站根目录；而 GitHub Pages 项目站点挂在
+`/nano-installer/` 下，源站根目录属于账号而不是这个项目。要放过去得有自定义域名，本项目没有，因此
+这两个文件只发布在项目路径下，构建的警告就留在那里。
 
 ## 这些页面怎么写
 
@@ -85,11 +95,11 @@
 - **同一个词别连着出现**；括号里的补充不能与前面的词重复——「应用文件（你的应用文件，zip 或 7z 归档）」
   这种同义反复要改成一句话。
 - **事实、数字、命令、路径、字段名不许动**：标题、锚点、链接目标也要原样，改写只动措辞。改完用
-  `scripts/audit_docs_languages.ps1` 与 `scripts/build_docs_index.ps1 -Verify` 核对——索引里的标题必须和
-  页面自己的 `# 标题` 一字不差。
+  `scripts/audit_docs_languages.ps1` 核对两棵树是否成对，用站点自己的构建（在 `site/` 里跑
+  `pnpm build`）核对 frontmatter 与站内链接——frontmatter 校验不过、或者站内链接指向不存在的地方，
+  构建就会失败。
 - **中文页参考 [Tech-Doc-Style-Chinese](https://github.com/fenng/Tech-Doc-Style-Chinese) 这份外部规范，
   但它只是参考，不是第二套标准**：两者冲突时以本节为准，用指代（它、这、这些）承接、源文件保持硬
   换行，这两处就是例子。
 
 中英两份是同一篇文档：段落顺序、每段讲的事必须对应。
-

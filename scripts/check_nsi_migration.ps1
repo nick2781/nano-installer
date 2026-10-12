@@ -10,7 +10,8 @@
     rather than let it hide in a thousand-line file.
 
     The table this script classifies with is the table in
-    docs/en/MIGRATION_FROM_NSIS.md and docs/zh-CN/MIGRATION_FROM_NSIS.md, read
+    site/src/content/docs/MIGRATION_FROM_NSIS.md and
+    site/src/content/zh-CN/MIGRATION_FROM_NSIS.md, read
     straight out of the two documents. That is deliberate: a guide and a tool
     that each carry their own copy of a hundred rows drift apart, and the one
     that drifts is the one nobody runs. Both guides are read and have to agree --
@@ -56,13 +57,14 @@ Set-StrictMode -Version Latest
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 if (-not $Guide) {
-    $Guide = Join-Path $repoRoot "docs"
+    $Guide = Join-Path $repoRoot "site/src/content"
 }
-# The guide in both languages, under the documentation tree the build already
-# reads. -Guide points at another tree of the same shape, which is how the
+# The guide in both languages, out of the site's own content trees: the English
+# pages are the primary collection, `docs`, and the Chinese ones are `zh-CN`.
+# -Guide points at another directory of the same shape, which is how the
 # agreement check between the two languages can be exercised.
 $paths = @(
-    (Join-Path $Guide "en/MIGRATION_FROM_NSIS.md"),
+    (Join-Path $Guide "docs/MIGRATION_FROM_NSIS.md"),
     (Join-Path $Guide "zh-CN/MIGRATION_FROM_NSIS.md")
 )
 

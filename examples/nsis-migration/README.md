@@ -1,8 +1,8 @@
 # Migrating from NSIS
 
 This folder is the worked example of the migration guide:
-[English](../../docs/en/MIGRATION_FROM_NSIS.md) ·
-[简体中文](../../docs/zh-CN/MIGRATION_FROM_NSIS.md).
+[English](../../site/src/content/docs/MIGRATION_FROM_NSIS.md) ·
+[简体中文](../../site/src/content/zh-CN/MIGRATION_FROM_NSIS.md).
 
 | Path | What it is |
 | --- | --- |

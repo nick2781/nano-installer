@@ -1,65 +1,67 @@
 <#
-    Holds the two documentation trees and the language switch to each other.
+    Holds the documentation's two language trees to each other.
 
-    docs/en and docs/zh-CN are the same pages in two languages, and a reader
-    crosses between them with the switch in the site's top bar. Every page has a
-    twin: a page inside a tree is paired by name, and a page at the top of docs/
-    is paired the same way inside the Chinese tree. The switch knows both lists,
-    and this audit compares each with the files beside it.
+    The published site is an Astro project under site/, built with Cloudflare
+    Nimbus, and its pages live in two content trees: site/src/content/docs holds
+    the English pages, served at the site root, and site/src/content/zh-CN holds
+    the same pages in Chinese, served under /zh-CN. Nimbus mounts each tree as its
+    own collection, the sidebar lists one language's pages at a time, and the site
+    root is the chooser between them. So a page that only one tree carries is a
+    page a reader can reach in one language and not in the other.
 
-    A page added to one tree without its twin, or a twin added without a line in
-    the switch's list, would send a reader to a file that is there in one language
-    and missing in the other. Both fail here, in the docs workflow, rather than in
-    a browser.
+    This audit compares the two trees by name: every page in one tree has to have
+    its twin in the other, and a page with no twin fails here, in the docs
+    workflow and on the pull request, rather than in a browser.
 
-    The one file that is not a document is the site's landing page: it is a chooser
-    between the two languages, so it has no twin to pair and is named as such below.
+    The repository's map of the documentation is a pair as well, kept under docs/
+    by the repository's own conventions: docs/AGENTS.md and docs/zh-CN/AGENTS.md.
+    The map is published as pages of the site too, and those two pages are paired
+    by the tree comparison above; the two files under docs/ are paired here,
+    because nothing else reads them.
+
+    This is what the audit used to be about, and why it changed. It compared
+    docs/en and docs/zh-CN with the switch's own list of page names inside
+    docs/index.html, so a page added to one tree, or a name added to the switch,
+    failed. The site is no longer a docsify shell over those files, the switch has
+    no list of its own, and docs/index.html is gone: the content trees are the
+    pages, and Nimbus writes the navigation, the index and every Markdown version
+    from them. Two trees that match each other are therefore the whole of what
+    there is to hold, and there is no third list left to drift.
 
     Usage:
       .\scripts\audit_docs_languages.ps1
+      .\scripts\audit_docs_languages.ps1 -RepositoryRoot C:\src\nano-installer
 #>
 param(
-    [string]$DocumentationDirectory
+    [string]$RepositoryRoot = (Split-Path -Parent $PSScriptRoot)
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
-$docsDirectory = if ($DocumentationDirectory) {
-    $DocumentationDirectory
-} else {
-    Join-Path $repoRoot "docs"
-}
-
-if (-not (Test-Path -LiteralPath $docsDirectory)) {
-    throw "Not found: $docsDirectory"
-}
-
-# The site's landing page is a chooser, not a document, so it is the one page that
-# has nothing to be a translation of.
-$chooser = "README.md"
+$contentDirectory = Join-Path $RepositoryRoot "site/src/content"
+$englishDirectory = Join-Path $contentDirectory "docs"
+$chineseDirectory = Join-Path $contentDirectory "zh-CN"
 
 $failures = @()
 
 function Get-PageNames([string]$Directory) {
-    if (-not (Test-Path -LiteralPath $Directory)) {
+    if (-not (Test-Path -LiteralPath $Directory -PathType Container)) {
         throw "Not found: $Directory"
     }
+    # Every Markdown file in a content tree is a page of the site. The tree holds
+    # no navigation fragments: Nimbus builds the sidebar and the table of contents
+    # from the pages and the config, so there is no underscore-prefixed file here
+    # to leave out.
     $names = @()
     foreach ($file in Get-ChildItem -LiteralPath $Directory -Filter "*.md" -File) {
-        # An underscore names the site's own navigation fragment, not a page.
-        if ($file.Name.StartsWith("_")) {
-            continue
-        }
         $names += $file.Name
     }
     return @($names | Sort-Object)
 }
 
-$english = @(Get-PageNames (Join-Path $docsDirectory "en"))
-$chinese = @(Get-PageNames (Join-Path $docsDirectory "zh-CN"))
-$root = @(Get-PageNames $docsDirectory)
+$english = @(Get-PageNames $englishDirectory)
+$chinese = @(Get-PageNames $chineseDirectory)
 if ($english.Count -eq 0 -or $chinese.Count -eq 0) {
     throw "One of the two documentation trees holds no page"
 }
@@ -69,7 +71,7 @@ if ($english.Count -eq 0 -or $chinese.Count -eq 0) {
 $paired = @()
 foreach ($name in $english) {
     if ($chinese -notcontains $name) {
-        $failures += "docs/en/$name has no page in docs/zh-CN"
+        $failures += "site/src/content/docs/$name has no page in site/src/content/zh-CN"
         continue
     }
     $paired += $name
@@ -78,90 +80,25 @@ foreach ($name in $chinese) {
     if ($english -contains $name) {
         continue
     }
-    # A Chinese page whose English side sits at the top of docs/ is paired as well.
-    if ($root -contains $name) {
-        continue
-    }
-    $failures += "docs/zh-CN/$name has no page in docs/en"
+    $failures += "site/src/content/zh-CN/$name has no page in site/src/content/docs"
 }
 $paired = @($paired | Sort-Object)
 
-# The pages at the top of docs/ are the chooser and the pages whose translation
-# sits in the Chinese tree under the same name.
-$rootPages = @()
-foreach ($name in $root) {
-    if ($name -eq $chooser) {
-        continue
-    }
-    if ($chinese -notcontains $name) {
-        $failures += "docs/$name sits at the top of docs/ and docs/zh-CN/$name is not there"
-        continue
-    }
-    $rootPages += $name
-}
-$rootPages = @($rootPages | Sort-Object)
-
-# The switch's own lists, read out of the shell they live in.
-$shellPath = Join-Path $docsDirectory "index.html"
-if (-not (Test-Path -LiteralPath $shellPath -PathType Leaf)) {
-    throw "Not found: $shellPath"
-}
-$shell = Get-Content -Raw -Encoding UTF8 -LiteralPath $shellPath
-
-function Get-SwitchList([string]$Name) {
-    $startMarker = "/* nano-language-${Name}:start */"
-    $endMarker = "/* nano-language-${Name}:end */"
-    $startIndex = $shell.IndexOf($startMarker)
-    $endIndex = $shell.IndexOf($endMarker)
-    if ($startIndex -lt 0 -or $endIndex -lt $startIndex) {
-        throw "$shellPath has no list between $startMarker and $endMarker"
-    }
-    $names = @()
-    foreach ($match in [regex]::Matches($shell.Substring($startIndex, $endIndex - $startIndex), "'([^']+\.md)'")) {
-        $names += $match.Groups[1].Value
-    }
-    return @($names | Sort-Object -Unique)
-}
-
-$listed = @(Get-SwitchList "pages")
-$listedRoot = @(Get-SwitchList "root-pages")
-
-foreach ($name in $paired) {
-    if ($listed -notcontains $name) {
-        $failures += "$name is a page in both trees but the language switch does not know it"
-    }
-}
-foreach ($name in $listed) {
-    if ($paired -notcontains $name) {
-        $failures += "the language switch pairs $name, which is not a page in both trees"
-    }
-}
-foreach ($name in $rootPages) {
-    if ($listedRoot -notcontains $name) {
-        $failures += "$name is a page at the top of docs/ but the language switch does not know it"
-    }
-}
-foreach ($name in $listedRoot) {
-    if ($rootPages -notcontains $name) {
-        $failures += "the language switch calls $name a page at the top of docs/, which it is not"
-    }
-}
-
-# A reader crosses trees through the switch, and a reader of the raw Markdown
-# through what each landing page publishes; both need their files to be there.
-foreach ($tree in @("en", "zh-CN")) {
-    foreach ($name in @("README.md", "_navbar.md", "_sidebar.md")) {
-        $path = Join-Path $docsDirectory "$tree/$name"
-        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-            $failures += "docs/$tree/$name is not there, so that tree cannot be read or switched from"
-        }
+# The map of the documentation, as the repository keeps it: two files at the top
+# of docs/, one per language, which is where the repository's conventions ask for
+# them. Neither is a page of the site, so the tree comparison above says nothing
+# about them; they answer for each other here.
+$mapFiles = @("docs/AGENTS.md", "docs/zh-CN/AGENTS.md")
+foreach ($path in $mapFiles) {
+    if (-not (Test-Path -LiteralPath (Join-Path $RepositoryRoot $path) -PathType Leaf)) {
+        $failures += "$path is not there, so the documentation map is written in one language only"
     }
 }
 
 if ($failures.Count -gt 0) {
     $failures | ForEach-Object { Write-Error $_ }
-    throw "The documentation trees and the language switch disagree"
+    throw "The two documentation trees disagree"
 }
 
-$message = "Language audit passed: {0} paired page(s), {1} page(s) at the top of docs/, and the switch lists exactly those" -f $paired.Count, $rootPages.Count
+$message = "Language audit passed: {0} paired page(s) in site/src/content, and docs/AGENTS.md is paired with docs/zh-CN/AGENTS.md" -f $paired.Count
 Write-Output $message

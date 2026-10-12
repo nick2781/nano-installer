@@ -17,8 +17,8 @@ export const collections = {
   // The Chinese tree. Nimbus mounts the primary `docs` collection at the site
   // root with no prefix and every other collection at `/<collection name>`
   // (see the package's `_internal/collection-mount.ts`), so a collection named
-  // `zh-CN` living in `src/content/zh-CN/` is served at `/zh-CN/...` — the same
-  // pairing the old docsify site had under `#/zh-CN/...`. Same schema as `docs`.
+  // `zh-CN` living in `src/content/zh-CN/` is served at `/zh-CN/...`, one page
+  // per name in the English tree. Same schema as `docs`.
   "zh-CN": defineCollection(
     docsCollection({
       base: "zh-CN",

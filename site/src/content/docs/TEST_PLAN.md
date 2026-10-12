@@ -76,7 +76,7 @@ Every behaviour these documents promise sits next to the case that holds it in
 too.
 
 The migration guide has an automated check of its own: `scripts/check_nsi_migration.ps1` reads the
-tables in `docs/en/MIGRATION_FROM_NSIS.md` and `docs/zh-CN/MIGRATION_FROM_NSIS.md` and looks at every
+tables in `site/src/content/docs/MIGRATION_FROM_NSIS.md` and `site/src/content/zh-CN/MIGRATION_FROM_NSIS.md` and looks at every
 NSIS command, directive and `${...}` variable used by `examples/nsis-migration/legacy.nsi`. Each one
 has to have a row that names what it becomes, and the two languages have to agree command for command
 and answer for answer, since a disagreement fails outright. With `-FailOnUnknown`, which is how CI

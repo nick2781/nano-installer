@@ -13,7 +13,7 @@ import { tableScroll } from "@cloudflare/nimbus-docs/markdown";
 // catch-all routes keep a page from showing the other language's groups.
 const sidebarItems = [
   // ---- English (docs) ----
-  { label: "Overview", items: ["README", "PRODUCTION_STATUS"] },
+  { label: "Overview", items: ["README", "PRODUCTION_STATUS", "AGENTS"] },
   { label: "Get started", items: ["QUICK_START"] },
   {
     label: "Guides",
@@ -42,6 +42,7 @@ const sidebarItems = [
     items: [
       { label: "中文文档", link: "/zh-CN/README" },
       { label: "当前生产状态", link: "/zh-CN/PRODUCTION_STATUS" },
+      { label: "给 agent 的文档地图", link: "/zh-CN/AGENTS" },
     ],
   },
   { label: "快速开始", items: [{ label: "快速开始", link: "/zh-CN/QUICK_START" }] },
