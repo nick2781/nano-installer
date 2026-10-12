@@ -208,6 +208,24 @@ jobs:
         shell: powershell
         run: .\scripts\audit_docs_languages.ps1
 
+      # The sidebar is the other half of that pairing, and the one Nimbus cannot
+      # answer for this site. Its sidebar rules (`nimbus/sidebar-entry`,
+      # `nimbus/orphan-page`) are registered codes with no implementation at the
+      # version the site installs, and every authoring rule it does implement is
+      # handed `findMdxFiles()`, whose walk is `extensions: [".mdx"]` inside the
+      # packaged CLI -- while these pages are `.md`. So the sidebar is held to
+      # nothing upstream: neither direction, neither file. This audit is that
+      # rule -- every page listed once in its own language's groups, every row
+      # answering to a page, no page listed twice -- and it reads the config and
+      # the two content trees only, so it too needs no build and no toolchain.
+      #
+      # scripts/audit_docs_links.ps1 is the same gap's other half. It cannot run
+      # here: an anchor only exists once a heading has been rendered, so it reads
+      # site/dist and belongs to the docs workflow, after the build.
+      - name: Audit the sidebar
+        shell: powershell
+        run: .\scripts\audit_docs_sidebar.ps1
+
       # A report is the evidence for a run, and the page a failed run leaves
       # behind is the least exercised path in these scripts: an absent build
       # passes null where a working one passes a collection, and a null read

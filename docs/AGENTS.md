@@ -1,4 +1,4 @@
-# Documentation map for agents
+﻿# Documentation map for agents
 
 This page tells you which document answers which question, so a reader -- a person or an agent -- can
 go straight to the file that answers it. The whole site does not have to be walked.
@@ -106,8 +106,10 @@ page and for an edit to an old one.
   twice.
 - **Facts, numbers, commands, paths and field names do not move.** Neither do headings, anchors or
   link targets: a rewrite changes wording only. Check with `scripts/audit_docs_languages.ps1` for the
-  pairs and with the site's own build (`pnpm build` in `site/`) for the frontmatter and the links -- a
-  page whose frontmatter does not validate, or whose internal link goes nowhere, fails the build.
+  pairs, with the site's own build (`pnpm build` in `site/`) for the frontmatter -- that build
+  does validate it -- and with `scripts/audit_docs_links.ps1` for the links, which reads the
+  built site, because the integration's own link rule reads only `.mdx` and a dead link between
+  two `.md` pages is not what fails the build.
 - **The Chinese pages consult [Tech-Doc-Style-Chinese](https://github.com/fenng/Tech-Doc-Style-Chinese)
   as an external reference, not as a second standard.** Where the two disagree, this section wins:
   pronouns (it, this, these) and the hard-wrapped source lines are the two places it does.

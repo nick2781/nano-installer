@@ -1,4 +1,4 @@
-# 给 agent 的文档地图
+﻿# 给 agent 的文档地图
 
 这一页告诉你哪个问题该看哪份文档，所以不管是人还是 agent，都能直接找到需要的那一份，不用把整个
 站点走一遍。
@@ -96,8 +96,9 @@
   这种同义反复要改成一句话。
 - **事实、数字、命令、路径、字段名不许动**：标题、锚点、链接目标也要原样，改写只动措辞。改完用
   `scripts/audit_docs_languages.ps1` 核对两棵树是否成对，用站点自己的构建（在 `site/` 里跑
-  `pnpm build`）核对 frontmatter 与站内链接——frontmatter 校验不过、或者站内链接指向不存在的地方，
-  构建就会失败。
+  `pnpm build`）核对 frontmatter——那份校验会拦下不合格的 frontmatter；站内链接交给
+  `scripts/audit_docs_links.ps1`，它读的是构建产物，因为集成自带的链接规则只读 `.mdx`，两个 `.md`
+  页面之间的死链并不会让构建失败。
 - **中文页参考 [Tech-Doc-Style-Chinese](https://github.com/fenng/Tech-Doc-Style-Chinese) 这份外部规范，
   但它只是参考，不是第二套标准**：两者冲突时以本节为准，用指代（它、这、这些）承接、源文件保持硬
   换行，这两处就是例子。

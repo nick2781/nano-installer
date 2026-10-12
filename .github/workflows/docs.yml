@@ -1,4 +1,4 @@
-name: Docs
+﻿name: Docs
 
 on:
   push:
@@ -8,12 +8,15 @@ on:
       # The site is the Astro project under site/, so a page, the sidebar, a
       # component, a style or the lockfile all change what is published.
       - "site/**"
-      # The audit this workflow runs before it publishes, so that a change to the
-      # audit alone is still a change to what the site is held to. There is no
-      # index data file in this list any more: the build writes llms.txt,
-      # llms-full.txt, robots.txt and the sitemap from the content tree, so there
-      # is no second list that could disagree with the pages.
+      # The audits this workflow runs -- one before it publishes, one over the
+      # build it publishes -- so that a change to an audit alone is still a change
+      # to what the site is held to. There is no index data file in this list any
+      # more: the build writes llms.txt, llms-full.txt, robots.txt and the
+      # sitemap from the content tree, so there is no second list that could
+      # disagree with the pages.
       - "scripts/audit_docs_languages.ps1"
+      - "scripts/audit_docs_sidebar.ps1"
+      - "scripts/audit_docs_links.ps1"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 
@@ -58,6 +61,20 @@ jobs:
         shell: pwsh
         run: ./scripts/audit_docs_languages.ps1
 
+      # The sidebar is the other half of the same question, and the one Nimbus
+      # cannot answer here. Its sidebar rules (`nimbus/sidebar-entry`,
+      # `nimbus/orphan-page`) are registered codes with no implementation at the
+      # version the site installs, and every authoring rule it does implement is
+      # handed `findMdxFiles()`, whose walk is `extensions: [".mdx"]` inside the
+      # packaged CLI -- while these pages are `.md`. So the sidebar is held to
+      # nothing upstream: neither direction, neither file. This audit is that
+      # rule -- every page listed once in its own language's groups, every row
+      # answering to a page, no page listed twice -- and it reads the config and
+      # the two content trees only, so it runs before the build costs anything.
+      - name: Audit the sidebar
+        shell: pwsh
+        run: ./scripts/audit_docs_sidebar.ps1
+
       # The versions are named rather than floating, the same way the image above
       # is. They come from the site as it is built here: site/pnpm-lock.yaml is
       # lockfileVersion 9.0, site/pnpm-workspace.yaml carries pnpm 11's
@@ -87,16 +104,31 @@ jobs:
         working-directory: site
         run: pnpm install --frozen-lockfile
 
-      # The build is the check as well as the build. nimbus/frontmatter-shape and
-      # nimbus/internal-link are errors, so a page whose frontmatter does not
-      # validate and a link that goes nowhere both fail here, on the commit that
-      # publishes. The same run writes what a reader without a browser uses --
+      # The build is the check as well as the build. nimbus/frontmatter-shape is an
+      # error, so a page whose frontmatter does not validate fails here, on the
+      # commit that publishes. Links are not this step's business: that rule is an
+      # authoring rule, and the build evaluates none of them -- the audit below reads
+      # the built site for them. The same run writes what a reader without a browser
+      # uses --
       # llms.txt, llms-full.txt, robots.txt, the sitemap, a Markdown version and
       # an OG card for every page -- from the content tree, so none of it can
       # drift from the pages beside it.
       - name: Build the site
         working-directory: site
         run: pnpm build
+
+      # `nimbus/internal-link` is an error above, and it is implemented -- but it
+      # is handed `findMdxFiles()`, whose walk is `extensions: [".mdx"]`, so a
+      # link between two `.md` pages is not what fails the build: authoring rules
+      # are not run by `astro build` at all, and the CLI never opens one of these
+      # pages. This reads what the build wrote -- every `<a href>` on every page,
+      # the file it lands on and the id it points at, with both sides decoded so a
+      # Chinese anchor is compared as itself -- and it runs here because an anchor
+      # only exists once the heading has been rendered. It is the last gate before
+      # the site becomes the artifact below.
+      - name: Audit the links in the built site
+        shell: pwsh
+        run: ./scripts/audit_docs_links.ps1
 
       - name: Upload the site artifact
         uses: actions/upload-pages-artifact@v5
