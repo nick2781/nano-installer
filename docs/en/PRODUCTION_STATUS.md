@@ -253,11 +253,20 @@ The gaps this run left, written down rather than left looking tested:
     the Tab order, so this change is what separates "the page took it away" from "the page draws it and
     it cannot be used yet".
 
-  A real screen reader was then installed on this machine: NVDA 2023.3 installs and starts there, but its
-  speech was never captured -- it wrote no log file and the speech viewer could not be opened through
-  the keyboard, so what it actually said was never heard. Narrator was never heard either, so this
-  counts as "the accessibility tree was read on the minimum supported version", not as "a screen reader
-  was run against it".
+  A real screen reader was tried on this machine again, this time to keep what it says: NVDA 2023.3 has
+  `--debug-logging -f <log file>`, which writes every sentence it means to speak into a log, and on the
+  host the lines read
+  `IO - speech.speech.speak: Speaking [LangChangeCommand ('zh_CN'), '正在加载 NVDA，请稍后……']`. In the
+  Windows 7 SP1 guest, though, every real start of NVDA terminates that virtual machine: all three
+  non-elevated runs did, the guest gone as soon as the script and NVDA came up, with QEMU's QMP connection
+  refused as the evidence. The one run that survived was elevated, and NVDA will not run as an
+  administrator -- it prints its usage and exits at once, so that run never ran. The virtual machine has no
+  audio device either, its speech synthesis failing to initialise (`setSynth failed for espeak`), so no
+  screen reader's voice can be heard there, while the one way to keep that voice is exactly the step that
+  kills the guest. Item 8 is therefore not done on this machine: it needs one with a sound card, or a person
+  sitting beside it listening. That is not a product defect, it is this audio-less guest and NVDA's
+  behaviour on that system together. Narrator was never heard either, so this counts as "the accessibility
+  tree was read on the minimum supported version", not as "a screen reader was run against it".
 - Minimising and restoring the window (item 2), and dragging it to a display with a different scaling:
   the virtual machine did neither.
 - Cursor shapes: `screendump` does not capture the hardware cursor, so the machine itself was asked
