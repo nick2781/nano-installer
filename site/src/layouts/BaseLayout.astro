@@ -11,6 +11,7 @@ import {
   withBase,
 } from "@cloudflare/nimbus-docs/runtime";
 import AgentDirective from "@/components/AgentDirective.astro";
+import { localeFor } from "@/lib/languages";
 import { SearchDialog } from "@/components/ui/search";
 import NimbusHead from "@cloudflare/nimbus-docs/components/NimbusHead.astro";
 import WebMCP from "@/components/WebMCP.astro";
@@ -32,7 +33,11 @@ const {
   coordinate,
 } = Astro.props;
 
-const lang = config.locale ?? "en";
+// `config.locale` is one value for the whole site, but this site carries two
+// documentation languages, so the page's own language comes from the collection
+// it was authored in (see src/lib/languages.ts). Pagefind, screen readers and
+// hyphenation all follow this attribute.
+const lang = localeFor(collection, config.locale ?? "en");
 // Per-page agent-index pointer. For pages in non-primary or version
 // collections, this resolves to `/<prefix>/llms.txt` (e.g. `/v0/llms.txt`
 // for a v0 docs page, `/blog/llms.txt` for a blog post). Falls back to

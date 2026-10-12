@@ -13,6 +13,7 @@ import {
   stripBase,
 } from "@cloudflare/nimbus-docs/runtime";
 import { components } from "../components";
+import { forLanguage } from "../lib/languages";
 
 export const prerender = true;
 export const getStaticPaths = getDocsStaticPaths;
@@ -25,8 +26,14 @@ const currentSlug = stripBase(Astro.url.pathname, import.meta.env.BASE_URL).repl
 
 const { sidebar: sidebarOn, tableOfContents: tocOn } = await getRouteFlags(entry);
 
+// `sidebar.items` holds both languages' groups in one list, so keep only this
+// page's language (see src/lib/languages.ts). prev/next read the same filtered
+// tree, which keeps the walk inside one language.
 const sidebar = sidebarOn
-  ? await getSidebar(currentSlug, { collection: entry.collection })
+  ? await getSidebar(currentSlug, {
+      collection: entry.collection,
+      transform: ({ tree }) => forLanguage(tree, entry.collection),
+    })
   : false;
 const prevNext = await getPrevNext(currentSlug, {
   sidebarTree: sidebar === false ? [] : sidebar,
