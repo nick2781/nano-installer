@@ -2466,12 +2466,14 @@ statically depend on a newer system.
 
 A static check cannot prove an installer works, so there is also a run on a real machine, and it has
 happened. On build 7601, PNG decoding, text rendering, mouse input, window behaviour, extraction,
-installation and uninstallation were all reached, and the item-by-item results are in
-[Production status](PRODUCTION_STATUS.md). What that run did not reach is window dragging,
-multi-monitor scaling, cursor shapes, and installing or removing a service. The screen reader item got
-as far as the accessibility information, which read the same as Windows 11, but Narrator or NVDA was
-never actually running and listening. Target machines should have update KB3033929 (SHA-2 code signing
-support) installed, and one whose project downloads a dependency also needs KB3140245 or later.
+installation and uninstallation were all reached, window dragging and an uninstall that clears the whole
+installation directory among them, and the item-by-item results are in
+[Production status](PRODUCTION_STATUS.md). What that run did not reach is the window's minimising and
+restoring, multi-monitor scaling, cursor shapes, and installing or removing a service. The screen reader
+item got as far as the accessibility information, which read the same as Windows 11; NVDA 2023.3 does
+install and start on this machine, but its speech was never captured, so nobody has actually listened
+yet. Target machines should have update KB3033929 (SHA-2 code signing support) installed, and one whose
+project downloads a dependency also needs KB3140245 or later.
 
 ## Running the acceptance
 
@@ -3342,9 +3344,9 @@ virtual machine you throw away afterwards, and that goes for any installer.
 - The minimum version has been through a real run: build 7601 Ultimate, in a virtual machine thrown
   away afterwards, with a standard VGA adapter and a USB pointer; a setup the current builder produced
   installs and uninstalls there. Of the nine items in
-  [Windows compatibility](WINDOWS_COMPATIBILITY.md#running-the-acceptance), all but the screen reader,
-  the window dragging and the service were reached: the window has no title bar and rounded corners,
-  and it draws its background bitmap, its icons and Chinese text from the page layouts. With
+  [Windows compatibility](WINDOWS_COMPATIBILITY.md#running-the-acceptance), all but the screen reader and
+  the service were reached, and item 2 got only as far as the drag. The window has no title bar and
+  rounded corners, and it draws its background bitmap, its icons and Chinese text from the page layouts. With
   `install.require_admin` on, Windows asks for administrator rights and shows "unknown" as the
   publisher, because nothing is signed; until the agreement is ticked, the install button is drawn in
   grey from `disabled-image`, and once it is ticked the button switches to its enabled state, changing
@@ -3365,6 +3367,17 @@ virtual machine you throw away afterwards, and that goes for any installer.
   install from an administrator console failing on an invalid handle, and a script-driven project being
   unable to install over its own previous version. That last one came out of this upgrade walk, and the
   walk was repeated here after the fix.
+  Later, a setup built by the v2026.10.10 release's builder and its three runtimes was used for two more
+  observations on this machine. Pressing on the window's own background and dragging moved the window
+  rectangle from left 600 / top 295 to left 528 / top 343, exactly the displacement that was injected:
+  −72 across and +48 down. The window has no title bar, so the drag goes through `WM_NCLBUTTONDOWN`
+  with `HTCAPTION` on a custom area. Minimising and restoring were not verified this time. What an
+  uninstall leaves behind was looked at again as well: after a silent install (elevated) the directory
+  held `data`, `logs`, `nano-installer-manifest.json`, `TapTap.exe`, `uninst.exe` and `data\deep.txt`,
+  and a silent uninstall followed by thirty seconds left no installation directory at all, with the
+  uninstaller having deleted itself and the `logs` directory a project script created with `create_dir`
+  gone with it. That fix had only a unit case behind it, and this was the first time a real machine
+  showed it.
 - The builder and the runtime are two separate programs, so a setup never contains the builder.
 - ZIP and 7z application files are recognised from the file signature, and then handed to the matching runtime.
 - Both runtimes unpack real archives, and the result matches the expected SHA-256.
@@ -3547,7 +3560,7 @@ did not cover is in the next section.
 The gaps this run left, written down rather than left looking tested:
 
 - The screen reader (item 8 of [the real-machine checklist](WINDOWS_COMPATIBILITY.md#how-to-run-the-acceptance)):
-  Narrator and NVDA were never actually running and listened to; an MSAA client read the wizard instead,
+  Narrator and NVDA were never actually heard; an MSAA client read the wizard instead,
   with Notepad used first to check that this client can read an ordinary window. The minimum
   supported version and Windows 11 read the accessibility tree byte for byte identically. What it
   read: the window is named after the product, the language combobox carries "简体中文" as both its
@@ -3567,10 +3580,13 @@ The gaps this run left, written down rather than left looking tested:
     the Tab order, so this change is what separates "the page took it away" from "the page draws it and
     it cannot be used yet".
 
-  Narrator itself was never heard, so this counts as "the accessibility tree was read on the minimum
-  supported version", not as "a screen reader was run against it".
-- Dragging, minimising and restoring the window (item 2), and dragging it to a display with a different
-  scaling: the virtual machine did neither.
+  A real screen reader was then installed on this machine: NVDA 2023.3 installs and starts there, but its
+  speech was never captured -- it wrote no log file and the speech viewer could not be opened through
+  the keyboard, so what it actually said was never heard. Narrator was never heard either, so this
+  counts as "the accessibility tree was read on the minimum supported version", not as "a screen reader
+  was run against it".
+- Minimising and restoring the window (item 2), and dragging it to a display with a different scaling:
+  the virtual machine did neither.
 - Cursor shapes: `screendump` does not capture the hardware cursor, so the machine itself was asked
   instead. With the wizard in front, `scripts/cursor_probe.ps1` walked the screen on a grid of 60 pixels
   and called `GetCursorInfo` at every point: at 1920x1080 six points reported the hand cursor, in two runs
