@@ -198,7 +198,7 @@ setup-level cases prove the `scripts` directory and the tools directory survive 
 ## What is still not covered by an automated case
 
 - **Windows 7 SP1.** The compatibility claims need a clean machine on the minimum supported version (Windows 7 SP1 x64),
-  and this project has no environment for one. See [production status](PRODUCTION_STATUS.md).
+  and this project has no environment for one. See [production status](/PRODUCTION_STATUS/).
 - **Whether a glyph reads correctly.** A rendering check can tell that text was drawn in the colour
   and position the layout asked for, but not that the sentence is legible, so the snapshot
   review script hands that question to a local vision model, or to a person.

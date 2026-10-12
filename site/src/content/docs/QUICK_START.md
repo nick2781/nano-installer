@@ -36,14 +36,14 @@ certutil -hashfile nano-installer-native-x64.exe SHA256
 ```
 
 Nothing published here is code-signed yet, so Windows may warn about an unknown publisher the first
-time one of these runs; [production status](PRODUCTION_STATUS.md) says what that does and does not
+time one of these runs; [production status](/PRODUCTION_STATUS/) says what that does and does not
 affect.
 
 ## 2. Point it at a project folder
 
 A project folder holds `installer_config.json`, the page layout XML, one JSON file per language, your
 artwork, and the payload — the archive that gets packed into the setup, zip or 7z alike. The
-[configuration reference](CONFIG_REFERENCE.md) and the [page layout guide](XML_LAYOUT_GUIDE.md)
+[configuration reference](/CONFIG_REFERENCE/) and the [page layout guide](/XML_LAYOUT_GUIDE/)
 describe every file it may hold, and `examples/TapTap` in the repository is a complete one.
 
 ```powershell
@@ -52,7 +52,7 @@ describe every file it may hold, and `examples/TapTap` in the repository is a co
 
 The setup lands in `dist/<output.installer_name>` inside the project; add `--msi dist\MyProduct.msi`
 to also wrap it in the package an estate deploys through Windows Installer, and [build and
-release](BUILD_AND_RELEASE.md#installer-packages) says what that does.
+release](/BUILD_AND_RELEASE/#installer-packages) says what that does.
 
 To start from the example, clone the repository and point the builder at `examples\TapTap`. The
 example's images and the archiver under `tools/` are Git LFS objects, so a source ZIP download arrives
@@ -61,7 +61,7 @@ have to put a 7z archive there before you build.
 
 Prefer clicking? Take `nano-installer-gui-x64.exe` from the same release, start it, open the project
 folder and press **Build setup**: it drives the same engine and writes the same setup. See the
-[visual builder](GUI.md).
+[visual builder](/GUI/).
 
 ## 3. Try the setup in a VM
 
@@ -103,7 +103,7 @@ Do not run the sample's install on your workstation: it writes files and registr
 ## Building the tools instead
 
 Nothing above needs a compiler; building the tools from source is how a contributor works on them:
-[build and release](BUILD_AND_RELEASE.md) covers `scripts\build.ps1`, which produces the same five
+[build and release](/BUILD_AND_RELEASE/) covers `scripts\build.ps1`, which produces the same five
 executables under `target/release/`, and
 [contributing](https://github.com/nick2781/nano-installer/blob/main/CONTRIBUTING.md) covers preparing
 a working tree and the checks a change has to pass.

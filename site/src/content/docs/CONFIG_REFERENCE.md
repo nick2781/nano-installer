@@ -109,7 +109,7 @@ back the way it was.
 | `resources.locales_dir` | string | Language JSON directory, defaults to `locales` |
 | `resources.payload_file` | string | Required; path to the ZIP or 7z application files |
 | `resources.tools_dir` | string | Optional; directory of helper programs to bundle, read back by `get_tools_dir()` |
-| `resources.plugins_dir` | string | Optional; directory of plugin DLLs to bundle, called as `plugin_call("dll::function", ...)`, see [Plugin ABI](PLUGIN_API.md); every DLL in it is checked for shape at build time |
+| `resources.plugins_dir` | string | Optional; directory of plugin DLLs to bundle, called as `plugin_call("dll::function", ...)`, see [Plugin ABI](/PLUGIN_API/); every DLL in it is checked for shape at build time |
 | `localization.default_locale` | string | Language used at startup, defaults to `zh-CN` |
 | `localization.supported_locales` | array | Languages you intend to ship; the build warns about an entry with no matching JSON file |
 | `wizard.pages[].layout` | string | Install pages; walk them with `action="next"` and `action="back"`, or let `scripts/pages.rhai` choose the next one |
@@ -144,7 +144,7 @@ installer?", notices the user has to acknowledge, and what a project script says
 `show_message`, `show_error` and `ask_yes_no` are all drawn with it, so the dialog wears the product's
 own skin and cannot end up behind the installer. If your project ships no such layout, there is no
 question at all: the close button exits immediately, and a script's message falls back to a system
-message box. See [page layout](XML_LAYOUT_GUIDE.md#dialogs).
+message box. See [page layout](/XML_LAYOUT_GUIDE/#dialogs).
 
 ## Administrator rights
 
@@ -205,7 +205,7 @@ part of the product as well, cut it into components with `components.items`:
 
 Whether a component installs is decided in this order: `required` installs it whatever else says; a
 checkbox of its id on the page answers for it, written as in the
-[page layout](XML_LAYOUT_GUIDE.md#scrolling-containers); and a page without that checkbox lets
+[page layout](/XML_LAYOUT_GUIDE/#scrolling-containers); and a page without that checkbox lets
 `default` answer, a silent run included. One setup can install different things in a window and under
 `--silent`, which is what `default` is for.
 
@@ -300,13 +300,13 @@ products use it too.
 
 A project that ships `scripts/install.rhai` keeps the built-in flow out of the way: the script decides
 when to check and whether to install, through `dependency_installed()` and `install_dependency()`,
-which read the same declaration. See the [script API](SCRIPT_API.md#dependencies-and-downloads).
+which read the same declaration. See the [script API](/SCRIPT_API/#dependencies-and-downloads).
 
 ## Custom install and uninstall steps
 
 Add `scripts/install.rhai` or `scripts/uninstall.rhai` to replace the built-in steps, see the
-[script API](SCRIPT_API.md). A `scripts/pages.rhai` replaces no step: it decides which page follows
-each Next, see [page hooks](SCRIPT_API.md#page-hooks).
+[script API](/SCRIPT_API/). A `scripts/pages.rhai` replaces no step: it decides which page follows
+each Next, see [page hooks](/SCRIPT_API/#page-hooks).
 
 ## Unattended runs
 
@@ -411,4 +411,4 @@ instead of doing nothing. Two things are outside that rule: `links` is a table y
 itself, while a section this build does not know at all is left alone, because a script reads it back
 through `get_config_value`.
 
-See [production status](PRODUCTION_STATUS.md) for the full picture.
+See [production status](/PRODUCTION_STATUS/) for the full picture.

@@ -41,9 +41,9 @@ it gives a verdict and a figure per outcome, puts every case that failed first, 
 one row per case, and the output with its result lines coloured.
 
 A case row says what that case holds; this language's page of case descriptions is
-[Test cases](TEST_CASES.md), and where that table has no row, the doc comment above the case in the
+[Test cases](/TEST_CASES/), and where that table has no row, the doc comment above the case in the
 sources answers instead, or the case's own name when it carries none. The row also lists the
-behaviours and settings [Test coverage](TEST_COVERAGE.md) says break when the case fails.
+behaviours and settings [Test coverage](/TEST_COVERAGE/) says break when the case fails.
 
 The page ties its two readings of one run together: a target's row links to the cases that ran in
 it, and the closing note states the totals the case rows and the result lines agree on.
@@ -72,7 +72,7 @@ them in English, and the page's own language tag follows. The words come from
 output are shown as they are written.
 
 Every behaviour these documents promise sits next to the case that holds it in
-[Test coverage](TEST_COVERAGE.md), layer by layer, and what no automated case reaches yet is in there
+[Test coverage](/TEST_COVERAGE/), layer by layer, and what no automated case reaches yet is in there
 too.
 
 The migration guide has an automated check of its own: `scripts/check_nsi_migration.ps1` reads the

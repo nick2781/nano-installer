@@ -30,7 +30,7 @@ scripts/                        # build, smoke test, PE audit, docs index genera
 
 The raw runtime stubs carry no product resources: icons, version info, and branding all come from your project configuration, injected by the builder, so one runtime can produce setups for any product.
 
-A project leaving NSIS starts at [Migrating from NSIS](MIGRATION_FROM_NSIS.md): that page says what every construct becomes here, and `examples/nsis-migration/migrated/` is a buildable project written to it.
+A project leaving NSIS starts at [Migrating from NSIS](/MIGRATION_FROM_NSIS/): that page says what every construct becomes here, and `examples/nsis-migration/migrated/` is a buildable project written to it.
 
 ## A product project
 

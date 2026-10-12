@@ -6,7 +6,7 @@ sidebar:
   order: 700
 ---
 
-插件就是你随安装包一起发出的一个 DLL，脚本按名字调用它，这就是框架的扩展方式，你不必改框架本身。它的形状和 NSIS 一样（`DllName::Function`）；规范写在 [`include/nano_plugin.h`](../../include/nano_plugin.h) 里，那份头文件就是契约，而这一页讲的就是这份契约，只讲你第一次读要用到的部分。
+插件就是你随安装包一起发出的一个 DLL，脚本按名字调用它，这就是框架的扩展方式，你不必改框架本身。它的形状和 NSIS 一样（`DllName::Function`）；规范写在 [`include/nano_plugin.h`](https://github.com/nick2781/nano-installer/blob/main/include/nano_plugin.h) 里，那份头文件就是契约，而这一页讲的就是这份契约，只讲你第一次读要用到的部分。
 
 插件要用的东西都在这一页，别的都不用猜。它是跑在安装进程里的原生代码，你想*读*什么、*查*什么，直接调 Win32 API 就行；但有一件事不能做：背着安装器往机器上放文件或注册表值。见[经宿主写入](#经宿主写入)。
 

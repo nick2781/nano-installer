@@ -16,7 +16,7 @@ minimum version.
 That minimum version has been through a real run: a build 7601 virtual machine, with a setup the
 current builder produced. Every build also checks the PE imports, which proves that nothing a setup
 calls was added after Windows 7, while the run on the machine proves those calls work. What it reached
-and what it did not is in [Production status](PRODUCTION_STATUS.md); to walk the same ground yourself,
+and what it did not is in [Production status](/PRODUCTION_STATUS/); to walk the same ground yourself,
 see [Running the acceptance](#running-the-acceptance).
 
 ## What the runtime relies on
@@ -48,7 +48,7 @@ A static check cannot prove an installer works, so there is also a run on a real
 happened. On build 7601, PNG decoding, text rendering, mouse input, window behaviour, extraction,
 installation and uninstallation were all reached, window dragging and an uninstall that clears the whole
 installation directory among them, and the item-by-item results are in
-[Production status](PRODUCTION_STATUS.md). What that run did not reach is the window's minimising and
+[Production status](/PRODUCTION_STATUS/). What that run did not reach is the window's minimising and
 restoring, multi-monitor scaling, cursor shapes, and installing or removing a service. The screen reader
 item got as far as the accessibility information, which read the same as Windows 11; NVDA 2023.3 does
 install on this Windows 7 SP1 machine, but every real start of it terminates that virtual machine, which
@@ -65,7 +65,7 @@ somebody can check, not a memory.
 installed. The run installs software, so take a checkpoint first. If the project downloads a
 dependency, the machine also needs KB3140245 or later, or that step is recorded as not reached.
 Building the setup needs no toolchain: take the builder and the three runtimes from a release, as the
-[quick start](QUICK_START.md) describes, put them in one folder, and point the builder at the project.
+[quick start](/QUICK_START/) describes, put them in one folder, and point the builder at the project.
 
 ```powershell
 .\nano-installer-native-x64.exe build --project <your project>

@@ -6,7 +6,7 @@ sidebar:
   order: 700
 ---
 
-A plugin is a DLL you ship with your setup, and a script calls it by name, which is how the framework is extended: the framework itself does not change. It has the same shape NSIS uses (`DllName::Function`); the specification is in [`include/nano_plugin.h`](../../include/nano_plugin.h), and that header is the contract, which is what this page sets out in prose, for the parts you need on a first read.
+A plugin is a DLL you ship with your setup, and a script calls it by name, which is how the framework is extended: the framework itself does not change. It has the same shape NSIS uses (`DllName::Function`); the specification is in [`include/nano_plugin.h`](https://github.com/nick2781/nano-installer/blob/main/include/nano_plugin.h), and that header is the contract, which is what this page sets out in prose, for the parts you need on a first read.
 
 Everything a plugin needs is on this page, and nothing else is a guess. A plugin is native code running inside the installer process, so anything you want to *read or check*, call the Win32 API for it; one thing it must not do, though, is put a file or a registry value on the machine behind the installer's back. See [Writing](#writing-through-the-host).
 

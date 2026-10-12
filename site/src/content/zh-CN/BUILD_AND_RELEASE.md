@@ -7,7 +7,7 @@ sidebar:
 ---
 
 这一页写给改工具的人。只想要一个安装包的项目不用构建任何东西：它从发布里下载构建器直接跑，
-见[快速开始](QUICK_START.md)。下面说的是发布出去的可执行文件是怎么造出来的。
+见[快速开始](/zh-CN/QUICK_START/)。下面说的是发布出去的可执行文件是怎么造出来的。
 
 ## 唯一发布基线
 
@@ -352,7 +352,7 @@ Windows Installer 那边看到的版本号仍是 `2026.9.17`，因为它只比�
 构建器自己不签名，它把成品交给工程自己的命令去签。
 安装包在图标、版本资源和 bundle 全部写入之后触发 `finalize.installer`，卸载程序则在嵌进安装包之前、还是独立文件的时候触发 `finalize.uninstaller`。
 企业分发的 `.msi` 在写完之后触发 `finalize.package`，这次构建要了 `--msi` 才会跑——域策略、Intune 推的是那个包，机器上校验签名的也是它。
-两个字段的写法见[配置参考](CONFIG_REFERENCE.md#构建完成后的命令)；命令返回非零就中止构建，那个没签成的文件也不会留在磁盘上。
+两个字段的写法见[配置参考](/zh-CN/CONFIG_REFERENCE/#构建完成后的命令)；命令返回非零就中止构建，那个没签成的文件也不会留在磁盘上。
 
 `scripts/sign.ps1` 就是那条命令：它用 `NANO_INSTALLER_CERT_THUMBPRINT` 指定的证书签名，时间戳默认打 `http://timestamp.digicert.com`。
 `NANO_INSTALLER_TIMESTAMP_URL` 可以换掉这个地址，而签完立刻会用 `signtool verify /pa` 自检一遍。

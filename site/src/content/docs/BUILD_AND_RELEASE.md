@@ -8,7 +8,7 @@ sidebar:
 
 This page is for someone who works on the tools themselves. A project that only wants a setup
 builds nothing: it downloads the builder from a release and runs it, as the
-[quick start](QUICK_START.md) describes. Everything below is how the published executables are
+[quick start](/QUICK_START/) describes. Everything below is how the published executables are
 produced.
 
 ## One release baseline
@@ -478,7 +478,7 @@ the uninstaller triggers `finalize.uninstaller` while it is still a file of its 
 setup embeds it. The installer package triggers `finalize.package` once it is written, and only a
 build asked for `--msi` writes one; that package is what Group Policy and Intune deploy, so it is
 the file whose signature a machine checks. The
-[configuration reference](CONFIG_REFERENCE.md#commands-that-run-on-the-finished-build) spells the
+[configuration reference](/CONFIG_REFERENCE/#commands-that-run-on-the-finished-build) spells the
 settings out, and a command that exits non-zero stops the build, leaving the file it refused off
 disk.
 

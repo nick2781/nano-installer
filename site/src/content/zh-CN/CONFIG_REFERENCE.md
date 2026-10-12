@@ -102,7 +102,7 @@ sidebar:
 | `resources.locales_dir` | string | 语言 JSON 目录，默认 `locales` |
 | `resources.payload_file` | string | 必需；ZIP 或 7z 应用文件的路径 |
 | `resources.tools_dir` | string | 可选；要打包的辅助程序目录，脚本用 `get_tools_dir()` 取回 |
-| `resources.plugins_dir` | string | 可选；要打包的插件目录，脚本用 `plugin_call("dll::function", …)` 调用，见[插件 ABI](PLUGIN_API.md)；里面每个 DLL 都在构建时检查形状 |
+| `resources.plugins_dir` | string | 可选；要打包的插件目录，脚本用 `plugin_call("dll::function", …)` 调用，见[插件 ABI](/zh-CN/PLUGIN_API/)；里面每个 DLL 都在构建时检查形状 |
 | `localization.default_locale` | string | 启动时用的语言，默认 `zh-CN` |
 | `localization.supported_locales` | array | 打算提供的语言列表；没有对应 JSON 文件的条目，构建时会告警 |
 | `wizard.pages[].layout` | string | 安装页列表；用 `action="next"` 和 `action="back"` 逐页走，也可以让 `scripts/pages.rhai` 决定下一页 |
@@ -132,7 +132,7 @@ sidebar:
 `ui.dialog_layout` 指向的那份布局画在窗口内部：「确定要退出安装？」这类提问、需要用户知晓的提示，还有
 脚本用 `show_message`、`show_error`、`ask_yes_no` 说出去的提示和提问，都用它画，所以对话框和安装界面是
 同一套皮肤，也不会跑到安装窗口后面。项目不提供这份布局时，确认框不再弹出，点关闭按钮直接退出，脚本的
-消息退回系统对话框。布局怎么写见[页面布局](XML_LAYOUT_GUIDE.md#对话框)。
+消息退回系统对话框。布局怎么写见[页面布局](/zh-CN/XML_LAYOUT_GUIDE/#对话框)。
 
 ## 管理员权限
 
@@ -189,7 +189,7 @@ sidebar:
 | `components.items[].required` | bool | 必需组件：页面上勾不掉，也没有装不装的问题，默认 `false` |
 
 一个组件装不装，按这个顺序定：写了 `required` 的一律装；页面上有同名复选框就听页面的，写法见
-[页面布局](XML_LAYOUT_GUIDE.md#可滚动容器)；页面没有这个复选框就听 `default`，静默安装也算。同一个
+[页面布局](/zh-CN/XML_LAYOUT_GUIDE/#可滚动容器)；页面没有这个复选框就听 `default`，静默安装也算。同一个
 安装包，在窗口里跑和带 `--silent` 跑，装出来的东西可以不一样，而 `default` 就是干这个的。
 
 组件是基础应用文件之外的部分，每个组件的归档都要和它同格式，因为整个安装包由一个运行时解压，混用
@@ -269,13 +269,13 @@ ZIP 和 7z 会在构建时被拒绝。安装时基础应用文件先落地，各
 
 工程带了 `scripts/install.rhai` 时，内置流程不再插手，脚本自己决定什么时候检查、要不要装。脚本用
 `dependency_installed()` 和 `install_dependency()`，读的是同一份声明，见
-[脚本 API](SCRIPT_API.md#依赖与下载)。
+[脚本 API](/zh-CN/SCRIPT_API/#依赖与下载)。
 
 ## 自定义安装与卸载步骤
 
 加上 `scripts/install.rhai` 或 `scripts/uninstall.rhai`，就能替代内置步骤，见
-[脚本 API](SCRIPT_API.md)。`scripts/pages.rhai` 不替代步骤，它决定每次翻页去哪一页，见
-[页面钩子](SCRIPT_API.md#页面钩子)。
+[脚本 API](/zh-CN/SCRIPT_API/)。`scripts/pages.rhai` 不替代步骤，它决定每次翻页去哪一页，见
+[页面钩子](/zh-CN/SCRIPT_API/#页面钩子)。
 
 ## 无人值守运行
 
@@ -371,4 +371,4 @@ uninst.exe --silent
 上面这些区块里，任何拼错的键同样会被拒绝，不会安静地不起作用。有两处例外：`links` 是工程自己命名的
 表；本项目完全不认识的区块则一律不管，脚本会用 `get_config_value` 把它读回去。
 
-完整情况见[当前生产状态](PRODUCTION_STATUS.md)。
+完整情况见[当前生产状态](/zh-CN/PRODUCTION_STATUS/)。

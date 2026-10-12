@@ -36,7 +36,7 @@ layouts、assets、locales、scripts 与应用文件，最后放上自包含的�
 写完安装包之后，构建器还会把两个成品交给工程自己的命令：卸载程序趁它还是独立文件时跑一次，这时它
 还没被嵌进去；安装包则在全部写完、文件关掉之后跑一次。命令写下的每一行都进构建日志，返回非零就
 中止构建，那份被拒的安装包也不会留在磁盘上。这两个钩子通常用来签名，也就是 NSIS 的 `!finalize` 与
-`!uninstfinalize`；构建器自己不签名，配法见[配置参考](CONFIG_REFERENCE.md#构建完成后的命令)。
+`!uninstfinalize`；构建器自己不签名，配法见[配置参考](/zh-CN/CONFIG_REFERENCE/#构建完成后的命令)。
 
 ## 生成的安装包内部
 
@@ -105,7 +105,7 @@ layouts、assets、locales、scripts 与应用文件，最后放上自包含的�
 **自定义步骤。** 项目里放了 `scripts/install.rhai` 或 `scripts/uninstall.rhai`，安装和卸载步骤就
 按脚本走，而脚本引擎编译在 `nano-installer-core` 里，所以每个运行时都带着它。脚本原语复用与内置
 流程相同的部署、回滚与清单文件代码，另外设了操作数上限，脚本失控也不会把安装挂死。项目里放了
-`scripts/pages.rhai` 时，翻页由它的 `next_page(from)` 决定，见[脚本接口](SCRIPT_API.md)。
+`scripts/pages.rhai` 时，翻页由它的 `next_page(from)` 决定，见[脚本接口](/zh-CN/SCRIPT_API/)。
 
 ## 安装包外的 MSI
 

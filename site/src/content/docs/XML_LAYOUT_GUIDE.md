@@ -187,7 +187,7 @@ thumb pages the view by one of its own extents. `scrollbar-background` and
 Those checkboxes are more than a list of drawn options: a project can cut its content into
 components with `components.items`, a checkbox's `id` is a component's name, and what the user
 leaves ticked decides which components the run installs. See the
-[configuration reference](CONFIG_REFERENCE.md#components).
+[configuration reference](/CONFIG_REFERENCE/#components).
 
 ## Label, Select and RadioButton
 
@@ -345,17 +345,17 @@ around. With a `scripts/pages.rhai` that defines `next_page(from)`, every click 
 first: naming a page takes the wizard there and skips whatever the declared order has in between,
 and an empty answer walks to the declared next page. `back` never asks the hook; it retraces the
 pages the user really visited, so a page the hook skipped does not come back, see the
-[script API](SCRIPT_API.md#page-hooks). The task itself reports on the second page and ends on the
+[script API](/SCRIPT_API/#page-hooks). The task itself reports on the second page and ends on the
 last one, and a page can say otherwise with `role`: `progress` marks the page a task reports on and
 `finish` the page it ends on, which is how a licence page or an options page gets in front of the
 task. The roles are described under
-[files, languages, and pages](CONFIG_REFERENCE.md#files-languages-and-pages).
+[files, languages, and pages](/CONFIG_REFERENCE/#files-languages-and-pages).
 
 A task can also be stopped while it runs: `cancel` does it on the spot, and answering the
 `close_confirm` question with Yes does the same. A click may not leave a half-installed product
 behind, so the task gives up at the checkpoint after the step it is on, undoes what it has
 written, and the wizard returns to the page the task started from. A script sees the same request
-through `is_cancelled()` and can end a long step of its own, see the [script API](SCRIPT_API.md).
+through `is_cancelled()` and can end a long step of its own, see the [script API](/SCRIPT_API/).
 
 ## Dialogs
 

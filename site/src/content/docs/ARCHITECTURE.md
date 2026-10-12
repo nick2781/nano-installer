@@ -39,7 +39,7 @@ the uninstaller runs while it is still a file of its own, before it is embedded,
 once it is complete and closed. Every line the command prints goes into the build log, and a non-zero
 exit code stops the build without leaving the setup it refused on disk. Signing is what those two
 hooks are usually for, NSIS's `!finalize` and `!uninstfinalize`, though the builder signs nothing
-itself; the [configuration reference](CONFIG_REFERENCE.md#commands-that-run-on-the-finished-build)
+itself; the [configuration reference](/CONFIG_REFERENCE/#commands-that-run-on-the-finished-build)
 says how to name them.
 
 ## Inside the generated setup
@@ -136,7 +136,7 @@ scripts run instead of the built-in steps, and the engine is embedded in `nano-i
 every stub carries it. Primitives reuse the same deployment, rollback, and manifest code as the
 built-in flow, and an operation ceiling keeps a runaway script from hanging an installation. A
 project that ships `scripts/pages.rhai` hands the page order to its `next_page(from)`, see the
-[script API](SCRIPT_API.md).
+[script API](/SCRIPT_API/).
 
 ## The installer package
 

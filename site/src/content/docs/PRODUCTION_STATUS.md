@@ -23,7 +23,7 @@ virtual machine you throw away afterwards, and that goes for any installer.
 - The minimum version has been through a real run: build 7601 Ultimate, in a virtual machine thrown
   away afterwards, with a standard VGA adapter and a USB pointer; a setup the current builder produced
   installs and uninstalls there. Of the nine items in
-  [Windows compatibility](WINDOWS_COMPATIBILITY.md#running-the-acceptance), all but the screen reader and
+  [Windows compatibility](/WINDOWS_COMPATIBILITY/#running-the-acceptance), all but the screen reader and
   the service were reached, and item 2 got only as far as the drag. The window has no title bar and
   rounded corners, and it draws its background bitmap, its icons and Chinese text from the page layouts. With
   `install.require_admin` on, Windows asks for administrator rights and shows "unknown" as the
@@ -42,7 +42,7 @@ virtual machine you throw away afterwards, and that goes for any installer.
   installed straight over the first, files the new version no longer ships were removed, files only it
   has landed, shared files were replaced, the version in the uninstall entry changed, and an uninstall
   then took away everything the upgrade had put down. The run also found and fixed three defects (see
-  the [changelog](../../CHANGELOG.md)): a folder directly below a drive root being refused, a silent
+  the [changelog](https://github.com/nick2781/nano-installer/blob/main/CHANGELOG.md)): a folder directly below a drive root being refused, a silent
   install from an administrator console failing on an invalid handle, and a script-driven project being
   unable to install over its own previous version. That last one came out of this upgrade walk, and the
   walk was repeated here after the fix.
@@ -142,7 +142,7 @@ virtual machine you throw away afterwards, and that goes for any installer.
 - A signed setup is still a setup: the certificate table is appended after the bundle data, which is what Authenticode writes when a pipeline signs, and it no longer hides the footer the runtime reads its own resources from.
 - A project's own command can run on the finished files, which is NSIS's `!finalize` and `!uninstfinalize`. While the uninstaller is still a file of its own and not yet embedded in the setup, the builder calls `finalize.uninstaller`; once the setup is completely written and the file is closed, it calls `finalize.installer`. `%1` in the command becomes that file's path, every line it writes goes into the build log, and a non-zero return stops the build, so the refused setup does not stay on disk either. Signing is what it is usually for, and the builder signs nothing itself.
 - What the setup carries is checked entry by entry. Every entry in the bundle data carries the SHA-256 computed at build time, and a read is checked against it: a truncated download, a bad sector, or a hand that changed something stops the run before anything is unpacked, reports the recorded value and the actual digest by entry name, and sends you for a fresh setup rather than installing bytes that do not match. A payload streamed out of the setup is hashed as it is read. On an error part way through, or when the digest does not match, that copy is deleted, so the step that would have unpacked it has nothing to run against.
-- Large application files cost no memory. A setup is made by appending the application files to itself in 1 MiB blocks, and each block goes both into the setup and into the SHA-256 recorded in the bundle data. So the peak working set does not grow with the application files. Measured on this machine, application files from 8 MiB to 1024 MiB took from 1.5 s to 4.7 s to build, and the peak working set was 2.5 MiB in all four sizes. `scripts/measure_build.ps1` reproduces those numbers; see [Build and release](BUILD_AND_RELEASE.md#build-time-and-memory).
+- Large application files cost no memory. A setup is made by appending the application files to itself in 1 MiB blocks, and each block goes both into the setup and into the SHA-256 recorded in the bundle data. So the peak working set does not grow with the application files. Measured on this machine, application files from 8 MiB to 1024 MiB took from 1.5 s to 4.7 s to build, and the peak working set was 2.5 MiB in all four sizes. `scripts/measure_build.ps1` reproduces those numbers; see [Build and release](/BUILD_AND_RELEASE/#build-time-and-memory).
 - The builder refuses a configuration key it does not read, so a setting that once parsed and then did nothing cannot ship as if it were in effect. The message names the key and says which setting to use instead.
 - A task that is running can be stopped: the `cancel` button, or answering Yes to the close question, makes the task give up at the checkpoint after the step it is on and take back what it wrote, rather than leave a half-installed product on the machine. A project script sees the same request through `is_cancelled`, which used to answer `false` for ever.
 - `scripts/capture_setup_snapshots.ps1` builds the example setup and photographs every page the project declares: the wizard's first page in Chinese, English and Russian, one more at each higher scaling, 150% and 200% by default, and one of each other page.
@@ -194,7 +194,7 @@ and putting a root into the trusted root store **takes a human confirmation**, s
 that happens once. For a real certificate, SignPath Foundation signs open-source projects for free,
 without personal identity validation and with the private key held in their HSM.
 
-The outcome of the application belongs here too. SignPath Foundation declined it on the grounds that the project carries no verifiable reputation, so no real certificate is being bought and the publisher a user sees is still "unknown". The signing flow itself did not stop there: the rehearsal in [Build and release](BUILD_AND_RELEASE.md) walks the whole path through a manually triggered workflow -- Fulcio issues a ten-minute certificate to the workflow's own identity, the signature is a separate file that changes no executable, and verification against the certificate identity and issuer passes with a transparency log entry and an RFC 3161 timestamp in place. Because the certificate lives ten minutes, that timestamp is what makes the step worth anything at all.
+The outcome of the application belongs here too. SignPath Foundation declined it on the grounds that the project carries no verifiable reputation, so no real certificate is being bought and the publisher a user sees is still "unknown". The signing flow itself did not stop there: the rehearsal in [Build and release](/BUILD_AND_RELEASE/) walks the whole path through a manually triggered workflow -- Fulcio issues a ten-minute certificate to the workflow's own identity, the signature is a separate file that changes no executable, and verification against the certificate identity and issuer passes with a transparency log entry and an RFC 3161 timestamp in place. Because the certificate lives ten minutes, that timestamp is what makes the step worth anything at all.
 
 ## Publishing
 
@@ -238,7 +238,7 @@ did not cover is in the next section.
 
 The gaps this run left, written down rather than left looking tested:
 
-- The screen reader (item 8 of [the real-machine checklist](WINDOWS_COMPATIBILITY.md#how-to-run-the-acceptance)):
+- The screen reader (item 8 of [the real-machine checklist](/WINDOWS_COMPATIBILITY/#running-the-acceptance)):
   Narrator and NVDA were never actually heard; an MSAA client read the wizard instead,
   with Notepad used first to check that this client can read an ordinary window. The minimum
   supported version and Windows 11 read the accessibility tree byte for byte identically. What it

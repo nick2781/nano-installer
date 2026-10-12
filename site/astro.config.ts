@@ -116,6 +116,16 @@ export default defineConfig({
     prefetchAll: true,
     defaultStrategy: "hover",
   },
+  markdown: {
+    shikiConfig: {
+      // Shiki ships no Rhai grammar, so every ```rhai fence fell back to
+      // plaintext with a warning. Rhai's syntax is Rust's (fn/let/if/return,
+      // `//` comments, `"` strings); aliasing it to `rust` highlights those
+      // blocks instead. Nimbus sets its own `langAlias` too, and Astro merges
+      // the two key by key, so this entry survives.
+      langAlias: { rhai: "rust" },
+    },
+  },
   integrations: [
     nimbus(nimbusConfig, {
       // Authoring rules are opt-in by design — your repo, your taste. The

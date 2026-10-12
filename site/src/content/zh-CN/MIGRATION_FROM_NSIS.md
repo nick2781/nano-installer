@@ -11,7 +11,7 @@ sidebar:
 三件：产品是什么、装到哪里；页面长什么样；这一次运行做什么。最后一件交给你写的一小段 Rhai，所以
 迁移大多不是重写，只是把每一行搬到今天管它的地方。
 
-这一页就是那张对照表，而且它不只是给人看的说明：[`scripts/check_nsi_migration.ps1`](../../scripts/check_nsi_migration.ps1)
+这一页就是那张对照表，而且它不只是给人看的说明：[`scripts/check_nsi_migration.ps1`](https://github.com/nick2781/nano-installer/blob/main/scripts/check_nsi_migration.ps1)
 读的就是这张表。遇到本页没有收录的写法，脚本照实报 `unknown`，不去猜；中英两份表还得逐行对得上，
 对不上检查直接失败。
 
@@ -27,7 +27,7 @@ sidebar:
 | `MUI_LANGUAGE` | 同上 |
 | `Uninstall` 段里一条条删掉安装时写的东西 | 机器上的 manifest，安装写下的每个文件、每个快捷方式、每个注册表值都在里面，卸载按记录收回 |
 | `!finalize` 与 `!uninstfinalize` | `finalize.installer` 与 `finalize.uninstaller`，还是这两个钩子、同一件事 |
-| 让插件去做 NSIS 做不到的事 | 脚本里的原语、声明出来的依赖、`run_command`，或者自己按[插件 ABI](PLUGIN_API.md) 写一个插件、由脚本调用 |
+| 让插件去做 NSIS 做不到的事 | 脚本里的原语、声明出来的依赖、`run_command`，或者自己按[插件 ABI](/zh-CN/PLUGIN_API/) 写一个插件、由脚本调用 |
 
 有两件事过不来，早点决定为好。一是 `Uninstall` 段不用再手写，因为清单文件知道你装了什么；靠人维护
 一张删除清单，产品早晚会在用户机器上留下垃圾。二是 `SetShellVarContext all` 没有对应物，快捷方式
@@ -236,7 +236,7 @@ NSIS migration report for D:\src\legacy.nsi
 
 | 命令 | 判定 | 变成什么 |
 | --- | --- | --- |
-| `*::*` | manual | 插件调用变成 `plugin_call("dll::function", [...])`；DLL 自己得按 [`include/nano_plugin.h`](../../include/nano_plugin.h) 重编，因为 NSIS 插件是 32 位的、还要回调 NSIS 自己的运行时 |
+| `*::*` | manual | 插件调用变成 `plugin_call("dll::function", [...])`；DLL 自己得按 [`include/nano_plugin.h`](https://github.com/nick2781/nano-installer/blob/main/include/nano_plugin.h) 重编，因为 NSIS 插件是 32 位的、还要回调 NSIS 自己的运行时 |
 | `nsProcess::_FindProcess` | script | `is_process_running` |
 | `nsProcess::_KillProcess` | script | `kill_process` |
 | `nsExec::Exec` | script | `run_command` |
@@ -284,7 +284,7 @@ NSIS migration report for D:\src\legacy.nsi
 费时间的正是这几条，值得先看。
 
 - **插件。** 现在有插件 ABI 了，但它不是 NSIS 那一套：插件是按
-  [`include/nano_plugin.h`](../../include/nano_plugin.h) 编出来的 64 位 DLL，像工程资源一样进安装包，
+  [`include/nano_plugin.h`](https://github.com/nick2781/nano-installer/blob/main/include/nano_plugin.h) 编出来的 64 位 DLL，像工程资源一样进安装包，
   由脚本用 `plugin_call("dll::function", [...])` 调用。现成的 NSIS 插件加载不了，因为它们是 32 位映像，
   还要通过 `extra_parameters` 回调 NSIS 自己的运行时，所以 `nsDialogs`、`nsisXML`、`InetLoad`、
   `nsis7z` 这些要么重写，要么换掉。好在它们做过的事大多本来就有对应物：用 `nsDialogs` 搭出来的页面，

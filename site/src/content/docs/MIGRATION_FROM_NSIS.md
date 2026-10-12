@@ -16,7 +16,7 @@ moving each line to the place that now owns it, and the tables below say where e
 line goes.
 
 This page is the reference for that move, and its tables are more than a
-description of [`scripts/check_nsi_migration.ps1`](../../scripts/check_nsi_migration.ps1):
+description of [`scripts/check_nsi_migration.ps1`](https://github.com/nick2781/nano-installer/blob/main/scripts/check_nsi_migration.ps1):
 they are the table that script reads. A construct this page has no row for is
 reported as `unknown`, never guessed at, and the two language versions must agree
 line for line or the check fails.
@@ -33,7 +33,7 @@ line for line or the check fails.
 | `MUI_LANGUAGE` | the same |
 | `Uninstall` section deleting what the installer wrote | The machine's manifest, which records every file, shortcut and registry value the install wrote; the uninstaller removes what it records |
 | `!finalize` and `!uninstfinalize` | `finalize.installer` and `finalize.uninstaller` — the same two hooks, with the same job |
-| A plugin that does something NSIS cannot | A primitive in the script, a declared dependency, `run_command` — or a plugin of your own, written against the [plugin ABI](PLUGIN_API.md) and called from the script |
+| A plugin that does something NSIS cannot | A primitive in the script, a declared dependency, `run_command` — or a plugin of your own, written against the [plugin ABI](/PLUGIN_API/) and called from the script |
 
 Two things do not survive the move, and both are worth deciding early. You no
 longer need an `Uninstall` section that deletes by hand, because the manifest knows
@@ -256,7 +256,7 @@ own control flow replaces the jumps that reach it, so the checker reports one as
 
 | Command | Verdict | What it becomes |
 | --- | --- | --- |
-| `*::*` | manual | a plugin call becomes `plugin_call("dll::function", [...])`; the DLL itself is rebuilt against [`include/nano_plugin.h`](../../include/nano_plugin.h), because an NSIS plugin is 32-bit and calls back into the NSIS runtime |
+| `*::*` | manual | a plugin call becomes `plugin_call("dll::function", [...])`; the DLL itself is rebuilt against [`include/nano_plugin.h`](https://github.com/nick2781/nano-installer/blob/main/include/nano_plugin.h), because an NSIS plugin is 32-bit and calls back into the NSIS runtime |
 | `nsProcess::_FindProcess` | script | `is_process_running` |
 | `nsProcess::_KillProcess` | script | `kill_process` |
 | `nsExec::Exec` | script | `run_command` |
@@ -305,7 +305,7 @@ These are the rows that cost real time. Read them before the rest of the
 table.
 
 - **Plugins.** There is a plugin ABI now, and it is not NSIS's: a plugin is a
-  64-bit DLL built against [`include/nano_plugin.h`](../../include/nano_plugin.h),
+  64-bit DLL built against [`include/nano_plugin.h`](https://github.com/nick2781/nano-installer/blob/main/include/nano_plugin.h),
   embedded in the setup like a project resource, and called from a script as
   `plugin_call("dll::function", [...])`. An existing NSIS plugin cannot be loaded,
   because it is a 32-bit image that calls back into the NSIS runtime through

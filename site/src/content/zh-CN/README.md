@@ -6,7 +6,7 @@ sidebar:
   order: 100
 ---
 
-<h1 align="center"><img src="https://nick2781.github.io/nano-installer/assets/nano-technology.png" width="48" height="48" align="texttop" alt="Nano Installer icon"> Nano Installer</h1>
+<p align="center"><img src="https://nick2781.github.io/nano-installer/assets/nano-technology.png" width="48" height="48" align="texttop" alt="Nano Installer icon"> Nano Installer</p>
 
 <p align="center"><a href="https://github.com/nick2781/nano-installer/actions/workflows/ci.yml"><img src="https://github.com/nick2781/nano-installer/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI 状态"></a></p>
 
@@ -15,7 +15,7 @@ sidebar:
 
 > **状态：** 可以拿来构建和发布产品。安装包和 MSI 包没有代码签名，Windows 会提示「未知发布者」，
 > 公开分发前请在流水线里自己签。**需要 Windows 7 SP1 x64 及以上**。安装包调用了什么，见
-> [Windows 兼容性](WINDOWS_COMPATIBILITY.md)；逐条状态见[当前生产状态](PRODUCTION_STATUS.md)。
+> [Windows 兼容性](/zh-CN/WINDOWS_COMPATIBILITY/)；逐条状态见[当前生产状态](/zh-CN/PRODUCTION_STATUS/)。
 
 <p align="center">
 <img src="https://github.com/nick2781/nano-installer/raw/main/assets/setup-welcome-zh-CN.png" alt="用 TapTap 示例构建出来的安装包第一页" width="640">
@@ -36,7 +36,7 @@ sidebar:
 | 升级、回滚与更新包 | 重跑就是原地升级，某一步失败会回滚；`--delta-from` 只发字节变了的文件 |
 | 卸载 | 只回收自己写下的东西，用户数据默认保留 |
 | 管理员权限 | 只在配置要求时才向 Windows 申请 |
-| 脚本与插件 | 用 Rhai 写安装和卸载步骤，插件则是照 [`include/nano_plugin.h`](PLUGIN_API.md) 编的 DLL |
+| 脚本与插件 | 用 Rhai 写安装和卸载步骤，插件则是照 [`include/nano_plugin.h`](/zh-CN/PLUGIN_API/) 编的 DLL |
 | 读屏可用 | 页面、焦点、输入的字符和实时进度都会播报，既走 MSAA，也走 `IDispatch` |
 | 界面或命令行 | Windows 10 及以上的可视化构建器，或让 CI 驱动同一套引擎 |
 | 还能出 MSI | `--msi` 把安装包封成 MSI，供企业用 Windows Installer 分发 |
@@ -50,31 +50,31 @@ sidebar:
 .\nano-installer-native-x64.exe build --project C:\path\to\my-project
 ```
 
-接着看[快速开始](QUICK_START.md)，生成第一个安装包，再在虚拟机里试一遍；也可以改用
-[可视化构建](GUI.md)，它操作的是同一套引擎。
+接着看[快速开始](/zh-CN/QUICK_START/)，生成第一个安装包，再在虚拟机里试一遍；也可以改用
+[可视化构建](/zh-CN/GUI/)，它操作的是同一套引擎。
 
-从源码构建工具是贡献者的事，见[构建与发布](BUILD_AND_RELEASE.md)。
+从源码构建工具是贡献者的事，见[构建与发布](/zh-CN/BUILD_AND_RELEASE/)。
 
 ## 指南
 
-- [快速开始](QUICK_START.md) - 生成第一个安装包，并在虚拟机中试用
-- [可视化构建](GUI.md) - Windows 10 及以上的图形界面
-- [配置参考](CONFIG_REFERENCE.md) - 产品信息、安装行为、输出文件名
-- [页面布局](XML_LAYOUT_GUIDE.md) - 页面、控件、流式布局、链接与动作
-- [多语言](LOCALIZATION.md) - 发布带译文的安装包
-- [自定义步骤](SCRIPT_API.md) - 用 Rhai 编写安装与卸载逻辑
-- [插件 ABI](PLUGIN_API.md) - 第三方 DLL 照着编的头文件，还有宿主借给它的服务
-- [从 NSIS 迁移](MIGRATION_FROM_NSIS.md) - 哪些对应得上，哪些是故意不做的
-- [当前生产状态](PRODUCTION_STATUS.md) - 现在能做什么、还差什么才能发布
+- [快速开始](/zh-CN/QUICK_START/) - 生成第一个安装包，并在虚拟机中试用
+- [可视化构建](/zh-CN/GUI/) - Windows 10 及以上的图形界面
+- [配置参考](/zh-CN/CONFIG_REFERENCE/) - 产品信息、安装行为、输出文件名
+- [页面布局](/zh-CN/XML_LAYOUT_GUIDE/) - 页面、控件、流式布局、链接与动作
+- [多语言](/zh-CN/LOCALIZATION/) - 发布带译文的安装包
+- [自定义步骤](/zh-CN/SCRIPT_API/) - 用 Rhai 编写安装与卸载逻辑
+- [插件 ABI](/zh-CN/PLUGIN_API/) - 第三方 DLL 照着编的头文件，还有宿主借给它的服务
+- [从 NSIS 迁移](/zh-CN/MIGRATION_FROM_NSIS/) - 哪些对应得上，哪些是故意不做的
+- [当前生产状态](/zh-CN/PRODUCTION_STATUS/) - 现在能做什么、还差什么才能发布
 
 ## 技术说明
 
-- [架构](ARCHITECTURE.md)
-- [项目结构](PROJECT_STRUCTURE.md)
-- [Windows 兼容性](WINDOWS_COMPATIBILITY.md)
-- [构建与发布](BUILD_AND_RELEASE.md)
-- [测试计划](TEST_PLAN.md)
+- [架构](/zh-CN/ARCHITECTURE/)
+- [项目结构](/zh-CN/PROJECT_STRUCTURE/)
+- [Windows 兼容性](/zh-CN/WINDOWS_COMPATIBILITY/)
+- [构建与发布](/zh-CN/BUILD_AND_RELEASE/)
+- [测试计划](/zh-CN/TEST_PLAN/)
 
 ---
 
-读英文版：[English documentation](../en/README.md)。
+读英文版：[English documentation](/README/)。

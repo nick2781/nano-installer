@@ -30,7 +30,7 @@ scripts/                        # 构建、冒烟测试、PE 审计、文档索�
 
 原始运行时里不带产品资源：图标、版本信息和品牌素材都来自你的项目配置，由构建器注入，所以一套运行时就能给任意产品生成安装包。
 
-从 NSIS 搬过来的项目，先看[从 NSIS 迁移](MIGRATION_FROM_NSIS.md)：那一页逐条说明每个构造在这里变成什么，而 `examples/nsis-migration/migrated/` 是照它写出来的一份工程，可以直接构建。
+从 NSIS 搬过来的项目，先看[从 NSIS 迁移](/zh-CN/MIGRATION_FROM_NSIS/)：那一页逐条说明每个构造在这里变成什么，而 `examples/nsis-migration/migrated/` 是照它写出来的一份工程，可以直接构建。
 
 ## 产品项目
 
