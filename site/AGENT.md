@@ -10,9 +10,10 @@ install, npx fetches the latest release instead, which may differ from the site'
 different results. The scoped name keeps npx from fetching the unrelated `nimbus-docs` package.
 Everything in `src/` is yours to edit.
 
-Pages are Markdown, and they come in pairs: `src/content/docs/X.md` is served at `/X/`, and its twin
-`src/content/zh-CN/X.md` at `/zh-CN/X/`. The site root is the chooser between the two trees, and
-nothing is written in one language only.
+Pages are MDX, and they come in pairs: `src/content/docs/<path>.mdx` is served at `/<path>/`, and
+its twin `src/content/zh-CN/<path>.mdx` at `/zh-CN/<path>/`. The paths are lowercase and nested one
+level per section (`guides/`, `reference/`, `project/`), each section's own `index.mdx` is its landing
+page, and the two trees' roots are `/` and `/zh-CN/`. Nothing is written in one language only.
 
 ## File layout
 
@@ -24,8 +25,8 @@ src/
 ├── components.ts            # MDX globals — components every .mdx can use without an import
 ├── components/              # AgentDirective, Header, LanguageSwitch, Render, WebMCP + ui/<slug>/
 ├── content/
-│   ├── docs/*.md            # the English tree, served at /
-│   ├── zh-CN/*.md           # the Chinese tree, served at /zh-CN/
+│   ├── docs/**/*.mdx        # the English tree, served at /, one section per directory
+│   ├── zh-CN/**/*.mdx       # the Chinese tree, served at /zh-CN/, the same paths
 │   └── partials/*.mdx       # shared MDX, pulled into a page with <Render file="..." />
 ├── content.config.ts        # registers docsCollection() for docs and zh-CN, plus partialsCollection()
 ├── layouts/                 # BaseLayout (NimbusHead), DocsLayout (sidebar/TOC/breadcrumbs)
@@ -38,7 +39,6 @@ src/
 │   ├── [...slug]/index.mdx.ts   # authored source of every page, all collections
 │   ├── [section]/llms.txt.ts    # per-section llms.txt
 │   ├── 404.astro
-│   ├── index.astro              # the site root: the chooser between the two trees
 │   ├── llms.txt.ts
 │   ├── llms-full.txt.ts
 │   ├── nimbus-api/coordinates.json.ts  # API citation manifest
@@ -58,13 +58,14 @@ non-primary collection at `/<collection name>`.
 
 Frontmatter validates against the schema from `docsCollection()` (`@cloudflare/nimbus-docs/content`).
 Required: `title`. Every page here also carries `description` for the search result and the share
-card, `slug` for the route, and `sidebar.order` for its place in the group.
+card, and `sidebar.order` for its place in the group. No page carries a `slug`: a page's path inside
+its tree is its route, so `src/content/docs/guides/page-layout.mdx` is served at
+`/guides/page-layout/` and `src/content/docs/guides/index.mdx` at `/guides/`.
 
 ```md
 ---
 title: My page
 description: One-line summary.
-slug: MY_PAGE
 sidebar:
   order: 100
 ---
@@ -76,7 +77,7 @@ Content here. The page H1 comes from `title` — don't repeat it in the body.
 
 Rules:
 
-- **A page is `.md`, so it carries no JSX.** No imports and no components; raw HTML is fine. A component reaches a page through a partial.
+- **A page is `.mdx`, and MDX reads the body.** Components work in it: an import, a registered global such as `<Aside>`, or `<Render file="..." />`. Raw HTML keeps working too, which is how the section `index.mdx` landing pages draw their card grids. The cost is that MDX reads a bare `<` as the start of a tag and a bare `{` as the expression opener, so a literal one in prose is escaped as `\<` or `\{`; a code fence or an inline code span needs no escape.
 - **Components are PascalCase.** Register one in `src/components.ts` to use it in every `.mdx` without an import, or import it in the file that uses it. A pre-build validator catches unresolved names with a "did you mean" hint.
 - **Partials use `<Render file="..." />`.** Don't import `.mdx` directly. Shared content lives in `src/content/partials/<slug>.mdx`.
 - **Icons use Nimbus's `Icon` + Phosphor.** `<Icon name="ph:<glyph>" class="w-4 h-4" />` from `@cloudflare/nimbus-docs/components/Icon.astro`. Glyphs: [phosphoricons.com](https://phosphoricons.com).
@@ -87,7 +88,8 @@ Rules:
 
 | Goal | Action |
 |---|---|
-| New doc page | Create `src/content/docs/<slug>.md`, create its twin in `src/content/zh-CN/`, then add a line for each to the matching group in `sidebarItems` in `astro.config.ts`. |
+| New doc page | Create `src/content/docs/<page>.mdx` — or `src/content/docs/<section>/<page>.mdx` for a page inside a section, whose landing page is that section's `index.mdx` — create its twin in `src/content/zh-CN/`, then add a line for each to the matching group in `sidebarItems` in `astro.config.ts`. |
+| Move a page | Move the file in both trees and add the old address to `redirects` in `astro.config.ts`, so the published URL it used to have keeps working. |
 | New partial | Create `src/content/partials/<slug>.mdx`. Use via `<Render file="<slug>" />`. |
 | UI from registry | `npx @cloudflare/nimbus-docs add <slug>`. Register in `src/components.ts` if used in MDX. |
 | Feature recipe | `npx @cloudflare/nimbus-docs add <feature-slug> --print`. Prints the recipe for you to follow; it changes no files itself. |
@@ -129,7 +131,7 @@ The repository's own gate, in the order the docs workflow runs it:
 - `.\scripts\audit_docs_languages.ps1` — every page in one tree has its twin, and the documentation map is a pair.
 - `.\scripts\audit_docs_sidebar.ps1` — every page is listed once in its own language's groups, every row answers to a page, and no page is listed twice.
 - `pnpm build` in `site/` — the build and the frontmatter check, because `nimbus/frontmatter-shape` and `nimbus/internal-link` are configured as errors. The same run writes `llms.txt`, `llms-full.txt`, `robots.txt`, the sitemap, and a Markdown version and an OG card for every page.
-- `.\scripts\audit_docs_links.ps1` — reads `site/dist/` after the build. `astro build` evaluates no authoring rule, and the integration's own link rule walks only `.mdx` files, so a dead link between two `.md` pages is not what fails the build; an anchor exists only once its heading has been rendered.
+- `.\scripts\audit_docs_links.ps1` — reads `site/dist/` after the build. `astro build` evaluates no authoring rule, so the integration's own link rule runs under `nimbus-docs lint` instead; an anchor is checked here, because it exists only once its heading has been rendered.
 - `pnpm typecheck` (`astro check`) and `pnpm lint:docs` (`nimbus-docs lint`) when a change touches types or the authored rules.
 
 `.github/workflows/docs.yml` runs the two audits first, builds, audits the links, and publishes
@@ -154,7 +156,7 @@ Then walk the categories below for what `check` doesn't cover yet — route-file
 End with `Summary: N errors, N warnings.`
 
 - **Config** — `astro.config.ts` calls `nimbus(defineNimbusConfig({ ... }))`; `site` is the production URL and `base` is `/nano-installer`; `editPattern` (if set) contains `{path}`; `output:` matches the deploy target.
-- **Content** — `content.config.ts` registers `docsCollection()` for `docs` and, with `base: "zh-CN"`, for `zh-CN`, plus `partialsCollection()`; every page is a `.md` in one of the two trees; frontmatter validates.
+- **Content** — `content.config.ts` registers `docsCollection()` for `docs` and, with `base: "zh-CN"`, for `zh-CN`, plus `partialsCollection()`; every page is an `.mdx` in one of the two trees; frontmatter validates.
 - **Sidebar** — every sidebar ref resolves to a content entry; no orphans; no slug collisions. Both languages' groups live in one `sidebarItems` list and are filtered per page by `src/lib/languages.ts`, so read both lists.
 - **MDX** — every PascalCase component in `*.mdx` is registered or imported; every `<Render file=...>` resolves; code-fence languages are valid.
 - **Routes** — `[...slug].astro`, `zh-CN/[...slug].astro`, `llms.txt.ts`, `llms-full.txt.ts`, `robots.txt.ts`, `[...slug]/index.md.ts`, `[...slug]/index.mdx.ts`, `og.png.ts`, `og/[...slug].ts` all exist.

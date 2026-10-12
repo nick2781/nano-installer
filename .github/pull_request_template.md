@@ -17,6 +17,6 @@
 
 - [ ] No new dependency crosses a crate boundary it should not: LZMA stays out of the ZIP and uninstaller crates, ZIP stays out of the LZMA and uninstaller crates, archives stay out of the uninstaller, and eframe/egui stay in `nano-installer-gui`.
 - [ ] Published executables still target `x86_64-win7-windows-msvc`; no new Win32, ANSI, or Windows 10-only artifact was introduced.
-- [ ] If I changed a configuration key, `site/src/content/{docs,zh-CN}/CONFIG_REFERENCE.md` says so in both languages.
+- [ ] If I changed a configuration key, `site/src/content/{docs,zh-CN}/reference/configuration.mdx` says so in both languages.
 - [ ] If I changed the plugin ABI, the change only appends to the host table and `include/nano_plugin.h` still matches `crates/nano-installer-core/src/plugin.rs` field for field.
 - [ ] A documentation change is in both `site/src/content/docs` and `site/src/content/zh-CN`; no generated file under `target/` or an example `dist/` is committed.

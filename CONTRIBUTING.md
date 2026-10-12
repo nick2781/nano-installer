@@ -4,8 +4,8 @@ This is a Windows installer framework: one project folder in, one self-contained
 bugs, plugin problems and documentation fixes are all welcome. Issues may be written in English or
 Chinese.
 
-Read two documents before a change: [`site/src/content/docs/BUILD_AND_RELEASE.md`](site/src/content/docs/BUILD_AND_RELEASE.md)
-says what the builds are, and [`site/src/content/docs/TEST_PLAN.md`](site/src/content/docs/TEST_PLAN.md) says how a change is
+Read two documents before a change: [`site/src/content/docs/reference/build-and-release.mdx`](site/src/content/docs/reference/build-and-release.mdx)
+says what the builds are, and [`site/src/content/docs/project/testing.mdx`](site/src/content/docs/project/testing.mdx) says how a change is
 verified. Everything below is the short version.
 
 ## Getting set up
@@ -57,12 +57,12 @@ instead, and the workflow runs it after the build, because an anchor exists only
 been rendered.
 
 A change to what a setup *does* also updates the documents that promise it: `CHANGELOG.md`,
-`site/src/content/{docs,zh-CN}/TEST_COVERAGE.md` and `site/src/content/{docs,zh-CN}/TEST_CASES.md`. In
-`TEST_COVERAGE.md`, update the counts and the row for the behaviour. In `TEST_CASES.md`, update one row
+`site/src/content/{docs,zh-CN}/project/coverage.mdx` and `site/src/content/{docs,zh-CN}/project/cases.mdx`. In
+`coverage.mdx`, update the counts and the row for the behaviour. In `cases.mdx`, update one row
 per case; the audit refuses a case without one, in either language.
 
 Every page exists in both languages, so a change to one side is a change to both: the site serves the
-English tree at `/` and the Chinese one at `/zh-CN`, and a page keeps its name in both. The map of the
+English tree at `/` and the Chinese one at `/zh-CN`, and a page keeps its path in both. The map of the
 documentation is a pair as well, kept at the top of `docs/`: `docs/AGENTS.md` and
 `docs/zh-CN/AGENTS.md`. `scripts/audit_docs_languages.ps1` refuses a page that only one tree carries,
 and a side of the map that is missing.
@@ -105,7 +105,7 @@ small fix.
   unrecognised file. The notes that used to sit at the end of that file live in this document.
 - **Configuration keys are validated.** The builder refuses a key it does not read, so adding one
   means adding it to `crates/nano-installer-core/src/config.rs` and to
-  `site/src/content/{docs,zh-CN}/CONFIG_REFERENCE.md` in the same change.
+  `site/src/content/{docs,zh-CN}/reference/configuration.mdx` in the same change.
 - **The documentation site.** The pages are the Markdown files under `site/src/content/`, the site is
   built with Cloudflare Nimbus, and `site/dist/` is what GitHub Pages publishes. Nothing about the
   index is maintained by hand: the build writes `llms.txt`, `llms-full.txt`, `robots.txt`, the sitemap

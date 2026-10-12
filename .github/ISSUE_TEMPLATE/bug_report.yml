@@ -66,7 +66,7 @@ body:
     attributes:
       label: Before opening
       options:
-        - label: I read the section that covers this in `site/src/content/docs/PRODUCTION_STATUS.md` (or the Chinese one).
+        - label: I read the section that covers this in `site/src/content/docs/project/status.mdx` (or the Chinese one).
           required: false
         - label: This is not a security report — those go to `SECURITY.md` instead of an issue.
           required: true

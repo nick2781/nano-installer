@@ -1,0 +1,250 @@
+---
+title: Test coverage
+description: Every behaviour nano-installer documents is held by an automated case; this page names the case for each one, layer by layer, and the gaps none of them reach.
+sidebar:
+  order: 1500
+---
+
+A behaviour with a row in one of the tables below is one an automated case holds: break it, and the
+cases named in that row fail. A behaviour with no row is one nobody is checking.
+
+<Aside type="note" title="What a row does not say">
+A row records which case holds a behaviour, not how that case ended in a run. The results of a run are
+in [Test plan](/project/testing/); this page is the map of who holds what.
+</Aside>
+
+What you cannot trust yet is in one place. [What is still not covered by an automated
+case](#what-is-still-not-covered-by-an-automated-case) lists every gap, and says why each one is still
+open.
+
+`.\scripts\run_tests.ps1` runs 396 test cases, one command per target: 282 in the core library, 75 that
+build a real setup and run it, 5 that read a project the way the builder does, 32 in the visual builder,
+and 2 in the extraction runtimes. Every target has a deadline of its own, so one that stops answering is
+named by the command that never ended, and the suite never stops silently.
+
+The setup-level cases need real runtime executables, which `.\scripts\run_e2e_setup.ps1` builds before it
+runs them and writes `target/e2e-report.txt`. The plugin cases need the sample plugin as well, and it
+builds that too.
+
+## What each layer can prove
+
+Not every layer reaches every claim. This table says what each one proves, and where it stops.
+
+| Layer | Test cases | Proves | Cannot prove |
+| --- | --- | --- | --- |
+| Core library | 282 | The layer's cases cover what a page becomes: its layers, coordinates, hit regions and text, and which system colour each of those takes while high contrast is on. They also cover what the bundle carries, and what an install writes to disk and to the registry. Each script primitive is driven, a service is installed and deleted, and a script reads values back off the page along with which components the run installs. The dependencies a project declares are found, fetched, checked and installed, and which plugin a project may ship is checked as well: the plugin host structure field by field against the header the ABI is written in, how a call spells `dll::function`, and the DLLs that are refused where they are built (a 32-bit image, an executable, a file that is not an image at all) | that a packaged setup reaches any of it; that an installed service then runs, since the program a service runs is the product's own and no test case can ship one |
+| Setup end to end | 75 | A built setup is installed on the machine, and its own window is driven. That covers application file bytes -- a setup whose bytes changed refuses the install before it creates anything -- the manifest file, the uninstall entry's own fields, shortcuts, autostart, project scripts, the helpers a script runs, and the wizard window. A page hook sends the wizard past a page, and Back returns the way the user came. The clicks its own pages wait for are delivered, and so is a wheel over a list. The card a script's messages and questions are answered on is worked through, the page's values reach the script, and the components a page and a project put in are the ones that install. Every registry type a script names is written, along with the copy of a key a view name selects and what a command a script ran wrote. The command a project runs on its finished setup and its uninstaller must succeed, or the file it refused is not left behind.
+  The plugins a project ships are called from the script: the values they hand back, the file and registry value they write through the host (the uninstall takes both back), a write outside the installation refused, a plugin that fails or refuses the host's ABI reported to the script by name, and one of them written in C rather than in Rust. The layer also reaches what only a moving pointer and a real keyboard can bring about: the bitmaps hover and press swap in, and the three standard cursor shapes. Tab walks the page's controls in the order the page declares them, with Enter or Space acting on the one under the ring and either end wrapping round.
+  A screen reader in another process is told what the page is and where the focus moves: a client asks the window for its controls with their roles, names, values, states and places, and works a control through its default action; another takes the keyboard when asked, and the window announces the focus events as Tab walks on. The words and the bar a running task publishes are read off the page and announced as they change. The rule a field's value breaks is read as the field's own description and announced when it appears, and the value of a field is read again as it is typed, once per keystroke and not at all when a key only moves the caret inside the text. The same page is reached by a client that asks for its members by name instead of calling the interface, with a name MSAA does not have refused.
+  The card a question is drawn on replaces the page with its two answers, and the wizard is painted with the machine's high-contrast scheme rather than the colours its pages declare. The language menu's arrow keys work with Enter and Escape, and so does the folder picker. The dependencies a project declares are exercised: one the machine is missing is installed, one it already has is left alone, one that cannot be installed stops the run, and a download is checked against the digest the project recorded. The service a script installed is really on the machine, and gone again with the uninstall. The installer package a build wraps the setup in is installed and removed with `msiexec`, replaces an older release, replaces the release it re-releases when the same day is released again, and refuses a project that cannot run windowlessly. And the log a silent run writes goes to the file it was told to, and names itself to its caller when the run fails | the two windows an input method draws itself; which field a directory chosen in the shell's folder dialog is written to; the cursor shape on a session that is showing no pointer, where that test case prints its own skip; and Shift+Tab with a held Shift, which a posted key message cannot carry -- that direction is held by the core library's walk test case instead |
+| Project inspection | 5 | the summary and the warning list the builder shows before a build | |
+| Visual builder | 32 | the window's own state, parameters -- including the package it asks the build for -- log and warnings | clicking the real controls |
+| Extraction runtimes | 2 | a broken archive is refused, and so is an unsafe path inside one | extracting an archive that is sound: the setup-level cases run a real runtime over real application files |
+| Snapshots | 6 pages | what every page of the example actually looks like, measured rather than judged | whether a glyph reads correctly, and what happens once the flow reaches a page |
+
+## Configuration
+
+Each row names a setting or an area of behaviour, together with the cases that hold it.
+
+| Setting | Cases |
+| --- | --- |
+| `project.name` | `uninstaller_metadata_uses_project_version_and_configured_name`, `a_silent_install_writes_the_shortcuts_and_the_autostart_entry`, `a_built_setup_installs_its_payload_and_registers_an_uninstall_entry` |
+| `project.version`, `project.file_version` | `version::tests::parses_numeric_windows_versions`, `project_file_version_overrides_release_version_for_pe`, `inspects_taptap_project_without_dpi_warnings` |
+| `project.description`, `project.publisher`, `project.copyright`, `project.output_name` | `version::tests::builds_unicode_version_resource` |
+| `output.installer_name` | `the_summary_reports_what_the_project_declares`, `reset_output_restores_the_dist_path_named_by_the_project` |
+| `output.installer_icon` | `window_icon_uses_the_brand_asset`, `icon::tests::parses_ico_and_creates_group_directory`, `icon::tests::rejects_ico_image_outside_file` |
+| `output.uninstaller_name` | `uninstaller_name_rejects_directory_components`, `uninstaller_metadata_uses_project_version_and_configured_name` |
+| `output.uninstaller_icon` | `inspects_taptap_project_without_dpi_warnings` |
+| `finalize.installer`, `finalize.uninstaller`, `finalize.package` | `a_finalize_command_runs_on_the_finished_setup_and_uninstaller`, `a_finalize_command_that_fails_stops_the_build`, `a_finalize_command_runs_on_the_package_a_build_writes`, `a_finalize_command_that_refuses_the_package_stops_the_build`, `refuses_a_finalize_command_that_is_not_there` |
+| `install.default_path` | `configured_install_paths_are_expanded`, `an_explicit_install_path_wins_over_the_configured_one`, `a_run_without_any_install_path_is_refused`, `a_configured_percent_path_is_expanded_and_used`, `an_explicit_directory_wins_over_the_configured_one` |
+| `install.exe_name` | `a_payload_without_the_declared_executable_is_refused`, `an_install_script_that_never_deploys_the_executable_is_refused` |
+| `install.required_space_mb` | `value_sources_read_the_config_the_disk_and_the_running_step`, `formats_bound_disk_sizes`, `refuses_an_install_when_the_drive_holds_less_space_than_the_project_asks_for` |
+| `install.require_admin` | `manifest::tests::manifest_asks_for_elevation_only_when_the_project_does`, `manifest::tests::the_manifest_reaches_a_real_executable`, `the_summary_reports_what_the_project_declares` |
+| `install.kill_process_on_install`, `install.detect_running_process` | `an_install_closes_a_running_copy_of_the_product` |
+| `registry.uninstall_key` | `registers_and_cleans_up_scoped_uninstall_key`, `registry_path_normalizes_legacy_escaped_separators`, `a_built_setup_carries_a_readable_bundle_and_real_resources` |
+| `links.*` | `agreement_links_resolve_through_the_project_links_table`, `a_link_the_project_does_not_configure_stays_plain_text` |
+| `shortcuts.desktop_shortcut`, `shortcuts.desktop_default` | `a_silent_install_writes_the_shortcuts_and_the_autostart_entry`, `removes_recorded_shortcuts_and_only_their_empty_folder` |
+| `shortcuts.start_menu`, `shortcuts.start_menu_folder` | the same two, plus `drops_the_shortcut_folder_once_it_is_empty` |
+| `autostart.enabled`, `autostart.default`, `autostart.registry_key`, `autostart.registry_value_name` | `a_silent_install_writes_the_shortcuts_and_the_autostart_entry` |
+| `components.items` | `the_page_and_the_project_decide_which_components_install`, `a_project_without_components_installs_none_of_them`, `a_script_sees_the_components_the_run_installs`, `a_silent_run_installs_the_components_the_project_defaults_to`, `the_boxes_the_page_carries_decide_which_components_install`, `two_payloads_that_carry_one_file_are_refused`, `refuses_a_component_without_an_id_or_a_payload`, `refuses_a_required_component_whose_default_is_false`, `refuses_an_unknown_component_key`, `refuses_two_components_that_share_an_id_or_a_payload` |
+| `dependencies.items` | `a_silent_run_installs_the_dependency_the_machine_is_missing`, `a_dependency_the_machine_already_has_is_not_installed_again`, `a_dependency_that_cannot_be_installed_stops_the_install`, `a_downloaded_dependency_is_checked_before_it_runs`, `a_download_that_is_not_the_recorded_file_is_refused`, `accepts_a_dependency_the_machine_is_asked_about`, `refuses_a_dependency_that_is_not_checked_or_not_installed`, `refuses_a_download_that_does_not_say_what_should_arrive`, `refuses_a_detection_rule_that_asks_the_wrong_thing`, `refuses_a_dependency_that_cannot_be_run_or_told_apart` |
+| `resources.*` | `project_bundle_roundtrips_layout_assets_and_locales`, `project_pack_progress_describes_assets_payload_and_uninstaller`, `the_payload_format_selects_the_runtime_that_gets_embedded`, `a_project_bundles_the_tools_directory_it_names`, `a_project_that_names_no_tools_bundles_none`, `a_setup_unpacks_the_tools_its_project_bundles` |
+| `localization.default_locale` | `version::tests::maps_default_locale_to_version_language`, `the_summary_reports_what_the_project_declares` |
+| `localization.supported_locales` | `a_supported_locale_without_a_file_is_reported`, `a_translation_missing_page_text_is_reported` |
+| `wizard.pages`, `wizard.uninstall_pages` | `runtime_modes_select_distinct_layout_lists`, `out_of_range_pages_fall_back_to_the_first_layout`, `refuses_two_pages_answering_to_one_id` |
+| `ui.dpi_aware`, `ui.dpi_threshold` | `a_display_scales_the_layout_by_its_own_dpi`, `a_layout_picks_the_image_density_the_display_asks_for`, `dpi_asset_resolution_prefers_requested_density_and_falls_back`, `dpi_scaling_rounds_layout_coordinates` |
+| `ui.dialog_layout` | `a_project_without_a_dialog_layout_still_opens`, `a_dialog_is_drawn_over_the_page_and_centred`, `a_question_a_script_asks_is_drawn_with_both_of_its_answers`, `a_script_dialog_is_drawn_in_the_wizard` |
+| `uninstall.data_paths` | `only_expands_data_paths_inside_a_user_profile`, `ignores_data_paths_when_the_project_declares_none`, `uninstalling_below_appdata_removes_the_data_only_when_the_box_is_cleared` |
+| `advanced.silent_mode_support`, `advanced.uninstall_mode_support` | `a_project_without_silent_support_refuses_a_windowless_install`, `a_project_without_silent_support_refuses_a_windowless_uninstall`, `a_project_that_did_not_opt_in_refuses_a_windowless_run` |
+| application file format detection | `the_payload_format_selects_the_runtime_that_gets_embedded`, `zip_backend_rejects_invalid_archive`, `rejects_unsafe_7z_paths` |
+| build warnings | `an_asset_without_its_density_pair_is_reported`, `a_translation_missing_page_text_is_reported`, `a_supported_locale_without_a_file_is_reported`, `inspects_taptap_project_without_dpi_warnings`, `a_validation_message_the_page_asks_for_is_reported` |
+| `installer_config.json` keys this build does not read | `accepts_a_configuration_of_read_settings`, `leaves_a_section_of_the_projects_own_alone`, `refuses_a_setting_that_does_nothing`, `refuses_a_misspelled_setting`, `refuses_a_section_that_does_nothing`, `refuses_an_unknown_page_key`, `refuses_a_page_role_the_runtime_does_not_run`, `refuses_two_pages_claiming_one_role`, `reports_every_problem_at_once`, `the_example_project_matches_the_schema`, `the_migrated_example_matches_the_schema` |
+
+## Pages and controls
+
+| Behaviour | Cases |
+| --- | --- |
+| `Page` fill, image, outline and rounded corners | `a_page_paints_its_fill_under_its_image_and_its_outline_over_them`, `a_border_layer_paints_a_ring_and_leaves_the_center_empty` |
+| absolute `Image` and `Icon` | `an_absolute_image_and_icon_draw_at_the_rectangle_they_declare` |
+| the `file`/`dest`/`fade` image form | `a_styled_image_draws_into_a_sub_rectangle_at_the_opacity_it_declares`, `image_style_supports_plain_path_destination_and_fade` |
+| density choice at the display's DPI, both fallbacks | `a_layout_picks_the_image_density_the_display_asks_for`, `dpi_asset_resolution_prefers_requested_density_and_falls_back` |
+| `Button` state images and their fallback | `a_button_state_image_falls_back_to_the_normal_one`, `install_button_uses_xml_images_for_interaction_state`, `a_hover_and_a_press_show_the_pictures_the_button_declares` |
+| `enabled-when` for every state it can name, a field, a recorded choice, and a list of conditions | `a_button_waits_for_each_state_its_condition_can_name`, `a_button_waits_for_the_field_its_condition_names`, `a_radio_group_holds_one_value_at_a_time` |
+| a field's own rules decide which values it accepts (`required`, `min-length`, `max-length`, `pattern`) | `a_field_checks_the_value_the_project_asks_it_to` |
+| the hint a field shows for the first rule its value breaks | `a_hint_shows_the_rule_the_value_breaks` |
+| the install button waits for the field a person fills in | `a_field_the_user_fills_in_is_what_lets_the_install_start` |
+| a disabled button takes no click and no hover | `a_disabled_button_registers_no_click_and_no_hover` |
+| `HBox`, `VBox`, `Content` layout: sizes, spacing, alignment, `flex-*`, mins | `bottom_hbox_distributes_fixed_and_flexible_items`, `a_container_measures_the_edge_its_children_are_asked_for`, `a_nested_container_reports_the_extent_its_children_need`, `a_shrinking_row_stops_at_the_minimum_its_items_declare`, `flow_attributes_become_the_item_a_container_shares_space_with`, `align_self_overrides_the_alignment_of_its_container`, `justify_content_places_the_run_inside_the_room_it_has`, `item_spacing_and_gap_leave_the_same_distance_between_items`, `each_container_tag_accepts_the_alignment_spelling_it_documents`, `vbox_stacks_children_vertically_with_padding_and_margins` |
+| padding, margin, and the single-side forms | `padding_and_margin_take_one_to_four_values_and_their_single_side_forms`, `control_padding_insets_what_the_control_draws` |
+| percentages and pixel sizes | `percentage_and_pixel_extents_scale_with_the_layout` |
+| wrapping rows | `a_wrapping_row_starts_a_new_line_when_the_next_item_does_not_fit`, `a_wrapping_row_gives_each_line_the_height_of_its_tallest_item`, `flex_wrap_is_opt_in_per_container` |
+| a script sets a user environment variable and claims a file type; the uninstall takes both back | `an_install_script_sets_a_variable_the_uninstall_takes_back`, `an_install_script_removes_a_variable_it_no_longer_wants`, `a_script_registers_a_file_type_where_windows_reads_it`, `a_file_type_that_would_write_outside_the_classes_tree_is_refused` |
+| a container that scrolls: what it holds, the view it shows, the bar, and the wheel that moves it | `a_scrollable_container_shows_the_part_it_is_scrolled_to`, `a_scrollbar_says_where_the_list_stands`, `a_wheel_over_a_list_brings_the_rows_below_into_reach` |
+| `Spacer` | `a_spacer_takes_what_the_fixed_items_leave` |
+| pinning by `right`, `bottom`, `inset` and the single-side forms | `an_element_is_pinned_by_the_edge_attribute_it_carries` |
+| `Label` text, font, alignment and colour | `a_label_takes_its_text_font_and_alignment_from_the_layout`, `text_colors_read_as_rgb_with_or_without_an_alpha_channel`, `a_bound_label_shows_its_own_text_beside_the_value_it_reads` |
+| a component chosen by a checkbox of its id; what the page leaves ticked decides which components install | `the_boxes_the_page_carries_decide_which_components_install`, `the_page_and_the_project_decide_which_components_install` |
+| `Checkbox` state images, text, links, toggling | `an_absolutely_placed_checkbox_draws_its_state_image_and_toggles` |
+| `RadioButton`: one value per group, the layout's default, and the click that replaces it | `a_radio_group_holds_one_value_at_a_time`, `a_click_on_a_radio_is_the_value_the_install_waits_for` |
+| `Select`: the language list, and the options a project declares | `a_language_menu_lists_its_options_and_marks_the_one_in_use`, `a_closed_language_select_draws_its_arrow_over_its_fill_and_outline`, `a_select_offers_the_options_the_page_declares`, `the_language_menu_answers_to_the_keyboard` |
+| `ProgressBar` track, clipping and live value | `a_progress_bar_paints_a_rounded_track_and_follows_the_live_value`, `progress_bar_clips_its_sprite_to_the_completed_share` |
+| every `value-source` form and `value-format` | `value_sources_read_the_config_the_disk_and_the_running_step`, `formats_bound_disk_sizes`, `resolves_and_queries_windows_disk_root`, `status_source_replaces_placeholder_text_with_the_published_step` |
+| text field editing: caret, selection, undo, word keys | `a_caret_sits_after_the_characters_before_it`, `a_double_click_selects_the_word_under_the_pointer`, `a_selection_band_covers_the_characters_it_selects`, `a_selection_is_ordered_from_whichever_end_the_caret_is_at`, `removing_a_selection_keeps_the_text_around_it`, `typing_coalesces_into_one_undo_step`, `undo_remembers_the_caret_that_belongs_to_the_value`, `word_keys_stop_at_the_boundaries_they_delete`, `byte_index_walks_characters_not_bytes`, `editable_text_fields_are_recorded_and_readonly_ones_are_not`, `a_typed_value_wins_over_the_bound_default`, `a_readonly_field_shows_its_value_without_taking_edits`, `an_empty_field_is_one_a_user_can_click_into` |
+| the IME composition window and candidate list, anchored at the caret the page drew | `an_input_method_anchors_at_the_caret_the_page_drew` |
+| `visible="false"` and panel show/hide | `a_hidden_element_takes_its_whole_subtree_with_it`, `a_panel_pair_shows_the_panel_and_only_the_control_that_fits` |
+| Page order and the job a page declares (`next`, `back`, `role`) | `a_page_role_finds_the_page_that_holds_it`, `a_page_list_without_roles_keeps_its_positions`, `a_next_button_walks_to_the_page_the_project_declares`, `a_page_id_finds_the_page_that_carries_it`, `the_end_of_the_declared_order_is_an_end` |
+| page hooks: `next_page(from)` in `scripts/pages.rhai` decides the next page; the read-only primitives it gets; the trail Back retraces; and the declared order walking on after a hook fails | `a_page_hook_sends_the_wizard_to_the_page_it_names`, `a_page_hook_that_names_no_page_keeps_the_declared_order`, `a_hook_names_the_page_the_wizard_goes_to`, `a_hook_reads_the_wizard_and_the_machine`, `a_hook_must_answer_with_page_text`, `a_hook_that_fails_reports_the_project_message`, `a_script_without_the_hook_says_nothing`, `a_page_hook_sends_the_wizard_past_a_page_the_project_skips`, `a_page_hook_that_fails_is_reported_and_the_wizard_walks_on` |
+| every action in the table | `every_action_in_the_table_answers_with_its_own_window_action`, `action_attributes_map_to_window_actions` |
+| dialogs: placement, buttons, notices, growing cards | `a_dialog_is_drawn_over_the_page_and_centred`, `a_dialog_button_answers_with_its_own_action`, `a_dialog_button_is_drawn_from_the_question_rather_than_the_layout`, `a_notice_hides_the_secondary_button`, `a_page_without_a_dialog_draws_no_overlay`, `every_shipped_question_keeps_its_answers_inside_the_card`, `the_example_dialog_places_its_message_and_both_buttons` |
+| link resolution order | `agreement_links_resolve_through_the_project_links_table`, `a_link_the_project_does_not_configure_stays_plain_text`, `link_runs_carry_their_target_and_plain_runs_do_not`, `agreement_markdown_becomes_colored_visible_runs` |
+| the pointer answers only where an action is declared | `an_element_answers_the_pointer_only_when_it_declares_an_action` |
+| the cursor over a control: a hand on a button, a beam on a field you can type in, an arrow on the page | `the_pointer_decides_which_cursor_the_wizard_shows` |
+| the keyboard: Tab reaching every control in the order the page declares them, wrapping at both ends; `Enter` and Space acting on the control under the ring; the ring's colour; which controls stay out of it; and a menu or dialog leaving the page's ring alone | `tab_reaches_every_control_in_the_order_the_page_lays_them_out`, `the_walk_wraps_at_both_ends_of_the_control_order`, `a_control_the_page_keeps_out_of_reach_is_not_in_the_tab_order`, `the_focus_ring_is_drawn_over_the_control_the_keyboard_is_on`, `a_control_names_the_colour_of_its_own_focus_ring`, `a_dialog_covers_the_page_without_a_focus_ring_behind_it`, `the_keyboard_walks_the_page_and_acts_on_what_it_reaches` |
+| high contrast: the scheme's colours replace the ones a layout declares, and page, control face, outline, words, progress bar and scrollbar each take the colour the scheme keeps for them. Artwork keeps the pixels the project drew; an open menu gains a line, and the ring and the menu row the keyboard is on use the highlight colour. With no scheme asked for, a page is painted as written | `the_scheme_replaces_the_colours_a_page_declares`, `a_page_keeps_the_colours_it_declares_while_no_scheme_is_asked_for`, `the_ring_follows_the_scheme_under_high_contrast`, `an_open_menu_marks_the_keyboard_and_the_choice_under_a_scheme`, `a_scrollbar_takes_the_colours_the_scheme_keeps_for_it`, `each_role_reads_the_colour_the_scheme_keeps_for_it`, `a_system_colour_reads_as_an_opaque_layout_colour`, `a_high_contrast_machine_gets_the_colours_the_scheme_keeps` |
+| the folder picker's target | `pick_directory_writes_to_the_field_the_page_offers_it`, `pick_directory_falls_back_to_the_layout_text_input` |
+| a `pick_directory` button opens the shell's own folder dialog, and closing it again leaves the wizard as it was | `a_browse_button_opens_the_folder_picker_and_leaving_it_changes_nothing` |
+| window placement and scaling | `a_window_is_centred_and_clamped_to_its_work_area`, `a_placed_window_is_pulled_back_inside_its_work_area`, `a_display_scales_the_layout_by_its_own_dpi` |
+| stopping the running task from the window (a `cancel` button, a confirmed `close_confirm`) | `a_cancel_button_stops_the_project_script_and_leaves_nothing_installed` |
+| the example project's own pages | `taptap_first_page_places_controls_at_192_dpi`, `taptap_uninstaller_buttons_have_distinct_hit_regions`, `progress_pages_render_every_control_they_declare` |
+
+## Project scripts
+
+[Script API](/guides/custom-steps/) lists the primitives. The in-process test cases drive the driver directly;
+the setup-level cases prove that the `scripts` directory and the tools directory survive packaging.
+
+| Behaviour | Cases |
+| --- | --- |
+| the contract: deploy the named executable, or roll back | `an_install_script_that_never_deploys_the_executable_is_refused`, `an_install_script_deploys_files_and_writes_the_manifest` |
+| a failing script undoes what it wrote, and reports its log | `a_failing_install_script_removes_what_it_wrote`, `a_script_failure_reports_the_messages_it_logged`, `every_log_level_reaches_the_failure_the_wizard_shows` |
+| `run_tracked_uninstall`, and the library fallback when it is skipped | `an_uninstall_script_replays_the_manifest_it_asks_for`, `an_uninstall_script_that_skips_the_manifest_still_removes_the_product`, `replaying_the_manifest_is_refused_while_installing` |
+| file and path primitives | `file_primitives_create_copy_list_and_remove_files`, `path_primitives_join_split_and_name_paths` |
+| registry primitives: every type a machine stores, the view a key name selects, and the shared-key rule | `registry_primitives_round_trip_and_forget_a_key_they_created`, `registry_primitives_write_and_read_every_type_a_project_stores`, `a_registry_key_names_the_view_it_is_read_in`, `uninstalling_a_shared_key_removes_only_the_value_the_script_wrote`, `a_setup_stores_every_registry_type_its_script_names` |
+| shortcut primitives | `an_install_script_creates_shortcuts_the_uninstall_takes_back`, `a_script_deletes_the_desktop_shortcut_and_the_start_menu_folder_it_created` |
+| progress, status, mode, checkboxes and cancellation | `out_of_range_progress_and_both_status_forms_do_not_disturb_the_install`, `an_uninstall_script_sees_the_uninstall_mode_and_the_keep_data_checkbox`, `a_script_step_text_wins_over_the_locale_key`, `a_built_in_step_clears_a_script_step_text`, `a_running_script_sees_the_cancel_request`, `a_cancelled_install_gives_up_after_the_script_and_undoes_what_it_wrote` |
+| the components a script reads off the run: `is_component_selected` and `selected_components` | `a_script_sees_the_components_the_run_installs` |
+| the values the script reads off the page: the text a field holds, the value a choice control stands on, and an empty string for an id the page never declares | `a_script_reads_the_values_the_page_holds`, `the_values_the_page_holds_reach_the_script` |
+| environment, configuration, drives and the running image | `the_script_reads_the_environment_and_the_project_configuration`, `the_script_reports_the_image_it_runs_from`, `the_script_queries_fixed_disks_and_notifies_the_shell` |
+| the tools a project bundles | `a_script_reads_the_tools_the_project_bundled`, `a_script_that_asks_for_tools_a_project_did_not_bundle_gets_nothing`, `a_setup_unpacks_the_tools_its_project_bundles` |
+| dependencies and downloads: a script asks the machine about a declared dependency and can have it installed; it can also fetch a file of its own, check it, and report its digest | `a_script_asks_the_machine_about_the_dependencies_the_project_declares`, `a_script_downloads_a_file_and_checks_what_arrived` |
+| processes: whether one is running, the exit code of a command a script runs, and what that command wrote | `a_script_runs_a_command_and_sees_its_exit_code`, `a_script_recognises_a_running_process_by_its_image_name`, `a_script_reads_what_the_command_it_ran_wrote`, `runs_a_program_and_collects_what_it_wrote`, `reads_utf8_from_a_program_that_wrote_it`, `reads_a_programs_output_in_its_own_code_page`, `a_setup_reads_what_a_command_its_script_ran_wrote` |
+| services: installing one of the product's own; asking the machine whether it is there and whether it runs; changing how it starts; deleting it. A name that already belongs to another program is refused | `service_primitives_ask_the_machine_and_install_where_the_run_may`, `a_service_is_installed_and_removed_where_the_run_may`, `a_service_start_kind_is_read_from_its_word`, `a_service_command_line_quotes_the_program`, `a_service_is_found_and_told_apart_from_one_that_is_not_there`, `a_service_that_runs_another_program_is_not_taken_over` |
+| keeping or deleting user data | `uninstalling_below_appdata_removes_the_data_only_when_the_box_is_cleared` |
+| the `scripts` directory reaching a built setup | `a_setup_runs_the_projects_own_install_and_uninstall_scripts` |
+| `scripts/pages.rhai` reaching a built setup, and being called as the user turns a page | `a_page_hook_sends_the_wizard_past_a_page_the_project_skips`, `a_page_hook_that_fails_is_reported_and_the_wizard_walks_on` |
+| a message, an error and a question a script raises, drawn in the wizard and answered by a click | `a_question_a_script_asks_is_drawn_with_both_of_its_answers`, `a_script_dialog_is_drawn_in_the_wizard` |
+| the example projects' own scripts reaching the runtime's parser | `the_example_projects_scripts_parse` |
+
+## Install, upgrade and uninstall
+
+| Behaviour | Cases |
+| --- | --- |
+| components: the page and the project together decide which ones install, and two archives carrying one path are refused | `a_silent_run_installs_the_components_the_project_defaults_to`, `the_boxes_the_page_carries_decide_which_components_install`, `two_payloads_that_carry_one_file_are_refused` |
+| dependencies: the machine is asked what it is missing before the product lands. What is missing is installed. A failure stops the run. A download has to match the digest the project recorded | `a_silent_run_installs_the_dependency_the_machine_is_missing`, `a_dependency_the_machine_already_has_is_not_installed_again`, `a_dependency_that_cannot_be_installed_stops_the_install`, `a_downloaded_dependency_is_checked_before_it_runs`, `a_download_that_is_not_the_recorded_file_is_refused` |
+| a fresh install: files, manifest, registration | `installs_a_fresh_directory_and_records_the_manifest`, `a_built_setup_installs_its_payload_and_registers_an_uninstall_entry` |
+| the uninstall entry: the size, the quiet command, and the flags that keep Windows from offering a repair or a modify step this installer does not have | `the_uninstall_entry_reports_the_size_the_quiet_uninstall_and_no_repair`, `the_reported_size_counts_every_owned_file` |
+| config paths expanded, explicit directory wins | `configured_install_paths_are_expanded`, `an_explicit_install_path_wins_over_the_configured_one`, `a_configured_percent_path_is_expanded_and_used`, `an_explicit_directory_wins_over_the_configured_one` |
+| refusing to install over a directory it did not create | `refuses_to_install_over_a_directory_it_did_not_create`, `refuses_a_foreign_manifest_at_the_destination`, `refuses_relative_or_root_installation` |
+| an update package carries only the files whose bytes changed, installs over the release it was built from, and leaves the files it did not carry where they are | `an_update_package_carries_only_what_changed`, `an_update_package_refuses_a_machine_it_does_not_fit`, `an_update_leaves_a_target_that_already_holds_the_bytes`, `files_are_compared_by_their_bytes_in_chunks`, `an_unchanged_file_is_kept_rather_than_carried`, `a_changed_or_new_file_travels_in_the_update`, `a_file_that_moved_in_size_travels`, `a_tree_is_described_by_its_installed_paths`, `a_plan_round_trips_through_its_json` |
+| a project that cuts its content into components cannot be built as an update package | `a_component_project_is_refused_an_update_package` |
+| upgrade: replacing the version, dropping stale files, keeping foreign ones | `an_upgrade_replaces_the_previous_version_and_drops_stale_files`, `installing_over_an_existing_installation_drops_stale_files`, `an_upgrade_keeps_a_file_the_payload_does_not_own` |
+| rollback on failure | `a_failed_upgrade_restores_the_previous_version`, `removes_a_fresh_install_whose_registration_fails` |
+| cancellation: the task gives up at a checkpoint and undoes what it wrote | `a_cancel_request_stops_the_checkpoints_that_follow_it`, `a_cancelled_deployment_writes_nothing` |
+| uninstall removes the product, the registration and the directory | `uninstalling_removes_the_product_the_registration_and_the_directory` |
+| uninstall keeps a directory holding user files | `uninstall_keeps_a_directory_that_still_holds_user_files` |
+| service bookkeeping: what a script installed goes into the manifest, and the uninstall stops and deletes it before the files it runs from | `a_setup_installs_a_service_the_uninstall_takes_away` |
+| shortcut and autostart bookkeeping | `a_silent_install_writes_the_shortcuts_and_the_autostart_entry`, `removes_recorded_shortcuts_and_only_their_empty_folder`, `drops_the_shortcut_folder_once_it_is_empty` |
+| silent runs and the switches that allow them | `silent_arguments_read_the_directory_and_reject_anything_else`, `an_unknown_silent_option_is_refused`, `a_project_that_did_not_opt_in_refuses_a_windowless_run` |
+| the run log: every run writes one to disk; a failed run leaves that log as the report that leaves the machine | `a_setup_writes_the_log_of_its_run_where_a_windowless_run_asks_for_it`, `a_failing_run_leaves_its_log_behind_and_names_it`, `a_run_that_fails_leaves_a_log_that_names_it_and_what_happened`, `a_failure_notice_points_at_the_log_of_the_run`, `a_default_log_is_named_after_the_image_the_moment_and_the_task` |
+| the bundle the setup carries, the entry digests it records and checks, and a signature appended behind it | `project_bundle_roundtrips_layout_assets_and_locales`, `bundle_index_streams_entries_without_loading_the_payload`, `a_damaged_bundle_entry_is_refused_and_leaves_no_copy`, `bundle_index_ignores_images_without_a_footer`, `bundle_index_reads_a_bundle_that_a_signature_follows`, `a_setup_whose_payload_was_damaged_in_transit_installs_nothing`, `a_setup_with_a_signature_appended_still_installs` |
+| A project's own command runs on the finished files, the installer package included, and a refused file is not shipped | `a_finalize_command_runs_on_the_finished_setup_and_uninstaller`, `a_finalize_command_that_fails_stops_the_build`, `a_finalize_command_runs_on_the_package_a_build_writes`, `a_finalize_command_that_refuses_the_package_stops_the_build` |
+| the wizard window opens at the size the project declares | `the_setup_opens_its_wizard_window` |
+| the resources Windows reads before the process starts | `a_built_setup_carries_a_readable_bundle_and_real_resources`, `manifest::tests::the_manifest_reaches_a_real_executable` |
+
+## The visual builder
+
+| Behaviour | Cases |
+| --- | --- |
+| open a project, and refuse a folder without one | `open_project_reads_the_folder_that_holds_installer_config_json`, `open_project_names_the_missing_project_file` |
+| refresh, and a custom output path | `refresh_keeps_a_custom_output_path_for_the_same_project`, `refresh_replaces_a_custom_output_path_when_the_project_changes`, `validation_preserves_custom_output_for_same_project` |
+| reset output, automatic stub search | `reset_output_restores_the_dist_path_named_by_the_project`, `an_empty_runtime_directory_leaves_the_stub_search_automatic` |
+| parameters reach the build request | `parameters_carry_the_project_output_and_runtime_directory_into_the_request`, `parameter_fields_use_the_available_work_area` |
+| the build re-reads the project instead of trusting the screen | `build_setup_rechecks_a_project_marked_dirty_before_it_starts`, `a_build_reads_the_project_from_disk_in_its_worker_thread` |
+| retry repeats the failed build | `retry_repeats_a_failed_build_with_the_parameters_it_stored` |
+| the log keeps every line, in order, in English | `the_log_keeps_the_lines_the_view_scrolled_past`, `build_messages_reach_the_log_in_the_order_the_worker_sent_them`, `log_commands_are_english_when_interface_is_chinese`, `log_severity_colors_preserve_selectable_text`, `log_timestamp_has_fixed_width` |
+| menus, panels, sidebar paths, warnings | `menu_labels_stay_on_one_line_in_both_languages`, `the_panels_draw_in_every_state_they_can_be_in`, `sidebar_paths_keep_drive_and_relevant_tail`, `inspection_findings_reach_the_sidebar_and_the_log` |
+| one build at a time, and honest sizes and progress | `a_running_build_refuses_a_second_one`, `build_progress_is_monotonic`, `formats_gui_sizes`, `inspection_time_is_explicit_and_stable` |
+| icons, argument quoting, archive rejection | `window_icon_uses_the_brand_asset`, `command_arguments_are_quoted`, `rejects_unsafe_7z_paths`, `zip_backend_rejects_invalid_archive` |
+| a broken project file | `a_broken_project_file_is_reported_to_the_user` |
+
+## Installer packages
+
+| Behaviour | Cases |
+| --- | --- |
+| the package's own identity, the codes that survive a rebuild, and the name the Installer stores | `a_wrapper_carries_the_identity_the_project_declares`, `codes_stay_the_same_across_a_rebuild_and_the_upgrade_code_outlives_a_version`, `a_product_name_is_stored_whole_or_the_build_is_refused`, `a_latin_code_page_cannot_hold_a_chinese_name` |
+| the setup image the package carries, and the actions that install and remove the product in the order they run | `the_setup_the_package_carries_is_the_image_the_build_finished`, `the_package_installs_and_removes_the_product_in_the_order_it_declares` |
+| the search for an older release, and the removal of the product this package installed | `the_package_offers_itself_as_an_upgrade_of_the_versions_before_it` |
+| what Windows reads before it opens the package's tables | `the_package_summary_names_the_platform_and_the_language` |
+| the code page a package stores its tables in, and a name it cannot hold | `a_product_name_is_stored_whole_or_the_build_is_refused`, `a_latin_code_page_cannot_hold_a_chinese_name` |
+| a version, a name or a directory the Installer cannot work with is refused | `a_version_the_installer_cannot_compare_is_refused`, `a_product_name_that_cannot_name_a_directory_is_refused`, `a_name_too_long_for_a_short_name_carries_one_the_file_system_can_keep`, `a_directory_written_with_a_trailing_dot_component_is_the_directory_itself` |
+| a package installed, removed, upgraded, and released again on the same day, by the installer Windows ships, and a project that cannot run windowlessly | `a_package_installs_the_product_the_setup_carries_and_removes_it_again`, `a_newer_package_upgrades_the_product_the_older_one_installed`, `a_package_released_again_on_the_same_day_replaces_what_it_installed`, `a_project_that_cannot_run_without_a_window_is_refused_a_package` |
+
+## What is still not covered by an automated case
+
+<Aside type="caution" title="Do not read a green suite as proof here">
+No automated case reaches anything in this list, so a run in which everything passed says nothing about
+it. Each item says why it is still open.
+</Aside>
+
+- **Windows 7 SP1.** The compatibility claims need a clean machine on the minimum supported version,
+  Windows 7 SP1 x64. This project has no environment for one. See [production status](/project/status/).
+- **Whether a glyph reads correctly.** A rendering check can tell that text was drawn in the colour and
+  position the layout asked for. It cannot tell whether the sentence is legible. The snapshot review
+  script hands that question to a local vision model, or to a person.
+- **The two windows an input method draws itself, and choosing inside the shell's folder dialog.** A test
+  case proves that the composition point and the candidate point the runtime hands the input method sit
+  on the caret. It does not prove that the input method drew them there. It proves that a
+  `pick_directory` button opened the shell's folder dialog, but not which field a directory chosen there
+  is written to.
+- **The half that needs an elevated process.** Installing, changing, stopping and deleting a service all
+  need administrator rights. Without them, a test case holds only the refusal: Windows says no, and no
+  service is left on the machine. The round trip of installing and deleting a service runs elevated only.
+  Both reports (`run_tests.ps1` and `run_e2e_setup.ps1`) name whether the run was elevated, so such a run
+  is never read as one everybody has made. Whether an installed service then runs is out of reach either
+  way, because the program a service runs is the product's own.
+- **The example projects' scripts are never run.** They are parsed (`the_example_projects_scripts_parse`),
+  and nothing more. A mistyped primitive, or a read of a control the page does not declare, passes just
+  the same, because both are a value handed back quietly at run time. Only installing the example would
+  show either one up.
+- **Whether the migration advice holds at all.** `scripts/check_nsi_migration.ps1` reads the command
+  tables of both guides on CI. Every construct the migrated example uses has to have a row that says what
+  it becomes, with the two languages agreeing line for line, and a test case audits the example
+  configuration the way the build would. That proves every construct was classified; it does not prove
+  that a classification is right. A command filed as a direct setting that really needs a script is a
+  guide that misleads, and only someone migrating a real installer would find that out.
+- **A package installed for the whole machine.** The cases install for one user, which needs no elevation.
+  What an elevated per-machine install does with the same package, and whether an estate's own tooling can
+  remove it, rests on the same actions running in the service context. A signed package is the same kind
+  of gap: the builder signs nothing.
+- **Script primitives that a test cannot undo.** `run_detached` deliberately outlives the run.
+  `kill_process` ends a process the test did not start. `sleep_ms` has only elapsed time to assert on.
+  `is_elevated` would only mirror the implementation.

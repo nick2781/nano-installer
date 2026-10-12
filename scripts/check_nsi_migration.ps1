@@ -10,8 +10,8 @@
     rather than let it hide in a thousand-line file.
 
     The table this script classifies with is the table in
-    site/src/content/docs/MIGRATION_FROM_NSIS.md and
-    site/src/content/zh-CN/MIGRATION_FROM_NSIS.md, read
+    site/src/content/docs/guides/migrating-from-nsis.mdx and
+    site/src/content/zh-CN/guides/migrating-from-nsis.mdx, read
     straight out of the two documents. That is deliberate: a guide and a tool
     that each carry their own copy of a hundred rows drift apart, and the one
     that drifts is the one nobody runs. Both guides are read and have to agree --
@@ -64,8 +64,8 @@ if (-not $Guide) {
 # -Guide points at another directory of the same shape, which is how the
 # agreement check between the two languages can be exercised.
 $paths = @(
-    (Join-Path $Guide "docs/MIGRATION_FROM_NSIS.md"),
-    (Join-Path $Guide "zh-CN/MIGRATION_FROM_NSIS.md")
+    (Join-Path $Guide "docs/guides/migrating-from-nsis.mdx"),
+    (Join-Path $Guide "zh-CN/guides/migrating-from-nsis.mdx")
 )
 
 # What each verdict means, printed with the report so a reader does not have to

@@ -1,17 +1,17 @@
-﻿# Documentation map for agents
+# Documentation map for agents
 
 This page says which document answers which question, so a reader -- a person or an agent -- can go
 straight to that file instead of walking the whole site.
 
-**Every page has a twin.** The published pages come in pairs: `site/src/content/docs/X.md` and
-`site/src/content/zh-CN/X.md` are the same document, served at `/X/` and `/zh-CN/X/`. No page is written
+**Every page has a twin.** The published pages come in pairs: `site/src/content/docs/X.mdx` and
+`site/src/content/zh-CN/X.mdx` are the same document, served at `/X/` and `/zh-CN/X/`. No page is written
 in one language only, and `scripts/audit_docs_languages.ps1` holds that rule: it fails when a page in one
 tree has no page in the other, and it pairs this map with `zh-CN/AGENTS.md` the same way.
 
 The repository's own conventions put this map at the top of `docs/` rather than inside a content tree,
 which makes it the only English file under `docs/`. Its Chinese side is
-[`zh-CN/AGENTS.md`](zh-CN/AGENTS.md), and the same map is published as a page as well, at `/AGENTS/` and
-`/zh-CN/AGENTS/`.
+[`zh-CN/AGENTS.md`](zh-CN/AGENTS.md), and the same map is published as a page as well, at `/project/agents/` and
+`/zh-CN/project/agents/`.
 
 ## Take these first
 
@@ -30,19 +30,19 @@ the page's own file under `site/src/content/`.
 
 | Question | English | 中文 |
 | --- | --- | --- |
-| What is this, and can I ship with it yet? | [README](../site/src/content/docs/README.md), [Production status](../site/src/content/docs/PRODUCTION_STATUS.md) | [中文文档](../site/src/content/zh-CN/README.md)、[当前生产状态](../site/src/content/zh-CN/PRODUCTION_STATUS.md) |
-| How do I build my first setup? | [Quick start](../site/src/content/docs/QUICK_START.md) | [快速开始](../site/src/content/zh-CN/QUICK_START.md) |
-| Which settings exist, and what do they change? | [Configuration reference](../site/src/content/docs/CONFIG_REFERENCE.md) | [配置参考](../site/src/content/zh-CN/CONFIG_REFERENCE.md) |
-| How do I write pages and controls? | [Page layout](../site/src/content/docs/XML_LAYOUT_GUIDE.md) | [页面布局](../site/src/content/zh-CN/XML_LAYOUT_GUIDE.md) |
-| How do I add or change a language? | [Languages](../site/src/content/docs/LOCALIZATION.md) | [多语言](../site/src/content/zh-CN/LOCALIZATION.md) |
-| How do I run my own install and uninstall steps? | [Custom steps](../site/src/content/docs/SCRIPT_API.md) | [自定义步骤](../site/src/content/zh-CN/SCRIPT_API.md) |
-| How do I ship a plugin, and what may it do? | [Plugin ABI](../site/src/content/docs/PLUGIN_API.md) | [插件 ABI](../site/src/content/zh-CN/PLUGIN_API.md) |
-| I am coming from NSIS: what becomes what? | [Migrating from NSIS](../site/src/content/docs/MIGRATION_FROM_NSIS.md) | [从 NSIS 迁移](../site/src/content/zh-CN/MIGRATION_FROM_NSIS.md) |
-| How does the installer work inside? | [Architecture](../site/src/content/docs/ARCHITECTURE.md) | [架构](../site/src/content/zh-CN/ARCHITECTURE.md) |
-| Which Windows versions, and which system calls? | [Windows compatibility](../site/src/content/docs/WINDOWS_COMPATIBILITY.md) | [Windows 兼容性](../site/src/content/zh-CN/WINDOWS_COMPATIBILITY.md) |
-| How do I build a project without the command line? | [Visual builder](../site/src/content/docs/GUI.md) | [可视化构建](../site/src/content/zh-CN/GUI.md) |
-| How is it built and released? | [Build and release](../site/src/content/docs/BUILD_AND_RELEASE.md), [Project layout](../site/src/content/docs/PROJECT_STRUCTURE.md) | [构建与发布](../site/src/content/zh-CN/BUILD_AND_RELEASE.md)、[项目结构](../site/src/content/zh-CN/PROJECT_STRUCTURE.md) |
-| What is tested, and what is only promised? | [Test plan](../site/src/content/docs/TEST_PLAN.md), [Test coverage](../site/src/content/docs/TEST_COVERAGE.md), [Test cases](../site/src/content/docs/TEST_CASES.md) | [测试计划](../site/src/content/zh-CN/TEST_PLAN.md)、[测试覆盖](../site/src/content/zh-CN/TEST_COVERAGE.md)、[用例说明](../site/src/content/zh-CN/TEST_CASES.md) |
+| What is this, and can I ship with it yet? | [README](../site/src/content/docs/index.mdx), [Production status](../site/src/content/docs/project/status.mdx) | [中文文档](../site/src/content/zh-CN/index.mdx)、[当前生产状态](../site/src/content/zh-CN/project/status.mdx) |
+| How do I build my first setup? | [Quick start](../site/src/content/docs/quick-start.mdx) | [快速开始](../site/src/content/zh-CN/quick-start.mdx) |
+| Which settings exist, and what do they change? | [Configuration reference](../site/src/content/docs/reference/configuration.mdx) | [配置参考](../site/src/content/zh-CN/reference/configuration.mdx) |
+| How do I write pages and controls? | [Page layout](../site/src/content/docs/guides/page-layout.mdx) | [页面布局](../site/src/content/zh-CN/guides/page-layout.mdx) |
+| How do I add or change a language? | [Languages](../site/src/content/docs/guides/languages.mdx) | [多语言](../site/src/content/zh-CN/guides/languages.mdx) |
+| How do I run my own install and uninstall steps? | [Custom steps](../site/src/content/docs/guides/custom-steps.mdx) | [自定义步骤](../site/src/content/zh-CN/guides/custom-steps.mdx) |
+| How do I ship a plugin, and what may it do? | [Plugin ABI](../site/src/content/docs/guides/plugins.mdx) | [插件 ABI](../site/src/content/zh-CN/guides/plugins.mdx) |
+| I am coming from NSIS: what becomes what? | [Migrating from NSIS](../site/src/content/docs/guides/migrating-from-nsis.mdx) | [从 NSIS 迁移](../site/src/content/zh-CN/guides/migrating-from-nsis.mdx) |
+| How does the installer work inside? | [Architecture](../site/src/content/docs/project/architecture.mdx) | [架构](../site/src/content/zh-CN/project/architecture.mdx) |
+| Which Windows versions, and which system calls? | [Windows compatibility](../site/src/content/docs/reference/windows-compatibility.mdx) | [Windows 兼容性](../site/src/content/zh-CN/reference/windows-compatibility.mdx) |
+| How do I build a project without the command line? | [Visual builder](../site/src/content/docs/guides/visual-builder.mdx) | [可视化构建](../site/src/content/zh-CN/guides/visual-builder.mdx) |
+| How is it built and released? | [Build and release](../site/src/content/docs/reference/build-and-release.mdx), [Project layout](../site/src/content/docs/reference/project-structure.mdx) | [构建与发布](../site/src/content/zh-CN/reference/build-and-release.mdx)、[项目结构](../site/src/content/zh-CN/reference/project-structure.mdx) |
+| What is tested, and what is only promised? | [Test plan](../site/src/content/docs/project/testing.mdx), [Test coverage](../site/src/content/docs/project/coverage.mdx), [Test cases](../site/src/content/docs/project/cases.mdx) | [测试计划](../site/src/content/zh-CN/project/testing.mdx)、[测试覆盖](../site/src/content/zh-CN/project/coverage.mdx)、[用例说明](../site/src/content/zh-CN/project/cases.mdx) |
 
 ## In the repository
 
@@ -68,7 +68,7 @@ These files sit outside the published site, so a link to any of them leaves the 
 ## Where the pages and the index come from
 
 The published site is an Astro project built with Cloudflare Nimbus, and it lives under `site/`. Its pages
-are `site/src/content/docs/*.md` and `site/src/content/zh-CN/*.md`, and `site/astro.config.ts` holds the
+are `site/src/content/docs/**/*.mdx` and `site/src/content/zh-CN/**/*.mdx`, and `site/astro.config.ts` holds the
 site's settings and the sidebar's two language groups. The build writes `site/dist/`, which is what GitHub
 Pages publishes under `/nano-installer/`. The docs workflow installs the toolchain those files name,
 builds in `site/`, and uploads that directory.
@@ -134,12 +134,14 @@ this carefully", not "a machine compressed the notes". If a sentence reads awkwa
 version back.
 
 - **Facts, numbers, commands, paths and field names do not move.** Neither do headings, anchors or link
-  targets: a rewrite changes wording only. In the frontmatter, `description` may change -- it is the line
-  a search result shows -- while `title`, `slug` and `sidebar` stay. Check with
+  targets: a rewrite changes wording only. In the frontmatter only `description` may change -- it is the
+  line a search result shows -- while `title` and `sidebar` stay, and a page's path is decided by where
+  its file sits. Check with
   `scripts/audit_docs_languages.ps1` for the pairs, with the site's own build (`pnpm build` in `site/`)
   for the frontmatter -- that build does validate it -- and with `scripts/audit_docs_links.ps1` for the
-  links, which reads the built site, because the integration's own link rule reads only `.mdx` and a dead
-  link between two `.md` pages is not what fails the build.
+  links, which reads the built site: `astro build` evaluates no authoring rule, so the integration's own
+  link rule runs under `nimbus-docs lint`, and the anchor a link names exists only once its heading has
+  been rendered.
 - **The Chinese pages consult [Tech-Doc-Style-Chinese](https://github.com/fenng/Tech-Doc-Style-Chinese) as
   an external reference, not as a second standard.** Where the two disagree, this section wins: pronouns
   (it, this, these) and the hard-wrapped source lines are the two places it does.
