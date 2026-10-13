@@ -335,8 +335,9 @@ This section writes those gaps down, so none of them is left looking tested:
   makes Windows Installer refuse outright under `/qn` rather than raise the administrator prompt (UAC).
 
 - The runtime embeds the Rhai engine, and the engine is where the size of each runtime goes. Without it
-  about 0.57-0.66 MB, and 1.47-1.54 MB with it, measured on this machine: the uninstaller 1.47 MB, the
-  ZIP one 1.52 MB, the LZMA one 1.54 MB. It used to be 2.02-2.11 MB. That slimdown was chosen by
+  about 0.57-0.66 MB. With it and ZIP 9, the current measurements are 1.47-1.58 MiB: the uninstaller
+  1.47 MiB, the ZIP runtime 1.58 MiB, and the LZMA runtime 1.54 MiB. The builder is now 642 KiB.
+  The runtimes used to be 2.02-2.11 MB. That slimdown was chosen by
   measuring one lever at a time: `opt-level = "z"` about −350 KB. The linker's `/OPT:ICF=3` about
   −170 KB, which the MSVC linker does not fold by default. `panic = "immediate-abort"` about −170 KB.
   And Rhai's `no_optimize` and `no_time` about −45 KB together, neither of which the script API can

@@ -418,3 +418,4 @@ and [Test coverage](/project/coverage/) says which behaviour each case holds.
 | `window_icon_uses_the_brand_asset` | The builder window's icon comes from the brand PNG in the repository, decoded into a 512×512 RGBA bitmap. |
 | `word_keys_stop_at_the_boundaries_they_delete` | Ctrl+Backspace and Ctrl+Delete stop at the boundaries of what they delete. One press deletes a name or a run of separators. A separator eats only itself at a time, and trailing whitespace is skipped first. Once the caret reaches the start or the end it deletes no more. |
 | `zip_backend_rejects_invalid_archive` | The zip backend fails to extract when it meets a file that is not an archive, rather than writing out half of one. |
+| `zip_backend_rejects_paths_outside_destination` | The ZIP backend rejects parent traversal, absolute paths and drive prefixes before writing a file. Both slash styles are checked, and no entry is written inside or outside the destination. |
