@@ -338,13 +338,9 @@ were verified.
 nano-installer-native-x64.exe build --project <dir> [--output <exe>] [--stubs <dir>] [--delta-from <archive>] [--msi <package>]
 ```
 
-- `--project` is required.
-- `--output` is optional and defaults to `dist/<output.installer_name>` in the project.
-- `--stubs` points at a directory holding the three runtime executables.
-- `--delta-from` names an earlier release's payload archive and builds an update package instead of a
-  full setup; see below.
-- `--msi` writes the installer package an estate deploys around the finished setup.
-- `NANO_INSTALLER_NATIVE_STUB_DIR` overrides the runtime search directory.
+The [command-line reference](/reference/cli/) is the complete argument and output-path contract.
+Product teams should follow [distribution](/guides/distribution/) for signing and deployment;
+the sections below record how the framework implements and verifies these build paths.
 
 ## Build time and memory
 

@@ -1,7 +1,6 @@
 ---
 /**
- * LanguageSwitch — one link from the page being read to the same page in the
- * site's other documentation language.
+ * LanguageSwitch — select the language of the current documentation page.
  *
  * The two languages are two Nimbus collections mounted at different prefixes:
  * `docs` at the site root and `zh-CN` at `/zh-CN` (the table in
@@ -21,6 +20,7 @@
  */
 import { entryRouteKey, stripBase, withBase } from "@cloudflare/nimbus-docs/runtime";
 import { MOUNT_PREFIX, localeFor } from "@/lib/languages";
+import Icon from "@cloudflare/nimbus-docs/components/Icon.astro";
 
 interface Props {
   /** Astro collection id of the page being read (`docs` or `zh-CN`). */
@@ -35,7 +35,6 @@ const { collection, entryId } = Astro.props;
 // neither tree (a versioned one, say) has no counterpart here: no switch.
 const current =
   collection !== undefined && collection in MOUNT_PREFIX ? collection : undefined;
-const target = current === "zh-CN" ? "docs" : "zh-CN";
 
 // The page's route inside its own tree, without either mount prefix.
 const ownPrefix = current ? MOUNT_PREFIX[current] : "";
@@ -46,28 +45,51 @@ const insideTree = entryId
     ? served.slice(ownPrefix.length).replace(/^\/+/, "")
     : served.replace(/^\/+/, "");
 
-const targetPrefix = MOUNT_PREFIX[target] ?? `/${target}`;
-const route = insideTree === "" ? targetPrefix || "/" : `${targetPrefix}/${insideTree}`;
-// Pages are served as `<route>/` (`build.format: "directory"`); the site root
-// is `/` and already carries its slash.
-const href = withBase(route === "/" ? "/" : `${route}/`, import.meta.env.BASE_URL);
-// `localeFor` keeps the BCP-47 tags in one place: `en` for `docs`, `zh-CN` for
-// the Chinese tree.
-const hreflang = localeFor(target, "en");
-const label = target === "zh-CN" ? "中文" : "English";
-const ariaLabel = current === "zh-CN" ? "语言：English" : "Language: 中文";
+const languages = [
+  { collection: "zh-CN", label: "中文" },
+  { collection: "docs", label: "English" },
+].map((language) => {
+  const prefix = MOUNT_PREFIX[language.collection];
+  const route = insideTree === "" ? `${prefix}/` : `${prefix}/${insideTree}/`;
+  return {
+    ...language,
+    href: withBase(route, import.meta.env.BASE_URL),
+    lang: localeFor(language.collection, "en"),
+  };
+});
+const ariaLabel = current === "zh-CN" ? "选择语言" : "Select language";
 ---
 
 {
   current && (
-    <a
-      href={href}
-      hreflang={hreflang}
-      rel="alternate"
-      aria-label={ariaLabel}
-      class="shrink-0 whitespace-nowrap rounded-md px-2 py-1 text-[0.8125rem] font-medium text-muted-foreground no-underline transition-colors hover:bg-accent/60 hover:text-foreground"
-    >
-      {label}
-    </a>
+    <div class="relative shrink-0">
+      <select
+        data-language-select
+        aria-label={ariaLabel}
+        title={ariaLabel}
+        class="h-8 w-20 sm:w-24 appearance-none rounded-md border border-border bg-card pl-2 pr-6 text-[0.8125rem] font-medium text-foreground transition-colors hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+      >
+        {languages.map((language) => (
+          <option value={language.href} lang={language.lang} selected={language.collection === current}>
+            {language.label}
+          </option>
+        ))}
+      </select>
+      <Icon name="ph:caret-down" aria-hidden="true" class="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+    </div>
   )
 }
+
+<script>
+  import { mount } from "@cloudflare/nimbus-docs/client";
+  import { navigate } from "astro:transitions/client";
+
+  mount("[data-language-select]", (element) => {
+    if (!(element instanceof HTMLSelectElement)) return () => {};
+    const controller = new AbortController();
+    element.addEventListener("change", () => {
+      if (element.value !== window.location.pathname) void navigate(element.value);
+    }, { signal: controller.signal });
+    return () => controller.abort();
+  });
+</script>

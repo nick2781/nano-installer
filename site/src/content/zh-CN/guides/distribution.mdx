@@ -1,0 +1,101 @@
+---
+title: 发布你的产品
+description: 分发安装包前，完成产品配置、签名、无人值守部署和发布验收。
+sidebar:
+  order: 850
+---
+
+构建成功会生成安装包，产品验收确认它适合交付给用户。每次发布都应使用实际准备分发的安装包完成
+以下检查；框架自己的验证证据和剩余空白见[当前生产状态](/zh-CN/project/status/)。
+
+## 确定安装范围
+
+| 范围 | 目录 | 权限 | 卸载记录 |
+| --- | --- | --- | --- |
+| 当前用户 | `%LOCALAPPDATA%` 下的产品目录 | `install.require_admin: false` | `HKCU` |
+| 整台机器 | `Program Files` 下的产品目录 | `install.require_admin: true` | `HKLM` |
+
+安装目录、注册表范围和脚本操作需要保持一致。内嵌卸载程序沿用安装包的提权设置。
+按[配置参考](/zh-CN/reference/configuration/)设置产品版本、发布者、图标和应用可执行文件，
+并使用已获得授权的产品素材。
+
+## 构建并保留输入
+
+<Steps>
+
+1. 将构建器与三个运行时固定为同一发布版本，并校验 SHA-256 摘要。
+2. 将配置、布局、译文、脚本和插件纳入版本管理。
+3. 保留每个产品版本实际使用的应用归档，生成增量包时尤其需要它。
+4. 构建安装包，保留构建日志，并记录最终分发文件的 SHA-256。
+
+</Steps>
+
+输出路径、增量包和 MSI 选项见[命令行参考](/zh-CN/reference/cli/)。
+框架维护者发布工具本身时，遵循[构建与发布](/zh-CN/reference/build-and-release/)。
+
+## 签名分发文件
+
+<Aside type="caution" title="提供自己的签名身份">
+仓库发布的产物没有代码签名。产品流水线负责提供受信任的 Authenticode 证书、时间戳服务和
+签名命令。
+</Aside>
+
+在项目配置中加入以下钩子：
+
+```json
+"finalize": {
+  "uninstaller": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sign.ps1 -File \"%1\"",
+  "installer": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sign.ps1 -File \"%1\"",
+  "package": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sign.ps1 -File \"%1\""
+}
+```
+
+示例假定项目有自己的 `scripts/sign.ps1`，可以改编仓库脚本或调用签名服务。
+`%1` 是完成文件的完整路径。卸载程序在嵌入前签名，安装包在捆绑完成后签名，MSI 在包装完成后
+签名；任何钩子失败都会中止构建。
+
+用仓库的 `scripts/verify_signing.ps1` 检查安装包及内嵌卸载程序的签名和时间戳；分发 MSI 时，
+还要单独校验 MSI。自签测试证书只能验证机制，不能代表公开信任。Authenticode 用于识别发布者，
+SmartScreen 还会单独判断信誉，因此有效签名也不能保证不出现提示。
+
+## 验证无人值守部署
+
+按[无人值守运行](/zh-CN/reference/configuration/#无人值守运行)开启两项 `advanced` 支持开关。
+整机安装应在管理员会话中执行，并指定日志收集路径。
+
+```powershell
+$install = Start-Process .\MyApp_Setup.exe `
+  -ArgumentList '--silent --dir "%LOCALAPPDATA%\MyApp" --log "%TEMP%\MyApp-install.log"' `
+  -Wait -PassThru
+if ($install.ExitCode -ne 0) { throw "Install failed: $($install.ExitCode)" }
+
+$uninstall = Start-Process "$env:LOCALAPPDATA\MyApp\uninst.exe" `
+  -ArgumentList '--silent --log "%TEMP%\MyApp-uninstall.log"' -Wait -PassThru
+if ($uninstall.ExitCode -ne 0) { throw "Uninstall failed: $($uninstall.ExitCode)" }
+```
+
+<Aside type="note" title="无人值守卸载">
+静默卸载保留用户数据。
+</Aside>
+
+使用 MSI 时，项目需要同时支持静默安装和卸载；整机产品执行
+`msiexec /i MyApp.msi /qn /L*v MyApp-msi.log` 需要管理员会话。
+MSI 仍是安装包的包装层，应通过实际使用的管理平台验证安装、升级和卸载，包括平台对返回码的处理。
+
+## 发布验收清单
+
+| 检查 | 验收证据 |
+| --- | --- |
+| 全新安装 | 产品可以启动，应用依赖齐全 |
+| Windows 支持范围 | 产品安装包和卸载程序通过 Win7 PE 导入审计，产品能在声明的最低系统上运行 |
+| 升级 | 从支持的旧版本升级后，设置保留、变化文件替换、废弃的清单文件移除 |
+| 失败恢复 | 步骤失败时恢复旧版本，或清理首次安装的目标目录 |
+| 卸载 | 清单文件、快捷方式和注册表项移除，用户自建文件保留 |
+| 用户数据 | 保留数据选项符合产品策略，静默卸载保留数据 |
+| 界面 | 支持的语言、键盘焦点、输入法、DPI 缩放和读屏行为通过检查 |
+| 可选路径 | 产品实际使用的组件、依赖下载、服务和插件均经过运行验证 |
+| 分发文件 | 最终文件的签名、时间戳和记录的摘要符合预期 |
+
+在临时虚拟机中完成检查，并随版本保存日志。框架的 Win7 虚拟机运行并未覆盖全部读屏、显示器和
+TLS 路径，详见[尚未覆盖](/zh-CN/project/status/#尚未覆盖)。检查失败时，先按
+[故障排查](/zh-CN/guides/troubleshooting/)定位问题，再分发安装包。

@@ -7,6 +7,7 @@
 import Icon from "@cloudflare/nimbus-docs/components/Icon.astro";
 import { cn } from "@/lib/cn";
 import type { HTMLAttributes } from "astro/types";
+const label = Astro.url.pathname.split("/").includes("zh-CN") ? "切换深浅色主题" : "Toggle color theme";
 
 interface Props extends HTMLAttributes<"button"> {}
 
@@ -20,7 +21,8 @@ const { class: className, ...attrs } = Astro.props;
     className,
   )}
   {...attrs}
-  aria-label="Toggle dark mode"
+  aria-label={label}
+  title={label}
   data-nb-state="light"
 >
   <Icon name="ph:sun" class="w-[1.125rem] h-[1.125rem] hidden group-data-[nb-state=dark]:block" />

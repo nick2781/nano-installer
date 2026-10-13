@@ -7,4 +7,6 @@ examples/*/.build/
 examples/*/dist/
 tmp/
 .tmp-docsify-*.log
+.playwright-cli/
+output/
 screenshot*.png

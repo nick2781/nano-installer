@@ -1,0 +1,104 @@
+---
+title: Distribute your product
+description: Prepare product metadata, signing, unattended deployment and acceptance evidence before shipping an installer.
+sidebar:
+  order: 850
+---
+
+A successful build produces an installer; acceptance confirms that it is ready for your users.
+Use this checklist for each product release, with the exact setup you intend to distribute.
+The framework's own evidence and remaining gaps are recorded in [production status](/project/status/).
+
+## Choose the installation scope
+
+| Scope | Directory | Privileges | Uninstall record |
+| --- | --- | --- | --- |
+| Current user | A product directory under `%LOCALAPPDATA%` | `install.require_admin: false` | `HKCU` |
+| Machine | A product directory under `Program Files` | `install.require_admin: true` | `HKLM` |
+
+Keep the path, registry scope and script operations consistent. The embedded uninstaller uses the
+same elevation setting as the setup. Configure the product version, publisher, icon and executable
+in [configuration](/reference/configuration/), and use your own licensed artwork.
+
+## Build and retain the inputs
+
+<Steps>
+
+1. Pin the builder and all three stubs to one release and verify their SHA-256 digests.
+2. Keep the configuration, layouts, locales, scripts and plugins under version control.
+3. Retain the exact application archive for each product version, especially when producing delta packages.
+4. Build the setup, retain the build log and record the SHA-256 of the final distributed bytes.
+
+</Steps>
+
+Use [command-line options](/reference/cli/) for output paths, delta packages and MSI.
+Framework maintainers follow [build and release](/reference/build-and-release/) to publish the tools themselves.
+
+## Sign the distributed files
+
+<Aside type="caution" title="Supply your own signing identity">
+Repository releases are unsigned. Your pipeline supplies its own trusted Authenticode certificate,
+timestamp service and signing command.
+</Aside>
+
+Add these hooks to the project configuration:
+
+```json
+"finalize": {
+  "uninstaller": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sign.ps1 -File \"%1\"",
+  "installer": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sign.ps1 -File \"%1\"",
+  "package": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sign.ps1 -File \"%1\""
+}
+```
+
+The example assumes a project-owned `scripts/sign.ps1`; adapt the repository's script or invoke your
+signing service. `%1` is the finished file's full path. The uninstaller is signed before embedding,
+the setup after bundling, and MSI after wrapping. A failed hook stops the build.
+
+Run the repository's `scripts/verify_signing.ps1` against the setup to check the setup and embedded
+uninstaller, including timestamps. Check the MSI separately when distributing one. A self-signed
+test certificate proves the mechanism, not public trust. Authenticode identifies the publisher;
+SmartScreen reputation is a separate decision and may still cause a warning.
+
+## Verify unattended deployment
+
+Enable the two `advanced` support flags described in [configuration](/reference/configuration/#unattended-runs).
+Run machine-wide deployment from an elevated session and collect explicit logs.
+
+```powershell
+$install = Start-Process .\MyApp_Setup.exe `
+  -ArgumentList '--silent --dir "%LOCALAPPDATA%\MyApp" --log "%TEMP%\MyApp-install.log"' `
+  -Wait -PassThru
+if ($install.ExitCode -ne 0) { throw "Install failed: $($install.ExitCode)" }
+
+$uninstall = Start-Process "$env:LOCALAPPDATA\MyApp\uninst.exe" `
+  -ArgumentList '--silent --log "%TEMP%\MyApp-uninstall.log"' -Wait -PassThru
+if ($uninstall.ExitCode -ne 0) { throw "Uninstall failed: $($uninstall.ExitCode)" }
+```
+
+<Aside type="note" title="Unattended removal">
+Silent uninstall keeps user data.
+</Aside>
+
+For MSI, the project must support silent install and uninstall;
+`msiexec /i MyApp.msi /qn /L*v MyApp-msi.log` requires an elevated session for a machine-wide product.
+MSI remains a wrapper around the setup. Validate its install, upgrade and removal through your actual
+management platform, including the platform's handling of return codes.
+
+## Release checklist
+
+| Check | Acceptance evidence |
+| --- | --- |
+| Clean installation | Product launches with all required application dependencies |
+| Supported Windows versions | Product setup and uninstaller pass the Win7 PE import audit; the product runs on its declared minimum OS |
+| Upgrade | Supported previous versions retain settings, replace changed files and remove obsolete recorded files |
+| Failure recovery | A failed step restores the previous version or leaves a clean first-install target |
+| Removal | Recorded files, shortcuts and registry entries are removed; user-created files are preserved |
+| User data | Keep-data behavior matches the product's policy; silent removal preserves data |
+| UI | Supported languages, keyboard focus, IME, DPI scaling and screen-reader behavior are checked |
+| Optional paths | Components, dependency downloads, services and plugins used by this product are exercised |
+| Distribution | Final files have the expected signatures, timestamps and recorded digests |
+
+Run these checks in disposable VMs and retain the logs with the release. The framework's Win7 VM run
+did not verify every screen-reader, display or TLS path; see [remaining gaps](/project/status/#not-covered).
+If a check fails, use [troubleshooting](/guides/troubleshooting/) before distributing the package.

@@ -1,0 +1,93 @@
+---
+title: 命令行参考
+description: 自动构建与部署所需的构建器选项、安装包参数、输出路径和退出行为。
+sidebar:
+  order: 1050
+---
+
+构建器生成安装包，生成的安装包和卸载程序执行部署，它们接受不同的参数。
+构建器运行于 Windows 7 SP1 x64 及以上，需要同一发布版本的三个运行时。
+[快速开始](/zh-CN/quick-start/)提供完整项目。
+
+## 构建器
+
+```text
+nano-installer-native-x64.exe build --project <directory> [--output <exe>] [--stubs <directory>] [--delta-from <archive>] [--msi <package>]
+```
+
+| 参数 | 是否必需 | 作用 |
+| --- | --- | --- |
+| `build` | 是 | 当前支持的命令 |
+| `--project <directory>` | 是 | 包含 `installer_config.json` 的项目目录 |
+| `--output <exe>` | 否 | 安装包输出路径，默认是项目的 `dist/<output.installer_name>` |
+| `--stubs <directory>` | 否 | 包含三个运行时可执行文件的目录 |
+| `--delta-from <archive>` | 否 | 与当前应用归档比较的上一版 ZIP 或 7z 归档 |
+| `--msi <package>` | 否 | 将完成的安装包再包装为 Windows Installer 包 |
+
+配置中的资源路径相对于项目目录；命令行传入的相对输出路径相对于当前工作目录。
+CI 中建议使用绝对路径。构建器将进度写入标准错误，将完成的输出路径写入标准输出；
+成功返回 `0`，出错返回 `1`，未知参数会被拒绝。
+
+### 查找运行时
+
+用 `--stubs` 明确指定构建依赖，也可以用 `NANO_INSTALLER_NATIVE_STUB_DIR` 指定运行时目录。
+没有覆盖设置时，构建器会在自身旁边及附近的 `stubs` 目录查找。ZIP 安装包使用
+`zlib-stub-native.exe`，7z 安装包使用 `lzma-stub-native.exe`，两者都嵌入 `uninst-stub-native.exe`。
+
+### 完整安装包
+
+```powershell
+.\nano-installer-native-x64.exe build `
+  --project C:\products\MyApp\installer `
+  --stubs C:\tools\nano-installer `
+  --output C:\artifacts\MyApp_Setup.exe
+if ($LASTEXITCODE -ne 0) { throw "Installer build failed" }
+```
+
+### 增量更新包
+
+```powershell
+.\nano-installer-native-x64.exe build `
+  --project C:\products\MyApp\installer `
+  --delta-from C:\releases\1.0.0\app.zip `
+  --output C:\artifacts\MyApp_Update.exe
+```
+
+保留上一版实际发布的应用归档。构建器逐文件比较解包结果，只携带变化的内容。
+安装前会校验未变化文件的大小和 SHA-256；基线不匹配时，需要改用完整安装包。
+增量包不能用于首次安装。
+
+### MSI 包
+
+```powershell
+.\nano-installer-native-x64.exe build `
+  --project C:\products\MyApp\installer `
+  --msi C:\artifacts\MyApp.msi
+```
+
+MSI 包装已有安装包，不会将产品逻辑转换为原生 MSI 组件。
+部署与签名条件见[发布你的产品](/zh-CN/guides/distribution/)。
+
+## 生成的安装包与卸载程序
+
+| 参数 | 作用 |
+| --- | --- |
+| `--silent` | 项目允许时，不开窗口完成运行 |
+| `--dir <directory>` | 覆盖本次安装的 `install.default_path` |
+| `--log <file>` | 将运行日志写入明确指定的文件 |
+
+项目需要打开 `advanced.silent_mode_support` 才能静默安装，打开
+`advanced.uninstall_mode_support` 才能静默卸载；两项开关互相独立。
+静默卸载保留用户数据。其他参数会被拒绝；失败返回非零退出码。
+未指定 `--log` 时，日志写入 `%TEMP%\nano-installer\`。
+
+```powershell
+$setup = Start-Process .\MyApp_Setup.exe `
+  -ArgumentList '--silent --dir "%LOCALAPPDATA%\MyApp" --log "%TEMP%\MyApp-install.log"' `
+  -Wait -PassThru
+if ($setup.ExitCode -ne 0) { throw "Installation failed: $($setup.ExitCode)" }
+```
+
+部署脚本需要等待进程并读取退出码时，使用 `Start-Process -Wait -PassThru`。
+整机安装项目需要管理员会话，`--silent` 不会赋予权限。
+完整约定见[无人值守运行](/zh-CN/reference/configuration/#无人值守运行)。

@@ -1,17 +1,21 @@
 ---
 title: Project
-description: Pages about the project itself, what has been verified, how the runtime is put together, how it is tested, and which document answers which question.
+description: Framework architecture, verification evidence, remaining gaps and the documentation map.
 sidebar:
   order: 150
 ---
 
-These pages describe the project rather than your installer: what the one real run covered and what still blocks a release, how the runtime installs, updates and uninstalls, how the suites and the migration check hold it, and which document answers which question.
+Use this section to evaluate the framework or contribute to it. Product teams should also complete
+the [distribution checklist](/guides/distribution/) for their own installer.
 
-<CardGrid>
-<LinkCard title="Production status" description="What the one real run covered, and what blocks a release." href="/project/status/" />
-<LinkCard title="Architecture" description="How a setup installs, updates and uninstalls." href="/project/architecture/" />
-<LinkCard title="Test plan" description="The suites, the migration check and the page captures." href="/project/testing/" />
-<LinkCard title="Test coverage" description="Which case holds which behaviour, layer by layer." href="/project/coverage/" />
-<LinkCard title="Test cases" description="One row per case, and what that case checks." href="/project/cases/" />
-<LinkCard title="Documentation map for agents" description="Which page answers which question." href="/project/agents/" />
-</CardGrid>
+| Question | Page |
+| --- | --- |
+| What has been verified, and what remains uncertain? | [Production status](/project/status/) |
+| How are bundles, runtimes and deployment steps connected? | [Architecture](/project/architecture/) |
+| Which checks should a change run? | [Test plan](/project/testing/) |
+| Which cases cover each behavior? | [Test coverage](/project/coverage/) |
+| What does each individual test assert? | [Test cases](/project/cases/) |
+| Which document answers a given question? | [Documentation map](/project/agents/) |
+
+The build generates Markdown versions, language-specific `llms.txt` indexes and `llms-full.txt`
+from the same content. Humans and agents therefore read the same technical claims.

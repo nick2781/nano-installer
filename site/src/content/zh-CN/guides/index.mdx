@@ -1,17 +1,29 @@
 ---
 title: 指南
-description: 按任务划分的页面，从一页的 XML 一直写到离开 NSIS。
+description: 定制安装界面，扩展部署步骤，并准备产品发布。
 sidebar:
   order: 350
 ---
 
-这一节讲的是写工程时要动手的部分：一页的 XML、接管某一步的 Rhai、第二种语言的词条文件、插件 DLL、可视化构建，以及从 NSIS 搬过来的走法。下面每张卡片就是其中一件事。
+先完成[快速开始](/zh-CN/quick-start/)或使用[可视化构建器](/zh-CN/guides/visual-builder/)，再按
+产品需要选择任务。内置部署流程可以通过配置完成，需要额外步骤时再接入脚本和插件。
+
+## 定制安装包
+
+| 任务 | 指南 |
+| --- | --- |
+| 定义页面、图片、控件和键盘行为 | [页面布局](/zh-CN/guides/page-layout/) |
+| 添加界面译文并校验语言文件 | [多语言](/zh-CN/guides/languages/) |
+| 添加安装步骤和页面钩子 | [自定义步骤](/zh-CN/guides/custom-steps/) |
+| 调用项目自己的原生 DLL | [插件 ABI](/zh-CN/guides/plugins/) |
+| 迁移已有 NSIS 项目的指令 | [从 NSIS 迁移](/zh-CN/guides/migrating-from-nsis/) |
+
+## 发布与支持
 
 <CardGrid>
-<LinkCard title="页面布局" description="页面的 XML、控件、流式布局、链接与动作。" href="/zh-CN/guides/page-layout/" />
-<LinkCard title="自定义安装与卸载步骤" description="用 Rhai 写安装与卸载步骤。" href="/zh-CN/guides/custom-steps/" />
-<LinkCard title="多语言" description="一种语言一个 JSON 文件，随安装包一起发布。" href="/zh-CN/guides/languages/" />
-<LinkCard title="插件 ABI" description="自己带的 DLL，以及它运行的宿主。" href="/zh-CN/guides/plugins/" />
-<LinkCard title="可视化构建" description="在 Windows 10 及以上的图形界面里构建安装包。" href="/zh-CN/guides/visual-builder/" />
-<LinkCard title="从 NSIS 迁移" description="哪些对应得上，哪些是故意不做的。" href="/zh-CN/guides/migrating-from-nsis/" />
+  <LinkCard title="发布你的产品" description="确定安装范围，签名文件，验证无人值守部署。" href="/zh-CN/guides/distribution/" icon="ph:package" />
+  <LinkCard title="故障排查" description="根据日志和配置，定位构建与部署失败。" href="/zh-CN/guides/troubleshooting/" icon="ph:wrench" />
 </CardGrid>
+
+落实指南中的步骤时，可以同时查阅[配置参考](/zh-CN/reference/configuration/)和
+[命令行参考](/zh-CN/reference/cli/)。

@@ -288,7 +288,11 @@ example's read-only `install.default_path` and repack the setup.
 
 ## Production cases that cannot pass yet
 
-- Authenticode signing chain.
+- The repository does not ship artifacts signed with a publicly trusted Authenticode certificate.
+  Product pipelines must supply that certificate and timestamp service. Signing hooks and verification
+  with a test certificate have been exercised; see [signing evidence](/project/status/#signing).
 
-Upgrades, failure rollback, shortcuts, autostart, the keep-data option, page transitions, and progress
-display are implemented; they just have not been through a real run on a Windows 7 VM yet.
+The Windows 7 SP1 x64 VM run covered installation, upgrade, removal and silent deployment. It does not
+prove every accessibility, display, service or dependency-download path. The exact observations and
+gaps are in [production status](/project/status/); use [distribution](/guides/distribution/) to plan
+acceptance of your own product.
