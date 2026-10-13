@@ -16,15 +16,15 @@ function initPageActions(root: HTMLElement): () => void {
     if (state === "copied") {
       copyIcon.classList.add("hidden");
       checkIcon.classList.remove("hidden");
-      label.textContent = "Copied";
+      label.textContent = root.dataset.copiedLabel ?? "Copied";
     } else {
-      label.textContent = "Couldn't copy";
+      label.textContent = root.dataset.errorLabel ?? "Couldn't copy";
     }
     if (resetTimer) window.clearTimeout(resetTimer);
     resetTimer = window.setTimeout(() => {
       copyIcon.classList.remove("hidden");
       checkIcon.classList.add("hidden");
-      label.textContent = "Copy page";
+      label.textContent = root.dataset.copyLabel ?? "Copy page";
     }, 1500);
   }
 

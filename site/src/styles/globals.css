@@ -23,7 +23,7 @@
 	color-scheme: light;
 
 	/* Surfaces (paired with foregrounds for contrast) */
-	--nb-background: oklch(0.99 0 0);
+	--nb-background: #ffffff;
 	--nb-foreground: oklch(0.21 0 0);
 
 	--nb-card: oklch(1 0 0);
@@ -36,15 +36,15 @@
 	--nb-accent-foreground: var(--nb-foreground);
 
 	/* Primary action / brand */
-	--nb-primary: oklch(0.145 0 0);
+	--nb-primary: #087f67;
 	--nb-primary-foreground: oklch(0.97 0 0);
-	--nb-primary-hover: oklch(0.371 0 0);
+	--nb-primary-hover: #066653;
 
 	/* Borders / focus */
 	--nb-border: oklch(0.935 0 0);
 	--nb-border-strong: oklch(0.87 0 0);
 	--nb-selected: oklch(0.89 0 0);
-	--nb-ring: oklch(0.145 0 0 / 0.35);
+	--nb-ring: #087f6780;
 
 	/* Status colors — paired (saturated for text/border + muted for bg) */
 	--nb-info: oklch(0.424 0.199 265.638);
@@ -84,28 +84,28 @@
 	--nb-m-other-line: var(--nb-border);
  
  	/* Layout */
-	--nb-sidebar-width: 18.75rem;
-	--nb-toc-width: 18rem;
-	--nb-content-max: 43.5rem;
+	--nb-sidebar-width: 17rem;
+	--nb-toc-width: 15rem;
+	--nb-content-max: 48rem;
 	/* Used only by the API reference (registry: api-layout); harmless elsewhere. */
 	--nb-code-rail-width: 34rem;
 
 	/* Typography — self-hosted via @fontsource-variable in BaseLayout.astro */
 	--nb-font-sans:
-		"Inter Variable", "Inter", system-ui, -apple-system, "Segoe UI", Roboto,
+		"Inter Variable", "Inter", "Segoe UI", "Microsoft YaHei", system-ui, -apple-system, Roboto,
 		sans-serif;
 	--nb-font-mono:
 		"JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "Cascadia Code",
 		"Source Code Pro", Menlo, Consolas, monospace;
-	--nb-h1-size: 2.1875rem;
+	--nb-h1-size: 2rem;
 	--nb-h1-weight: 600;
-	--nb-h1-tracking: -0.025em;
+	--nb-h1-tracking: 0;
 	--nb-h2-size: 1.3rem;
 	--nb-h2-weight: 650;
-	--nb-h2-tracking: -0.015em;
+	--nb-h2-tracking: 0;
 	--nb-h3-size: 1.1rem;
 	--nb-h3-weight: 600;
-	--nb-h3-tracking: -0.01em;
+	--nb-h3-tracking: 0;
 	--nb-h4-weight: 600;
 
 	/* Shadows */
@@ -125,26 +125,26 @@
 [data-mode="dark"] {
 	color-scheme: dark;
 
-	--nb-background: oklch(0.085 0 0);
+	--nb-background: #141616;
 	--nb-foreground: oklch(0.97 0 0);
 
-	--nb-card: #0F0F0F;
+	--nb-card: #191c1c;
 	--nb-card-foreground: var(--nb-foreground);
 
-	--nb-muted: #060606;
+	--nb-muted: #1c2020;
 	--nb-muted-foreground: oklch(0.708 0 0);
 
 	--nb-accent: oklch(0.269 0 0);
 	--nb-accent-foreground: var(--nb-foreground);
 
-	--nb-primary: oklch(0.9 0 0);
-	--nb-primary-foreground: oklch(0.085 0 0);
-	--nb-primary-hover: oklch(0.7 0 0);
+	--nb-primary: #67d9b9;
+	--nb-primary-foreground: #10251e;
+	--nb-primary-hover: #9ae9d1;
 
 	--nb-border: oklch(0.269 0 0);
 	--nb-border-strong: oklch(0.371 0 0);
 	--nb-selected: oklch(0.371 0 0);
-	--nb-ring: oklch(0.9 0 0 / 0.35);
+	--nb-ring: #67d9b980;
 
 	--nb-info: oklch(0.707 0.165 254.624);
 	--nb-info-foreground: oklch(0.707 0.165 254.624);
@@ -406,7 +406,7 @@ pre.astro-code span {
 	background: var(--nb-muted);
 	color: var(--nb-muted-foreground);
 	font-size: 0.6875rem;
-	letter-spacing: 0.02em;
+	letter-spacing: 0;
 	text-transform: uppercase;
 }
 
@@ -424,7 +424,7 @@ pre.astro-code span {
 	color: var(--nb-muted-foreground);
 	font-family: var(--nb-font-mono);
 	font-size: 0.6875rem;
-	letter-spacing: 0.02em;
+	letter-spacing: 0;
 	text-transform: uppercase;
 	pointer-events: none;
 	opacity: 0.75;
@@ -540,6 +540,13 @@ pre.astro-code .highlighted-word {
 	}
 	.nb-sidebar-link {
 		text-decoration: none;
+		flex-wrap: wrap;
+	}
+	.nb-sidebar-link > span:first-of-type {
+		min-width: 0;
+	}
+	.nb-sidebar-link > span:last-of-type:not(:first-of-type) {
+		flex-shrink: 0;
 	}
 	.nb-sidebar-row {
 		cursor: pointer;

@@ -1,0 +1,28 @@
+---
+import Icon from "@cloudflare/nimbus-docs/components/Icon.astro";
+import { uiForPath } from "@/lib/ui";
+const ui = uiForPath(Astro.url.pathname);
+---
+
+<button type="button" data-back-to-top hidden title={ui.backToTop} aria-label={ui.backToTop} class="fixed bottom-5 right-5 z-20 flex h-10 w-10 items-center justify-center rounded-md border border-border bg-card text-foreground shadow-sm hover:bg-accent">
+  <Icon name="ph:arrow-up" class="h-5 w-5" />
+</button>
+
+<style>
+  [data-back-to-top][hidden] { display: none; }
+</style>
+
+<script>
+  import { mount } from "@cloudflare/nimbus-docs/client";
+  mount("[data-back-to-top]", (button) => {
+    const update = () => { button.hidden = window.scrollY < 400; };
+    const scroll = () => window.scrollTo({ top: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
+    window.addEventListener("scroll", update, { passive: true });
+    button.addEventListener("click", scroll);
+    update();
+    return () => {
+      window.removeEventListener("scroll", update);
+      button.removeEventListener("click", scroll);
+    };
+  });
+</script>

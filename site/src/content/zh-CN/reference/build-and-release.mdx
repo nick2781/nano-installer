@@ -284,12 +284,9 @@ issue 表单的「版本」一栏拿某个 release 举例，这个例子要跟�
 nano-installer-native-x64.exe build --project <dir> [--output <exe>] [--stubs <dir>] [--delta-from <archive>] [--msi <package>]
 ```
 
-- `--project` 必需。
-- `--output` 可选，默认输出到项目内的 `dist/<output.installer_name>`。
-- `--stubs` 指向放三个运行时的目录。
-- `--delta-from` 点名上一版的应用文件归档，构建的是更新包而不是完整安装包，见下文。
-- `--msi` 把做完的安装包封成企业分发的那个 MSI 包。
-- `NANO_INSTALLER_NATIVE_STUB_DIR` 可以覆盖运行时搜索目录。
+[命令行参考](/zh-CN/reference/cli/)统一定义参数和输出路径。
+产品团队的签名与部署流程见[发布你的产品](/zh-CN/guides/distribution/)，
+下文记录框架对这些构建路径的实现和验证。
 
 ## 构建时间与内存
 

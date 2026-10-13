@@ -32,6 +32,9 @@ the page's own file under `site/src/content/`.
 | --- | --- | --- |
 | What is this, and can I ship with it yet? | [README](../site/src/content/docs/index.mdx), [Production status](../site/src/content/docs/project/status.mdx) | [中文文档](../site/src/content/zh-CN/index.mdx)、[当前生产状态](../site/src/content/zh-CN/project/status.mdx) |
 | How do I build my first setup? | [Quick start](../site/src/content/docs/quick-start.mdx) | [快速开始](../site/src/content/zh-CN/quick-start.mdx) |
+| Which build and deployment arguments are supported? | [Command line](../site/src/content/docs/reference/cli.mdx) | [命令行参考](../site/src/content/zh-CN/reference/cli.mdx) |
+| How do I sign, deploy and accept a product release? | [Distribution](../site/src/content/docs/guides/distribution.mdx) | [发布你的产品](../site/src/content/zh-CN/guides/distribution.mdx) |
+| Where do I start when a build or installation fails? | [Troubleshooting](../site/src/content/docs/guides/troubleshooting.mdx) | [故障排查](../site/src/content/zh-CN/guides/troubleshooting.mdx) |
 | Which settings exist, and what do they change? | [Configuration reference](../site/src/content/docs/reference/configuration.mdx) | [配置参考](../site/src/content/zh-CN/reference/configuration.mdx) |
 | How do I write pages and controls? | [Page layout](../site/src/content/docs/guides/page-layout.mdx) | [页面布局](../site/src/content/zh-CN/guides/page-layout.mdx) |
 | How do I add or change a language? | [Languages](../site/src/content/docs/guides/languages.mdx) | [多语言](../site/src/content/zh-CN/guides/languages.mdx) |

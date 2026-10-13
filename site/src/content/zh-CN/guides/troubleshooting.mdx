@@ -1,0 +1,75 @@
+---
+title: 故障排查
+description: 根据错误消息、运行日志和项目配置，定位构建与部署失败。
+sidebar:
+  order: 900
+---
+
+先确认失败阶段：构建器错误对应项目输入，安装包错误对应目标机器上的部署过程。
+修改项目前，保留原始错误和日志。[命令行参考](/zh-CN/reference/cli/)列出了各阶段接受的参数。
+
+## 收集日志
+
+构建进度和错误写入标准错误。安装包或卸载程序可以用 `--log` 指定日志文件，否则到
+`%TEMP%\nano-installer\` 查找。运行失败时，标准错误会报告日志路径。
+日志包含系统信息、产品信息、目标目录和各步骤结果。
+
+```powershell
+$run = Start-Process .\MyApp_Setup.exe `
+  -ArgumentList '--silent --log "%TEMP%\MyApp-setup.log"' -Wait -PassThru
+$run.ExitCode
+Get-Content "$env:TEMP\MyApp-setup.log"
+```
+
+这条命令要求项目支持静默安装。交互安装失败时，保留 `--log`，去掉 `--silent` 重新运行。
+
+<Aside type="note" title="分享日志前">
+分享日志前，检查其中的私人路径和项目数据。
+</Aside>
+
+## 构建失败
+
+| 现象 | 检查位置 | 处理方式 |
+| --- | --- | --- |
+| 找不到运行时 | 下载的构建器与三个运行时 | 将同一版本放在一起，或明确传入 `--stubs` |
+| 缺少项目目录或第一页 | `layouts`、`assets`、`locales` 和 `wizard.pages[0].layout` | 创建目录，修正相对于项目的路径 |
+| 缺少默认语言 | `localization.default_locale` 和对应 JSON 文件名 | 提供 UTF-8 语言文件 |
+| 应用归档缺失或格式不符 | `resources.payload_file` 和文件头 | 生成真正的 ZIP/7z；修改扩展名不能转换格式 |
+| 示例图片是 LFS 指针 | 源码副本和 `git lfs` | 通过 Git LFS 克隆并获取对象，自行补齐应用归档 |
+| 配置键不受支持 | 报错的键和[配置参考](/zh-CN/reference/configuration/) | 使用支持的替代字段，或移除无效设置 |
+| Windows 版本资源无效 | `project.file_version` | 使用 1 至 4 段数字，将发布后缀留在 `project.version` |
+| Finalize 命令失败 | 签名命令、环境和退出码 | 修复命令；被拒绝的输出不是完成的发布产物 |
+
+## 安装与升级失败
+
+| 现象 | 检查位置 | 处理方式 |
+| --- | --- | --- |
+| 写入 `Program Files` 或 `HKLM` 被拒绝 | 安装范围和提权状态 | 整机项目使用 `require_admin: true`，或改用用户可写路径 |
+| 缺少应用可执行文件 | `install.exe_name` 和归档目录结构 | 将配置的可执行文件放到预期相对路径 |
+| 磁盘空间不足 | `install.required_space_mb` 和目标盘可用空间 | 修正空间要求，或选择空间足够的磁盘 |
+| 已有卸载键被拒绝 | 产品标识和注册表路径 | 为产品使用独立的键，不覆盖其他产品记录 |
+| 无法结束运行中的产品 | 进程设置和权限 | 关闭应用，或修正可执行文件设置与权限 |
+| 增量基线不匹配 | 已安装文件大小、摘要和上一版应用归档 | 改用完整包，基于实际发布的基线重新生成增量包 |
+| 依赖下载失败 | URL、预期 SHA-256、网络和 TLS 支持 | 修正来源或摘要，需要时检查 Windows 7 的 TLS 更新 |
+| 插件被拒绝或调用失败 | x64 DLL、导出和 ABI 版本 | 按 `include/nano_plugin.h` 构建，检查插件返回的错误 |
+
+Windows 7 的 HTTPS 依赖下载需要系统 Schannel 支持 TLS 1.2，包括 KB3140245 及后续更新。
+失败时不会退回明文，详见[Windows 兼容性](/zh-CN/reference/windows-compatibility/)和
+[插件 ABI](/zh-CN/guides/plugins/)。
+
+## 界面与卸载
+
+图片缺失通常对应错误的资源路径或缺少定位属性，按[页面布局](/zh-CN/guides/page-layout/)检查
+绝对坐标和 `@2x` 选择规则。译文缺失时，检查当前语言和默认语言是否有一致的键。
+
+安装目录中存在用户自建文件时，卸载后目录可能保留。卸载删除清单记录的内容，不会递归清理无关
+文件。静默卸载保留用户数据，交互卸载的数据删除范围也仅限声明的 AppData 路径，
+保留数据约定见[配置参考](/zh-CN/reference/configuration/)。
+
+## 提交可复现的问题
+
+提供构建器发布版本、Windows 版本与架构、失败命令、相关配置、预期行为、实际行为和检查过的日志。
+界面问题还应提供语言和 DPI。优先使用自己的资源创建最小项目，避免提交专有应用归档。
+
+普通缺陷通过 [GitHub Issues](https://github.com/nick2781/nano-installer/issues)报告。
+安全漏洞遵循[安全政策](https://github.com/nick2781/nano-installer/blob/main/SECURITY.md)中的私密报告渠道。

@@ -4,6 +4,7 @@ import nimbus, {
   defineConfig as defineNimbusConfig,
 } from "@cloudflare/nimbus-docs";
 import { tableScroll } from "@cloudflare/nimbus-docs/markdown";
+import type { SidebarConfigItem } from "@cloudflare/nimbus-docs/types";
 
 // One section list per language. The English groups list primary-collection
 // (`docs`) entry ids, which are the pages' paths inside the tree with a trailing
@@ -15,7 +16,14 @@ import { tableScroll } from "@cloudflare/nimbus-docs/markdown";
 // page from showing the other language's groups.
 const sidebarItems = [
   // ---- English (docs) ----
-  { label: "Overview", items: ["index", "quick-start"] },
+  {
+    label: "Get Started",
+    items: [
+      "index",
+      { label: "Quick start", link: "/quick-start", badge: { text: "Start here", variant: "success" } },
+      "guides/visual-builder",
+    ],
+  },
   {
     label: "Guides",
     items: [
@@ -24,15 +32,17 @@ const sidebarItems = [
       "guides/custom-steps",
       "guides/languages",
       "guides/plugins",
-      "guides/visual-builder",
       "guides/migrating-from-nsis",
+      "guides/distribution",
+      "guides/troubleshooting",
     ],
   },
   {
     label: "Reference",
     items: [
       "reference",
-      "reference/configuration",
+      { label: "Configuration", link: "/reference/configuration", badge: { text: "Reference", variant: "info" } },
+      "reference/cli",
       "reference/build-and-release",
       "reference/project-structure",
       "reference/windows-compatibility",
@@ -52,10 +62,11 @@ const sidebarItems = [
   },
   // ---- 中文 (zh-CN) ----
   {
-    label: "总览",
+    label: "开始使用",
     items: [
-      { label: "中文文档", link: "/zh-CN/" },
-      { label: "快速开始", link: "/zh-CN/quick-start" },
+      { label: "概览", link: "/zh-CN/" },
+      { label: "快速开始", link: "/zh-CN/quick-start", badge: { text: "从这里开始", variant: "success" } },
+      { label: "可视化构建", link: "/zh-CN/guides/visual-builder" },
     ],
   },
   {
@@ -66,15 +77,17 @@ const sidebarItems = [
       { label: "自定义安装与卸载步骤", link: "/zh-CN/guides/custom-steps" },
       { label: "多语言", link: "/zh-CN/guides/languages" },
       { label: "插件 ABI", link: "/zh-CN/guides/plugins" },
-      { label: "可视化构建", link: "/zh-CN/guides/visual-builder" },
       { label: "从 NSIS 迁移", link: "/zh-CN/guides/migrating-from-nsis" },
+      { label: "发布你的产品", link: "/zh-CN/guides/distribution" },
+      { label: "故障排查", link: "/zh-CN/guides/troubleshooting" },
     ],
   },
   {
     label: "参考",
     items: [
       { label: "参考", link: "/zh-CN/reference" },
-      { label: "配置参考", link: "/zh-CN/reference/configuration" },
+      { label: "配置参考", link: "/zh-CN/reference/configuration", badge: { text: "参考", variant: "info" } },
+      { label: "命令行参考", link: "/zh-CN/reference/cli" },
       { label: "构建与发布", link: "/zh-CN/reference/build-and-release" },
       { label: "项目结构", link: "/zh-CN/reference/project-structure" },
       { label: "Windows 兼容性", link: "/zh-CN/reference/windows-compatibility" },
@@ -92,7 +105,7 @@ const sidebarItems = [
       { label: "给 agent 的文档地图", link: "/zh-CN/project/agents" },
     ],
   },
-];
+] satisfies SidebarConfigItem[];
 
 // Where the site is served. The redirect destinations are composed from it, and
 // `site` below carries the same URL: the repository's own audits read that line
@@ -160,7 +173,7 @@ const nimbusConfig = defineNimbusConfig({
   description:
     "Put your configuration, artwork and application files in a project folder, and Nano Installer builds them into one Windows installer",
   locale: "en",
-  github: null,
+  github: "https://github.com/nick2781/nano-installer",
   socialImageAlt: "Nano Installer documentation preview",
   sidebar: {
     items: sidebarItems,

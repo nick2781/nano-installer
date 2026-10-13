@@ -1,91 +1,82 @@
 ---
-title: English documentation
-description: One folder of configuration, artwork and application files becomes one Windows setup `.exe` that installs your product on a double-click.
+title: Nano Installer
+description: Build a self-contained Windows installer from configuration, XML layouts and your application files.
 sidebar:
   order: 100
 ---
 
-<p align="center"><img src="/nano-installer/assets/nano-technology.png" width="48" height="48" align="texttop" alt="Nano Installer icon" /> Nano Installer</p>
-
-<p align="center"><a href="https://github.com/nick2781/nano-installer/actions/workflows/ci.yml"><img src="https://github.com/nick2781/nano-installer/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status" /></a></p>
-
-You ship one `.exe`, and a double-click installs your product. Keep the configuration, the artwork and
-your application files in one folder, and Nano Installer builds that folder into a single Windows setup:
-the icon, the pages and the wording are yours, and the machine you install on needs nothing else
-installed first.
-
-<Banner
-  variant="caution"
-  content={`<strong>Status:</strong> Ready to build and ship with. Setups and MSI packages carry no signature, \
-so Windows warns about an unknown publisher; sign them in your own pipeline before you distribute \
-publicly. <strong>Requires Windows 7 SP1 x64 or later.</strong> What a setup calls is in \
-<a href="/nano-installer/reference/windows-compatibility/">Windows compatibility</a>, and item-by-item status is in \
-<a href="/nano-installer/project/status/">production status</a>.`}
-/>
-
-<Frame>
-<img src="https://github.com/nick2781/nano-installer/raw/main/assets/setup-welcome-en-US.png" alt="The first page of a setup built from the TapTap example" width="640" />
-</Frame>
-
-This is the first page of `examples/TapTap`, built and photographed by
-`scripts/capture_setup_snapshots.ps1`. The runtime drew it, so it is not a mock-up.
-
-## What you get
-
-| | |
-| --- | --- |
-| One file to ship | A single setup `.exe` with your icon, version info and branding |
-| A clean machine | No runtime to install and no framework: the setup carries what it needs |
-| Your pages | XML layouts with your own backgrounds and buttons |
-| Eleven UI languages | Eleven built in, and one JSON file adds another |
-| Progress and finish pages | The progress page names the current step, and the finish page can start what it installed |
-| Upgrade, rollback, update packages | Re-run to upgrade in place, and a failed step rolls back; `--delta-from` ships only what changed |
-| Uninstall | Takes back what it wrote, and user data stays by default |
-| Administrator rights | Asked of Windows only when the project says so |
-| Scripts and plugins | Install and uninstall steps in Rhai, and plugins as DLLs built against [`include/nano_plugin.h`](/guides/plugins/) |
-| Screen readers | The page, the focus, typed text and live progress are announced, over MSAA as well as `IDispatch` |
-| GUI or command line | The Windows 10+ visual builder, or the same engine driven from CI |
-| Also a package | `--msi` wraps the setup for an estate that deploys through Windows Installer |
+Nano Installer turns a product project into a single setup `.exe`. You define the product,
+pages and installation behavior; the builder bundles your application with a native Win32 runtime.
+Users can install, upgrade and uninstall without downloading an installer framework.
 
 ## Start
 
-Take the builder and the three runtimes from the
-[latest release](https://github.com/nick2781/nano-installer/releases/latest); the builder looks for the
-runtimes beside itself. Then point it at a project folder:
+<CardGrid>
+  <LinkCard title="Quick start" description="Create a minimal project and build your first installer." href="/quick-start/" icon="ph:rocket-launch" />
+  <LinkCard title="Visual builder" description="Configure and preview a project on Windows 10 or later." href="/guides/visual-builder/" icon="ph:desktop" />
+  <LinkCard title="Configuration reference" description="Look up product settings, payloads and deployment options." href="/reference/configuration/" icon="ph:sliders-horizontal" />
+  <LinkCard title="Distribute your product" description="Sign the final files and complete release acceptance." href="/guides/distribution/" icon="ph:package" />
+</CardGrid>
+
+Build a project from the command line:
 
 ```powershell
 .\nano-installer-native-x64.exe build --project C:\path\to\my-project
 ```
 
-Then follow the [quick start](/quick-start/) to make your first setup and try it in a VM, or drive the
-same engine from the [visual builder](/guides/visual-builder/).
+<Aside type="note" title="Windows requirements">
+The CLI and generated installers support **Windows 7 SP1 x64 and later**. The GUI requires
+Windows 10 or later. All published executables use the same x64 build target; see
+[Windows compatibility](/reference/windows-compatibility/) for the runtime requirements.
+</Aside>
 
-Building the tools from source is for contributors; see [build and release](/reference/build-and-release/).
+## What you get
+
+| Capability | Use it for | Read next |
+| --- | --- | --- |
+| ZIP and 7z payloads | Ship application files in one self-contained setup | [Configuration](/reference/configuration/) |
+| Branded native pages | Define images, controls, actions and DPI scaling in XML | [Page layout](/guides/page-layout/) |
+| Localization | Ship translated UI text in UTF-8 JSON files | [Languages](/guides/languages/) |
+| Upgrade and rollback | Replace an installed version and recover after a failed step | [Production status](/project/status/) |
+| Delta packages | Ship changed files against a verified installed base | [Command line](/reference/cli/) |
+| Uninstall and user data | Remove recorded files and preserve user data by default | [Configuration](/reference/configuration/) |
+| Scripts and plugins | Add Rhai steps and DLLs through the versioned C ABI | [Custom steps](/guides/custom-steps/), [Plugin ABI](/guides/plugins/) |
+| Silent installation and MSI | Integrate with CI and managed deployment | [Distribution](/guides/distribution/) |
 
 ## Guides
 
-<CardGrid>
-<LinkCard title="Quick start" description="Build your first setup, then try it in a VM" href="/quick-start/" />
-<LinkCard title="Visual builder" description="The Windows 10+ app you build setups with" href="/guides/visual-builder/" />
-<LinkCard title="Configuration" description="Product identity, install behaviour, output names" href="/reference/configuration/" />
-<LinkCard title="Page layout" description="Pages, controls, flow layout, links, actions" href="/guides/page-layout/" />
-<LinkCard title="Languages" description="Shipping translated installers" href="/guides/languages/" />
-<LinkCard title="Custom steps" description="Install/uninstall logic in Rhai" href="/guides/custom-steps/" />
-<LinkCard title="Plugin ABI" description="The header a third-party DLL is built against, and what the host lends it" href="/guides/plugins/" />
-<LinkCard title="Migrating from NSIS" description="What maps onto what, and what is refused on purpose" href="/guides/migrating-from-nsis/" />
-<LinkCard title="Production status" description="What works today and what blocks a release" href="/project/status/" />
-</CardGrid>
+1. [Build a first setup](/quick-start/) and test installation and removal in a clean VM.
+2. [Customize the pages](/guides/page-layout/) and [add languages](/guides/languages/).
+3. [Add installation steps](/guides/custom-steps/) when configuration alone does not cover your product.
+4. [Sign and validate your release](/guides/distribution/) before distribution.
+
+Moving an existing product? The [NSIS migration guide](/guides/migrating-from-nsis/) maps
+instructions and plugins to configuration, layout and script APIs. For a build or deployment
+failure, start with [troubleshooting](/guides/troubleshooting/).
 
 ## Technical notes
 
-<CardGrid>
-<LinkCard title="Architecture" href="/project/architecture/" />
-<LinkCard title="Project layout" href="/reference/project-structure/" />
-<LinkCard title="Windows compatibility" href="/reference/windows-compatibility/" />
-<LinkCard title="Build and release" href="/reference/build-and-release/" />
-<LinkCard title="Test plan" href="/project/testing/" />
-</CardGrid>
+The [production status](/project/status/) records verified behavior and remaining gaps.
+Windows 7 installation, upgrade and uninstall have been exercised in a VM, but the framework's
+tests do not replace acceptance of your own payload, scripts and plugins. Repository releases
+are unsigned; your product pipeline can sign the setup, embedded uninstaller and MSI through
+the `finalize` hooks. See [distribution](/guides/distribution/) for the checklist.
 
----
+Read [architecture](/project/architecture/) for the bundle and runtime boundaries,
+[test coverage](/project/coverage/) for the evidence behind each behavior, and
+[build and release](/reference/build-and-release/) to contribute to the framework.
 
-Read this in Chinese: [中文文档](/zh-CN/).
+## Example installer
+
+<Frame>
+<img src="/nano-installer/assets/setup-welcome-en-US.png" alt="English welcome page rendered by the TapTap example installer" width="720" height="450" loading="lazy" />
+</Frame>
+
+This is a runtime capture of `examples/TapTap`, produced by `scripts/capture_setup_snapshots.ps1`.
+The example's branding belongs to 易玩（上海）网络科技有限公司 and is not MIT-licensed.
+Use your own product resources when creating a project.
+
+[Source](https://github.com/nick2781/nano-installer) ·
+[Releases](https://github.com/nick2781/nano-installer/releases/latest) ·
+[MIT license](https://github.com/nick2781/nano-installer/blob/main/LICENSE) ·
+[Documentation map](/project/agents/)
