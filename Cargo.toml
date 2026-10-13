@@ -32,7 +32,7 @@ tempfile = "3.8"
 winres = "0.1"
 image = { version = "0.25.8", default-features = false, features = ["png"] }
 sevenz-rust = { version = "0.6.1", default-features = false }
-zip = { version = "0.6.6", default-features = false, features = ["deflate"] }
+zip = { version = "9.0.0", default-features = false, features = ["deflate"] }
 rhai = { version = "1.24", default-features = false, features = ["std", "only_i64", "no_module", "no_custom_syntax", "no_optimize", "no_time"] }
 eframe = { version = "0.35.0", default-features = false, features = ["default_fonts", "glow"] }
 rfd = { version = "0.17.2", default-features = false }
