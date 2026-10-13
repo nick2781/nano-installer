@@ -1500,7 +1500,8 @@ pub fn build_project_with_progress(
     let mut update: Option<UpdateSummary> = None;
     let mut update_plan: Option<Vec<u8>> = None;
     let mut update_archive: Option<PathBuf> = None;
-    let mut update_scratch: Option<ScratchDirectory> = None;
+    // Keep the delta archive alive until packing is complete.
+    let mut _update_scratch: Option<ScratchDirectory> = None;
     if let Some(from) = request.delta_from.as_deref() {
         if config["components"]["items"]
             .as_array()
@@ -1536,7 +1537,7 @@ pub fn build_project_with_progress(
         update = Some(built);
         update_plan = Some(plan.to_json_bytes()?);
         update_archive = Some(archive);
-        update_scratch = Some(scratch);
+        _update_scratch = Some(scratch);
         // What this setup carries is the update archive, and the runtime it
         // embeds is the one that unpacks that archive.
         summary.payload_format = PayloadFormat::Zip;

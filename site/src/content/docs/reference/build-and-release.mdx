@@ -19,7 +19,7 @@ a setup or a runtime.
 .\scripts\build.ps1
 ```
 
-Release builds use the pinned `nightly-2025-11-08` toolchain with `rust-src`, `-Z build-std`, and
+Release builds use the pinned `nightly-2026-02-25` toolchain with `rust-src`, `-Z build-std`, and
 `panic=abort` against a static CRT. After a build, the script unpacks real ZIP and 7z archives with both
 runtimes and compares SHA-256 hashes; `scripts\smoke_backends.ps1` runs the same check on its own.
 
@@ -53,8 +53,8 @@ The runtimes ship without product resources, because the builder injects icons, 
 application manifest per project.
 
 The runtime is embedded in every setup, so its size is a release metric too. On this machine the three
-stubs are 1.47-1.58 MiB and the builder is 642 KiB after the ZIP 9 upgrade, which is why the `release` profile is size-first
-(`opt-level = "z"`).
+stubs are 1.44-1.55 MiB and the builder is 616 KiB with ZIP 9 and the pinned Rust 1.95 nightly, which is
+why the `release` profile is size-first (`opt-level = "z"`).
 
 The build adds the linker's `/OPT:ICF=3`, because the MSVC linker does not fold at that level by
 default. It also passes `panic = "immediate-abort"`, a nightly flag: a panic stops there instead of

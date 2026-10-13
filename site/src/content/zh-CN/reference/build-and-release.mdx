@@ -17,7 +17,7 @@ CLI、运行时和生成的每个安装包都用 `x86_64-win7-windows-msvc`，�
 .\scripts\build.ps1
 ```
 
-正式构建固定用 `nightly-2025-11-08` 工具链、`rust-src`、`-Z build-std`、`panic=abort` 和静态 CRT。
+正式构建固定用 `nightly-2026-02-25` 工具链、`rust-src`、`-Z build-std`、`panic=abort` 和静态 CRT。
 构建完成后，脚本用两个运行时解开真实的 ZIP 和 7z 归档，再比对 SHA-256；
 `scripts\smoke_backends.ps1` 也能单独跑同一份检查。
 
@@ -46,8 +46,8 @@ target/release/
 
 运行时不含产品资源，因为图标、版本信息和应用程序清单文件都由构建器按项目注入。
 
-运行时会被嵌进每个安装包，所以它的体积也是发布指标。升级到 ZIP 9 后，本机实测三个运行时 1.47-1.58 MiB，
-构建器 642 KiB，`release` profile 正是为了这个才选了 `opt-level = "z"`。
+运行时会被嵌进每个安装包，所以它的体积也是发布指标。使用 ZIP 9 和固定的 Rust 1.95 nightly 后，本机实测
+三个运行时 1.44-1.55 MiB，构建器 616 KiB，`release` profile 正是为了这个才选了 `opt-level = "z"`。
 
 构建时还加了链接器的 `/OPT:ICF=3`，因为 MSVC 链接器默认不做这一级等价折叠。
 `panic = "immediate-abort"` 则是 nightly 参数：panic 直接中止，不拼一条没人读的消息，Rhai 的
