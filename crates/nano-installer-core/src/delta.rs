@@ -351,8 +351,8 @@ fn write_archive(root: &Path, files: &[String], target: &Path) -> Result<()> {
     let file = std::fs::File::create(target)
         .with_context(|| format!("failed to create {}", target.display()))?;
     let mut archive = zip::ZipWriter::new(std::io::BufWriter::new(file));
-    let options =
-        zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
     for name in files {
         let source = root.join(relative_path(name));
         archive

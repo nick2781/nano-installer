@@ -46,8 +46,8 @@ target/release/
 
 运行时不含产品资源，因为图标、版本信息和应用程序清单文件都由构建器按项目注入。
 
-运行时会被嵌进每个安装包，所以它的体积也是发布指标。本机实测三个运行时 1.47-1.54 MB，构建器
-583 KB，`release` profile 正是为了这个才选了 `opt-level = "z"`。
+运行时会被嵌进每个安装包，所以它的体积也是发布指标。升级到 ZIP 9 后，本机实测三个运行时 1.47-1.58 MiB，
+构建器 642 KiB，`release` profile 正是为了这个才选了 `opt-level = "z"`。
 
 构建时还加了链接器的 `/OPT:ICF=3`，因为 MSVC 链接器默认不做这一级等价折叠。
 `panic = "immediate-abort"` 则是 nightly 参数：panic 直接中止，不拼一条没人读的消息，Rhai 的

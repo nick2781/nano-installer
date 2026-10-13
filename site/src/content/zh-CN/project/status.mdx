@@ -366,8 +366,9 @@ SignPath Foundation（不需要个人身份认证，私钥保存在他们的 HSM
 - MSI 包同样没有签名，SmartScreen 仍会提示「未知发布者」。要装给整台机器，需要管理员权限的会话。静默
   安装时，Windows Installer 会在 `/qn` 下直接拒绝，而不是弹管理员权限提示。
 
-- 运行时内嵌 Rhai 引擎，引擎是每个运行时体积的大头。不含它时约 0.57-0.66 MB，含它之后本机实测
-  1.47-1.54 MB：卸载程序 1.47 MB、ZIP 那个 1.52 MB、LZMA 那个 1.54 MB。此前是 2.02-2.11 MB，那次精简按
+- 运行时内嵌 Rhai 引擎，引擎是每个运行时体积的大头。不含它时约 0.57-0.66 MB。含它并升级到 ZIP 9 后，
+  当前实测为 1.47-1.58 MiB：卸载程序 1.47 MiB、ZIP 运行时 1.58 MiB、LZMA 运行时 1.54 MiB。构建器当前为
+  642 KiB。运行时此前是 2.02-2.11 MB，那次精简按
   逐项实测取舍：`opt-level = "z"` 约 −350 KB。链接器的 `/OPT:ICF=3` 约 −170 KB，MSVC 链接器默认不做这一
   级等价折叠。`panic = "immediate-abort"` 约 −170 KB。Rhai 的 `no_optimize` 和 `no_time` 合计约 −45 KB，
   脚本 API 两者都到不了。同一批参数把构建器从 702 KB 压到 583 KB。可视化构建器另有 `gui` profile，因为

@@ -17,9 +17,9 @@ What you cannot trust yet is in one place. [What is still not covered by an auto
 case](#what-is-still-not-covered-by-an-automated-case) lists every gap, and says why each one is still
 open.
 
-`.\scripts\run_tests.ps1` runs 396 test cases, one command per target: 282 in the core library, 75 that
+`.\scripts\run_tests.ps1` runs 397 test cases, one command per target: 282 in the core library, 75 that
 build a real setup and run it, 5 that read a project the way the builder does, 32 in the visual builder,
-and 2 in the extraction runtimes. Every target has a deadline of its own, so one that stops answering is
+and 3 in the extraction runtimes. Every target has a deadline of its own, so one that stops answering is
 named by the command that never ended, and the suite never stops silently.
 
 The setup-level cases need real runtime executables, which `.\scripts\run_e2e_setup.ps1` builds before it
@@ -39,7 +39,7 @@ Not every layer reaches every claim. This table says what each one proves, and w
   The card a question is drawn on replaces the page with its two answers, and the wizard is painted with the machine's high-contrast scheme rather than the colours its pages declare. The language menu's arrow keys work with Enter and Escape, and so does the folder picker. The dependencies a project declares are exercised: one the machine is missing is installed, one it already has is left alone, one that cannot be installed stops the run, and a download is checked against the digest the project recorded. The service a script installed is really on the machine, and gone again with the uninstall. The installer package a build wraps the setup in is installed and removed with `msiexec`, replaces an older release, replaces the release it re-releases when the same day is released again, and refuses a project that cannot run windowlessly. And the log a silent run writes goes to the file it was told to, and names itself to its caller when the run fails | the two windows an input method draws itself; which field a directory chosen in the shell's folder dialog is written to; the cursor shape on a session that is showing no pointer, where that test case prints its own skip; and Shift+Tab with a held Shift, which a posted key message cannot carry -- that direction is held by the core library's walk test case instead |
 | Project inspection | 5 | the summary and the warning list the builder shows before a build | |
 | Visual builder | 32 | the window's own state, parameters -- including the package it asks the build for -- log and warnings | clicking the real controls |
-| Extraction runtimes | 2 | a broken archive is refused, and so is an unsafe path inside one | extracting an archive that is sound: the setup-level cases run a real runtime over real application files |
+| Extraction runtimes | 3 | a broken archive is refused, and so is an unsafe path inside one; ZIP entries cannot use parent traversal, absolute paths or drive prefixes to escape the destination | extracting an archive that is sound: the setup-level cases run a real runtime over real application files |
 | Snapshots | 6 pages | what every page of the example actually looks like, measured rather than judged | whether a glyph reads correctly, and what happens once the flow reaches a page |
 
 ## Configuration
@@ -76,7 +76,7 @@ Each row names a setting or an area of behaviour, together with the cases that h
 | `ui.dialog_layout` | `a_project_without_a_dialog_layout_still_opens`, `a_dialog_is_drawn_over_the_page_and_centred`, `a_question_a_script_asks_is_drawn_with_both_of_its_answers`, `a_script_dialog_is_drawn_in_the_wizard` |
 | `uninstall.data_paths` | `only_expands_data_paths_inside_a_user_profile`, `ignores_data_paths_when_the_project_declares_none`, `uninstalling_below_appdata_removes_the_data_only_when_the_box_is_cleared` |
 | `advanced.silent_mode_support`, `advanced.uninstall_mode_support` | `a_project_without_silent_support_refuses_a_windowless_install`, `a_project_without_silent_support_refuses_a_windowless_uninstall`, `a_project_that_did_not_opt_in_refuses_a_windowless_run` |
-| application file format detection | `the_payload_format_selects_the_runtime_that_gets_embedded`, `zip_backend_rejects_invalid_archive`, `rejects_unsafe_7z_paths` |
+| application file format detection | `the_payload_format_selects_the_runtime_that_gets_embedded`, `zip_backend_rejects_invalid_archive`, `zip_backend_rejects_paths_outside_destination`, `rejects_unsafe_7z_paths` |
 | build warnings | `an_asset_without_its_density_pair_is_reported`, `a_translation_missing_page_text_is_reported`, `a_supported_locale_without_a_file_is_reported`, `inspects_taptap_project_without_dpi_warnings`, `a_validation_message_the_page_asks_for_is_reported` |
 | `installer_config.json` keys this build does not read | `accepts_a_configuration_of_read_settings`, `leaves_a_section_of_the_projects_own_alone`, `refuses_a_setting_that_does_nothing`, `refuses_a_misspelled_setting`, `refuses_a_section_that_does_nothing`, `refuses_an_unknown_page_key`, `refuses_a_page_role_the_runtime_does_not_run`, `refuses_two_pages_claiming_one_role`, `reports_every_problem_at_once`, `the_example_project_matches_the_schema`, `the_migrated_example_matches_the_schema` |
 
@@ -193,7 +193,7 @@ the setup-level cases prove that the `scripts` directory and the tools directory
 | the log keeps every line, in order, in English | `the_log_keeps_the_lines_the_view_scrolled_past`, `build_messages_reach_the_log_in_the_order_the_worker_sent_them`, `log_commands_are_english_when_interface_is_chinese`, `log_severity_colors_preserve_selectable_text`, `log_timestamp_has_fixed_width` |
 | menus, panels, sidebar paths, warnings | `menu_labels_stay_on_one_line_in_both_languages`, `the_panels_draw_in_every_state_they_can_be_in`, `sidebar_paths_keep_drive_and_relevant_tail`, `inspection_findings_reach_the_sidebar_and_the_log` |
 | one build at a time, and honest sizes and progress | `a_running_build_refuses_a_second_one`, `build_progress_is_monotonic`, `formats_gui_sizes`, `inspection_time_is_explicit_and_stable` |
-| icons, argument quoting, archive rejection | `window_icon_uses_the_brand_asset`, `command_arguments_are_quoted`, `rejects_unsafe_7z_paths`, `zip_backend_rejects_invalid_archive` |
+| icons, argument quoting, archive rejection | `window_icon_uses_the_brand_asset`, `command_arguments_are_quoted`, `rejects_unsafe_7z_paths`, `zip_backend_rejects_invalid_archive`, `zip_backend_rejects_paths_outside_destination` |
 | a broken project file | `a_broken_project_file_is_reported_to_the_user` |
 
 ## Installer packages

@@ -417,3 +417,4 @@ Rust doc comment，再退回用例名。
 | `window_icon_uses_the_brand_asset` | 构建器窗口的图标来自仓库里的品牌 PNG，解码成 512×512 的 RGBA 位图。 |
 | `word_keys_stop_at_the_boundaries_they_delete` | Ctrl+Backspace 和 Ctrl+Delete 在词的边界停下。一次删一个名字或一段分隔符。分隔符一次只吃掉自己，末尾的空白先跳过。光标到了头或尾就不再删。 |
 | `zip_backend_rejects_invalid_archive` | zip 后端遇到不是压缩包的文件时解压失败，而不是写出半份东西。 |
+| `zip_backend_rejects_paths_outside_destination` | ZIP 后端在写文件之前拒绝越过目标目录的上级路径、绝对路径和盘符前缀。用例覆盖两种斜线写法，目标目录内外都没有条目被写出。 |
