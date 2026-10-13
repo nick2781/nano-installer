@@ -201,6 +201,7 @@
 .docs-content :where(th:not([class])),
 .docs-content :where(td:not([class])) {
   padding: 0.625rem 0.75rem;
+  min-width: 6rem;
   text-align: left;
   vertical-align: top;
   border-bottom: 1px solid var(--nb-border);

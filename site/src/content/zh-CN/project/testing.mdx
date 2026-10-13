@@ -230,7 +230,9 @@ PNG 与 `manifest.json` 落在 `target/setup-snapshots` 下；每张快照都拿
 
 ## 目前无法通过的生产用例
 
-- Authenticode 签名链。
+- 仓库没有分发通过公开可信 Authenticode 证书签名的产物。产品流水线需要提供该证书和时间戳
+  服务；签名钩子和测试证书验签已经运行过，见[签名证据](/zh-CN/project/status/#签名)。
 
-升级、失败回滚、快捷方式、自启动、数据保留选项、页面切换与进度显示都已经做好，只是还没在真实的
-Windows 7 虚拟机上实机跑过。
+Windows 7 SP1 x64 虚拟机运行已覆盖安装、升级、卸载和静默部署，但不能证明全部无障碍、
+显示器、服务和依赖下载路径。具体观察与空白见[当前生产状态](/zh-CN/project/status/)，
+产品自己的验收安排见[发布你的产品](/zh-CN/guides/distribution/)。

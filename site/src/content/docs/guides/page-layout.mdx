@@ -5,10 +5,11 @@ sidebar:
   order: 400
 ---
 
-You list install pages in `wizard.pages` and uninstall pages in `wizard.uninstall_pages`. While a
-task runs, the wizard reports on the second page of that list and switches to the last one when the
-task ends. A list that holds a single page stays there instead, reporting the outcome in a message
-box.
+List install pages in `wizard.pages` and uninstall pages in `wizard.uninstall_pages`. Explicitly
+assign `role: "progress"` and `role: "finish"` when you want to choose the task and completion pages.
+Without roles, the wizard uses the second page for progress and the last page for completion.
+A single-page list reports its outcome in a message box. The [quick start](/quick-start/) contains
+complete install and uninstall layouts to build from.
 
 Layouts are mostly absolute positions, with flow containers where you need them. Only the attributes
 marked Supported below do anything.

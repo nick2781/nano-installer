@@ -1,15 +1,21 @@
 ---
 title: Reference
-description: Lookup pages for the settings, the build and release path, where the files live, and the Windows surface the runtime uses.
+description: Look up configuration fields, command-line options, platform requirements and framework build rules.
 sidebar:
   order: 950
 ---
 
-This section is the lookup half of the documentation: every setting in <code>installer_config.json</code>, how the tools and a release are built and published, where the crates, the project folders and the site sit, and the Windows surface the runtime relies on.
+Use these pages to check a field, argument or platform requirement while working on a project.
+For a complete first build, follow the [quick start](/quick-start/).
 
 <CardGrid>
-<LinkCard title="Configuration reference" description="Every setting in installer_config.json, its type and its default." href="/reference/configuration/" />
-<LinkCard title="Build and release" description="How the tools and a release are built, checked and published." href="/reference/build-and-release/" />
-<LinkCard title="Project layout" description="Where the crates, the project folders and the site sit." href="/reference/project-structure/" />
-<LinkCard title="Windows compatibility" description="The APIs the runtime uses, and how to repeat the acceptance run." href="/reference/windows-compatibility/" />
+  <LinkCard title="Configuration reference" description="Fields accepted by installer_config.json and their behavior." href="/reference/configuration/" icon="ph:sliders-horizontal" />
+  <LinkCard title="Command line" description="Arguments for building, updating and deploying from scripts." href="/reference/cli/" icon="ph:terminal-window" />
+  <LinkCard title="Windows compatibility" description="Supported Windows versions and system APIs." href="/reference/windows-compatibility/" icon="ph:desktop" />
+  <LinkCard title="Project layout" description="Product inputs and the framework's repository modules." href="/reference/project-structure/" icon="ph:folders" />
+  <LinkCard title="Build and release" description="Toolchains, checks and framework release rules." href="/reference/build-and-release/" icon="ph:git-branch" />
 </CardGrid>
+
+Product signing and acceptance are in [distribution](/guides/distribution/); framework release
+rules belong to the build reference. For XML properties, Rhai functions and native DLL contracts,
+read [page layout](/guides/page-layout/), [custom steps](/guides/custom-steps/) and [plugin ABI](/guides/plugins/).

@@ -29,6 +29,9 @@
 | --- | --- | --- |
 | 这是什么，现在能不能拿来发布？ | [README](../../site/src/content/docs/index.mdx), [Production status](../../site/src/content/docs/project/status.mdx) | [中文文档](../../site/src/content/zh-CN/index.mdx)、[当前生产状态](../../site/src/content/zh-CN/project/status.mdx) |
 | 怎么装出第一个安装包？ | [Quick start](../../site/src/content/docs/quick-start.mdx) | [快速开始](../../site/src/content/zh-CN/quick-start.mdx) |
+| 构建和部署支持哪些参数？ | [Command line](../../site/src/content/docs/reference/cli.mdx) | [命令行参考](../../site/src/content/zh-CN/reference/cli.mdx) |
+| 产品如何签名、部署和验收？ | [Distribution](../../site/src/content/docs/guides/distribution.mdx) | [发布你的产品](../../site/src/content/zh-CN/guides/distribution.mdx) |
+| 构建或安装失败时从哪里开始？ | [Troubleshooting](../../site/src/content/docs/guides/troubleshooting.mdx) | [故障排查](../../site/src/content/zh-CN/guides/troubleshooting.mdx) |
 | 有哪些设置，各自改什么？ | [Configuration reference](../../site/src/content/docs/reference/configuration.mdx) | [配置参考](../../site/src/content/zh-CN/reference/configuration.mdx) |
 | 页面和控件怎么写？ | [Page layout](../../site/src/content/docs/guides/page-layout.mdx) | [页面布局](../../site/src/content/zh-CN/guides/page-layout.mdx) |
 | 怎么增加或修改一种语言？ | [Languages](../../site/src/content/docs/guides/languages.mdx) | [多语言](../../site/src/content/zh-CN/guides/languages.mdx) |
