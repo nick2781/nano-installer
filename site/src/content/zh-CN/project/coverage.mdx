@@ -16,8 +16,8 @@ sidebar:
 还信不过的部分集中在一处：[目前仍没有被自动化用例覆盖的部分](#目前仍没有被自动化用例覆盖的部分)
 逐条列出这些空白，并说明各自为什么还空着。
 
-`.\scripts\run_tests.ps1` 跑 396 条测试用例，一条命令一个 target：核心库 282 条，真构建并运行安装包的
-75 条，按构建器的方式读工程的 5 条，可视化构建器 32 条，解压运行时 2 条。每个 target 都有自己的期限，
+`.\scripts\run_tests.ps1` 跑 397 条测试用例，一条命令一个 target：核心库 282 条，真构建并运行安装包的
+75 条，按构建器的方式读工程的 5 条，可视化构建器 32 条，解压运行时 3 条。每个 target 都有自己的期限，
 所以停住的那个会被「没结束的那条命令」点名，整个套件不会悄悄停在那里。
 
 安装包级的测试用例要真实的运行时可执行文件，`.\scripts\run_e2e_setup.ps1` 先把它们构建出来再跑，并把
@@ -36,7 +36,7 @@ sidebar:
   提问卡片顶掉页面，只留下两个答案；开着高对比时，向导按系统配色画，不按布局声明的颜色。语言菜单的上下键与 Enter/Escape、选目录对话框也在此列。工程声明的依赖真的被问了一遍：缺的装上，已经有的不再装一遍，装不上的让整次安装停下，下载来的程序还要对得上工程记下的哈希。脚本装上的服务在机器上确实存在，随卸载消失。把做完的安装包再封进去的那个 MSI 包也一样：`msiexec` 从它把产品装上、再把它卸掉，升级更早的版本，同一天再发一版时换掉的正是它重发的那一份，而跑不了静默运行的工程会被拒绝出包。最后，一次静默运行写下的日志会写到点名的文件，失败时把它的路径交回给调用方 | 输入法自己画出来的那两个窗口；在外壳的选目录对话框里选定一个目录之后会写进哪个输入框；不显示指针的会话上光标长什么样（那里这条测试用例打印自己的跳过理由）；按住 Shift 的 Shift+Tab：窗口测试用例发的是按键消息，消息带不上修饰键，所以往回走那一半由核心库那条走位测试用例守着 |
 | 工程检查 | 5 | 构建之前窗口会显示的那份摘要与告警列表 | |
 | 可视化构建器 | 32 | 窗口自己的状态、参数（含它替这次构建要的 MSI 包）、日志和告警 | 真的去点界面上的控件 |
-| 解压运行时 | 2 | 坏归档会被拒绝，而归档里不安全的路径同样过不去 | 解压一个完好的归档：安装包级的测试用例用真实运行时解真实应用文件 |
+| 解压运行时 | 3 | 坏归档会被拒绝，而归档里不安全的路径同样过不去；ZIP 条目不能用上级路径、绝对路径或盘符前缀越过目标目录 | 解压一个完好的归档：安装包级的测试用例用真实运行时解真实应用文件 |
 | 截图快照 | 6 页 | 示例工程每一页实际长什么样，这是量出来的，不是看出来的 | 字形本身读不读得通；流程走到那一页时会发生什么 |
 
 ## 配置项
@@ -73,7 +73,7 @@ sidebar:
 | `ui.dialog_layout` | `a_project_without_a_dialog_layout_still_opens`、`a_dialog_is_drawn_over_the_page_and_centred`、`a_question_a_script_asks_is_drawn_with_both_of_its_answers`、`a_script_dialog_is_drawn_in_the_wizard` |
 | `uninstall.data_paths` | `only_expands_data_paths_inside_a_user_profile`、`ignores_data_paths_when_the_project_declares_none`、`uninstalling_below_appdata_removes_the_data_only_when_the_box_is_cleared` |
 | `advanced.silent_mode_support`、`advanced.uninstall_mode_support` | `a_project_without_silent_support_refuses_a_windowless_install`、`a_project_without_silent_support_refuses_a_windowless_uninstall`、`a_project_that_did_not_opt_in_refuses_a_windowless_run` |
-| 应用文件格式判定 | `the_payload_format_selects_the_runtime_that_gets_embedded`、`zip_backend_rejects_invalid_archive`、`rejects_unsafe_7z_paths` |
+| 应用文件格式判定 | `the_payload_format_selects_the_runtime_that_gets_embedded`、`zip_backend_rejects_invalid_archive`、`zip_backend_rejects_paths_outside_destination`、`rejects_unsafe_7z_paths` |
 | `installer_config.json` 里这个构建器不读的键 | `accepts_a_configuration_of_read_settings`、`leaves_a_section_of_the_projects_own_alone`、`refuses_a_setting_that_does_nothing`、`refuses_a_misspelled_setting`、`refuses_a_section_that_does_nothing`、`refuses_an_unknown_page_key`、`refuses_a_page_role_the_runtime_does_not_run`、`refuses_two_pages_claiming_one_role`、`reports_every_problem_at_once`、`the_example_project_matches_the_schema`、`the_migrated_example_matches_the_schema` |
 | 构建告警 | `an_asset_without_its_density_pair_is_reported`、`a_translation_missing_page_text_is_reported`、`a_supported_locale_without_a_file_is_reported`、`inspects_taptap_project_without_dpi_warnings`、`a_validation_message_the_page_asks_for_is_reported` |
 
@@ -190,7 +190,7 @@ sidebar:
 | 日志不丢行、按顺序、构建文案固定英文 | `the_log_keeps_the_lines_the_view_scrolled_past`、`build_messages_reach_the_log_in_the_order_the_worker_sent_them`、`log_commands_are_english_when_interface_is_chinese`、`log_severity_colors_preserve_selectable_text`、`log_timestamp_has_fixed_width` |
 | 菜单、面板、侧栏路径和告警 | `menu_labels_stay_on_one_line_in_both_languages`、`the_panels_draw_in_every_state_they_can_be_in`、`sidebar_paths_keep_drive_and_relevant_tail`、`inspection_findings_reach_the_sidebar_and_the_log` |
 | 同一时间只跑一个构建，尺寸和进度如实 | `a_running_build_refuses_a_second_one`、`build_progress_is_monotonic`、`formats_gui_sizes`、`inspection_time_is_explicit_and_stable` |
-| 图标、参数引号、归档拒绝 | `window_icon_uses_the_brand_asset`、`command_arguments_are_quoted`、`rejects_unsafe_7z_paths`、`zip_backend_rejects_invalid_archive` |
+| 图标、参数引号、归档拒绝 | `window_icon_uses_the_brand_asset`、`command_arguments_are_quoted`、`rejects_unsafe_7z_paths`、`zip_backend_rejects_invalid_archive`、`zip_backend_rejects_paths_outside_destination` |
 | 坏掉的工程文件 | `a_broken_project_file_is_reported_to_the_user` |
 
 ## 安装包外的 MSI

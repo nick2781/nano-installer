@@ -53,7 +53,7 @@ The runtimes ship without product resources, because the builder injects icons, 
 application manifest per project.
 
 The runtime is embedded in every setup, so its size is a release metric too. On this machine the three
-stubs are 1.47-1.54 MB and the builder is 583 KB, which is why the `release` profile is size-first
+stubs are 1.47-1.58 MiB and the builder is 642 KiB after the ZIP 9 upgrade, which is why the `release` profile is size-first
 (`opt-level = "z"`).
 
 The build adds the linker's `/OPT:ICF=3`, because the MSVC linker does not fold at that level by
