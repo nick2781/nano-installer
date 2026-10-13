@@ -1,6 +1,6 @@
 param(
     [string]$Project,
-    [string]$Toolchain = "nightly-2025-11-08",
+    [string]$Toolchain = "nightly-2026-02-25",
     [string]$Output,
     # Also write the installer package an estate deploys around the setup.
     [switch]$Msi

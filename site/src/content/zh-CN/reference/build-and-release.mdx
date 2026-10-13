@@ -17,7 +17,7 @@ CLI、运行时和生成的每个安装包都用 `x86_64-win7-windows-msvc`，�
 .\scripts\build.ps1
 ```
 
-正式构建固定用 `nightly-2025-11-08` 工具链、`rust-src`、`-Z build-std`、`panic=abort` 和静态 CRT。
+正式构建固定用 `nightly-2026-02-25` 工具链、`rust-src`、`-Z build-std`、`panic=abort` 和静态 CRT。
 构建完成后，脚本用两个运行时解开真实的 ZIP 和 7z 归档，再比对 SHA-256；
 `scripts\smoke_backends.ps1` 也能单独跑同一份检查。
 
