@@ -1,17 +1,24 @@
 ---
 title: Production status
-description: What the one real run on the minimum supported system, Windows 7 SP1 x64, covered, what it did not reach, and what still blocks a release.
+description: Verified installation workflows, signing support, Windows 7 evidence and remaining acceptance gaps.
 sidebar:
   order: 200
 ---
 
-<Aside type="caution" title="Where this stands">
-**The run is done; the release is not.** Windows 7 SP1 x64 has been through one real run, and the facts
-and numbers are in [Verified](#verified). A release is still blocked, because neither the setup nor the
-uninstaller is signed (<Badge variant="warning" text="Unsigned" />), and the run left gaps that
-[Not covered](#not-covered) lists in full -- the screen reader was never actually heard, and the TLS 1.2
-dependency download was never reached.
+<Aside type="caution" title="Before using this in production">
+**Core workflows have been verified; each product still needs release acceptance.** Installation,
+upgrade and uninstall ran in a Windows 7 SP1 x64 VM. Repository artifacts are unsigned
+(<Badge variant="warning" text="Unsigned" />), while product signing hooks are implemented and tested.
+Complete [distribution](/guides/distribution/) for your product and review the
+[remaining gaps](#not-covered), including screen-reader audio and the Win7 TLS download path.
 </Aside>
+
+| Area | Current evidence | Your product's next step |
+| --- | --- | --- |
+| Build, install, upgrade and uninstall | Automated tests and a Windows 7 SP1 x64 VM run | Exercise your own payload and supported upgrade paths |
+| Product signing | Finalize hooks and signed setup/uninstaller verification | Supply a trusted certificate, timestamp and signing pipeline |
+| Windows baseline | PE import audits and the documented VM observations | Verify application, dependency and plugin compatibility |
+| Accessibility, DPI and downloads | Automated coverage with remaining real-machine gaps | Test the paths your product uses on representative machines |
 
 **Windows 7 SP1 x64 is the minimum these artifacts claim, and it has been through one real run.** The
 run used a setup the current builder produced, on a build 7601 virtual machine that was thrown away
@@ -258,9 +265,10 @@ it, and the two hooks described under [Signing](#signing) are where that pipelin
 
 ## Blocking a release
 
-1. Neither the setup nor the uninstaller has a code signature, so Windows warns about an unknown
-   publisher. The builder does not sign, and should not. The pipeline that publishes them signs,
-   through the `finalize.installer` and `finalize.uninstaller` hooks, see [Signing](#signing).
+1. Repository artifacts are unsigned, so Windows can warn about an unknown publisher. Before public
+   product distribution, connect your signing pipeline through `finalize.installer` and
+   `finalize.uninstaller`, and `finalize.package` when shipping MSI. The hooks are implemented;
+   the remaining work is supplying your product's certificate and release policy. See [Signing](#signing).
 
 The minimum supported version has been through a real run (see [Verified](#verified)). What that run
 did not cover is in the next section.
@@ -347,5 +355,5 @@ This section writes those gaps down, so none of them is left looking tested:
   means KB3140245 or a later update. Without it the download fails and says why rather than falling
   back to plain text. An http address is unaffected.
 
-The real-machine run on the minimum supported version is done. Once signing is in place, a product can
-plug in the way `examples/TapTap` does.
+Use this evidence to plan product acceptance. Signing and verification of your actual payload,
+scripts and plugins belong to your release pipeline; follow [distribution](/guides/distribution/).

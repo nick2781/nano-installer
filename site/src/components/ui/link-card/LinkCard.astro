@@ -14,20 +14,22 @@ interface Props extends HTMLAttributes<"a"> {
   title: string;
   description?: string;
   href: string;
+  icon?: string;
 }
 
-const { title, description, href, class: className, ...attrs } = Astro.props;
+const { title, description, href, icon, class: className, ...attrs } = Astro.props;
 ---
 
 <a
   href={href}
   class={cn(
-    "group flex items-center justify-between gap-3 rounded-lg bg-card p-5 shadow-sm ring ring-border no-underline text-inherit transition-all hover:shadow-default hover:ring-border-strong",
+    "group flex items-center gap-4 rounded-lg border border-border bg-card p-5 no-underline text-inherit transition-colors hover:border-border-strong hover:bg-accent",
     className,
   )}
   {...attrs}
 >
-  <div class="min-w-0">
+  {icon && <Icon name={icon} class="shrink-0 w-6 h-6 text-muted-foreground transition-colors group-hover:text-primary" />}
+  <div class="min-w-0 flex-1">
     <h3 class="m-0 text-base font-semibold leading-snug text-foreground transition-colors group-hover:text-primary">{title}</h3>
     {description && <p class="mt-1 text-sm leading-normal text-muted-foreground">{description}</p>}
   </div>

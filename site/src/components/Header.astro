@@ -7,7 +7,8 @@ import { ThemeToggle } from "./ui/theme-toggle";
 import SearchTrigger from "./ui/search/SearchTrigger.astro";
 import LanguageSwitch from "./LanguageSwitch.astro";
 import { config } from "virtual:nimbus/config";
-import { getSidebarSections, stripBase, withBase } from "@cloudflare/nimbus-docs/runtime";
+import { stripBase, withBase } from "@cloudflare/nimbus-docs/runtime";
+import { uiForPath } from "@/lib/ui";
 
 interface Props {
   /** Astro collection id for the current page, forwarded from DocsLayout. */
@@ -31,19 +32,27 @@ const { collection, entryId, showSidebar = true, sections: sectionsProp } = Astr
 
 // Normalize trailing slash so isActive matches sidebar hrefs.
 const currentSlug = stripBase(Astro.url.pathname, import.meta.env.BASE_URL).replace(/\/$/, "") || "/";
+const chinese = collection === "zh-CN" || currentSlug.startsWith("/zh-CN");
+const prefix = chinese ? "/zh-CN" : "";
+const ui = uiForPath(Astro.url.pathname);
 const sections =
-  sectionsProp ?? (await getSidebarSections(currentSlug, { collection }));
+  sectionsProp ?? [
+    { label: chinese ? "指南" : "Guides", href: `${prefix}/guides/`, isActive: currentSlug.startsWith(`${prefix}/guides`) },
+    { label: chinese ? "参考" : "Reference", href: `${prefix}/reference/`, isActive: currentSlug.startsWith(`${prefix}/reference`) },
+    { label: chinese ? "项目" : "Project", href: `${prefix}/project/`, isActive: currentSlug.startsWith(`${prefix}/project`) },
+  ];
 const showSections = sections.length >= 2;
-const homeHref = withBase("/", import.meta.env.BASE_URL);
+const homeHref = withBase(`${prefix}/`, import.meta.env.BASE_URL);
 const resolveSectionHref = (href: string): string =>
   withBase(href, import.meta.env.BASE_URL);
 ---
 
-<header class="sticky top-0 z-30 border-b border-border bg-card/80 backdrop-blur-lg">
-  <div class="mx-auto flex items-center justify-between gap-3 h-14 px-4 lg:px-6">
+<header class="sticky top-0 z-30 border-b border-border bg-card/95 backdrop-blur-lg">
+  <div class="mx-auto max-w-[100rem] flex items-center justify-between gap-2 h-14 px-3 lg:px-6">
     <div class="flex items-center gap-3 min-w-0">
       <slot name="brand">
-        <a href={homeHref} class="group shrink-0">
+        <a href={homeHref} class="group flex items-center gap-2 shrink-0 no-underline">
+          <img src={withBase("/assets/nano-technology.png", import.meta.env.BASE_URL)} width="26" height="26" alt="" class="hidden sm:block" />
           <span class="font-semibold text-sm text-foreground group-hover:text-primary transition-colors">
             {config.title}
           </span>
@@ -51,7 +60,7 @@ const resolveSectionHref = (href: string): string =>
       </slot>
 
       {showSections && (
-        <nav aria-label="Sections" class="hidden md:flex items-center gap-1 ml-4 pl-4 border-l border-border h-6 min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <nav aria-label={ui.navigation} class="hidden lg:flex items-center gap-1 ml-4 pl-4 border-l border-border h-6 min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {sections.map((section) => (
             <a
               href={resolveSectionHref(section.href)}
@@ -81,9 +90,10 @@ const resolveSectionHref = (href: string): string =>
           shape="square"
           size="sm"
           aria-label="GitHub"
+          title="GitHub"
           target="_blank"
           rel="noopener"
-          class="text-muted-foreground"
+          class="hidden sm:inline-flex text-muted-foreground"
         >
           <Icon name="ph:github-logo" class="w-4 h-4" />
         </LinkButton>
@@ -95,7 +105,8 @@ const resolveSectionHref = (href: string): string =>
           shape="square"
           size="sm"
           icon="ph:list"
-          aria-label="Open navigation"
+          aria-label={ui.openNavigation}
+          title={ui.openNavigation}
           data-menu-btn
           class="md:hidden text-muted-foreground"
         />

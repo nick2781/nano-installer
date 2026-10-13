@@ -1,0 +1,81 @@
+---
+title: Troubleshooting
+description: Locate build and deployment failures using the error message, runtime log and project configuration.
+sidebar:
+  order: 900
+---
+
+Start with the failing stage: a builder error concerns project inputs, while a setup error concerns
+deployment on the target machine. Keep the exact error and the log before changing the project.
+The [command-line reference](/reference/cli/) lists the arguments accepted at each stage.
+
+## Collect the log
+
+Builder progress and errors go to standard error. For an installer or uninstaller, use `--log` to
+choose a file; otherwise look under `%TEMP%\nano-installer\`. A failed runtime reports the log path
+on standard error. Logs include system details, product identity, the target directory and step results.
+
+```powershell
+$run = Start-Process .\MyApp_Setup.exe `
+  -ArgumentList '--silent --log "%TEMP%\MyApp-setup.log"' -Wait -PassThru
+$run.ExitCode
+Get-Content "$env:TEMP\MyApp-setup.log"
+```
+
+This command requires the project's silent-install flag. For an interactive failure, reproduce with
+`--log` and leave out `--silent`.
+
+<Aside type="note" title="Before sharing a log">
+Review logs for private paths and project data before sharing them.
+</Aside>
+
+## Build failures
+
+| Symptom | Check | Resolution |
+| --- | --- | --- |
+| Runtime stub not found | The downloaded builder and all three stubs | Keep one release together or pass `--stubs` explicitly |
+| Missing project directory or first page | `layouts`, `assets`, `locales` and `wizard.pages[0].layout` | Create the directories and correct the project-relative paths |
+| Missing default locale | `localization.default_locale` and the matching JSON filename | Supply the UTF-8 locale file |
+| Payload missing or not ZIP/7z | `resources.payload_file` and the file signature | Create a real archive; renaming a file does not convert its format |
+| Example images are LFS pointers | The source checkout and `git lfs` | Clone with Git LFS and fetch the objects; provide the missing application archive |
+| Unsupported configuration key | The reported key and [configuration](/reference/configuration/) | Use the supported replacement or remove an inactive setting |
+| Invalid Windows version resource | `project.file_version` | Use one to four numeric parts; keep a release suffix in `project.version` |
+| Finalize command fails | Signing command, environment and its exit code | Fix the command; a rejected output is not a completed release |
+
+## Installation and upgrade failures
+
+| Symptom | Check | Resolution |
+| --- | --- | --- |
+| Access denied in `Program Files` or `HKLM` | Installation scope and elevation | Use `require_admin: true` for a machine-wide project, or choose user-writable paths |
+| Application executable missing | `install.exe_name` and archive directory structure | Put the configured executable at the expected relative path |
+| Insufficient space | `install.required_space_mb` and available target-disk space | Correct the requirement or choose a disk with enough space |
+| Existing uninstall key rejected | Product identity and registry key | Use a product-specific key; do not overwrite another product's entry |
+| Running product cannot be stopped | Process settings and permissions | Close the application or correct the configured executable and privileges |
+| Delta base mismatch | Installed file sizes and hashes, previous payload archive | Use the full setup and regenerate updates against the exact released base |
+| Dependency download fails | URL, expected SHA-256, network and TLS support | Correct the source or digest; verify the Windows 7 TLS updates when applicable |
+| Plugin rejected or fails | x64 DLL, exports and ABI version | Build against `include/nano_plugin.h` and inspect the plugin's returned error |
+
+Dependency HTTPS downloads on Windows 7 require the machine's Schannel TLS 1.2 support,
+including KB3140245 and later updates. Download failures do not fall back to plaintext.
+See [Windows compatibility](/reference/windows-compatibility/) and [plugin ABI](/guides/plugins/).
+
+## UI and removal
+
+Missing images usually indicate an incorrect resource path or absent positioning attributes.
+Check [page layout](/guides/page-layout/) for absolute coordinates and `@2x` selection.
+Missing translations require matching keys in the selected locale and the default locale.
+
+An installation directory can remain when it contains user-created files. Uninstall removes what
+the manifest records; it does not recursively delete unrelated files. Silent uninstall retains user
+data, and interactive data removal is limited to the declared AppData paths. See
+[configuration](/reference/configuration/) for the keep-data contract.
+
+## Report a reproducible issue
+
+Include the builder release, Windows version and architecture, failing command, relevant configuration,
+expected behavior, actual behavior and a reviewed log. For a UI issue, include the locale and DPI.
+Prefer a minimal project with your own resources over a proprietary application payload.
+
+Report ordinary defects through [GitHub Issues](https://github.com/nick2781/nano-installer/issues).
+For a security vulnerability, follow the private reporting route in the
+[security policy](https://github.com/nick2781/nano-installer/blob/main/SECURITY.md).

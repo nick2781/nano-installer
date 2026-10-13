@@ -1,17 +1,21 @@
 ---
 title: 项目
-description: 讲这个项目本身的页面，实测过什么、运行时内部怎么走、怎么测，以及哪个问题该翻哪一页。
+description: 框架架构、验证证据、剩余空白和文档地图。
 sidebar:
   order: 150
 ---
 
-这一节讲的是这个项目本身，不是你的安装包：那一次实机验证覆盖了什么、还差什么才能发布，运行时怎么安装、更新和卸载，测试套件与迁移检查怎么把它按住，以及哪个问题该翻哪一页。下面每张卡片对应一页。
+评估框架或参与开发时，查阅这一节。产品团队还需要对自己的安装包完成
+[发布验收清单](/zh-CN/guides/distribution/)。
 
-<CardGrid>
-<LinkCard title="当前生产状态" description="那次实机验证覆盖了什么，还差什么才能发布。" href="/zh-CN/project/status/" />
-<LinkCard title="架构" description="一个安装包怎么安装、更新和卸载。" href="/zh-CN/project/architecture/" />
-<LinkCard title="测试计划" description="两套测试、迁移检查和页面截图。" href="/zh-CN/project/testing/" />
-<LinkCard title="测试覆盖" description="哪个用例守住哪一条行为，逐层列出。" href="/zh-CN/project/coverage/" />
-<LinkCard title="用例说明" description="每个用例一行，说明它在检查什么。" href="/zh-CN/project/cases/" />
-<LinkCard title="给 agent 的文档地图" description="哪个问题该翻哪一页。" href="/zh-CN/project/agents/" />
-</CardGrid>
+| 问题 | 页面 |
+| --- | --- |
+| 验证了什么，还有哪些不确定性？ | [当前生产状态](/zh-CN/project/status/) |
+| 捆绑格式、运行时和部署步骤如何连接？ | [架构](/zh-CN/project/architecture/) |
+| 一次改动需要运行哪些检查？ | [测试计划](/zh-CN/project/testing/) |
+| 哪些用例覆盖各项行为？ | [测试覆盖](/zh-CN/project/coverage/) |
+| 每条测试具体断言了什么？ | [用例说明](/zh-CN/project/cases/) |
+| 一个问题应该查哪份文档？ | [文档地图](/zh-CN/project/agents/) |
+
+构建从同一份内容生成 Markdown 版本、各语言的 `llms.txt` 索引和 `llms-full.txt`，
+人和 agent 因此可以读取一致的技术声明。

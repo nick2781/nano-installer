@@ -1,6 +1,7 @@
 import { mount } from "@cloudflare/nimbus-docs/client";
 import type { SearchProvider, SearchResult } from "@cloudflare/nimbus-docs/types";
 import { provider } from "./providers/pagefind";
+import { uiForLanguage } from "@/lib/ui";
 
 export interface SearchConfig {
   input: HTMLInputElement;
@@ -16,6 +17,7 @@ export interface SearchInstance {
 }
 
 export function initSearch(config: SearchConfig): SearchInstance {
+  const ui = uiForLanguage(document.documentElement.lang);
   const { input, resultsContainer, emptyState, provider, onNavigate } = config;
 
   let initialized = false;
@@ -116,7 +118,7 @@ export function initSearch(config: SearchConfig): SearchInstance {
     const signal = activeController.signal;
 
     emptyState.style.display = "";
-    emptyState.textContent = "Searching…";
+    emptyState.textContent = ui.searching;
     clearResults();
 
     if (!(await ensureInitialized()) || signal.aborted) return;
@@ -130,7 +132,7 @@ export function initSearch(config: SearchConfig): SearchInstance {
 
       if (results.length === 0) {
         emptyState.style.display = "";
-        emptyState.textContent = "No results found.";
+        emptyState.textContent = ui.noResults;
         return;
       }
 
@@ -141,7 +143,7 @@ export function initSearch(config: SearchConfig): SearchInstance {
       if (signal.aborted) return;
       clearResults();
       emptyState.style.display = "";
-      emptyState.textContent = "Search is temporarily unavailable.";
+      emptyState.textContent = ui.searchError;
     }
   }
 
@@ -153,7 +155,7 @@ export function initSearch(config: SearchConfig): SearchInstance {
         activeController?.abort();
         clearResults();
         emptyState.style.display = "";
-        emptyState.textContent = "Type to search…";
+        emptyState.textContent = ui.searchEmpty;
         return;
       }
       void runSearch(query);
@@ -192,7 +194,7 @@ export function initSearch(config: SearchConfig): SearchInstance {
       activeIndex = -1;
       clearResults();
       emptyState.style.display = "";
-      emptyState.textContent = "Type to search…";
+      emptyState.textContent = ui.searchEmpty;
       await ensureInitialized();
     },
     destroy() {

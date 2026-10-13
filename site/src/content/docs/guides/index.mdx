@@ -1,17 +1,30 @@
 ---
 title: Guides
-description: Task-by-task pages for the work of writing a project, from the XML of a page to the move off NSIS.
+description: Customize your installer, extend deployment and prepare a product release.
 sidebar:
   order: 350
 ---
 
-This section covers the work of writing a project: the XML a page is made of, the Rhai that takes over a step, the files of a second language, a plugin DLL, the visual builder, and the move from NSIS. Each card below is one of those jobs.
+Start with the [quick start](/quick-start/) or [visual builder](/guides/visual-builder/), then choose
+the task your product needs. Configuration is enough for the built-in deployment flow; scripts
+and plugins extend it when you need additional steps.
+
+## Customize the installer
+
+| Task | Guide |
+| --- | --- |
+| Define pages, images, controls and keyboard behavior | [Page layout](/guides/page-layout/) |
+| Add translated UI text and verify locale files | [Languages](/guides/languages/) |
+| Add installation steps and page hooks | [Custom steps](/guides/custom-steps/) |
+| Call a project-owned native DLL | [Plugin ABI](/guides/plugins/) |
+| Port instructions from an existing NSIS project | [Migrating from NSIS](/guides/migrating-from-nsis/) |
+
+## Ship and support
 
 <CardGrid>
-<LinkCard title="Page layout" description="Pages, controls, flow layout, links and actions, in XML." href="/guides/page-layout/" />
-<LinkCard title="Custom install and uninstall steps" description="Install and uninstall logic written in Rhai." href="/guides/custom-steps/" />
-<LinkCard title="Languages" description="One JSON file per language, shipped with the setup." href="/guides/languages/" />
-<LinkCard title="Plugin ABI" description="A DLL you ship, and the host it runs against." href="/guides/plugins/" />
-<LinkCard title="Visual builder" description="Build a setup from the Windows 10 and later app." href="/guides/visual-builder/" />
-<LinkCard title="Migrating from NSIS" description="What maps onto what, and what is refused on purpose." href="/guides/migrating-from-nsis/" />
+  <LinkCard title="Distribute your product" description="Choose installation scope, sign files and verify unattended deployment." href="/guides/distribution/" icon="ph:package" />
+  <LinkCard title="Troubleshooting" description="Connect build and deployment failures to logs and settings." href="/guides/troubleshooting/" icon="ph:wrench" />
 </CardGrid>
+
+Keep [configuration](/reference/configuration/) and the [command-line reference](/reference/cli/)
+nearby when implementing a guide.

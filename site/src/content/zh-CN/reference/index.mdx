@@ -1,15 +1,20 @@
 ---
 title: 参考
-description: 查表用的页面，包括每一项设置、构建与发布的路子、文件的位置，以及运行时用到的 Windows 接口。
+description: 查阅配置字段、命令行参数、平台要求和框架构建规则。
 sidebar:
   order: 950
 ---
 
-这一节是查表的那一半：<code>installer_config.json</code> 里的每一项设置、工具和一次发布是怎么构建与发布的、各 crate 与工程目录和站点分别在哪里，以及运行时依赖的 Windows 接口。下面每张卡片对应一页。
+开发项目时，用这些页面核对字段、参数和平台要求。首次构建的完整流程见[快速开始](/zh-CN/quick-start/)。
 
 <CardGrid>
-<LinkCard title="配置参考" description="installer_config.json 里每一项设置、它的类型和默认值。" href="/zh-CN/reference/configuration/" />
-<LinkCard title="构建与发布" description="工具和一次发布是怎么构建、检查和发布的。" href="/zh-CN/reference/build-and-release/" />
-<LinkCard title="项目结构" description="各 crate、工程目录和站点分别在哪里。" href="/zh-CN/reference/project-structure/" />
-<LinkCard title="Windows 兼容性" description="运行时用到的接口，以及怎么再跑一遍验收。" href="/zh-CN/reference/windows-compatibility/" />
+  <LinkCard title="配置参考" description="installer_config.json 支持的字段及其行为。" href="/zh-CN/reference/configuration/" icon="ph:sliders-horizontal" />
+  <LinkCard title="命令行参考" description="通过脚本构建、更新和部署时使用的参数。" href="/zh-CN/reference/cli/" icon="ph:terminal-window" />
+  <LinkCard title="Windows 兼容性" description="支持的 Windows 版本和系统接口。" href="/zh-CN/reference/windows-compatibility/" icon="ph:desktop" />
+  <LinkCard title="项目结构" description="产品输入与框架仓库模块的存放位置。" href="/zh-CN/reference/project-structure/" icon="ph:folders" />
+  <LinkCard title="构建与发布" description="工具链、检查项与框架发布规则。" href="/zh-CN/reference/build-and-release/" icon="ph:git-branch" />
 </CardGrid>
+
+产品签名和验收见[发布你的产品](/zh-CN/guides/distribution/)，框架发布规则见构建参考。
+XML 属性、Rhai 函数和原生 DLL 契约分别见[页面布局](/zh-CN/guides/page-layout/)、
+[自定义步骤](/zh-CN/guides/custom-steps/)和[插件 ABI](/zh-CN/guides/plugins/)。

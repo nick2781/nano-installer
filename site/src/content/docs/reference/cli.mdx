@@ -1,0 +1,95 @@
+---
+title: Command-line reference
+description: Builder options, installer arguments, output paths and exit behavior for automated builds and deployment.
+sidebar:
+  order: 1050
+---
+
+The builder creates installers; the generated setup and uninstaller perform deployment.
+They accept different arguments. Run the builder on Windows 7 SP1 x64 or later, with all three
+stubs from the same release. The [quick start](/quick-start/) provides a complete project.
+
+## Builder
+
+```text
+nano-installer-native-x64.exe build --project <directory> [--output <exe>] [--stubs <directory>] [--delta-from <archive>] [--msi <package>]
+```
+
+| Argument | Required | Meaning |
+| --- | --- | --- |
+| `build` | Yes | The supported command |
+| `--project <directory>` | Yes | Directory containing `installer_config.json` |
+| `--output <exe>` | No | Output setup path; defaults to the project's `dist/<output.installer_name>` |
+| `--stubs <directory>` | No | Directory containing the three runtime executables |
+| `--delta-from <archive>` | No | Previous release's ZIP or 7z payload to compare with the current payload |
+| `--msi <package>` | No | Also wrap the finished setup in a Windows Installer package |
+
+Configuration resource paths are relative to the project. Relative command-line output paths
+are relative to the working directory; use absolute paths in CI to avoid ambiguity.
+The builder writes progress to standard error and completed output paths to standard output.
+It returns `0` on success and `1` on an error. Unknown arguments are rejected.
+
+### Runtime discovery
+
+Use `--stubs` for an explicit build dependency. `NANO_INSTALLER_NATIVE_STUB_DIR` also points to
+a runtime directory. Without an override, the builder searches beside itself and in nearby
+`stubs` directories. A ZIP setup uses `zlib-stub-native.exe`, a 7z setup uses `lzma-stub-native.exe`,
+and both embed `uninst-stub-native.exe`.
+
+### Full setup
+
+```powershell
+.\nano-installer-native-x64.exe build `
+  --project C:\products\MyApp\installer `
+  --stubs C:\tools\nano-installer `
+  --output C:\artifacts\MyApp_Setup.exe
+if ($LASTEXITCODE -ne 0) { throw "Installer build failed" }
+```
+
+### Delta package
+
+```powershell
+.\nano-installer-native-x64.exe build `
+  --project C:\products\MyApp\installer `
+  --delta-from C:\releases\1.0.0\app.zip `
+  --output C:\artifacts\MyApp_Update.exe
+```
+
+Keep the exact previous payload archive. The builder compares unpacked files and ships changed
+bytes. Installation checks the unchanged files' size and SHA-256 before modifying the target;
+if the base differs, use the full setup. A delta package is not a first-install package.
+
+### MSI package
+
+```powershell
+.\nano-installer-native-x64.exe build `
+  --project C:\products\MyApp\installer `
+  --msi C:\artifacts\MyApp.msi
+```
+
+MSI wraps the setup; it does not convert product logic to native MSI components.
+Deployment and signing requirements are in [distribution](/guides/distribution/).
+
+## Generated setup and uninstaller
+
+| Argument | Meaning |
+| --- | --- |
+| `--silent` | Run without a window, when the project's support flag permits it |
+| `--dir <directory>` | Override `install.default_path` for this installation |
+| `--log <file>` | Write the run log to an explicit path |
+
+The project must enable `advanced.silent_mode_support` for silent installation and
+`advanced.uninstall_mode_support` for silent uninstall. These flags are independent.
+Silent uninstall preserves user data. Other arguments are rejected; failure returns a nonzero
+exit code. Without `--log`, logs are written under `%TEMP%\nano-installer\`.
+
+```powershell
+$setup = Start-Process .\MyApp_Setup.exe `
+  -ArgumentList '--silent --dir "%LOCALAPPDATA%\MyApp" --log "%TEMP%\MyApp-install.log"' `
+  -Wait -PassThru
+if ($setup.ExitCode -ne 0) { throw "Installation failed: $($setup.ExitCode)" }
+```
+
+Use `Start-Process -Wait -PassThru` when the deployment script needs to wait and read the executable's
+exit code. A machine-wide project needs an elevated session; `--silent` does not grant privileges.
+The full silent-mode contract is in [configuration](/reference/configuration/#unattended-runs).
