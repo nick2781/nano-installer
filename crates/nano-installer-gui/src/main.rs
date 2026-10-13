@@ -2018,7 +2018,7 @@ mod tests {
     fn draw_panels(app: &mut BuilderApp, context: &egui::Context) {
         let logs = app.logs.clone();
         let status = app.status.clone();
-        let _ = context.run_ui(egui::RawInput::default(), |ui| {
+        let mut output = context.run_ui(egui::RawInput::default(), |ui| {
             let context = ui.ctx().clone();
             let context = &context;
             egui::Panel::top("menu").show(ui, |ui| app.show_menu(context, ui));
@@ -2028,6 +2028,8 @@ mod tests {
                 WorkspaceTab::Parameters => app.show_parameters_tab(ui),
             });
         });
+        // This headless layout check has no renderer to upload textures.
+        output.textures_delta.clear();
         assert_eq!(app.logs, logs, "drawing changed the log");
         assert_eq!(app.status, status, "drawing changed the status line");
     }
