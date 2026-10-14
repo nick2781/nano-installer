@@ -45,6 +45,9 @@
 - ZIP 依赖升级到 9 系列，增量包写入和运行时的文件名、路径 API 随之适配。保留 Deflate 后端并关闭
   不需要的 Zopfli。新增 ZIP 路径回归用例，确保绝对路径、盘符前缀和越过目标目录的上级路径仍被拒绝。
 
+- 发布流水线为 5 个可执行文件增加 GitHub build provenance attestation。它和 `SHA256SUMS.txt` 一起证明发布
+  文件来自被 tag 的 `Release` workflow，但不替代 Windows Authenticode 签名；可信证书仍需发布方接入。
+
 - 两项都在最低支持的版本上补做：Windows 7 Ultimate 内部版本 7601 x64、简体中文界面、以管理员运行，安装包
   由 v2026.10.10 发布版的构建器与三个运行时构建。注入的拖动位移是 −72/+48（矩形 600/295 → 528/343）。卸载
   那条的做法是静默安装后先记下目录里有什么（`data`、`logs`、`nano-installer-manifest.json`、`TapTap.exe`、
