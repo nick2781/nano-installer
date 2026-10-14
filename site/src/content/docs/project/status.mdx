@@ -1,6 +1,6 @@
 ---
 title: Production status
-description: Verified installation workflows, signing support, Windows 7 evidence and remaining acceptance gaps.
+description: Verified installation workflows, temporary signing tests, Windows 7 evidence and remaining acceptance gaps.
 sidebar:
   order: 200
 ---
@@ -9,14 +9,14 @@ sidebar:
 **Core workflows have been verified; each product still needs release acceptance.** Installation,
 upgrade and uninstall ran in a Windows 7 SP1 x64 VM. Repository artifacts are unsigned
 (<Badge variant="warning" text="Unsigned" />), while product signing hooks are implemented and tested.
-Complete [distribution](/guides/distribution/) for your product and review the
+Use a self-signed certificate only for temporary tests in a disposable machine, and review the
 [remaining gaps](#not-covered), including screen-reader audio and the Win7 TLS download path.
 </Aside>
 
 | Area | Current evidence | Your product's next step |
 | --- | --- | --- |
 | Build, install, upgrade and uninstall | Automated tests and a Windows 7 SP1 x64 VM run | Exercise your own payload and supported upgrade paths |
-| Product signing | Finalize hooks and signed setup/uninstaller verification | Supply a trusted certificate, timestamp and signing pipeline |
+| Product signing | Finalize hooks and self-signed setup/uninstaller verification | Keep test certificates in disposable machines; do not treat them as public trust |
 | Windows baseline | PE import audits and the documented VM observations | Verify application, dependency and plugin compatibility |
 | Accessibility, DPI and downloads | Automated coverage with remaining real-machine gaps | Test the paths your product uses on representative machines |
 
@@ -37,8 +37,8 @@ machine you throw away afterwards. That goes for any installer.
 - The minimum version has been through a real run. It was build 7601 Ultimate, in a virtual machine
   thrown away afterwards, with a standard VGA adapter and a USB pointer, and a setup the current builder
   produced installs and uninstalls there. Of the nine items in
-  [Windows compatibility](/reference/windows-compatibility/#running-the-acceptance), all but the screen reader and
-  the service were reached, and item 2 got only as far as the drag. The window has no title bar and
+  [Windows compatibility](/reference/windows-compatibility/#running-the-acceptance), all but the screen reader,
+  different-monitor scaling and the service were reached. The window has no title bar and
   rounded corners, and it draws its background bitmap, its icons and Chinese text from the page layouts.
   With `install.require_admin` on, Windows asks for administrator rights and shows "unknown" as the
   publisher, because nothing is signed. Until the agreement is ticked, the install button is drawn in
@@ -65,12 +65,14 @@ machine you throw away afterwards. That goes for any installer.
   observations on this machine. Pressing on the window's own background and dragging moved the window
   rectangle from left 600 / top 295 to left 528 / top 343, exactly the displacement that was injected:
   −72 across and +48 down. The window has no title bar, so the drag goes through `WM_NCLBUTTONDOWN` with
-  `HTCAPTION` on a custom area. Minimising and restoring were not verified this time. What an uninstall
+  `HTCAPTION` on a custom area. What an uninstall
   leaves behind was looked at again as well: after a silent install (elevated) the directory held `data`,
   `logs`, `nano-installer-manifest.json`, `TapTap.exe`, `uninst.exe` and `data\deep.txt`, and a silent
   uninstall followed by thirty seconds left no installation directory at all, with the uninstaller
   having deleted itself and the `logs` directory a project script created with `create_dir` gone with
   it. That fix had only a unit case behind it, and this was the first time a real machine showed it.
+  On 2026-10-14, the `2026.9.22-rel.1` setup was opened in the same QEMU guest. Its custom minimize
+  control hid the window, and clicking its taskbar entry restored the same page and state.
 - The builder and the runtime are two separate programs, so a setup never contains the builder.
 - ZIP and 7z application files are recognised from the file signature, and then handed to the matching runtime.
 - Both runtimes unpack real archives, and the result matches the expected SHA-256.
@@ -222,17 +224,9 @@ certificate and that certificate's root trusted on the test machine, the Windows
 "an unknown publisher" to **"Verified publisher: nano-installer signing test"** (the certificate's
 subject). Only a chain that ends in a trusted root counts: the Trusted Publishers store plays no part,
 and putting a root into the trusted root store **takes a human confirmation**, so a test image is where
-that happens once. For a real certificate, SignPath Foundation signs open-source projects for free,
-without personal identity validation and with the private key held in their HSM.
-
-The outcome of the application belongs here too. SignPath Foundation declined it on the grounds that the
-project carries no verifiable reputation, so no real certificate is being bought and the publisher a user
-sees is still "unknown". The signing flow itself did not stop there: the rehearsal in
-[Build and release](/reference/build-and-release/) walks the whole path through a manually triggered workflow --
-Fulcio issues a ten-minute certificate to the workflow's own identity, the signature is a separate file
-that changes no executable, and verification against the certificate identity and issuer passes with a
-transparency log entry and an RFC 3161 timestamp in place. Because the certificate lives ten minutes,
-that timestamp is what makes the step worth anything at all.
+that happens once. This is the only signing use this project supports today. The certificate is not
+publicly trusted, does not establish SmartScreen reputation and cannot remove the unknown-publisher
+warning on an ordinary Windows machine. Repository release artifacts therefore remain unsigned.
 
 ## Publishing
 
@@ -271,7 +265,9 @@ it, and the two hooks described under [Signing](#signing) are where that pipelin
 1. Repository artifacts are unsigned, so Windows can warn about an unknown publisher. Before public
    product distribution, connect your signing pipeline through `finalize.installer` and
    `finalize.uninstaller`, and `finalize.package` when shipping MSI. The hooks are implemented;
-   the remaining work is supplying your product's certificate and release policy. See [Signing](#signing).
+   The hooks and verification script support temporary self-signed tests in a disposable machine, but
+   there is no trusted certificate for this repository and the test signature is not a public release claim.
+   See [Signing](#signing).
 
 The minimum supported version has been through a real run (see [Verified](#verified)). What that run
 did not cover is in the next section.
@@ -315,8 +311,8 @@ This section writes those gaps down, so none of them is left looking tested:
   sitting beside it listening. That is not a product defect, it is this audio-less guest and NVDA's
   behaviour on that system together. Narrator was never heard either, so this counts as "the accessibility
   tree was read on the minimum supported version", not as "a screen reader was run against it".
-- Minimising and restoring the window (item 2), and dragging it to a display with a different scaling:
-  the virtual machine did neither.
+- Dragging the window to a display with a different scaling (item 2) was not possible in this one-display
+  guest. Minimising and restoring were verified separately in the same QEMU guest on 2026-10-14.
 - Cursor shapes: `screendump` does not capture the hardware cursor, so the machine itself was asked
   instead. With the wizard in front, `scripts/cursor_probe.ps1` walked the screen on a grid of 60 pixels
   and called `GetCursorInfo` at every point: at 1920x1080 six points reported the hand cursor, in two runs
@@ -326,8 +322,8 @@ This section writes those gaps down, so none of them is left looking tested:
   there was nothing to observe. The automated suite already installs a real service and deletes it
   where it has the rights, and covers the round trip through the manifest file; another real-machine
   look is not planned, because most setups involve no service.
-- Dependency downloads: the virtual machine had no KB3140245, so the TLS 1.2 path was not reached.
-  KB3033929 was not installed either.
+- Dependency downloads: the probe reported Windows 7 Ultimate x64 build 7601 with KB2534111 and KB976902,
+  but without KB3033929 or KB3140245. The TLS 1.2 path was therefore not reached.
 - 32-bit versions and ARM64 are outside what is supported, and a machine without SP1 is outside what is
   claimed.
 

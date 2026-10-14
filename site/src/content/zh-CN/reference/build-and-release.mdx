@@ -401,12 +401,11 @@ Installer 那边看到的版本号仍是 `2026.9.17`，因为它只比较三段�
 
 ## 演练签名流程
 
-发布版用的是商业机构签发的证书，而这张证书不一定拿得到：免费签名项目会认为一个工程知名度还不够，
-因而不发证书。手上没有证书，`NANO_INSTALLER_CERT_THUMBPRINT` 就没有东西可填。流程本身还是可以完整
-走一遍，因为 [Sigstore](https://www.sigstore.dev) 是把证书签给工作流自己，而不是签给某个拿着私钥
-的人。`.github/workflows/sigstore-flow.yml` 用 cosign 签一个文件，由它向 Fulcio 申请那张证书，并
-用本次运行的 OIDC 令牌证明申请者就是它——所以这个 job 要拿 `id-token: write`，整个过程里也没有任何
-私钥。
+本仓库没有商业机构签发的签名证书，所以 `NANO_INSTALLER_CERT_THUMBPRINT` 没有值，仓库发布产物仍然不签名。
+自签证书只能在可丢弃的测试机上用来走通 finalize 钩子和验签脚本，不能把它当成公开发布签名。单独的手动
+流程仍然可以完整走一遍，因为 [Sigstore](https://www.sigstore.dev) 是把证书签给工作流自己，而不是签给
+某个拿着私钥的人。`.github/workflows/sigstore-flow.yml` 用 cosign 签一个文件，由它向 Fulcio 申请那张证书，
+并用本次运行的 OIDC 令牌证明申请者就是它——所以这个 job 要拿 `id-token: write`，整个过程里也没有任何私钥。
 
 那张证书只有十分钟有效期，所以工作流验的是这个窗口，而不是嘴上说说。任务从签发出来的证书里读出
 `notBefore` 与 `notAfter`，两者相差不是正好十分钟就失败；bundle 里没有 Rekor 条目，同样失败。这两
@@ -423,5 +422,5 @@ Windows 那边也没有多出可信任的东西。用户下载时看到的「未
 
 这个工作流因此只能手动触发：它没有 `push`、`tag`、`schedule` 这些触发条件，所以发布既启动不了它，
 也等不到它。它签的文件是 `include/nano_plugin.h`——一份每次检出都在的源文件，因为这里要验的是流程
-而不是产物。等有了证书，该签的是自己工程的安装包，而把真实签名读回来的仍是
-`scripts/verify_signing.ps1`。
+而不是产物。有可信证书的产品可以签自己的安装包，真实签名仍由 `scripts/verify_signing.ps1` 读取；本仓库没有
+这样的证书。

@@ -36,9 +36,10 @@ Framework maintainers follow [build and release](/reference/build-and-release/) 
 
 ## Sign the distributed files
 
-<Aside type="caution" title="Supply your own signing identity">
-Repository releases are unsigned. Your pipeline supplies its own trusted Authenticode certificate,
-timestamp service and signing command.
+<Aside type="caution" title="Self-signing is for temporary tests only">
+Repository releases are unsigned, and this project has no trusted Authenticode certificate. Use a
+self-signed certificate only on a disposable test machine to exercise the hooks and verification script.
+Do not ship a self-signed setup to users or treat it as a public release.
 </Aside>
 
 Add these hooks to the project configuration:
@@ -56,9 +57,10 @@ signing service. `%1` is the finished file's full path. The uninstaller is signe
 the setup after bundling, and MSI after wrapping. A failed hook stops the build.
 
 Run the repository's `scripts/verify_signing.ps1` against the setup to check the setup and embedded
-uninstaller, including timestamps. Check the MSI separately when distributing one. A self-signed
-test certificate proves the mechanism, not public trust. Authenticode identifies the publisher;
-SmartScreen reputation is a separate decision and may still cause a warning.
+uninstaller, including timestamps. Check the MSI separately when distributing one. For a self-signed
+test certificate, install its root manually in the disposable machine and pass
+`-AllowUntrustedRoot` to the verification script. The signature proves the mechanism, not public trust;
+Windows can still show an unknown publisher and SmartScreen makes a separate reputation decision.
 
 ## Verify unattended deployment
 
@@ -97,8 +99,8 @@ management platform, including the platform's handling of return codes.
 | User data | Keep-data behavior matches the product's policy; silent removal preserves data |
 | UI | Supported languages, keyboard focus, IME, DPI scaling and screen-reader behavior are checked |
 | Optional paths | Components, dependency downloads, services and plugins used by this product are exercised |
-| Distribution | Final files have the expected signatures, timestamps and recorded digests |
+| Distribution | Final files have the expected signature state, timestamps and recorded digests; self-signed test files stay in test evidence |
 
-Run these checks in disposable VMs and retain the logs with the release. The framework's Win7 VM run
-did not verify every screen-reader, display or TLS path; see [remaining gaps](/project/status/#not-covered).
+Run these checks in a disposable QEMU guest and retain the logs with the release. The framework's Win7
+run did not verify every screen-reader, display or TLS path; see [remaining gaps](/project/status/#not-covered).
 If a check fails, use [troubleshooting](/guides/troubleshooting/) before distributing the package.
