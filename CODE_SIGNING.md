@@ -1,16 +1,20 @@
 # Code signing policy
 
-Nothing this project publishes is signed today. [SignPath Foundation](https://signpath.org), which
-signs open source projects for free, declined this project's application, because it signs only
-projects that already carry a verifiable reputation. This project does not have one yet, and no
-certificate has been bought either, so a setup that asks for administrator rights still shows an
-unknown publisher.
+Nothing this project publishes is signed today. [SignPath Foundation](https://signpath.org) declined
+the project's application because it signs only projects that already carry a verifiable reputation.
+No certificate has been bought, so a setup that asks for administrator rights still shows an unknown
+publisher.
 
-What exists instead is a rehearsal of the flow. `.github/workflows/sigstore-flow.yml` is manual-only,
-and it signs one file per run with a ten-minute certificate that Sigstore's Fulcio issues to the
-workflow's own identity, then verifies it. The signature is a separate file, so no executable is
-modified and nothing is attached to a release; [Build and
-release](site/src/content/docs/reference/build-and-release.mdx) describes what that does and does not prove.
+The only signing use this project supports today is a self-signed certificate on a disposable test
+machine. That test can exercise the `finalize` hooks and `scripts/verify_signing.ps1`; install the test
+root manually and use `-AllowUntrustedRoot` when checking it. A self-signed file is not a public release
+and must not be distributed to users.
+
+`.github/workflows/sigstore-flow.yml` is a separate, manual process rehearsal. It signs one source file
+per run with a ten-minute certificate that Sigstore's Fulcio issues to the workflow's own identity, then
+verifies it. The signature is a separate file, so no executable is modified and nothing is attached to a
+release; [Build and release](site/src/content/docs/reference/build-and-release.mdx) describes what that
+does and does not prove. This workflow does not give Windows a trusted publisher.
 
 The release workflow now also publishes GitHub build provenance attestations for every executable. A
 downloader can use the attestation to confirm the exact digest was produced by this repository's tagged
@@ -43,7 +47,7 @@ embeds it.
 | --- | --- |
 | Authors (committers) | [nick2781](https://github.com/nick2781) |
 | Reviewers | [nick2781](https://github.com/nick2781); every change reaches `main` through a pull request whose head has to pass both suite jobs |
-| Approvers | [nick2781](https://github.com/nick2781); every release needs manual approval before it is signed |
+| Approvers | [nick2781](https://github.com/nick2781); repository release artifacts remain unsigned |
 
 ## Privacy
 
@@ -59,4 +63,5 @@ connection. This framework itself sends nothing anywhere, and there is no teleme
 
 `scripts/verify_signing.ps1 -Setup <file>` reads a setup and the uninstaller embedded in it, reports
 who signed each one and whether it carries a timestamp, and fails when the chain is untrusted or the
-timestamp is missing.
+timestamp is missing. Temporary self-signed tests may add `-AllowUntrustedRoot`; that option is not a
+claim of public trust.

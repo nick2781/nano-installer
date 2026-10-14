@@ -48,15 +48,15 @@ statically depend on a newer system.
 
 A static check cannot prove an installer works, so the project also ran one on a real machine. On build
 7601 that run reached PNG decoding, text rendering, mouse input, window behaviour, extraction,
-installation and uninstallation, including window dragging and an uninstall that clears the whole
-installation directory; the item-by-item results are in [Production status](/project/status/).
+installation and uninstallation, including window dragging, minimizing and restoring, and an uninstall
+that clears the whole installation directory; the item-by-item results are in [Production status](/project/status/).
 
 <Aside type="caution" title="Not covered by that run">
-The run did not reach the window's minimising and restoring, multi-monitor scaling, cursor shapes, and
-installing or removing a service. The screen reader item got as far as the accessibility information,
-which read the same as on Windows 11. NVDA 2023.3 does install on this Windows 7 SP1 machine, but every
-real start of it terminates that virtual machine, which has no audio device, so item 8 needs a machine
-with a sound card or a person listening beside it.
+The QEMU run now covers minimizing and restoring and the cursor shape probe. It still does not cover
+multi-monitor scaling or installing and removing a service. The screen reader item got as far as the
+accessibility information, which read the same as on Windows 11. NVDA 2023.3 does install on this
+Windows 7 SP1 machine, but every real start of it terminates that virtual machine, which has no audio
+device, so item 8 needs a machine with a sound card or a person listening beside it.
 </Aside>
 
 <Aside type="note" title="Updates the target machine needs">
