@@ -106,6 +106,12 @@ download can be checked with
 sha256sum -c SHA256SUMS.txt
 ```
 
+The release job also creates GitHub build provenance attestations for the five executable files. On the
+release page, open the artifact's attestation and verify that its subject digest matches the file you
+downloaded and that the workflow is this repository's `Release` workflow on the tagged commit. The
+attestation proves where GitHub built the bytes; it does not sign the PE file or change Windows' publisher
+warning. Public distribution still needs the Authenticode step described in [Signing](#signing).
+
 <Aside type="note" title="Why the digest list is published">
 Downloading is the one step of an install nobody can check afterwards, and the product already refuses a
 dependency whose bytes do not match the digest its project wrote down, so the assets this repository

@@ -311,6 +311,8 @@ SignPath Foundation（不需要个人身份认证，私钥保存在他们的 HSM
 - **5 个产物带着摘要一起发布。** `scripts/release_manifest.ps1` 写出 `SHA256SUMS.txt`，每个文件一行，
   格式是 `sha256sum -c` 认的那种。工作流把它同时挂在 release 和 artifact 上。
   下载是安装里唯一事后没人能检查的一步，所以产品自己拉依赖时，本来就要求摘要对得上。
+  同一个 release job 还会为每个可执行文件记录 GitHub 构建来源证明，把摘要绑定到被 tag 的 `Release`
+  workflow。它能证明字节由哪里构建，但不替代 Authenticode，也不会消除 Windows 的「未知发布者」提示。
 
 工程自己构建出来的安装包不在这 5 个产物里，它由发布这个产品的人构建和发布；[签名](#签名)那一节写的那两个
 钩子，就是那条流水线签名它的地方。

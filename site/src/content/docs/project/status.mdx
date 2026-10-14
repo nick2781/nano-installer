@@ -259,6 +259,9 @@ A release is built and published from a tag, and the tag is pushed by hand. Two 
   the release and to the artifact.
   Downloading is the one step of an install nobody can check afterwards, so a product that fetches a
   dependency already requires the digest to match.
+  The same release job now records a GitHub build provenance attestation for each executable, binding its
+  digest to the tagged `Release` workflow. That proves where GitHub built the bytes; it does not replace
+  Authenticode or remove Windows' unknown-publisher warning.
 
 The setup a project builds is not one of those assets: whoever ships the product builds and publishes
 it, and the two hooks described under [Signing](#signing) are where that pipeline signs it.

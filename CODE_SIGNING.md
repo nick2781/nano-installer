@@ -12,6 +12,11 @@ workflow's own identity, then verifies it. The signature is a separate file, so 
 modified and nothing is attached to a release; [Build and
 release](site/src/content/docs/reference/build-and-release.mdx) describes what that does and does not prove.
 
+The release workflow now also publishes GitHub build provenance attestations for every executable. A
+downloader can use the attestation to confirm the exact digest was produced by this repository's tagged
+`Release` workflow. That evidence complements the SHA-256 manifest, but it does not replace Authenticode:
+Windows still sees an unknown publisher until a trusted certificate signs the PE file.
+
 ## What would be signed
 
 The executables on the [releases page](https://github.com/nick2781/nano-installer/releases), built by

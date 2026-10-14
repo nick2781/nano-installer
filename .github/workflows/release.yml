@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
   # The release gate reads this repository's own CI runs, so it needs to see
   # them: the tag is pushed by hand and the release job does not run the suite.
   actions: read
@@ -111,6 +113,20 @@ jobs:
       - name: Write the digests of the published assets
         shell: powershell
         run: .\scripts\release_manifest.ps1 -Output tmp\SHA256SUMS.txt
+
+      # GitHub stores these attestations against the exact bytes built by this
+      # run. They let a downloader verify the workflow and commit that produced
+      # an asset; they are provenance, not an Authenticode signature, so Windows
+      # still needs a publisher certificate before a public product release.
+      - name: Attest release artifacts
+        uses: actions/attest-build-provenance@v4.2.2
+        with:
+          subject-path: |
+            target/release/nano-installer-native-x64.exe
+            target/release/nano-installer-gui-x64.exe
+            target/release/stubs/lzma-stub-native.exe
+            target/release/stubs/zlib-stub-native.exe
+            target/release/stubs/uninst-stub-native.exe
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v7
